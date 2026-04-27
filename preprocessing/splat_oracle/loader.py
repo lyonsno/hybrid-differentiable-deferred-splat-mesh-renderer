@@ -122,7 +122,12 @@ def load_ply(path: str | Path) -> SplatCloud:
     else:
         colors = np.ones((len(vertex), 3), dtype=np.float32) * 0.5
 
-    opacities = vertex["opacity"].astype(np.float32) if "opacity" in vertex else np.ones(len(vertex), dtype=np.float32)
+    # PLY stores opacity as logit — apply sigmoid to get [0,1]
+    if "opacity" in vertex:
+        raw_opacity = vertex["opacity"].astype(np.float32)
+        opacities = 1.0 / (1.0 + np.exp(-raw_opacity))
+    else:
+        opacities = np.ones(len(vertex), dtype=np.float32)
 
     # Scales
     if "scale_0" in vertex:
