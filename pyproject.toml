@@ -1,0 +1,7 @@
+[project]
+name = "hybrid-differentiable-defferred-splat-mesh-renderer"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12.9"
+dependencies = []
