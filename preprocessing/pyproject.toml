@@ -1,0 +1,23 @@
+[project]
+name = "splat-oracle"
+version = "0.1.0"
+description = "Vision-model oracle preprocessing for phone-scan material decomposition"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "numpy>=2.3.5",
+    "pillow>=12.0",
+    "plyfile>=1.0",
+    "scipy>=1.12",
+    "spz>=0.0.1",
+]
+
+[project.optional-dependencies]
+sam3 = [
+    "mlx-sam3>=0.1.0",
+]
+test = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+splat-oracle = "splat_oracle.cli:main"
