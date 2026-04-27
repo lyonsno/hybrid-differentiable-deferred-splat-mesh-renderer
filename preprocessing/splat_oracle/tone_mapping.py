@@ -268,8 +268,10 @@ def inverse_tone_map_scene(
                 server_url=server_url,
                 api_key=api_key,
             )
-        except Exception:
-            lighting = SceneLightingDescriptor(notes="VLM query failed")
+        except Exception as e:
+            import sys
+            print(f"VLM query failed: {e}", file=sys.stderr)
+            lighting = SceneLightingDescriptor(notes=f"VLM query failed: {e}")
 
     # Fit curve
     curve = fit_inverse_tone_curve(anchors, lighting)

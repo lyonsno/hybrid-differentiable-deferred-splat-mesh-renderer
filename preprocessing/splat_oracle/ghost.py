@@ -13,21 +13,16 @@ Pipeline:
 from __future__ import annotations
 
 import numpy as np
-from scipy.spatial import ConvexHull
 
 from splat_oracle.harvest import HarvestView
 from splat_oracle.loader import SplatCloud
-from splat_oracle.materials import REFLECTIVE_CLASSES
+from splat_oracle.materials import REFLECTIVE_CLASSES, MATERIAL_PROMPTS
 
-# Text prompts for reflective surface detection
+# Derive reflective prompts from the centralized vocabulary
 REFLECTIVE_PROMPTS = {
-    "mirror": "mirror",
-    "glass_window": "glass window",
-    "reflective_glass": "reflective glass",
-    "tv_screen": "TV screen",
-    "polished_metal": "polished metal",
-    "chrome": "chrome surface",
-    "water": "water surface",
+    k: MATERIAL_PROMPTS[k]
+    for k in REFLECTIVE_CLASSES
+    if k in MATERIAL_PROMPTS
 }
 
 

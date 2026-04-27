@@ -8,6 +8,7 @@ dependencies = [
     "pillow>=10.0",
     "plyfile>=1.0",
     "scipy>=1.12",
+    "spz>=0.0.1",
     "torch>=2.4",
     "torchvision>=0.19",
 ]

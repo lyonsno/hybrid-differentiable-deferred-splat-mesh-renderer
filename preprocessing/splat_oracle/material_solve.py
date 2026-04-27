@@ -44,7 +44,8 @@ def solve_albedo(
             continue
 
         ids = view.splat_id[valid]
-        colors = view.color[valid]
+        # Use corrected per-splat colors, not raw view pixels
+        colors = corrected_colors[ids]
         weights = view.weight[valid]
 
         np.add.at(color_sum, ids, colors * weights[:, None])

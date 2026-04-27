@@ -12,7 +12,7 @@ import numpy as np
 
 from splat_oracle.harvest import HarvestView
 from splat_oracle.loader import SplatCloud
-from splat_oracle.materials import MATERIAL_CLASSES, MATERIAL_PROMPTS, CLASS_NAMES
+from splat_oracle.materials import MATERIAL_CLASSES, MATERIAL_PROMPTS
 
 
 @dataclass
