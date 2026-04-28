@@ -20,32 +20,57 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full pipeline design.
 
 ## Quick start
 
+### WebGPU renderer
+
 ```bash
 npm install
 npm run dev
 ```
 
-Opens a browser with a WebGPU canvas. Currently renders a test cube — the rendering pipeline is being built out.
+Opens a browser with a WebGPU canvas. Requires WebGPU support (Chrome 113+, Edge 113+, Firefox Nightly).
 
-Requires a browser with WebGPU support (Chrome 113+, Edge 113+, Firefox Nightly).
+### Preprocessing pipeline
+
+```bash
+cd preprocessing
+uv venv --python 3.13 .venv && source .venv/bin/activate
+uv pip install -e .
+uv pip install "mlx_sam3 @ git+https://github.com/Deekshith-Dade/mlx_sam3.git"
+
+splat-oracle /path/to/scan.spz -o ./output
+```
+
+Requires Apple Silicon (MLX) for SAM3 segmentation. Outputs `oracle_output.npz` with corrected colors, material classifications, PBR parameters, and ghost masks.
 
 ## Project structure
 
 ```
-src/
-  main.ts          — frame loop, stats overlay
-  gpu.ts           — WebGPU device, canvas, resize
-  camera.ts        — orbit + WASD camera
-  buffers.ts       — buffer/texture creation helpers
-  timestamps.ts    — GPU timestamp query profiling
-  math.ts          — minimal vec3/mat4 types
-  shaders/         — WGSL shader sources
-preprocessing/     — (planned) Python pipeline for SAM3 + VLM preprocessing
+src/                           — WebGPU deferred renderer (TypeScript)
+  main.ts                        frame loop, stats overlay
+  gpu.ts                         WebGPU device, canvas, resize
+  camera.ts                      orbit + WASD camera
+  buffers.ts                     buffer/texture creation helpers
+  timestamps.ts                  GPU timestamp query profiling
+  math.ts                        minimal vec3/mat4 types
+  shaders/                       WGSL shader sources
+
+preprocessing/                 — Python oracle pipeline
+  splat_oracle/
+    loader.py                    SPZ + PLY → SplatCloud (handles SH/opacity space conversion)
+    spz_compat.py                SPZ native extension import shim
+    camera.py                    harvest view camera generation
+    harvest.py                   software splat rasterizer (mlx-splat for Metal)
+    materials.py                 material vocabulary + physical priors database
+    segmentation.py              SAM3 MLX text-prompted segmentation → splat majority vote
+    ghost.py                     reflective surface detection → plane fit → depth cull
+    tone_mapping.py              VLM scene read + material-anchored inverse tone map
+    material_solve.py            albedo/roughness/metalness constrained by semantic priors
+    cli.py                       end-to-end pipeline entry point
 ```
 
 ## Status
 
-Early. The WebGPU scaffold is up. The rendering pipeline and preprocessing oracle are being built in parallel — see [FANOUT.md](FANOUT.md) for the coordination plan.
+The preprocessing oracle (Packet L) is feature-complete. Validated on real Scaniverse phone scans with SAM3 MLX running at 90ms/concept on M4 Max. The WebGPU renderer is scaffolded and being built out — see [FANOUT.md](FANOUT.md) for the coordination plan.
 
 ## License
 
