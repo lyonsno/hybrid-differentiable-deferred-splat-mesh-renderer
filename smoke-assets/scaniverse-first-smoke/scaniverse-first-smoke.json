@@ -1,0 +1,78 @@
+{
+  "schema": "scaniverse_first_smoke_splat_v1",
+  "asset_name": "scaniverse-first-smoke",
+  "source": {
+    "kind": "scaniverse_ply",
+    "filename": "Kaths_dessert .ply",
+    "sha256": "2ce79fcebcd9a8a53b32e7b489a8a522bd6e1a6bae7c71682a9a984c5b41ecc7",
+    "byte_length": 23414218
+  },
+  "splat_count": 94406,
+  "endianness": "little",
+  "stride_bytes": 32,
+  "fields": [
+    {
+      "name": "position",
+      "component_type": "float32",
+      "components": 3,
+      "byte_offset": 0
+    },
+    {
+      "name": "color",
+      "component_type": "float32",
+      "components": 3,
+      "byte_offset": 12
+    },
+    {
+      "name": "opacity",
+      "component_type": "float32",
+      "components": 1,
+      "byte_offset": 24
+    },
+    {
+      "name": "radius",
+      "component_type": "float32",
+      "components": 1,
+      "byte_offset": 28
+    }
+  ],
+  "payload": {
+    "path": "scaniverse-first-smoke.f32.bin",
+    "component_type": "float32",
+    "byte_length": 3020992
+  },
+  "identity": {
+    "scheme": "row_index_is_original_zero_based_file_order",
+    "ids_component_type": "uint32",
+    "ids_path": "scaniverse-first-smoke.ids.u32.bin"
+  },
+  "ids": {
+    "path": "scaniverse-first-smoke.ids.u32.bin",
+    "byte_length": 377624,
+    "first_id": 0,
+    "last_id": 94405
+  },
+  "bounds": {
+    "min": [
+      -0.16349449753761292,
+      -0.046466678380966187,
+      -0.13291534781455994
+    ],
+    "max": [
+      0.15828284621238708,
+      0.06754699349403381,
+      0.14955535531044006
+    ],
+    "center": [
+      -0.002605825662612915,
+      0.010540157556533813,
+      0.008320003747940063
+    ],
+    "radius": 0.22154541313648224
+  },
+  "decode": {
+    "color": "displayable RGB float3 from loader: SH DC via 0.5 + 0.28209479 * f_dc, or uchar RGB / 255",
+    "opacity": "float opacity from loader: sigmoid(opacity) for PLY logit field, or 1.0 when absent",
+    "radius": "max(exp(scale_0), exp(scale_1), exp(scale_2)) from log-space PLY scale fields"
+  }
+}
