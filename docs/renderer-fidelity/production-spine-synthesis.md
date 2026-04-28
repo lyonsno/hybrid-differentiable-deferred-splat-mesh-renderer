@@ -30,3 +30,15 @@ Guardrail:
 
 - Do not use slab rejection or screen-radius clamps to hide conic projection
   defects. Conic parity has to be proved before slab/LOD policy can be judged.
+
+## Production Progress
+
+- `627ed09`: production shader projection moved from signed endpoint projection
+  to Jacobian covariance projection. Epanorthosis regression review found no
+  issues for `b16af1b..627ed09`.
+- Current slab/alpha slice: center-invalid splats still reject as before;
+  valid centers whose scaled rotated support endpoints cross clip route to a
+  bounded first-smoke LOD proxy instead of raw support projection. The LOD proxy
+  keeps activated per-splat opacity and intentionally caps total screen energy
+  by bounding footprint area rather than attempting to preserve pathological
+  near-plane support energy.

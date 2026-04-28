@@ -99,5 +99,24 @@ test("splat plate shader rejects near-plane and behind-camera splat centers befo
   assert.match(shader, /splatCenterInsideClip/);
   assert.match(shader, /centerClip\.w <= MIN_SPLAT_CLIP_W/);
   assert.match(shader, /centerClip\.z < 0\.0/);
-  assert.match(shader, /projectSplatAxes\(position, scale, rotation, centerClip\)/);
+  assert.match(shader, /projectSplatAxes\(shape, centerClip\)/);
+});
+
+test("splat plate shader routes near-plane support crossings to a bounded LOD proxy", () => {
+  const shader = readFileSync(new URL("../../src/shaders/splat_plate.wgsl", import.meta.url), "utf8");
+
+  assert.match(shader, /struct SplatShape/);
+  assert.match(shader, /splatSupportInsideClip/);
+  assert.match(shader, /position \+ shape\.axis0/);
+  assert.match(shader, /position - shape\.axis0/);
+  assert.match(shader, /lodProxyAxes/);
+  assert.match(shader, /if \(!splatSupportInsideClip\(position, shape\)\)/);
+});
+
+test("splat plate shader names the alpha policy for bounded footprint LOD", () => {
+  const shader = readFileSync(new URL("../../src/shaders/splat_plate.wgsl", import.meta.url), "utf8");
+
+  assert.match(shader, /alphaForFootprintPolicy/);
+  assert.match(shader, /bounded footprint cap intentionally reduces total screen energy/);
+  assert.match(shader, /alphaForFootprintPolicy\(opacity, usingLodProxy\)/);
 });

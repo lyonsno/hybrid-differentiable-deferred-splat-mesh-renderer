@@ -36,10 +36,25 @@ struct EllipseAxes {
   minor: vec2f,
 };
 
+struct SplatShape {
+  axis0: vec3f,
+  axis1: vec3f,
+  axis2: vec3f,
+};
+
 fn rotateAxis(rotation: vec4f, axis: vec3f) -> vec3f {
   let q = rotation / max(length(rotation), 0.000001);
   let u = vec3f(q.y, q.z, q.w);
   return axis + 2.0 * cross(u, cross(u, axis) + q.x * axis);
+}
+
+fn makeSplatShape(scaleLog: vec3f, rotation: vec4f) -> SplatShape {
+  let scale = exp(scaleLog);
+  return SplatShape(
+    rotateAxis(rotation, vec3f(1.0, 0.0, 0.0)) * scale.x,
+    rotateAxis(rotation, vec3f(0.0, 1.0, 0.0)) * scale.y,
+    rotateAxis(rotation, vec3f(0.0, 0.0, 1.0)) * scale.z,
+  );
 }
 
 fn viewProjectionLinearRow(row: u32) -> vec3f {
@@ -86,14 +101,47 @@ fn ellipseAxesFromCovariance(
   return EllipseAxes(majorDir * majorRadius, minorDir * minorRadius);
 }
 
-fn projectSplatAxes(position: vec3f, scaleLog: vec3f, rotation: vec4f, centerClip: vec4f) -> EllipseAxes {
-  let scale = exp(scaleLog);
-  let axis0 = projectAxisJacobian(rotateAxis(rotation, vec3f(1.0, 0.0, 0.0)) * scale.x, centerClip);
-  let axis1 = projectAxisJacobian(rotateAxis(rotation, vec3f(0.0, 1.0, 0.0)) * scale.y, centerClip);
-  let axis2 = projectAxisJacobian(rotateAxis(rotation, vec3f(0.0, 0.0, 1.0)) * scale.z, centerClip);
+fn minimumRadiusNdc() -> f32 {
   let viewportMin = max(min(frame.viewport.x, frame.viewport.y), 1.0);
-  let minRadiusNdc = (2.0 * frame.minRadiusPx) / viewportMin;
-  return ellipseAxesFromCovariance(axis0, axis1, axis2, minRadiusNdc);
+  return (2.0 * frame.minRadiusPx) / viewportMin;
+}
+
+fn projectSplatAxes(shape: SplatShape, centerClip: vec4f) -> EllipseAxes {
+  let axis0 = projectAxisJacobian(shape.axis0, centerClip);
+  let axis1 = projectAxisJacobian(shape.axis1, centerClip);
+  let axis2 = projectAxisJacobian(shape.axis2, centerClip);
+  return ellipseAxesFromCovariance(axis0, axis1, axis2, minimumRadiusNdc());
+}
+
+fn lodProxyAxes() -> EllipseAxes {
+  let radius = minimumRadiusNdc();
+  return EllipseAxes(vec2f(radius, 0.0), vec2f(0.0, radius));
+}
+
+fn clipPointInside(point: vec3f) -> bool {
+  return splatCenterInsideClip(frame.viewProj * vec4f(point, 1.0));
+}
+
+fn splatSupportInsideClip(position: vec3f, shape: SplatShape) -> bool {
+  if (!clipPointInside(position + shape.axis0) || !clipPointInside(position - shape.axis0)) {
+    return false;
+  }
+  if (!clipPointInside(position + shape.axis1) || !clipPointInside(position - shape.axis1)) {
+    return false;
+  }
+  if (!clipPointInside(position + shape.axis2) || !clipPointInside(position - shape.axis2)) {
+    return false;
+  }
+  return true;
+}
+
+fn alphaForFootprintPolicy(opacity: f32, usingLodProxy: bool) -> f32 {
+  let activatedOpacity = clamp(opacity, 0.0, 1.0);
+  if (usingLodProxy) {
+    // First-smoke LOD keeps activated opacity, but the bounded footprint cap intentionally reduces total screen energy.
+    return activatedOpacity;
+  }
+  return activatedOpacity;
 }
 
 fn splatCenterInsideClip(centerClip: vec4f) -> bool {
@@ -131,7 +179,13 @@ fn vs(
     return out;
   }
 
-  let axes = projectSplatAxes(position, scale, rotation, centerClip);
+  let shape = makeSplatShape(scale, rotation);
+  var axes = projectSplatAxes(shape, centerClip);
+  var usingLodProxy = false;
+  if (!splatSupportInsideClip(position, shape)) {
+    axes = lodProxyAxes();
+    usingLodProxy = true;
+  }
   let ellipseOffset = axes.major * local.x + axes.minor * local.y;
 
   out.position = vec4f(
@@ -140,7 +194,7 @@ fn vs(
     centerClip.w,
   );
   out.color = clamp(color, vec3f(0.0), vec3f(1.0));
-  out.alpha = clamp(opacity, 0.0, 1.0);
+  out.alpha = alphaForFootprintPolicy(opacity, usingLodProxy);
   out.local = local;
   return out;
 }
