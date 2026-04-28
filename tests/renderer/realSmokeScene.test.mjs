@@ -14,6 +14,8 @@ const attributes = {
   colors: new Float32Array(9),
   opacities: new Float32Array(3),
   radii: new Float32Array(3),
+  scales: new Float32Array(9),
+  rotations: new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]),
   originalIds: new Uint32Array([0, 1, 2]),
   bounds: {
     min: [-1, -2, -3],

@@ -67,6 +67,8 @@ async function main() {
     colorBuffer: splatBuffers.colorBuffer,
     opacityBuffer: splatBuffers.opacityBuffer,
     radiusBuffer: splatBuffers.radiusBuffer,
+    scaleBuffer: splatBuffers.scaleBuffer,
+    rotationBuffer: splatBuffers.rotationBuffer,
     sortedIndexBuffer,
   });
   const splatCount = splatAttributes.count;

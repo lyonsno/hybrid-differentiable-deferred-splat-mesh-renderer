@@ -17,7 +17,9 @@ struct VertexOut {
 @group(1) @binding(1) var<storage, read> colors: array<f32>;
 @group(1) @binding(2) var<storage, read> opacities: array<f32>;
 @group(1) @binding(3) var<storage, read> radii: array<f32>;
-@group(1) @binding(4) var<storage, read> sortedIndices: array<u32>;
+@group(1) @binding(4) var<storage, read> scales: array<f32>;
+@group(1) @binding(5) var<storage, read> rotations: array<f32>;
+@group(1) @binding(6) var<storage, read> sortedIndices: array<u32>;
 
 const quadCorners = array<vec2f, 6>(
   vec2f(-1.0, -1.0),
@@ -27,6 +29,62 @@ const quadCorners = array<vec2f, 6>(
   vec2f( 1.0, -1.0),
   vec2f( 1.0,  1.0),
 );
+
+struct EllipseAxes {
+  major: vec2f,
+  minor: vec2f,
+};
+
+fn rotateAxis(rotation: vec4f, axis: vec3f) -> vec3f {
+  let q = rotation / max(length(rotation), 0.000001);
+  let u = vec3f(q.y, q.z, q.w);
+  return axis + 2.0 * cross(u, cross(u, axis) + q.x * axis);
+}
+
+fn projectAxis(position: vec3f, centerNdc: vec2f, offset: vec3f) -> vec2f {
+  let axisClip = frame.viewProj * vec4f(position + offset, 1.0);
+  return axisClip.xy / axisClip.w - centerNdc;
+}
+
+fn ellipseAxesFromCovariance(
+  axis0: vec2f,
+  axis1: vec2f,
+  axis2: vec2f,
+  minRadiusNdc: f32,
+) -> EllipseAxes {
+  let a = axis0.x * axis0.x + axis1.x * axis1.x + axis2.x * axis2.x;
+  let b = axis0.x * axis0.y + axis1.x * axis1.y + axis2.x * axis2.y;
+  let d = axis0.y * axis0.y + axis1.y * axis1.y + axis2.y * axis2.y;
+  let trace = 0.5 * (a + d);
+  let diff = 0.5 * (a - d);
+  let root = sqrt(diff * diff + b * b);
+  let lambda0 = max(trace + root, 0.0);
+  let lambda1 = max(trace - root, 0.0);
+
+  var majorDir = vec2f(1.0, 0.0);
+  if (abs(b) + abs(lambda0 - a) > 0.00000001) {
+    majorDir = normalize(vec2f(b, lambda0 - a));
+  } else if (d > a) {
+    majorDir = vec2f(0.0, 1.0);
+  }
+  let minorDir = vec2f(-majorDir.y, majorDir.x);
+
+  let anisotropicScale = frame.splatScale / 600.0;
+  let majorRadius = max(sqrt(lambda0) * anisotropicScale, minRadiusNdc);
+  let minorRadius = max(sqrt(lambda1) * anisotropicScale, minRadiusNdc);
+  return EllipseAxes(majorDir * majorRadius, minorDir * minorRadius);
+}
+
+fn projectSplatAxes(position: vec3f, scaleLog: vec3f, rotation: vec4f, centerClip: vec4f) -> EllipseAxes {
+  let centerNdc = centerClip.xy / centerClip.w;
+  let scale = exp(scaleLog);
+  let axis0 = projectAxis(position, centerNdc, rotateAxis(rotation, vec3f(1.0, 0.0, 0.0)) * scale.x);
+  let axis1 = projectAxis(position, centerNdc, rotateAxis(rotation, vec3f(0.0, 1.0, 0.0)) * scale.y);
+  let axis2 = projectAxis(position, centerNdc, rotateAxis(rotation, vec3f(0.0, 0.0, 1.0)) * scale.z);
+  let viewportMin = max(min(frame.viewport.x, frame.viewport.y), 1.0);
+  let minRadiusNdc = (2.0 * frame.minRadiusPx) / viewportMin;
+  return ellipseAxesFromCovariance(axis0, axis1, axis2, minRadiusNdc);
+}
 
 @vertex
 fn vs(
@@ -38,17 +96,17 @@ fn vs(
   let position = vec3f(positions[vecBase], positions[vecBase + 1u], positions[vecBase + 2u]);
   let color = vec3f(colors[vecBase], colors[vecBase + 1u], colors[vecBase + 2u]);
   let opacity = opacities[splatId];
-  let radius = radii[splatId];
+  let scale = vec3f(scales[vecBase], scales[vecBase + 1u], scales[vecBase + 2u]);
+  let quatBase = splatId * 4u;
+  let rotation = vec4f(rotations[quatBase], rotations[quatBase + 1u], rotations[quatBase + 2u], rotations[quatBase + 3u]);
   let centerClip = frame.viewProj * vec4f(position, 1.0);
   let local = quadCorners[vertexIndex];
-  let viewportMin = max(min(frame.viewport.x, frame.viewport.y), 1.0);
-  let projectedW = max(abs(centerClip.w), 0.001);
-  let radiusPx = max((radius * frame.splatScale) / projectedW, frame.minRadiusPx);
-  let radiusNdc = (2.0 * radiusPx) / viewportMin;
+  let axes = projectSplatAxes(position, scale, rotation, centerClip);
+  let ellipseOffset = axes.major * local.x + axes.minor * local.y;
 
   var out: VertexOut;
   out.position = vec4f(
-    centerClip.xy + local * radiusNdc * centerClip.w,
+    centerClip.xy + ellipseOffset * centerClip.w,
     centerClip.z,
     centerClip.w,
   );

@@ -21,6 +21,8 @@ export interface SplatPlateBuffers {
   colorBuffer: GPUBuffer;
   opacityBuffer: GPUBuffer;
   radiusBuffer: GPUBuffer;
+  scaleBuffer: GPUBuffer;
+  rotationBuffer: GPUBuffer;
   sortedIndexBuffer: GPUBuffer;
 }
 
@@ -62,6 +64,16 @@ export function createSplatPlateRenderer(
       },
       {
         binding: SPLAT_PLATE_BUFFER_BINDINGS.radii,
+        visibility: GPUShaderStage.VERTEX,
+        buffer: { type: "read-only-storage" },
+      },
+      {
+        binding: SPLAT_PLATE_BUFFER_BINDINGS.scales,
+        visibility: GPUShaderStage.VERTEX,
+        buffer: { type: "read-only-storage" },
+      },
+      {
+        binding: SPLAT_PLATE_BUFFER_BINDINGS.rotations,
         visibility: GPUShaderStage.VERTEX,
         buffer: { type: "read-only-storage" },
       },
@@ -127,6 +139,8 @@ export function createSplatPlateRenderer(
           { binding: SPLAT_PLATE_BUFFER_BINDINGS.colors, resource: { buffer: buffers.colorBuffer } },
           { binding: SPLAT_PLATE_BUFFER_BINDINGS.opacities, resource: { buffer: buffers.opacityBuffer } },
           { binding: SPLAT_PLATE_BUFFER_BINDINGS.radii, resource: { buffer: buffers.radiusBuffer } },
+          { binding: SPLAT_PLATE_BUFFER_BINDINGS.scales, resource: { buffer: buffers.scaleBuffer } },
+          { binding: SPLAT_PLATE_BUFFER_BINDINGS.rotations, resource: { buffer: buffers.rotationBuffer } },
           { binding: SPLAT_PLATE_BUFFER_BINDINGS.sortedIndices, resource: { buffer: buffers.sortedIndexBuffer } },
         ],
       });

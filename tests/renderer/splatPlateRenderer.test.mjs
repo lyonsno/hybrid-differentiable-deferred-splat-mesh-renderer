@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -32,7 +33,9 @@ test("splat plate bindings consume uploaded attributes separately from sorted id
     colors: 1,
     opacities: 2,
     radii: 3,
-    sortedIndices: 4,
+    scales: 4,
+    rotations: 5,
+    sortedIndices: 6,
   });
 });
 
@@ -68,4 +71,14 @@ test("splat plate radius scales with perspective depth during zoom", () => {
   assert.equal(nearRadius, 60);
   assert.equal(farRadius, 15);
   assert.equal(tinyFarRadius, 1.5);
+});
+
+test("splat plate shader consumes anisotropic shape buffers", () => {
+  const shader = readFileSync(new URL("../../src/shaders/splat_plate.wgsl", import.meta.url), "utf8");
+
+  assert.match(shader, /var<storage, read> scales: array<f32>/);
+  assert.match(shader, /var<storage, read> rotations: array<f32>/);
+  assert.match(shader, /projectSplatAxes/);
+  assert.match(shader, /ellipseAxesFromCovariance/);
+  assert.doesNotMatch(shader, /centerClip\.xy \+ local \* radiusNdc \* centerClip\.w/);
 });
