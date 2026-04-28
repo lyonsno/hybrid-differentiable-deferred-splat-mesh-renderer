@@ -7,10 +7,14 @@
     "dev": "vite",
     "test": "node --experimental-strip-types --experimental-transform-types --test tests/*.test.ts && tsc --ignoreConfig --module NodeNext --moduleResolution NodeNext --target ES2022 --types @webgpu/types --skipLibCheck --outDir node_modules/.cache/renderer-tests --rootDir . src/splatPlateContract.ts && node --test tests/renderer/*.test.mjs",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:smoke": "node --test tests/smoke/*.test.mjs",
+    "smoke:visual": "node scripts/run-visual-smoke.mjs",
+    "smoke:visual:real": "node scripts/run-visual-smoke.mjs --require-real-splat"
   },
   "devDependencies": {
     "@webgpu/types": "^0.1.69",
+    "playwright-core": "^1.59.1",
     "typescript": "^6.0.3",
     "vite": "^8.0.10"
   }

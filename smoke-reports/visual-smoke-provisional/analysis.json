@@ -1,0 +1,80 @@
+{
+  "generatedAt": "2026-04-28T00:31:32.918Z",
+  "url": "http://127.0.0.1:49925/",
+  "screenshotPath": "smoke-reports/visual-smoke-provisional/canvas.png",
+  "analysisPath": "smoke-reports/visual-smoke-provisional/analysis.json",
+  "reportPath": "smoke-reports/visual-smoke-provisional/report.md",
+  "options": {
+    "appRoot": ".",
+    "host": "127.0.0.1",
+    "reportDir": "smoke-reports/visual-smoke-provisional",
+    "requireRealSplat": false,
+    "headless": true,
+    "browserChannel": "chrome",
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    },
+    "deviceScaleFactor": 1,
+    "timeoutMs": 15000,
+    "settleMs": 1000,
+    "imageThresholds": {}
+  },
+  "pageEvidence": {
+    "statsText": "1280×720 | 120 fps | render: 0.06ms",
+    "title": "Deferred Splat+Mesh Renderer",
+    "bodyText": "1280×720 | 120 fps | render: 0.06ms",
+    "canvas": {
+      "width": 1280,
+      "height": 720,
+      "clientWidth": 1280,
+      "clientHeight": 720
+    }
+  },
+  "imageAnalysis": {
+    "width": 1280,
+    "height": 720,
+    "totalPixels": 921600,
+    "backgroundColor": {
+      "r": 5,
+      "g": 5,
+      "b": 10,
+      "a": 255
+    },
+    "distinctColorCount": 4,
+    "changedPixels": 25759,
+    "changedPixelRatio": 0.027950303819444446,
+    "averageDelta": 2.8084432870367,
+    "pixelDeltaThreshold": 12,
+    "nonblank": true
+  },
+  "classification": {
+    "nonblank": true,
+    "realSplatEvidence": false,
+    "closeable": false,
+    "harnessPassed": true,
+    "sourceKind": "",
+    "splatCount": 0,
+    "assetPath": "",
+    "summary": "PROVISIONAL: canvas is nonblank, but real Scaniverse splat evidence is not present.",
+    "reasons": [
+      "page evidence does not report a positive splat count",
+      "page evidence does not identify real Scaniverse PLY/SPZ content"
+    ]
+  },
+  "consoleMessages": [
+    {
+      "type": "debug",
+      "text": "[vite] connecting..."
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connected."
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    }
+  ],
+  "pageErrors": []
+}
