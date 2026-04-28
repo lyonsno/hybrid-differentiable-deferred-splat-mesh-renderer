@@ -41,6 +41,8 @@ export interface SplatAttributes {
   colors: Float32Array;
   opacities: Float32Array;
   radii: Float32Array;
+  scales: Float32Array;
+  rotations: Float32Array;
   originalIds: Uint32Array;
   bounds: SplatBounds;
   layout: FirstSmokeSplatLayout;
@@ -52,6 +54,8 @@ export interface SplatGpuBuffers {
   colorBuffer: GPUBuffer;
   opacityBuffer: GPUBuffer;
   radiusBuffer: GPUBuffer;
+  scaleBuffer: GPUBuffer;
+  rotationBuffer: GPUBuffer;
   originalIdBuffer: GPUBuffer;
   bounds: SplatBounds;
   layout: FirstSmokeSplatLayout;
@@ -125,8 +129,28 @@ export async function fetchFirstSmokeSplatPayload(
             init,
             "first-smoke splat ID sidecar"
           );
+    const scalesPath = sidecarShapePath(root, "scales_path");
+    const rotationsPath = sidecarShapePath(root, "rotations_path");
+    const scalesBytes =
+      scalesPath === undefined
+        ? undefined
+        : await fetchArrayBuffer(
+            fetchImpl,
+            resolveSidecarUrl(input, scalesPath),
+            init,
+            "first-smoke splat scale sidecar"
+          );
+    const rotationsBytes =
+      rotationsPath === undefined
+        ? undefined
+        : await fetchArrayBuffer(
+            fetchImpl,
+            resolveSidecarUrl(input, rotationsPath),
+            init,
+            "first-smoke splat rotation sidecar"
+          );
 
-    return decodeFirstSmokeSplatManifest(payload, payloadBytes, idsBytes);
+    return decodeFirstSmokeSplatManifest(payload, payloadBytes, idsBytes, scalesBytes, rotationsBytes);
   }
 
   return decodeFirstSmokeSplatPayload(payload);
@@ -156,6 +180,8 @@ export function decodeFirstSmokeSplatPayload(payload: unknown): SplatAttributes 
     colors: decoded.colors,
     opacities: decoded.opacities,
     radii: decoded.radii,
+    scales: decoded.scales,
+    rotations: decoded.rotations,
     originalIds: decodeOriginalIds(root.originalIds, count),
     bounds,
     layout,
@@ -165,7 +191,9 @@ export function decodeFirstSmokeSplatPayload(payload: unknown): SplatAttributes 
 export function decodeFirstSmokeSplatManifest(
   manifest: unknown,
   payloadBytes: ArrayBuffer,
-  idsBytes?: ArrayBuffer
+  idsBytes?: ArrayBuffer,
+  scalesBytes?: ArrayBuffer,
+  rotationsBytes?: ArrayBuffer
 ): SplatAttributes {
   const root = requireRecord(manifest, "manifest");
   const count = requirePositiveInteger(
@@ -231,6 +259,14 @@ export function decodeFirstSmokeSplatManifest(
     colors,
     opacities,
     radii,
+    scales:
+      scalesBytes === undefined
+        ? fallbackScalesFromRadii(radii)
+        : decodeFloat32Bytes(scalesBytes, count * 3, "shape.scales"),
+    rotations:
+      rotationsBytes === undefined
+        ? identityRotations(count)
+        : decodeFloat32Bytes(rotationsBytes, count * 4, "shape.rotations"),
     originalIds:
       idsBytes === undefined
         ? decodeOriginalIds(undefined, count)
@@ -296,6 +332,16 @@ export function uploadSplatAttributeBuffers(
       attributes.radii,
       "first_smoke_splat_radii"
     ),
+    scaleBuffer: createMappedStorageBuffer(
+      device,
+      attributes.scales,
+      "first_smoke_splat_scales"
+    ),
+    rotationBuffer: createMappedStorageBuffer(
+      device,
+      attributes.rotations,
+      "first_smoke_splat_rotations"
+    ),
     originalIdBuffer: createMappedStorageBuffer(
       device,
       attributes.originalIds,
@@ -309,7 +355,7 @@ export function uploadSplatAttributeBuffers(
 function decodeRowSplatAttributes(
   splats: unknown,
   count: number
-): Pick<SplatAttributes, "positions" | "colors" | "opacities" | "radii"> {
+): Pick<SplatAttributes, "positions" | "colors" | "opacities" | "radii" | "scales" | "rotations"> {
   if (!Array.isArray(splats)) {
     throw new Error("splats must be an array of first-smoke splat rows");
   }
@@ -330,13 +376,13 @@ function decodeRowSplatAttributes(
     radii[i] = requirePositiveFinite(row.radius, `splats[${i}].radius`);
   }
 
-  return { positions, colors, opacities, radii };
+  return { positions, colors, opacities, radii, scales: fallbackScalesFromRadii(radii), rotations: identityRotations(count) };
 }
 
 function decodePlanarSplatAttributes(
   attributes: unknown,
   count: number
-): Pick<SplatAttributes, "positions" | "colors" | "opacities" | "radii"> {
+): Pick<SplatAttributes, "positions" | "colors" | "opacities" | "radii" | "scales" | "rotations"> {
   const root = requireRecord(attributes, "attributes");
   const positions = decodeFloat32Array(
     firstDefined(root.positions, root.position),
@@ -360,7 +406,15 @@ function decodePlanarSplatAttributes(
     "attributes.radii",
     requirePositiveFinite
   );
-  return { positions, colors, opacities, radii };
+  const scales =
+    root.scales === undefined
+      ? fallbackScalesFromRadii(radii)
+      : decodeFloat32Array(root.scales, count * 3, "attributes.scales");
+  const rotations =
+    root.rotations === undefined
+      ? identityRotations(count)
+      : decodeFloat32Array(root.rotations, count * 4, "attributes.rotations");
+  return { positions, colors, opacities, radii, scales, rotations };
 }
 
 function decodeBounds(value: unknown, path: string): SplatBounds {
@@ -514,6 +568,38 @@ function decodeOriginalIdBytes(idsBytes: ArrayBuffer, count: number): Uint32Arra
   return decodeOriginalIds(ids, count);
 }
 
+function decodeFloat32Bytes(bytes: ArrayBuffer, expectedLength: number, path: string): Float32Array {
+  const expectedBytes = expectedLength * Float32Array.BYTES_PER_ELEMENT;
+  if (bytes.byteLength !== expectedBytes) {
+    throw new Error(
+      `${path} byte length ${bytes.byteLength} does not match expected ${expectedBytes}`
+    );
+  }
+  const data = new DataView(bytes);
+  const values = new Float32Array(expectedLength);
+  for (let i = 0; i < expectedLength; i++) {
+    values[i] = requireFiniteNumber(data.getFloat32(i * Float32Array.BYTES_PER_ELEMENT, true), `${path}[${i}]`);
+  }
+  return values;
+}
+
+function fallbackScalesFromRadii(radii: Float32Array): Float32Array {
+  const scales = new Float32Array(radii.length * 3);
+  for (let i = 0; i < radii.length; i++) {
+    const logRadius = Math.log(Math.max(radii[i], 1e-12));
+    scales.set([logRadius, logRadius, logRadius], i * 3);
+  }
+  return scales;
+}
+
+function identityRotations(count: number): Float32Array {
+  const rotations = new Float32Array(count * 4);
+  for (let i = 0; i < count; i++) {
+    rotations[i * 4] = 1;
+  }
+  return rotations;
+}
+
 function decodeFloat32Array(
   value: unknown,
   expectedLength: number,
@@ -662,6 +748,17 @@ function sidecarIdsPath(manifest: UnknownRecord): string | undefined {
     }
   }
   return undefined;
+}
+
+function sidecarShapePath(manifest: UnknownRecord, key: "scales_path" | "rotations_path"): string | undefined {
+  if (manifest.shape === undefined) {
+    return undefined;
+  }
+  const shape = requireRecord(manifest.shape, "shape");
+  if (shape[key] === undefined) {
+    return undefined;
+  }
+  return requireString(shape[key], `shape.${key}`);
 }
 
 function resolveSidecarUrl(manifestUrl: RequestInfo | URL, path: string): string {

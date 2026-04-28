@@ -79,6 +79,16 @@ function binaryManifest() {
       first_id: 0,
       last_id: 1,
     },
+    shape: {
+      scales_path: "scaniverse-first-smoke.scales.f32.bin",
+      scales_component_type: "float32",
+      scales_byte_length: 24,
+      rotations_path: "scaniverse-first-smoke.rotations.f32.bin",
+      rotations_component_type: "float32",
+      rotations_byte_length: 32,
+      rotation_order: "wxyz",
+      scale_space: "log",
+    },
     bounds: validPayload().bounds,
   };
 }
@@ -99,7 +109,19 @@ function binarySidecars() {
   idView.setUint32(0, 1, true);
   idView.setUint32(4, 0, true);
 
-  return { payload, ids };
+  const scales = new ArrayBuffer(24);
+  const scaleView = new DataView(scales);
+  [0, Math.log(2), Math.log(0.5), Math.log(3), Math.log(0.25), Math.log(1)].forEach((value, index) => {
+    scaleView.setFloat32(index * 4, value, true);
+  });
+
+  const rotations = new ArrayBuffer(32);
+  const rotationView = new DataView(rotations);
+  [1, 0, 0, 0, 0.5, 0.5, 0.5, 0.5].forEach((value, index) => {
+    rotationView.setFloat32(index * 4, value, true);
+  });
+
+  return { payload, ids, scales, rotations };
 }
 
 test("decodes first-smoke splat rows into typed browser attributes", () => {
@@ -140,8 +162,8 @@ test("accepts nested metadata with planar attribute arrays", () => {
 });
 
 test("decodes Scaniverse first-smoke binary manifest sidecars", () => {
-  const { payload, ids } = binarySidecars();
-  const decoded = decodeFirstSmokeSplatManifest(binaryManifest(), payload, ids);
+  const { payload, ids, scales, rotations } = binarySidecars();
+  const decoded = decodeFirstSmokeSplatManifest(binaryManifest(), payload, ids, scales, rotations);
 
   assert.equal(decoded.count, 2);
   assert.deepEqual(Array.from(decoded.positions), [1, 2, 3, -1, 0, 2]);
@@ -149,6 +171,8 @@ test("decodes Scaniverse first-smoke binary manifest sidecars", () => {
   assert.deepEqual(Array.from(decoded.opacities), f32([0.6, 0.2]));
   assert.deepEqual(Array.from(decoded.radii), f32([0.05, 0.1]));
   assert.deepEqual(Array.from(decoded.originalIds), [1, 0]);
+  assert.deepEqual(Array.from(decoded.scales), f32([0, Math.log(2), Math.log(0.5), Math.log(3), Math.log(0.25), Math.log(1)]));
+  assert.deepEqual(Array.from(decoded.rotations), f32([1, 0, 0, 0, 0.5, 0.5, 0.5, 0.5]));
 });
 
 test("validates count, bounds, and required first-smoke row fields", () => {
@@ -219,7 +243,7 @@ test("fetches and decodes browser-visible first-smoke payloads", async () => {
 });
 
 test("fetches Scaniverse manifest sidecars relative to the manifest URL", async () => {
-  const { payload, ids } = binarySidecars();
+  const { payload, ids, scales, rotations } = binarySidecars();
   const requested: string[] = [];
   const decoded = await fetchFirstSmokeSplatPayload(
     "smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
@@ -234,12 +258,21 @@ test("fetches Scaniverse manifest sidecars relative to the manifest URL", async 
             json: async () => binaryManifest(),
           } as Response;
         }
-        if (String(input).endsWith(".f32.bin")) {
+        if (String(input).endsWith(".rotations.f32.bin")) {
           return {
             ok: true,
             status: 200,
             statusText: "OK",
-            arrayBuffer: async () => payload,
+            arrayBuffer: async () => rotations,
+          } as Response;
+        }
+        if (String(input).endsWith(".f32.bin")) {
+          const body = String(input).includes(".scales.") ? scales : payload;
+          return {
+            ok: true,
+            status: 200,
+            statusText: "OK",
+            arrayBuffer: async () => body,
           } as Response;
         }
         return {
@@ -256,8 +289,12 @@ test("fetches Scaniverse manifest sidecars relative to the manifest URL", async 
     "smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
     "smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.f32.bin",
     "smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.ids.u32.bin",
+    "smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.scales.f32.bin",
+    "smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.rotations.f32.bin",
   ]);
   assert.deepEqual(Array.from(decoded.originalIds), [1, 0]);
+  assert.deepEqual(Array.from(decoded.scales), f32([0, Math.log(2), Math.log(0.5), Math.log(3), Math.log(0.25), Math.log(1)]));
+  assert.deepEqual(Array.from(decoded.rotations), f32([1, 0, 0, 0, 0.5, 0.5, 0.5, 0.5]));
 });
 
 test("derives stable camera framing metadata from payload bounds", () => {
@@ -298,7 +335,7 @@ test("uploads typed splat attributes into separate GPU storage buffers", () => {
   const buffers = uploadSplatAttributeBuffers(device, decoded);
 
   assert.equal(buffers.count, 2);
-  assert.equal(created.length, 5);
+  assert.equal(created.length, 7);
   assert.deepEqual(
     created.map((entry) => entry.desc.label),
     [
@@ -306,6 +343,8 @@ test("uploads typed splat attributes into separate GPU storage buffers", () => {
       "first_smoke_splat_colors",
       "first_smoke_splat_opacities",
       "first_smoke_splat_radii",
+      "first_smoke_splat_scales",
+      "first_smoke_splat_rotations",
       "first_smoke_splat_original_ids",
     ]
   );
@@ -314,5 +353,7 @@ test("uploads typed splat attributes into separate GPU storage buffers", () => {
   assert.deepEqual(Array.from(new Float32Array(created[1].bytes.buffer)), Array.from(decoded.colors));
   assert.deepEqual(Array.from(new Float32Array(created[2].bytes.buffer)), Array.from(decoded.opacities));
   assert.deepEqual(Array.from(new Float32Array(created[3].bytes.buffer)), Array.from(decoded.radii));
-  assert.deepEqual(Array.from(new Uint32Array(created[4].bytes.buffer)), [0, 1]);
+  assert.deepEqual(Array.from(new Float32Array(created[4].bytes.buffer)), Array.from(decoded.scales));
+  assert.deepEqual(Array.from(new Float32Array(created[5].bytes.buffer)), Array.from(decoded.rotations));
+  assert.deepEqual(Array.from(new Uint32Array(created[6].bytes.buffer)), [0, 1]);
 });

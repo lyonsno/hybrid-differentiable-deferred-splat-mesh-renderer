@@ -52,6 +52,16 @@
     "first_id": 0,
     "last_id": 94405
   },
+  "shape": {
+    "scales_path": "scaniverse-first-smoke.scales.f32.bin",
+    "scales_component_type": "float32",
+    "scales_byte_length": 1132872,
+    "rotations_path": "scaniverse-first-smoke.rotations.f32.bin",
+    "rotations_component_type": "float32",
+    "rotations_byte_length": 1510496,
+    "rotation_order": "wxyz",
+    "scale_space": "log"
+  },
   "bounds": {
     "min": [
       -0.16349449753761292,

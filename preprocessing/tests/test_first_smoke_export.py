@@ -27,6 +27,8 @@ class FirstSmokeExportTests(unittest.TestCase):
             manifest_path = output / "fixture.json"
             payload_path = output / "fixture.f32.bin"
             ids_path = output / "fixture.ids.u32.bin"
+            scales_path = output / "fixture.scales.f32.bin"
+            rotations_path = output / "fixture.rotations.f32.bin"
 
             self.assertEqual(manifest, json.loads(manifest_path.read_text()))
             self.assertEqual(manifest["schema"], "scaniverse_first_smoke_splat_v1")
@@ -134,6 +136,42 @@ class FirstSmokeExportTests(unittest.TestCase):
             )
             self.assertEqual(manifest["payload"]["path"], "fixture.f32.bin")
             self.assertEqual(manifest["payload"]["byte_length"], 3 * 32)
+            self.assertEqual(
+                manifest["shape"],
+                {
+                    "scales_path": "fixture.scales.f32.bin",
+                    "scales_component_type": "float32",
+                    "scales_byte_length": 3 * 3 * 4,
+                    "rotations_path": "fixture.rotations.f32.bin",
+                    "rotations_component_type": "float32",
+                    "rotations_byte_length": 3 * 4 * 4,
+                    "rotation_order": "wxyz",
+                    "scale_space": "log",
+                },
+            )
+            np.testing.assert_allclose(
+                np.fromfile(scales_path, dtype="<f4").reshape(3, 3),
+                np.array(
+                    [
+                        [0.0, math.log(2.0), math.log(0.5)],
+                        [math.log(0.25), math.log(0.75), math.log(1.5)],
+                        [math.log(3.0), math.log(0.125), math.log(1.0)],
+                    ],
+                    dtype=np.float32,
+                ),
+                rtol=1e-6,
+            )
+            np.testing.assert_allclose(
+                np.fromfile(rotations_path, dtype="<f4").reshape(3, 4),
+                np.array(
+                    [
+                        [1.0, 0.0, 0.0, 0.0],
+                        [1.0, 0.0, 0.0, 0.0],
+                        [1.0, 0.0, 0.0, 0.0],
+                    ],
+                    dtype=np.float32,
+                ),
+            )
 
     @staticmethod
     def _write_ascii_ply(path: Path) -> None:

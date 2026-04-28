@@ -62,17 +62,25 @@ def export_first_smoke_asset(
     cloud = load_ply(source)
     rows = make_first_smoke_rows(cloud)
     ids = np.arange(cloud.num_points, dtype="<u4")
+    scales = np.asarray(cloud.scales, dtype="<f4")
+    rotations = np.asarray(cloud.rotations, dtype="<f4")
 
     payload_name = f"{asset_name}.f32.bin"
     ids_name = f"{asset_name}.ids.u32.bin"
+    scales_name = f"{asset_name}.scales.f32.bin"
+    rotations_name = f"{asset_name}.rotations.f32.bin"
     manifest_name = f"{asset_name}.json"
 
     payload_path = output / payload_name
     ids_path = output / ids_name
+    scales_path = output / scales_name
+    rotations_path = output / rotations_name
     manifest_path = output / manifest_name
 
     rows.astype("<f4", copy=False).tofile(payload_path)
     ids.tofile(ids_path)
+    scales.tofile(scales_path)
+    rotations.tofile(rotations_path)
 
     manifest = make_first_smoke_manifest(
         source,
@@ -81,6 +89,10 @@ def export_first_smoke_asset(
         payload_byte_length=payload_path.stat().st_size,
         ids_name=ids_name,
         ids_byte_length=ids_path.stat().st_size,
+        scales_name=scales_name,
+        scales_byte_length=scales_path.stat().st_size,
+        rotations_name=rotations_name,
+        rotations_byte_length=rotations_path.stat().st_size,
         asset_name=asset_name,
     )
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
@@ -134,6 +146,10 @@ def make_first_smoke_manifest(
     payload_byte_length: int,
     ids_name: str,
     ids_byte_length: int,
+    scales_name: str,
+    scales_byte_length: int,
+    rotations_name: str,
+    rotations_byte_length: int,
     asset_name: str,
 ) -> dict[str, Any]:
     bbox_min = np.asarray(cloud.bbox_min, dtype=np.float32)
@@ -169,6 +185,16 @@ def make_first_smoke_manifest(
             "byte_length": int(ids_byte_length),
             "first_id": 0,
             "last_id": int(cloud.num_points - 1),
+        },
+        "shape": {
+            "scales_path": scales_name,
+            "scales_component_type": "float32",
+            "scales_byte_length": int(scales_byte_length),
+            "rotations_path": rotations_name,
+            "rotations_component_type": "float32",
+            "rotations_byte_length": int(rotations_byte_length),
+            "rotation_order": "wxyz",
+            "scale_space": "log",
         },
         "bounds": {
             "min": _json_vec3(bbox_min),
