@@ -1,6 +1,13 @@
 export const SPLAT_PLATE_VERTICES_PER_SPLAT = 6;
 export const SPLAT_PLATE_FRAME_UNIFORM_BYTES = 80;
 export const SPLAT_PLATE_SPLAT_ROW_BYTES = 32;
+export const SPLAT_PLATE_BUFFER_BINDINGS = {
+  positions: 0,
+  colors: 1,
+  opacities: 2,
+  radii: 3,
+  sortedIndices: 4,
+} as const;
 
 export interface SplatPlateDrawCall {
   vertexCount: number;

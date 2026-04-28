@@ -5,13 +5,6 @@ struct FrameUniforms {
   minRadiusPx: f32,
 };
 
-struct SplatRow {
-  position: vec3f,
-  radius: f32,
-  color: vec3f,
-  opacity: f32,
-};
-
 struct VertexOut {
   @builtin(position) position: vec4f,
   @location(0) color: vec3f,
@@ -20,8 +13,11 @@ struct VertexOut {
 };
 
 @group(0) @binding(0) var<uniform> frame: FrameUniforms;
-@group(1) @binding(0) var<storage, read> splats: array<SplatRow>;
-@group(1) @binding(1) var<storage, read> sortedIndices: array<u32>;
+@group(1) @binding(0) var<storage, read> positions: array<f32>;
+@group(1) @binding(1) var<storage, read> colors: array<f32>;
+@group(1) @binding(2) var<storage, read> opacities: array<f32>;
+@group(1) @binding(3) var<storage, read> radii: array<f32>;
+@group(1) @binding(4) var<storage, read> sortedIndices: array<u32>;
 
 const quadCorners = array<vec2f, 6>(
   vec2f(-1.0, -1.0),
@@ -38,11 +34,15 @@ fn vs(
   @builtin(instance_index) instanceIndex: u32,
 ) -> VertexOut {
   let splatId = sortedIndices[instanceIndex];
-  let splat = splats[splatId];
-  let centerClip = frame.viewProj * vec4f(splat.position, 1.0);
+  let vecBase = splatId * 3u;
+  let position = vec3f(positions[vecBase], positions[vecBase + 1u], positions[vecBase + 2u]);
+  let color = vec3f(colors[vecBase], colors[vecBase + 1u], colors[vecBase + 2u]);
+  let opacity = opacities[splatId];
+  let radius = radii[splatId];
+  let centerClip = frame.viewProj * vec4f(position, 1.0);
   let local = quadCorners[vertexIndex];
   let viewportMin = max(min(frame.viewport.x, frame.viewport.y), 1.0);
-  let radiusPx = max(splat.radius * frame.splatScale, frame.minRadiusPx);
+  let radiusPx = max(radius * frame.splatScale, frame.minRadiusPx);
   let radiusNdc = (2.0 * radiusPx) / viewportMin;
 
   var out: VertexOut;
@@ -51,8 +51,8 @@ fn vs(
     centerClip.z,
     centerClip.w,
   );
-  out.color = clamp(splat.color, vec3f(0.0), vec3f(1.0));
-  out.alpha = clamp(splat.opacity, 0.0, 1.0);
+  out.color = clamp(color, vec3f(0.0), vec3f(1.0));
+  out.alpha = clamp(opacity, 0.0, 1.0);
   out.local = local;
   return out;
 }

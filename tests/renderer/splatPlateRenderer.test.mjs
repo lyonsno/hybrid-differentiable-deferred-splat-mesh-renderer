@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   getSplatPlateDrawCall,
+  SPLAT_PLATE_BUFFER_BINDINGS,
   SPLAT_PLATE_FRAME_UNIFORM_BYTES,
   SPLAT_PLATE_SPLAT_ROW_BYTES,
   SPLAT_PLATE_VERTICES_PER_SPLAT,
@@ -20,8 +21,18 @@ test("splat plate draw plan emits one six-vertex plate per sorted original id", 
   assert.throws(() => getSplatPlateDrawCall(1.5), /splat count/i);
 });
 
-test("splat plate row stride matches position-radius and color-opacity float packing", () => {
+test("splat plate source row stride matches position, color, opacity, radius packing", () => {
   assert.equal(SPLAT_PLATE_SPLAT_ROW_BYTES, 8 * Float32Array.BYTES_PER_ELEMENT);
+});
+
+test("splat plate bindings consume uploaded attributes separately from sorted ids", () => {
+  assert.deepEqual(SPLAT_PLATE_BUFFER_BINDINGS, {
+    positions: 0,
+    colors: 1,
+    opacities: 2,
+    radii: 3,
+    sortedIndices: 4,
+  });
 });
 
 test("splat plate frame uniforms pack matrix, viewport, and radius controls at shader offsets", () => {
