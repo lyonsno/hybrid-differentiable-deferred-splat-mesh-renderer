@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -87,4 +88,14 @@ test("first-smoke presentation flips the viewer vertical axis", () => {
     0, 0, 1, 0,
     0, 0, 0, 1,
   ]);
+});
+
+test("real smoke scene exposes renderer fidelity witness data", () => {
+  const source = readFileSync(new URL("../../src/realSmokeScene.ts", import.meta.url), "utf8");
+
+  assert.match(source, /__MESH_SPLAT_WITNESS__/);
+  assert.match(source, /createMeshSplatRendererWitness/);
+  assert.match(source, /scaleSpace: "log"/);
+  assert.match(source, /projectionMode: "jacobian-covariance"/);
+  assert.match(source, /alphaEnergyPolicy: "bounded-footprint-energy-cap"/);
 });

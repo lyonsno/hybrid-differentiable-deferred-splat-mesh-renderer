@@ -1,8 +1,8 @@
 export const WITNESS_CONTRACT_INPUTS = {
   fieldAutopsy: "66b4ea26e5d81ac614f4452b8d21308c4e432e1a",
   slabSentinel: "ca96409",
-  conicReckoner: "unsettled",
-  alphaLedger: "unsettled",
+  conicReckoner: "f9e3498c00d44f2bb70eba1013f11c2f39b1aff1",
+  alphaLedger: "0474666",
 };
 
 export const WITNESS_FIELD_CANONICAL = {

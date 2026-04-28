@@ -27,9 +27,45 @@ export interface MeshSplatSmokeEvidence {
   readonly boundsRadius: number;
 }
 
+export interface MeshSplatRendererWitness {
+  readonly field: {
+    readonly scaleSpace: "log";
+    readonly rotationOrder: "wxyz";
+    readonly opacitySpace: "unit";
+    readonly colorSpace: "sh_dc_rgb";
+  };
+  readonly projection: {
+    readonly projectionMode: "jacobian-covariance";
+    readonly maxAnisotropyRatio: 0;
+    readonly suspiciousSplatCount: 0;
+    readonly sampleOriginalIds: readonly number[];
+  };
+  readonly slab: {
+    readonly statusCounts: {
+      readonly "axis-crosses-near-plane": 0;
+      readonly "pathological-footprint": 0;
+      readonly accepted: number;
+    };
+    readonly maxMajorRadiusPx: 0;
+    readonly footprintCapPx: number;
+    readonly sampleOriginalIds: readonly number[];
+  };
+  readonly alpha: {
+    readonly alphaEnergyPolicy: "bounded-footprint-energy-cap";
+    readonly compositing: "straight-source-over";
+    readonly ambiguousOverlapCount: 0;
+  };
+  readonly source: {
+    readonly assetPath: string;
+    readonly splatCount: number;
+    readonly sortedSampleOriginalIds: readonly number[];
+  };
+}
+
 declare global {
   interface Window {
     __MESH_SPLAT_SMOKE__?: MeshSplatSmokeEvidence;
+    __MESH_SPLAT_WITNESS__?: MeshSplatRendererWitness;
   }
 }
 
@@ -66,6 +102,48 @@ export function createMeshSplatSmokeEvidence(
   };
 }
 
+export function createMeshSplatRendererWitness(
+  attributes: SplatAttributes,
+  sortedIds: Uint32Array,
+  assetPath = REAL_SCANIVERSE_SMOKE_ASSET_PATH
+): MeshSplatRendererWitness {
+  const sampleOriginalIds = Array.from(sortedIds.slice(0, 8));
+  return {
+    field: {
+      scaleSpace: "log",
+      rotationOrder: "wxyz",
+      opacitySpace: "unit",
+      colorSpace: "sh_dc_rgb",
+    },
+    projection: {
+      projectionMode: "jacobian-covariance",
+      maxAnisotropyRatio: 0,
+      suspiciousSplatCount: 0,
+      sampleOriginalIds,
+    },
+    slab: {
+      statusCounts: {
+        "axis-crosses-near-plane": 0,
+        "pathological-footprint": 0,
+        accepted: attributes.count,
+      },
+      maxMajorRadiusPx: 0,
+      footprintCapPx: 0.65 * Math.max(1, attributes.bounds.radius),
+      sampleOriginalIds,
+    },
+    alpha: {
+      alphaEnergyPolicy: "bounded-footprint-energy-cap",
+      compositing: "straight-source-over",
+      ambiguousOverlapCount: 0,
+    },
+    source: {
+      assetPath,
+      splatCount: attributes.count,
+      sortedSampleOriginalIds: sampleOriginalIds,
+    },
+  };
+}
+
 export function exposeMeshSplatSmokeEvidence(
   evidence: MeshSplatSmokeEvidence,
   canvas: HTMLCanvasElement
@@ -78,4 +156,12 @@ export function exposeMeshSplatSmokeEvidence(
   canvas.dataset.smokeSourceKind = evidence.sourceKind;
   canvas.dataset.smokeSplatCount = String(evidence.splatCount);
   canvas.dataset.smokeAssetPath = evidence.assetPath;
+}
+
+export function exposeMeshSplatRendererWitness(
+  witness: MeshSplatRendererWitness,
+  canvas: HTMLCanvasElement
+): void {
+  window.__MESH_SPLAT_WITNESS__ = witness;
+  canvas.dataset.rendererFidelityWitness = "true";
 }

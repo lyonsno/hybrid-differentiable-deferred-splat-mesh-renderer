@@ -10,7 +10,9 @@ import {
   composeFirstSmokeViewProjection,
   configureCameraForSplatBounds,
   createMeshSplatSmokeEvidence,
+  createMeshSplatRendererWitness,
   exposeMeshSplatSmokeEvidence,
+  exposeMeshSplatRendererWitness,
 } from "./realSmokeScene.js";
 import {
   createSplatPlateRenderer,
@@ -101,6 +103,10 @@ async function main() {
     };
     exposeMeshSplatSmokeEvidence(
       createMeshSplatSmokeEvidence(attributes, sortState.sortedIds, sceneAssetPath),
+      canvas
+    );
+    exposeMeshSplatRendererWitness(
+      createMeshSplatRendererWitness(attributes, sortState.sortedIds, sceneAssetPath),
       canvas
     );
     destroySplatScene(previous);

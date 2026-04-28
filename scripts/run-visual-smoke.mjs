@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { classifySmokeEvidence } from "./visual-smoke/evidence.mjs";
 import { analyzePngBuffer } from "./visual-smoke/png-analysis.mjs";
+import { classifyWitnessCapture } from "./visual-smoke/witness-diagnostics.mjs";
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
@@ -63,6 +64,11 @@ async function main() {
       imageAnalysis,
       requireRealSplat: options.requireRealSplat,
     });
+    const witnessDiagnostics = classifyWitnessCapture({
+      pageEvidence,
+      imageAnalysis,
+      smokeClassification: classification,
+    });
 
     const result = {
       generatedAt,
@@ -74,6 +80,7 @@ async function main() {
       pageEvidence,
       imageAnalysis,
       classification,
+      witnessDiagnostics,
       consoleMessages,
       pageErrors,
     };
@@ -131,6 +138,9 @@ async function collectPageEvidence(page) {
     const smoke = globalThis.__MESH_SPLAT_SMOKE__ && typeof globalThis.__MESH_SPLAT_SMOKE__ === "object"
       ? globalThis.__MESH_SPLAT_SMOKE__
       : {};
+    const witness = globalThis.__MESH_SPLAT_WITNESS__ && typeof globalThis.__MESH_SPLAT_WITNESS__ === "object"
+      ? globalThis.__MESH_SPLAT_WITNESS__
+      : undefined;
     const datasets = [document.documentElement.dataset, document.body.dataset, canvas?.dataset].filter(Boolean);
     const firstDatasetValue = (...keys) => {
       for (const dataset of datasets) {
@@ -147,6 +157,7 @@ async function collectPageEvidence(page) {
       splatCount: smoke.splatCount ?? firstDatasetValue("splatCount", "smokeSplatCount"),
       assetPath: smoke.assetPath ?? firstDatasetValue("assetPath", "smokeAssetPath"),
       ready: smoke.ready ?? firstDatasetValue("smokeReady", "ready"),
+      witness,
       statsText: stats?.textContent ?? "",
       title: document.title,
       bodyText: document.body.innerText?.slice(0, 2000) ?? "",
@@ -205,6 +216,15 @@ function renderMarkdownReport(result) {
 - Splat count: ${classification.splatCount || 0}
 - Asset path: ${classification.assetPath || "not reported"}
 - Summary: ${classification.summary}
+
+## Renderer Fidelity Witness
+
+- Threshold policy: ${result.witnessDiagnostics.thresholdPolicy}
+- Findings: ${result.witnessDiagnostics.findings.length}
+
+\`\`\`json
+${JSON.stringify(result.witnessDiagnostics, null, 2)}
+\`\`\`
 
 ## Sibling Contract Notes
 

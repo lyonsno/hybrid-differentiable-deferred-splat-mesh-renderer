@@ -33,8 +33,8 @@ test("witness diagnostics route dessert-style anisotropy away from field decode 
   assert.deepEqual(result.consumedContracts, {
     fieldAutopsy: "66b4ea26e5d81ac614f4452b8d21308c4e432e1a",
     slabSentinel: "ca96409",
-    conicReckoner: "unsettled",
-    alphaLedger: "unsettled",
+    conicReckoner: "f9e3498c00d44f2bb70eba1013f11c2f39b1aff1",
+    alphaLedger: "0474666",
   });
   assert.equal(result.findings[0].kind, WITNESS_FAILURE_KIND.projectionAnisotropy);
   assert.equal(result.findings[0].owner, WITNESS_OWNER.conicReckoner);
@@ -111,4 +111,44 @@ test("witness diagnostics flag field decode before routing projection symptoms",
   assert.equal(result.findings[0].severity, "actionable");
   assert.equal(result.findings[1].kind, WITNESS_FAILURE_KIND.projectionAnisotropy);
   assert.equal(result.findings[1].severity, "blocked");
+});
+
+test("canonical renderer witness produces no diagnostic findings", () => {
+  const result = classifyWitnessCapture({
+    pageEvidence: {
+      sourceKind: "real_scaniverse_ply",
+      splatCount: 94406,
+      witness: {
+        field: {
+          scaleSpace: "log",
+          rotationOrder: "wxyz",
+          opacitySpace: "unit",
+          colorSpace: "sh_dc_rgb",
+        },
+        projection: {
+          projectionMode: "jacobian-covariance",
+          maxAnisotropyRatio: 0,
+          suspiciousSplatCount: 0,
+          sampleOriginalIds: [0, 1, 2],
+        },
+        slab: {
+          statusCounts: {
+            "axis-crosses-near-plane": 0,
+            "pathological-footprint": 0,
+            accepted: 94406,
+          },
+          maxMajorRadiusPx: 0,
+          footprintCapPx: 468,
+          sampleOriginalIds: [0, 1, 2],
+        },
+        alpha: {
+          alphaEnergyPolicy: "bounded-footprint-energy-cap",
+          ambiguousOverlapCount: 0,
+        },
+      },
+    },
+    imageAnalysis: { nonblank: true, changedPixelRatio: 0.18 },
+  });
+
+  assert.deepEqual(result.findings, []);
 });
