@@ -4,10 +4,20 @@ import { createStorageBuffer, createUniformBuffer } from "./buffers.js";
 import { createTimestamps, resolveTimestamps, readTimestamps, TimestampHelper } from "./timestamps.js";
 import { mulMat4 } from "./math.js";
 import {
+  REAL_SCANIVERSE_MIN_RADIUS_PX,
+  REAL_SCANIVERSE_SMOKE_ASSET_PATH,
+  REAL_SCANIVERSE_SPLAT_SCALE,
+  configureCameraForSplatBounds,
+  createMeshSplatSmokeEvidence,
+  exposeMeshSplatSmokeEvidence,
+} from "./realSmokeScene.js";
+import {
   createSplatPlateRenderer,
   SPLAT_PLATE_FRAME_UNIFORM_BYTES,
   writeSplatPlateFrameUniforms,
 } from "./splatPlateRenderer.js";
+import { sortSplatIdsBackToFront } from "./splatSort.js";
+import { fetchFirstSmokeSplatPayload, uploadSplatAttributeBuffers } from "./splats.js";
 
 const statsEl = document.getElementById("stats")!;
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
@@ -39,30 +49,25 @@ async function main() {
   });
 
   const splatRenderer = createSplatPlateRenderer(gpu.device, gpu.format, bgl);
-  // Temporary renderer harness until sibling loader/sort lanes provide real Scaniverse buffers.
-  const syntheticPositions = new Float32Array([
-    -0.55, -0.15, 0.0,
-    0.05, 0.22, -0.18,
-    0.46, -0.08, 0.08,
-    -0.04, -0.44, 0.18,
-  ]);
-  const syntheticColors = new Float32Array([
-    0.95, 0.25, 0.18,
-    0.20, 0.70, 0.95,
-    0.95, 0.82, 0.22,
-    0.45, 0.95, 0.38,
-  ]);
-  const syntheticOpacities = new Float32Array([0.82, 0.76, 0.70, 0.68]);
-  const syntheticRadii = new Float32Array([22.0, 26.0, 18.0, 20.0]);
-  const syntheticSortedIndices = new Uint32Array([3, 2, 1, 0]);
+  statsEl.textContent = "Loading real Scaniverse splats...";
+  const splatAttributes = await fetchFirstSmokeSplatPayload(REAL_SCANIVERSE_SMOKE_ASSET_PATH);
+  configureCameraForSplatBounds(cam, splatAttributes.bounds);
+  updateCamera(cam, 0);
+  const initialView = getViewMatrix(cam);
+  const sortedSplatIds = sortSplatIdsBackToFront(splatAttributes.positions, initialView);
+  const splatBuffers = uploadSplatAttributeBuffers(gpu.device, splatAttributes);
   const splatBindGroup = splatRenderer.createBindGroup({
-    positionBuffer: createStorageBuffer(gpu.device, syntheticPositions.buffer, "synthetic_splat_positions"),
-    colorBuffer: createStorageBuffer(gpu.device, syntheticColors.buffer, "synthetic_splat_colors"),
-    opacityBuffer: createStorageBuffer(gpu.device, syntheticOpacities.buffer, "synthetic_splat_opacities"),
-    radiusBuffer: createStorageBuffer(gpu.device, syntheticRadii.buffer, "synthetic_splat_radii"),
-    sortedIndexBuffer: createStorageBuffer(gpu.device, syntheticSortedIndices.buffer, "synthetic_sorted_splat_ids"),
+    positionBuffer: splatBuffers.positionBuffer,
+    colorBuffer: splatBuffers.colorBuffer,
+    opacityBuffer: splatBuffers.opacityBuffer,
+    radiusBuffer: splatBuffers.radiusBuffer,
+    sortedIndexBuffer: createStorageBuffer(gpu.device, sortedSplatIds.buffer as ArrayBuffer, "first_smoke_sorted_splat_ids"),
   });
-  const splatCount = syntheticSortedIndices.length;
+  const splatCount = splatAttributes.count;
+  exposeMeshSplatSmokeEvidence(
+    createMeshSplatSmokeEvidence(splatAttributes, sortedSplatIds),
+    canvas
+  );
 
   let depthTexture: GPUTexture | null = null;
 
@@ -104,7 +109,14 @@ async function main() {
     const view = getViewMatrix(cam);
     const proj = getProjectionMatrix(cam, aspect);
     const viewProj = mulMat4(proj, view);
-    writeSplatPlateFrameUniforms(uniformData, viewProj, width, height);
+    writeSplatPlateFrameUniforms(
+      uniformData,
+      viewProj,
+      width,
+      height,
+      REAL_SCANIVERSE_SPLAT_SCALE,
+      REAL_SCANIVERSE_MIN_RADIUS_PX
+    );
     gpu.device.queue.writeBuffer(uniformBuffer, 0, uniformData);
 
     const encoder = gpu.device.createCommandEncoder();
@@ -160,7 +172,7 @@ async function main() {
     }
 
     // Stats overlay
-    let statsText = `${width}×${height} | ${displayFps} fps`;
+    let statsText = `${width}×${height} | ${displayFps} fps | ${splatCount.toLocaleString()} real Scaniverse splats`;
     if (gpuTimings.size > 0) {
       for (const [label, ms] of gpuTimings) {
         statsText += ` | ${label}: ${ms.toFixed(2)}ms`;

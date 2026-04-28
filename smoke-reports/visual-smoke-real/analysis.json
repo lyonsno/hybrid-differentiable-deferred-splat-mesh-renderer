@@ -1,0 +1,82 @@
+{
+  "generatedAt": "2026-04-28T01:39:44.144Z",
+  "url": "http://127.0.0.1:57650/",
+  "screenshotPath": "smoke-reports/visual-smoke-real/canvas.png",
+  "analysisPath": "smoke-reports/visual-smoke-real/analysis.json",
+  "reportPath": "smoke-reports/visual-smoke-real/report.md",
+  "options": {
+    "appRoot": ".",
+    "host": "127.0.0.1",
+    "reportDir": "smoke-reports/visual-smoke-real",
+    "requireRealSplat": true,
+    "headless": true,
+    "browserChannel": "chrome",
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    },
+    "deviceScaleFactor": 1,
+    "timeoutMs": 15000,
+    "settleMs": 1000,
+    "imageThresholds": {}
+  },
+  "pageEvidence": {
+    "ready": true,
+    "sourceKind": "real_scaniverse_ply",
+    "realScaniverse": true,
+    "realSplatEvidence": true,
+    "synthetic": false,
+    "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+    "splatCount": 94406,
+    "sortedIdCount": 94406,
+    "boundsRadius": 0.22154541313648224,
+    "statsText": "1280×720 | 120 fps | 94,406 real Scaniverse splats | render: 0.79ms",
+    "title": "Deferred Splat+Mesh Renderer",
+    "bodyText": "1280×720 | 120 fps | 94,406 real Scaniverse splats | render: 0.79ms",
+    "canvas": {
+      "width": 1280,
+      "height": 720,
+      "clientWidth": 1280,
+      "clientHeight": 720
+    }
+  },
+  "imageAnalysis": {
+    "width": 1280,
+    "height": 720,
+    "totalPixels": 921600,
+    "backgroundColor": {
+      "r": 5,
+      "g": 5,
+      "b": 10,
+      "a": 255
+    },
+    "distinctColorCount": 22509,
+    "changedPixels": 38111,
+    "changedPixelRatio": 0.04135308159722222,
+    "averageDelta": 3.659250217013922,
+    "pixelDeltaThreshold": 12,
+    "nonblank": true
+  },
+  "classification": {
+    "nonblank": true,
+    "realSplatEvidence": true,
+    "closeable": true,
+    "harnessPassed": true,
+    "sourceKind": "real_scaniverse_ply",
+    "splatCount": 94406,
+    "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+    "summary": "PASS: nonblank real_scaniverse_ply capture with 94406 splats from /smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json.",
+    "reasons": []
+  },
+  "consoleMessages": [
+    {
+      "type": "debug",
+      "text": "[vite] connecting..."
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connected."
+    }
+  ],
+  "pageErrors": []
+}
