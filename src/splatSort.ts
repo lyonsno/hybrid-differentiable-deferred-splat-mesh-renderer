@@ -5,6 +5,13 @@ interface DepthKey {
   depth: number;
 }
 
+export interface SplatSortRefreshState {
+  sortedIds: Uint32Array;
+  viewDepthKey: Float32Array;
+}
+
+const VIEW_DEPTH_DIRECTION_INDICES = [2, 6, 10] as const;
+
 export function sortSplatIdsBackToFront(
   positions: NumericArray,
   viewMatrix: NumericArray
@@ -28,6 +35,54 @@ export function sortSplatIdsBackToFront(
     order[i] = keys[i].id;
   }
   return order;
+}
+
+export function createSplatSortRefreshState(
+  positions: NumericArray,
+  viewMatrix: NumericArray
+): SplatSortRefreshState {
+  return {
+    sortedIds: sortSplatIdsBackToFront(positions, viewMatrix),
+    viewDepthKey: captureViewDepthKey(viewMatrix),
+  };
+}
+
+export function refreshSplatSortForView(
+  positions: NumericArray,
+  viewMatrix: NumericArray,
+  state: SplatSortRefreshState,
+  epsilon = 1e-6
+): boolean {
+  if (!viewDepthKeyChanged(state.viewDepthKey, viewMatrix, epsilon)) {
+    return false;
+  }
+
+  state.sortedIds = sortSplatIdsBackToFront(positions, viewMatrix);
+  state.viewDepthKey = captureViewDepthKey(viewMatrix);
+  return true;
+}
+
+export function captureViewDepthKey(viewMatrix: NumericArray): Float32Array {
+  validateViewMatrix(viewMatrix);
+  return Float32Array.from(VIEW_DEPTH_DIRECTION_INDICES, (index) => viewMatrix[index]);
+}
+
+export function viewDepthKeyChanged(
+  previousKey: NumericArray,
+  viewMatrix: NumericArray,
+  epsilon = 1e-6
+): boolean {
+  if (previousKey.length !== VIEW_DEPTH_DIRECTION_INDICES.length) {
+    throw new RangeError(`view depth key must contain ${VIEW_DEPTH_DIRECTION_INDICES.length} values`);
+  }
+  validateViewMatrix(viewMatrix);
+
+  for (let i = 0; i < VIEW_DEPTH_DIRECTION_INDICES.length; i += 1) {
+    if (Math.abs(previousKey[i] - viewMatrix[VIEW_DEPTH_DIRECTION_INDICES[i]]) > epsilon) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function computeViewSpaceDepth(

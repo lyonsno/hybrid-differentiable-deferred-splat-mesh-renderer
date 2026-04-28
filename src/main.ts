@@ -16,7 +16,7 @@ import {
   SPLAT_PLATE_FRAME_UNIFORM_BYTES,
   writeSplatPlateFrameUniforms,
 } from "./splatPlateRenderer.js";
-import { sortSplatIdsBackToFront } from "./splatSort.js";
+import { createSplatSortRefreshState, refreshSplatSortForView } from "./splatSort.js";
 import { fetchFirstSmokeSplatPayload, uploadSplatAttributeBuffers } from "./splats.js";
 
 const statsEl = document.getElementById("stats")!;
@@ -54,18 +54,23 @@ async function main() {
   configureCameraForSplatBounds(cam, splatAttributes.bounds);
   updateCamera(cam, 0);
   const initialView = getViewMatrix(cam);
-  const sortedSplatIds = sortSplatIdsBackToFront(splatAttributes.positions, initialView);
+  const sortState = createSplatSortRefreshState(splatAttributes.positions, initialView);
   const splatBuffers = uploadSplatAttributeBuffers(gpu.device, splatAttributes);
+  const sortedIndexBuffer = createStorageBuffer(
+    gpu.device,
+    sortState.sortedIds.buffer as ArrayBuffer,
+    "first_smoke_sorted_splat_ids"
+  );
   const splatBindGroup = splatRenderer.createBindGroup({
     positionBuffer: splatBuffers.positionBuffer,
     colorBuffer: splatBuffers.colorBuffer,
     opacityBuffer: splatBuffers.opacityBuffer,
     radiusBuffer: splatBuffers.radiusBuffer,
-    sortedIndexBuffer: createStorageBuffer(gpu.device, sortedSplatIds.buffer as ArrayBuffer, "first_smoke_sorted_splat_ids"),
+    sortedIndexBuffer,
   });
   const splatCount = splatAttributes.count;
   exposeMeshSplatSmokeEvidence(
-    createMeshSplatSmokeEvidence(splatAttributes, sortedSplatIds),
+    createMeshSplatSmokeEvidence(splatAttributes, sortState.sortedIds),
     canvas
   );
 
@@ -109,6 +114,9 @@ async function main() {
     const view = getViewMatrix(cam);
     const proj = getProjectionMatrix(cam, aspect);
     const viewProj = mulMat4(proj, view);
+    if (refreshSplatSortForView(splatAttributes.positions, view, sortState)) {
+      gpu.device.queue.writeBuffer(sortedIndexBuffer, 0, sortState.sortedIds);
+    }
     writeSplatPlateFrameUniforms(
       uniformData,
       viewProj,

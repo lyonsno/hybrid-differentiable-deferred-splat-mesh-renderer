@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  createSplatSortRefreshState,
+  refreshSplatSortForView,
   computeViewSpaceDepth,
   sortSplatIdsBackToFront,
 } from "../src/splatSort.ts";
@@ -79,6 +81,57 @@ test("keeps equal-depth splats in original file-order id order", () => {
     Array.from(sortSplatIdsBackToFront(positions, identityView)),
     [1, 0, 2, 3]
   );
+});
+
+test("refreshes sorted ids when the camera depth direction changes", () => {
+  const positions = new Float32Array([
+    -1, 0, 0, // id 0
+    1, 0, 0, // id 1
+  ]);
+  const xDepthView = new Float32Array([
+    1, 0, 1, 0,
+    0, 1, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 1,
+  ]);
+  const negXDepthView = new Float32Array([
+    1, 0, -1, 0,
+    0, 1, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 1,
+  ]);
+
+  const state = createSplatSortRefreshState(positions, xDepthView);
+
+  assert.deepEqual(Array.from(state.sortedIds), [0, 1]);
+  assert.equal(refreshSplatSortForView(positions, xDepthView, state), false);
+  assert.equal(refreshSplatSortForView(positions, negXDepthView, state), true);
+  assert.deepEqual(Array.from(state.sortedIds), [1, 0]);
+});
+
+test("does not refresh when only camera depth translation changes", () => {
+  const positions = new Float32Array([
+    0, 0, -2, // id 0
+    0, 0, -5, // id 1
+  ]);
+  const initialView = new Float32Array([
+    1, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 0, 1, 0,
+    0, 0, -1, 1,
+  ]);
+  const translatedView = new Float32Array([
+    1, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 0, 1, 0,
+    0, 0, -8, 1,
+  ]);
+
+  const state = createSplatSortRefreshState(positions, initialView);
+
+  assert.deepEqual(Array.from(state.sortedIds), [1, 0]);
+  assert.equal(refreshSplatSortForView(positions, translatedView, state), false);
+  assert.deepEqual(Array.from(state.sortedIds), [1, 0]);
 });
 
 test("rejects malformed position and matrix inputs", () => {

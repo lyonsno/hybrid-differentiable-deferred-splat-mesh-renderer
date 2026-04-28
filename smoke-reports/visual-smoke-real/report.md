@@ -1,8 +1,8 @@
 # Visual Smoke Report
 
 - Status: PASS
-- Generated: 2026-04-28T01:39:44.144Z
-- URL: http://127.0.0.1:57650/
+- Generated: 2026-04-28T01:59:42.204Z
+- URL: http://127.0.0.1:60033/
 - Screenshot: `canvas.png`
 - Analysis JSON: `analysis.json`
 
@@ -41,9 +41,9 @@
   "splatCount": 94406,
   "sortedIdCount": 94406,
   "boundsRadius": 0.22154541313648224,
-  "statsText": "1280×720 | 120 fps | 94,406 real Scaniverse splats | render: 0.79ms",
+  "statsText": "1280×720 | 30 fps | 94,406 real Scaniverse splats | render: 21.38ms",
   "title": "Deferred Splat+Mesh Renderer",
-  "bodyText": "1280×720 | 120 fps | 94,406 real Scaniverse splats | render: 0.79ms",
+  "bodyText": "1280×720 | 30 fps | 94,406 real Scaniverse splats | render: 21.38ms",
   "canvas": {
     "width": 1280,
     "height": 720,

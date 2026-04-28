@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-04-28T01:39:44.144Z",
-  "url": "http://127.0.0.1:57650/",
+  "generatedAt": "2026-04-28T01:59:42.204Z",
+  "url": "http://127.0.0.1:60033/",
   "screenshotPath": "smoke-reports/visual-smoke-real/canvas.png",
   "analysisPath": "smoke-reports/visual-smoke-real/analysis.json",
   "reportPath": "smoke-reports/visual-smoke-real/report.md",
@@ -30,9 +30,9 @@
     "splatCount": 94406,
     "sortedIdCount": 94406,
     "boundsRadius": 0.22154541313648224,
-    "statsText": "1280×720 | 120 fps | 94,406 real Scaniverse splats | render: 0.79ms",
+    "statsText": "1280×720 | 30 fps | 94,406 real Scaniverse splats | render: 21.38ms",
     "title": "Deferred Splat+Mesh Renderer",
-    "bodyText": "1280×720 | 120 fps | 94,406 real Scaniverse splats | render: 0.79ms",
+    "bodyText": "1280×720 | 30 fps | 94,406 real Scaniverse splats | render: 21.38ms",
     "canvas": {
       "width": 1280,
       "height": 720,
