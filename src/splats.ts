@@ -1,4 +1,6 @@
-export type SplatVec3 = [number, number, number];
+import type { vec3 } from "./math.js";
+
+export type SplatVec3 = vec3;
 
 export type FirstSmokeSplatFieldName =
   | "position"
@@ -102,7 +104,32 @@ export async function fetchFirstSmokeSplatPayload(
     );
   }
 
-  return decodeFirstSmokeSplatPayload(await response.json());
+  const payload = await response.json();
+  if (isSidecarManifest(payload)) {
+    const root = requireRecord(payload, "payload");
+    const payloadInfo = requireRecord(root.payload, "payload.payload");
+    const payloadBytes = await fetchArrayBuffer(
+      fetchImpl,
+      resolveSidecarUrl(input, requireString(payloadInfo.path, "payload.path")),
+      init,
+      "first-smoke splat payload sidecar"
+    );
+
+    const idsPath = sidecarIdsPath(root);
+    const idsBytes =
+      idsPath === undefined
+        ? undefined
+        : await fetchArrayBuffer(
+            fetchImpl,
+            resolveSidecarUrl(input, idsPath),
+            init,
+            "first-smoke splat ID sidecar"
+          );
+
+    return decodeFirstSmokeSplatManifest(payload, payloadBytes, idsBytes);
+  }
+
+  return decodeFirstSmokeSplatPayload(payload);
 }
 
 export function decodeFirstSmokeSplatPayload(payload: unknown): SplatAttributes {
@@ -111,7 +138,10 @@ export function decodeFirstSmokeSplatPayload(payload: unknown): SplatAttributes 
     root.metadata === undefined
       ? root
       : requireRecord(root.metadata, "metadata");
-  const count = requirePositiveInteger(metadata.count, "count");
+  const count = requirePositiveInteger(
+    firstDefined(metadata.count, metadata.splat_count),
+    "count"
+  );
   const bounds = decodeBounds(metadata.bounds, "bounds");
   const layout = decodeLayout(layoutSource(metadata), "layout");
 
@@ -127,6 +157,84 @@ export function decodeFirstSmokeSplatPayload(payload: unknown): SplatAttributes 
     opacities: decoded.opacities,
     radii: decoded.radii,
     originalIds: decodeOriginalIds(root.originalIds, count),
+    bounds,
+    layout,
+  };
+}
+
+export function decodeFirstSmokeSplatManifest(
+  manifest: unknown,
+  payloadBytes: ArrayBuffer,
+  idsBytes?: ArrayBuffer
+): SplatAttributes {
+  const root = requireRecord(manifest, "manifest");
+  const count = requirePositiveInteger(
+    firstDefined(root.splat_count, root.count),
+    "splat_count"
+  );
+  const endianness = firstDefined(root.endianness, "little");
+  if (endianness !== "little") {
+    throw new Error("manifest.endianness must be little");
+  }
+
+  const bounds = decodeBounds(root.bounds, "bounds");
+  const layout = decodeLayout(layoutSource(root), "layout");
+  const payloadInfo = requireRecord(root.payload, "payload");
+  const expectedPayloadBytes = count * layout.strideBytes;
+  const declaredPayloadBytes = requirePositiveInteger(
+    firstDefined(payloadInfo.byte_length, expectedPayloadBytes),
+    "payload.byte_length"
+  );
+  if (declaredPayloadBytes !== expectedPayloadBytes) {
+    throw new Error(
+      `payload.byte_length must be ${expectedPayloadBytes} for ${count} rows`
+    );
+  }
+  if (payloadBytes.byteLength !== expectedPayloadBytes) {
+    throw new Error(
+      `payload sidecar byte length ${payloadBytes.byteLength} does not match expected ${expectedPayloadBytes}`
+    );
+  }
+
+  const offsets = fieldOffsets(layout);
+  const data = new DataView(payloadBytes);
+  const positions = new Float32Array(count * 3);
+  const colors = new Float32Array(count * 3);
+  const opacities = new Float32Array(count);
+  const radii = new Float32Array(count);
+
+  for (let row = 0; row < count; row++) {
+    const base = row * layout.strideBytes;
+    for (let component = 0; component < 3; component++) {
+      positions[row * 3 + component] = data.getFloat32(
+        base + offsets.position + component * 4,
+        true
+      );
+      colors[row * 3 + component] = data.getFloat32(
+        base + offsets.color + component * 4,
+        true
+      );
+    }
+    opacities[row] = requireUnitInterval(
+      data.getFloat32(base + offsets.opacity, true),
+      `payload.rows[${row}].opacity`
+    );
+    radii[row] = requirePositiveFinite(
+      data.getFloat32(base + offsets.radius, true),
+      `payload.rows[${row}].radius`
+    );
+  }
+
+  return {
+    count,
+    positions,
+    colors,
+    opacities,
+    radii,
+    originalIds:
+      idsBytes === undefined
+        ? decodeOriginalIds(undefined, count)
+        : decodeOriginalIdBytes(idsBytes, count),
     bounds,
     layout,
   };
@@ -318,11 +426,12 @@ function layoutSource(metadata: UnknownRecord): unknown {
   }
   if (
     metadata.strideBytes !== undefined ||
+    metadata.stride_bytes !== undefined ||
     metadata.fields !== undefined ||
     metadata.fieldLayout !== undefined
   ) {
     return {
-      strideBytes: metadata.strideBytes,
+      strideBytes: firstDefined(metadata.strideBytes, metadata.stride_bytes),
       fields: firstDefined(metadata.fields, metadata.fieldLayout),
     };
   }
@@ -343,14 +452,18 @@ function decodeFieldLayout(
   ) {
     throw new Error(`${path}.name is not a first-smoke row field`);
   }
-  if (field.type !== "float32") {
+  const componentType = firstDefined(field.type, field.component_type);
+  if (componentType !== "float32") {
     throw new Error(`${path}.type must be float32`);
   }
   const components = requirePositiveInteger(field.components, `${path}.components`);
   if (components !== 1 && components !== 3) {
     throw new Error(`${path}.components must be 1 or 3`);
   }
-  const byteOffset = requireNonNegativeInteger(field.byteOffset, `${path}.byteOffset`);
+  const byteOffset = requireNonNegativeInteger(
+    firstDefined(field.byteOffset, field.byte_offset),
+    `${path}.byteOffset`
+  );
   return { name, type: "float32", components, byteOffset };
 }
 
@@ -384,6 +497,21 @@ function decodeOriginalIds(value: unknown, count: number): Uint32Array {
     ids[i] = id;
   }
   return ids;
+}
+
+function decodeOriginalIdBytes(idsBytes: ArrayBuffer, count: number): Uint32Array {
+  const expectedBytes = count * 4;
+  if (idsBytes.byteLength !== expectedBytes) {
+    throw new Error(
+      `ID sidecar byte length ${idsBytes.byteLength} does not match expected ${expectedBytes}`
+    );
+  }
+  const data = new DataView(idsBytes);
+  const ids = new Uint32Array(count);
+  for (let i = 0; i < count; i++) {
+    ids[i] = data.getUint32(i * 4, true);
+  }
+  return decodeOriginalIds(ids, count);
 }
 
 function decodeFloat32Array(
@@ -427,6 +555,13 @@ function requireVec3(value: unknown, path: string): SplatVec3 {
 function requireFiniteNumber(value: unknown, path: string): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     throw new Error(`${path} must be a finite number`);
+  }
+  return value;
+}
+
+function requireString(value: unknown, path: string): string {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`${path} must be a non-empty string`);
   }
   return value;
 }
@@ -483,6 +618,102 @@ async function responseText(response: Response): Promise<string> {
   } catch {
     return "";
   }
+}
+
+async function fetchArrayBuffer(
+  fetchImpl: FetchLike,
+  input: RequestInfo | URL,
+  init: RequestInit,
+  label: string
+): Promise<ArrayBuffer> {
+  const response = await fetchImpl(input, init);
+  if (!response.ok) {
+    const body = await responseText(response);
+    const suffix = body ? `: ${body}` : "";
+    throw new Error(
+      `Failed to fetch ${label}: ${response.status} ${response.statusText}${suffix}`
+    );
+  }
+  return response.arrayBuffer();
+}
+
+function isSidecarManifest(payload: unknown): boolean {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return false;
+  }
+  const root = payload as UnknownRecord;
+  if (!root.payload || typeof root.payload !== "object" || Array.isArray(root.payload)) {
+    return false;
+  }
+  return typeof (root.payload as UnknownRecord).path === "string";
+}
+
+function sidecarIdsPath(manifest: UnknownRecord): string | undefined {
+  if (manifest.ids !== undefined) {
+    const ids = requireRecord(manifest.ids, "ids");
+    if (ids.path !== undefined) {
+      return requireString(ids.path, "ids.path");
+    }
+  }
+  if (manifest.identity !== undefined) {
+    const identity = requireRecord(manifest.identity, "identity");
+    if (identity.ids_path !== undefined) {
+      return requireString(identity.ids_path, "identity.ids_path");
+    }
+  }
+  return undefined;
+}
+
+function resolveSidecarUrl(manifestUrl: RequestInfo | URL, path: string): string {
+  if (isAbsoluteUrl(path) || path.startsWith("/")) {
+    return path;
+  }
+
+  const base = requestInputToString(manifestUrl);
+  if (base) {
+    if (isAbsoluteUrl(base)) {
+      return new URL(path, base).toString();
+    }
+    const slash = base.lastIndexOf("/");
+    return slash >= 0 ? `${base.slice(0, slash + 1)}${path}` : path;
+  }
+
+  return path;
+}
+
+function requestInputToString(input: RequestInfo | URL): string {
+  if (typeof input === "string") {
+    return input;
+  }
+  if (input instanceof URL) {
+    return input.toString();
+  }
+  const maybeRequest = input as { url?: unknown };
+  return typeof maybeRequest.url === "string" ? maybeRequest.url : "";
+}
+
+function isAbsoluteUrl(value: string): boolean {
+  return /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(value);
+}
+
+function fieldOffsets(layout: FirstSmokeSplatLayout): Record<FirstSmokeSplatFieldName, number> {
+  return {
+    position: fieldOffset(layout, "position"),
+    color: fieldOffset(layout, "color"),
+    opacity: fieldOffset(layout, "opacity"),
+    radius: fieldOffset(layout, "radius"),
+  };
+}
+
+function fieldOffset(
+  layout: FirstSmokeSplatLayout,
+  name: FirstSmokeSplatFieldName
+): number {
+  const field = layout.fields.find((candidate) => candidate.name === name);
+  if (!field) {
+    throw new Error(`layout.fields is missing ${name}`);
+  }
+  return field.byteOffset;
 }
 
 function createMappedStorageBuffer(
