@@ -1,9 +1,13 @@
 import { initGPU, resizeCanvas, GPU } from "./gpu.js";
 import { createCamera, bindCameraControls, updateCamera, getViewMatrix, getProjectionMatrix } from "./camera.js";
-import { createUniformBuffer } from "./buffers.js";
+import { createStorageBuffer, createUniformBuffer } from "./buffers.js";
 import { createTimestamps, resolveTimestamps, readTimestamps, TimestampHelper } from "./timestamps.js";
 import { mulMat4 } from "./math.js";
-import testCubeShader from "./shaders/test_cube.wgsl?raw";
+import {
+  createSplatPlateRenderer,
+  SPLAT_PLATE_FRAME_UNIFORM_BYTES,
+  writeSplatPlateFrameUniforms,
+} from "./splatPlateRenderer.js";
 
 const statsEl = document.getElementById("stats")!;
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
@@ -15,9 +19,8 @@ async function main() {
 
   const ts = createTimestamps(gpu.device, gpu.timestampsSupported);
 
-  // Frame uniforms: mat4x4 (64 bytes) + time (4 bytes) + padding (12 bytes) = 80 bytes
-  const uniformBuffer = createUniformBuffer(gpu.device, 80, "frame_uniforms");
-  const uniformData = new Float32Array(20); // 80 / 4
+  const uniformBuffer = createUniformBuffer(gpu.device, SPLAT_PLATE_FRAME_UNIFORM_BYTES, "frame_uniforms");
+  const uniformData = new Float32Array(SPLAT_PLATE_FRAME_UNIFORM_BYTES / Float32Array.BYTES_PER_ELEMENT);
 
   // Bind group layout
   const bgl = gpu.device.createBindGroupLayout({
@@ -35,30 +38,20 @@ async function main() {
     entries: [{ binding: 0, resource: { buffer: uniformBuffer } }],
   });
 
-  // Pipeline
-  const shaderModule = gpu.device.createShaderModule({ code: testCubeShader });
-
-  const pipeline = gpu.device.createRenderPipeline({
-    layout: gpu.device.createPipelineLayout({ bindGroupLayouts: [bgl] }),
-    vertex: {
-      module: shaderModule,
-      entryPoint: "vs",
-    },
-    fragment: {
-      module: shaderModule,
-      entryPoint: "fs",
-      targets: [{ format: gpu.format }],
-    },
-    primitive: {
-      topology: "triangle-list",
-      cullMode: "back",
-    },
-    depthStencil: {
-      format: "depth32float",
-      depthWriteEnabled: true,
-      depthCompare: "less",
-    },
+  const splatRenderer = createSplatPlateRenderer(gpu.device, gpu.format, bgl);
+  // Temporary renderer harness until sibling loader/sort lanes provide real Scaniverse buffers.
+  const syntheticSplats = new Float32Array([
+    -0.55, -0.15, 0.0, 22.0, 0.95, 0.25, 0.18, 0.82,
+    0.05, 0.22, -0.18, 26.0, 0.20, 0.70, 0.95, 0.76,
+    0.46, -0.08, 0.08, 18.0, 0.95, 0.82, 0.22, 0.70,
+    -0.04, -0.44, 0.18, 20.0, 0.45, 0.95, 0.38, 0.68,
+  ]);
+  const syntheticSortedIndices = new Uint32Array([3, 2, 1, 0]);
+  const splatBindGroup = splatRenderer.createBindGroup({
+    splatBuffer: createStorageBuffer(gpu.device, syntheticSplats.buffer, "synthetic_splat_attributes"),
+    sortedIndexBuffer: createStorageBuffer(gpu.device, syntheticSortedIndices.buffer, "synthetic_sorted_splat_ids"),
   });
+  const splatCount = syntheticSortedIndices.length;
 
   let depthTexture: GPUTexture | null = null;
 
@@ -100,14 +93,14 @@ async function main() {
     const view = getViewMatrix(cam);
     const proj = getProjectionMatrix(cam, aspect);
     const viewProj = mulMat4(proj, view);
-    uniformData.set(viewProj, 0);
-    uniformData[16] = now / 1000;
+    writeSplatPlateFrameUniforms(uniformData, viewProj, width, height);
     gpu.device.queue.writeBuffer(uniformBuffer, 0, uniformData);
 
     const encoder = gpu.device.createCommandEncoder();
 
     const textureView = gpu.context.getCurrentTexture().createView();
 
+    const writeTimestamps = ts && !ts.mapping;
     const renderPass = encoder.beginRenderPass({
       colorAttachments: [
         {
@@ -123,7 +116,7 @@ async function main() {
         depthLoadOp: "clear",
         depthStoreOp: "store",
       },
-      ...(ts
+      ...(writeTimestamps
         ? {
             timestampWrites: {
               querySet: ts.querySet,
@@ -134,23 +127,22 @@ async function main() {
         : {}),
     });
 
-    if (ts) {
+    if (writeTimestamps) {
       ts.labels.push("render", "render_end");
     }
 
-    renderPass.setPipeline(pipeline);
     renderPass.setBindGroup(0, bindGroup);
-    renderPass.draw(36);
+    splatRenderer.draw(renderPass, splatBindGroup, splatCount);
     renderPass.end();
 
-    if (ts) {
+    if (writeTimestamps) {
       resolveTimestamps(encoder, ts);
     }
 
     gpu.device.queue.submit([encoder.finish()]);
 
     // Read GPU timings (async, one frame behind)
-    if (ts) {
+    if (writeTimestamps) {
       readTimestamps(ts).then((t) => {
         gpuTimings = t;
       });

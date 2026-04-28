@@ -1,0 +1,49 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  getSplatPlateDrawCall,
+  SPLAT_PLATE_FRAME_UNIFORM_BYTES,
+  SPLAT_PLATE_SPLAT_ROW_BYTES,
+  SPLAT_PLATE_VERTICES_PER_SPLAT,
+  writeSplatPlateFrameUniforms,
+} from "../../node_modules/.cache/renderer-tests/src/splatPlateContract.js";
+
+test("splat plate draw plan emits one six-vertex plate per sorted original id", () => {
+  assert.deepEqual(getSplatPlateDrawCall(4), {
+    vertexCount: SPLAT_PLATE_VERTICES_PER_SPLAT,
+    instanceCount: 4,
+  });
+
+  assert.equal(getSplatPlateDrawCall(0), null);
+  assert.throws(() => getSplatPlateDrawCall(-1), /splat count/i);
+  assert.throws(() => getSplatPlateDrawCall(1.5), /splat count/i);
+});
+
+test("splat plate row stride matches position-radius and color-opacity float packing", () => {
+  assert.equal(SPLAT_PLATE_SPLAT_ROW_BYTES, 8 * Float32Array.BYTES_PER_ELEMENT);
+});
+
+test("splat plate frame uniforms pack matrix, viewport, and radius controls at shader offsets", () => {
+  const matrix = Float32Array.from({ length: 16 }, (_, i) => i + 0.25);
+  const target = new Float32Array(SPLAT_PLATE_FRAME_UNIFORM_BYTES / Float32Array.BYTES_PER_ELEMENT);
+
+  writeSplatPlateFrameUniforms(target, matrix, 1280, 720, 2.5, 3.5);
+
+  assert.deepEqual(Array.from(target.slice(0, 16)), Array.from(matrix));
+  assert.equal(target[16], 1280);
+  assert.equal(target[17], 720);
+  assert.equal(target[18], 2.5);
+  assert.equal(target[19], 3.5);
+  assert.throws(() => writeSplatPlateFrameUniforms(new Float32Array(4), matrix, 1, 1), /too small/i);
+});
+
+test("splat plate frame uniforms use stable radius defaults", () => {
+  const matrix = Float32Array.from({ length: 16 }, (_, i) => i);
+  const target = new Float32Array(SPLAT_PLATE_FRAME_UNIFORM_BYTES / Float32Array.BYTES_PER_ELEMENT);
+
+  writeSplatPlateFrameUniforms(target, matrix, 640, 480);
+
+  assert.equal(target[18], 1);
+  assert.equal(target[19], 1.5);
+});

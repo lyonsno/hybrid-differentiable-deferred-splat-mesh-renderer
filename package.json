@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "node --test tests/*.test.ts",
+    "test": "node --experimental-strip-types --experimental-transform-types --test tests/*.test.ts && tsc --ignoreConfig --module NodeNext --moduleResolution NodeNext --target ES2022 --types @webgpu/types --skipLibCheck --outDir node_modules/.cache/renderer-tests --rootDir . src/splatPlateContract.ts && node --test tests/renderer/*.test.mjs",
     "build": "tsc && vite build",
     "preview": "vite preview"
   },
