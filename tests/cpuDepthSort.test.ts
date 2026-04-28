@@ -134,6 +134,54 @@ test("does not refresh when only camera depth translation changes", () => {
   assert.deepEqual(Array.from(state.sortedIds), [1, 0]);
 });
 
+test("throttles repeated refreshes for interactive CPU sorting", () => {
+  const positions = new Float32Array([
+    -1, 0, 0, // id 0
+    1, 0, 0, // id 1
+  ]);
+  const xDepthView = new Float32Array([
+    1, 0, 1, 0,
+    0, 1, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 1,
+  ]);
+  const negXDepthView = new Float32Array([
+    1, 0, -1, 0,
+    0, 1, 0, 0,
+    0, 0, 0, 0,
+    0, 0, 0, 1,
+  ]);
+
+  const state = createSplatSortRefreshState(positions, xDepthView);
+
+  assert.equal(
+    refreshSplatSortForView(positions, negXDepthView, state, {
+      minIntervalMs: 100,
+      nowMs: 0,
+    }),
+    true
+  );
+  assert.deepEqual(Array.from(state.sortedIds), [1, 0]);
+
+  assert.equal(
+    refreshSplatSortForView(positions, xDepthView, state, {
+      minIntervalMs: 100,
+      nowMs: 50,
+    }),
+    false
+  );
+  assert.deepEqual(Array.from(state.sortedIds), [1, 0]);
+
+  assert.equal(
+    refreshSplatSortForView(positions, xDepthView, state, {
+      minIntervalMs: 100,
+      nowMs: 100,
+    }),
+    true
+  );
+  assert.deepEqual(Array.from(state.sortedIds), [0, 1]);
+});
+
 test("rejects malformed position and matrix inputs", () => {
   assert.throws(
     () => sortSplatIdsBackToFront(new Float32Array([0, 1]), identityView),

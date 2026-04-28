@@ -1,8 +1,8 @@
 # Visual Smoke Report
 
 - Status: PASS
-- Generated: 2026-04-28T01:59:42.204Z
-- URL: http://127.0.0.1:60033/
+- Generated: 2026-04-28T02:42:56.331Z
+- URL: http://127.0.0.1:63569/
 - Screenshot: `canvas.png`
 - Analysis JSON: `analysis.json`
 
@@ -10,9 +10,9 @@
 
 - Canvas PNG: 1280x720
 - Nonblank: true
-- Changed pixels: 38111 / 921600 (4.135%)
-- Average background delta: 3.66
-- Distinct colors: 22509
+- Changed pixels: 57911 / 921600 (6.284%)
+- Average background delta: 5.71
+- Distinct colors: 24831
 
 ## Splat Evidence
 
@@ -41,9 +41,9 @@
   "splatCount": 94406,
   "sortedIdCount": 94406,
   "boundsRadius": 0.22154541313648224,
-  "statsText": "1280×720 | 30 fps | 94,406 real Scaniverse splats | render: 21.38ms",
+  "statsText": "1280×720 | 111 fps | 94,406 real Scaniverse splats | render: 2.80ms",
   "title": "Deferred Splat+Mesh Renderer",
-  "bodyText": "1280×720 | 30 fps | 94,406 real Scaniverse splats | render: 21.38ms",
+  "bodyText": "1280×720 | 111 fps | 94,406 real Scaniverse splats | render: 2.80ms",
   "canvas": {
     "width": 1280,
     "height": 720,

@@ -8,7 +8,20 @@ interface DepthKey {
 export interface SplatSortRefreshState {
   sortedIds: Uint32Array;
   viewDepthKey: Float32Array;
+  lastRefreshMs: number;
 }
+
+export interface SplatSortRefreshOptions {
+  epsilon?: number;
+  minIntervalMs?: number;
+  nowMs?: number;
+}
+
+type NormalizedSplatSortRefreshOptions = {
+  epsilon: number;
+  minIntervalMs?: number;
+  nowMs?: number;
+};
 
 const VIEW_DEPTH_DIRECTION_INDICES = [2, 6, 10] as const;
 
@@ -44,6 +57,7 @@ export function createSplatSortRefreshState(
   return {
     sortedIds: sortSplatIdsBackToFront(positions, viewMatrix),
     viewDepthKey: captureViewDepthKey(viewMatrix),
+    lastRefreshMs: Number.NEGATIVE_INFINITY,
   };
 }
 
@@ -51,15 +65,39 @@ export function refreshSplatSortForView(
   positions: NumericArray,
   viewMatrix: NumericArray,
   state: SplatSortRefreshState,
-  epsilon = 1e-6
+  options: SplatSortRefreshOptions | number = {}
 ): boolean {
+  const { epsilon, minIntervalMs, nowMs } = normalizeRefreshOptions(options);
   if (!viewDepthKeyChanged(state.viewDepthKey, viewMatrix, epsilon)) {
+    return false;
+  }
+  if (
+    minIntervalMs !== undefined &&
+    nowMs !== undefined &&
+    nowMs - state.lastRefreshMs < minIntervalMs
+  ) {
     return false;
   }
 
   state.sortedIds = sortSplatIdsBackToFront(positions, viewMatrix);
   state.viewDepthKey = captureViewDepthKey(viewMatrix);
+  if (nowMs !== undefined) {
+    state.lastRefreshMs = nowMs;
+  }
   return true;
+}
+
+function normalizeRefreshOptions(
+  options: SplatSortRefreshOptions | number
+): NormalizedSplatSortRefreshOptions {
+  if (typeof options === "number") {
+    return { epsilon: options };
+  }
+  return {
+    epsilon: options.epsilon ?? 1e-6,
+    minIntervalMs: options.minIntervalMs,
+    nowMs: options.nowMs,
+  };
 }
 
 export function captureViewDepthKey(viewMatrix: NumericArray): Float32Array {

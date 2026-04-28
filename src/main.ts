@@ -2,11 +2,11 @@ import { initGPU, resizeCanvas, GPU } from "./gpu.js";
 import { createCamera, bindCameraControls, updateCamera, getViewMatrix, getProjectionMatrix } from "./camera.js";
 import { createStorageBuffer, createUniformBuffer } from "./buffers.js";
 import { createTimestamps, resolveTimestamps, readTimestamps, TimestampHelper } from "./timestamps.js";
-import { mulMat4 } from "./math.js";
 import {
   REAL_SCANIVERSE_MIN_RADIUS_PX,
   REAL_SCANIVERSE_SMOKE_ASSET_PATH,
   REAL_SCANIVERSE_SPLAT_SCALE,
+  composeFirstSmokeViewProjection,
   configureCameraForSplatBounds,
   createMeshSplatSmokeEvidence,
   exposeMeshSplatSmokeEvidence,
@@ -21,6 +21,7 @@ import { fetchFirstSmokeSplatPayload, uploadSplatAttributeBuffers } from "./spla
 
 const statsEl = document.getElementById("stats")!;
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
+const CPU_SORT_REFRESH_MIN_INTERVAL_MS = 125;
 
 async function main() {
   const gpu = await initGPU(canvas);
@@ -113,8 +114,13 @@ async function main() {
     // Upload uniforms
     const view = getViewMatrix(cam);
     const proj = getProjectionMatrix(cam, aspect);
-    const viewProj = mulMat4(proj, view);
-    if (refreshSplatSortForView(splatAttributes.positions, view, sortState)) {
+    const viewProj = composeFirstSmokeViewProjection(proj, view);
+    if (
+      refreshSplatSortForView(splatAttributes.positions, view, sortState, {
+        minIntervalMs: CPU_SORT_REFRESH_MIN_INTERVAL_MS,
+        nowMs: now,
+      })
+    ) {
       gpu.device.queue.writeBuffer(sortedIndexBuffer, 0, sortState.sortedIds);
     }
     writeSplatPlateFrameUniforms(

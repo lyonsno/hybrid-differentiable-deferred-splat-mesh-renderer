@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  computeSplatPlateRadiusPx,
   getSplatPlateDrawCall,
   SPLAT_PLATE_BUFFER_BINDINGS,
   SPLAT_PLATE_FRAME_UNIFORM_BYTES,
@@ -57,4 +58,14 @@ test("splat plate frame uniforms use stable radius defaults", () => {
 
   assert.equal(target[18], 1);
   assert.equal(target[19], 1.5);
+});
+
+test("splat plate radius scales with perspective depth during zoom", () => {
+  const nearRadius = computeSplatPlateRadiusPx(0.01, 0.5, 3000, 1.5);
+  const farRadius = computeSplatPlateRadiusPx(0.01, 2, 3000, 1.5);
+  const tinyFarRadius = computeSplatPlateRadiusPx(0.0001, 100, 3000, 1.5);
+
+  assert.equal(nearRadius, 60);
+  assert.equal(farRadius, 15);
+  assert.equal(tinyFarRadius, 1.5);
 });

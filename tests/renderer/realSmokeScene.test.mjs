@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   REAL_SCANIVERSE_SMOKE_ASSET_PATH,
+  composeFirstSmokeViewProjection,
   configureCameraForSplatBounds,
   createMeshSplatSmokeEvidence,
 } from "../../node_modules/.cache/renderer-tests/src/realSmokeScene.js";
@@ -65,4 +66,20 @@ test("real smoke camera framing targets the Scaniverse bounds", () => {
   assert.ok(camera.distance > attributes.bounds.radius);
   assert.ok(camera.near > 0);
   assert.ok(camera.far > camera.distance);
+});
+
+test("first-smoke presentation flips the viewer vertical axis", () => {
+  const identity = new Float32Array([
+    1, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 0, 1, 0,
+    0, 0, 0, 1,
+  ]);
+
+  assert.deepEqual(Array.from(composeFirstSmokeViewProjection(identity, identity)), [
+    1, 0, 0, 0,
+    0, -1, 0, 0,
+    0, 0, 1, 0,
+    0, 0, 0, 1,
+  ]);
 });

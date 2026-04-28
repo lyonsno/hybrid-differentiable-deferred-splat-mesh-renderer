@@ -29,6 +29,29 @@ export function getSplatPlateDrawCall(splatCount: number): SplatPlateDrawCall | 
   };
 }
 
+export function computeSplatPlateRadiusPx(
+  radius: number,
+  clipW: number,
+  splatScale = 1,
+  minRadiusPx = 1.5
+): number {
+  if (!Number.isFinite(radius) || radius < 0) {
+    throw new Error("Splat radius must be a finite non-negative number");
+  }
+  if (!Number.isFinite(clipW)) {
+    throw new Error("Splat clip w must be finite");
+  }
+  if (!Number.isFinite(splatScale) || splatScale < 0) {
+    throw new Error("Splat scale must be a finite non-negative number");
+  }
+  if (!Number.isFinite(minRadiusPx) || minRadiusPx < 0) {
+    throw new Error("Minimum splat radius must be a finite non-negative number");
+  }
+
+  const safeW = Math.max(Math.abs(clipW), 0.001);
+  return Math.max((radius * splatScale) / safeW, minRadiusPx);
+}
+
 export function writeSplatPlateFrameUniforms(
   target: Float32Array,
   viewProj: Float32Array,

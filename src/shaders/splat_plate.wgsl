@@ -42,7 +42,8 @@ fn vs(
   let centerClip = frame.viewProj * vec4f(position, 1.0);
   let local = quadCorners[vertexIndex];
   let viewportMin = max(min(frame.viewport.x, frame.viewport.y), 1.0);
-  let radiusPx = max(radius * frame.splatScale, frame.minRadiusPx);
+  let projectedW = max(abs(centerClip.w), 0.001);
+  let radiusPx = max((radius * frame.splatScale) / projectedW, frame.minRadiusPx);
   let radiusNdc = (2.0 * radiusPx) / viewportMin;
 
   var out: VertexOut;
