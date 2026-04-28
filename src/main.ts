@@ -1,6 +1,7 @@
 import { initGPU, resizeCanvas, GPU } from "./gpu.js";
 import { createCamera, bindCameraControls, updateCamera, getViewMatrix, getProjectionMatrix } from "./camera.js";
 import { createStorageBuffer, createUniformBuffer } from "./buffers.js";
+import { loadDroppedSplatFile } from "./localPly.js";
 import { createTimestamps, resolveTimestamps, readTimestamps, TimestampHelper } from "./timestamps.js";
 import {
   REAL_SCANIVERSE_MIN_RADIUS_PX,
@@ -17,11 +18,26 @@ import {
   writeSplatPlateFrameUniforms,
 } from "./splatPlateRenderer.js";
 import { createSplatSortRefreshState, refreshSplatSortForView } from "./splatSort.js";
-import { fetchFirstSmokeSplatPayload, uploadSplatAttributeBuffers } from "./splats.js";
+import {
+  fetchFirstSmokeSplatPayload,
+  uploadSplatAttributeBuffers,
+  type SplatAttributes,
+  type SplatGpuBuffers,
+} from "./splats.js";
 
 const statsEl = document.getElementById("stats")!;
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 const CPU_SORT_REFRESH_MIN_INTERVAL_MS = 125;
+
+interface ActiveSplatScene {
+  attributes: SplatAttributes;
+  buffers: SplatGpuBuffers;
+  sortedIndexBuffer: GPUBuffer;
+  splatBindGroup: GPUBindGroup;
+  sortState: ReturnType<typeof createSplatSortRefreshState>;
+  count: number;
+  assetPath: string;
+}
 
 async function main() {
   const gpu = await initGPU(canvas);
@@ -52,30 +68,53 @@ async function main() {
   const splatRenderer = createSplatPlateRenderer(gpu.device, gpu.format, bgl);
   statsEl.textContent = "Loading real Scaniverse splats...";
   const assetPath = selectedSplatAssetPath();
-  const splatAttributes = await fetchFirstSmokeSplatPayload(assetPath);
-  configureCameraForSplatBounds(cam, splatAttributes.bounds);
-  updateCamera(cam, 0);
-  const initialView = getViewMatrix(cam);
-  const sortState = createSplatSortRefreshState(splatAttributes.positions, initialView);
-  const splatBuffers = uploadSplatAttributeBuffers(gpu.device, splatAttributes);
-  const sortedIndexBuffer = createStorageBuffer(
-    gpu.device,
-    sortState.sortedIds.buffer as ArrayBuffer,
-    "first_smoke_sorted_splat_ids"
-  );
-  const splatBindGroup = splatRenderer.createBindGroup({
-    positionBuffer: splatBuffers.positionBuffer,
-    colorBuffer: splatBuffers.colorBuffer,
-    opacityBuffer: splatBuffers.opacityBuffer,
-    scaleBuffer: splatBuffers.scaleBuffer,
-    rotationBuffer: splatBuffers.rotationBuffer,
-    sortedIndexBuffer,
+  let activeScene: ActiveSplatScene | null = null;
+
+  function replaceSplatScene(attributes: SplatAttributes, sceneAssetPath: string): void {
+    const previous = activeScene;
+    configureCameraForSplatBounds(cam, attributes.bounds);
+    updateCamera(cam, 0);
+    const initialView = getViewMatrix(cam);
+    const sortState = createSplatSortRefreshState(attributes.positions, initialView);
+    const buffers = uploadSplatAttributeBuffers(gpu.device, attributes);
+    const sortedIndexBuffer = createStorageBuffer(
+      gpu.device,
+      sortState.sortedIds.buffer as ArrayBuffer,
+      "first_smoke_sorted_splat_ids"
+    );
+    const splatBindGroup = splatRenderer.createBindGroup({
+      positionBuffer: buffers.positionBuffer,
+      colorBuffer: buffers.colorBuffer,
+      opacityBuffer: buffers.opacityBuffer,
+      scaleBuffer: buffers.scaleBuffer,
+      rotationBuffer: buffers.rotationBuffer,
+      sortedIndexBuffer,
+    });
+    activeScene = {
+      attributes,
+      buffers,
+      sortedIndexBuffer,
+      splatBindGroup,
+      sortState,
+      count: attributes.count,
+      assetPath: sceneAssetPath,
+    };
+    exposeMeshSplatSmokeEvidence(
+      createMeshSplatSmokeEvidence(attributes, sortState.sortedIds, sceneAssetPath),
+      canvas
+    );
+    destroySplatScene(previous);
+  }
+
+  replaceSplatScene(await fetchFirstSmokeSplatPayload(assetPath), assetPath);
+  bindDroppedSplatLoading(canvas, async (file) => {
+    statsEl.textContent = `Loading ${file.name}...`;
+    try {
+      replaceSplatScene(await loadDroppedSplatFile(file), `local-file:${file.name}`);
+    } catch (err) {
+      statsEl.textContent = err instanceof Error ? err.message : String(err);
+    }
   });
-  const splatCount = splatAttributes.count;
-  exposeMeshSplatSmokeEvidence(
-    createMeshSplatSmokeEvidence(splatAttributes, sortState.sortedIds, assetPath),
-    canvas
-  );
 
   let depthTexture: GPUTexture | null = null;
 
@@ -89,6 +128,11 @@ async function main() {
     const now = performance.now();
     const dt = (now - lastTime) / 1000;
     lastTime = now;
+    const scene = activeScene;
+    if (!scene) {
+      requestAnimationFrame(frame);
+      return;
+    }
 
     frameCount++;
     fpsAccum += dt;
@@ -118,12 +162,12 @@ async function main() {
     const proj = getProjectionMatrix(cam, aspect);
     const viewProj = composeFirstSmokeViewProjection(proj, view);
     if (
-      refreshSplatSortForView(splatAttributes.positions, view, sortState, {
+      refreshSplatSortForView(scene.attributes.positions, view, scene.sortState, {
         minIntervalMs: CPU_SORT_REFRESH_MIN_INTERVAL_MS,
         nowMs: now,
       })
     ) {
-      gpu.device.queue.writeBuffer(sortedIndexBuffer, 0, sortState.sortedIds);
+      gpu.device.queue.writeBuffer(scene.sortedIndexBuffer, 0, scene.sortState.sortedIds);
     }
     writeSplatPlateFrameUniforms(
       uniformData,
@@ -171,7 +215,7 @@ async function main() {
     }
 
     renderPass.setBindGroup(0, bindGroup);
-    splatRenderer.draw(renderPass, splatBindGroup, splatCount);
+    splatRenderer.draw(renderPass, scene.splatBindGroup, scene.count);
     renderPass.end();
 
     if (writeTimestamps) {
@@ -188,7 +232,7 @@ async function main() {
     }
 
     // Stats overlay
-    let statsText = `${width}×${height} | ${displayFps} fps | ${splatCount.toLocaleString()} real Scaniverse splats`;
+    let statsText = `${width}×${height} | ${displayFps} fps | ${scene.count.toLocaleString()} real Scaniverse splats`;
     if (gpuTimings.size > 0) {
       for (const [label, ms] of gpuTimings) {
         statsText += ` | ${label}: ${ms.toFixed(2)}ms`;
@@ -205,6 +249,48 @@ async function main() {
 function selectedSplatAssetPath(): string {
   const params = new URLSearchParams(window.location.search);
   return params.get("asset") || REAL_SCANIVERSE_SMOKE_ASSET_PATH;
+}
+
+function bindDroppedSplatLoading(
+  canvas: HTMLCanvasElement,
+  loadFile: (file: File) => Promise<void>
+): void {
+  window.addEventListener("dragover", (event) => {
+    if (!event.dataTransfer?.types.includes("Files")) {
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  });
+  window.addEventListener("drop", (event) => {
+    if (!event.dataTransfer?.files.length) {
+      return;
+    }
+    event.preventDefault();
+    void loadFile(event.dataTransfer.files[0]);
+  });
+  canvas.addEventListener("dragenter", () => {
+    canvas.dataset.dropTarget = "true";
+  });
+  canvas.addEventListener("dragleave", () => {
+    delete canvas.dataset.dropTarget;
+  });
+  canvas.addEventListener("drop", () => {
+    delete canvas.dataset.dropTarget;
+  });
+}
+
+function destroySplatScene(scene: ActiveSplatScene | null): void {
+  if (!scene) {
+    return;
+  }
+  scene.buffers.positionBuffer.destroy();
+  scene.buffers.colorBuffer.destroy();
+  scene.buffers.opacityBuffer.destroy();
+  scene.buffers.scaleBuffer.destroy();
+  scene.buffers.rotationBuffer.destroy();
+  scene.buffers.originalIdBuffer.destroy();
+  scene.sortedIndexBuffer.destroy();
 }
 
 main().catch((err) => {
