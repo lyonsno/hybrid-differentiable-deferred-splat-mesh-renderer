@@ -73,15 +73,10 @@ export function bindCameraControls(cam: Camera, canvas: HTMLCanvasElement) {
 
 export function updateCamera(cam: Camera, dt: number) {
   const speed = cameraMoveSpeed(cam) * dt;
+  const { forward, right, trueUp } = cameraBasis(cam);
 
-  // WASD moves the orbit target
-  const forward: vec3 = [
-    -Math.sin(cam.azimuth),
-    0,
-    -Math.cos(cam.azimuth),
-  ];
-  const right: vec3 = [forward[2], 0, -forward[0]];
-
+  // Move the orbit target in camera-local space so translation, zoom, and orbit
+  // agree even when the view points steeply into a scan.
   if (cam.keys.has("w")) {
     cam.target[0] += forward[0] * speed;
     cam.target[1] += forward[1] * speed;
@@ -94,14 +89,24 @@ export function updateCamera(cam: Camera, dt: number) {
   }
   if (cam.keys.has("a")) {
     cam.target[0] -= right[0] * speed;
+    cam.target[1] -= right[1] * speed;
     cam.target[2] -= right[2] * speed;
   }
   if (cam.keys.has("d")) {
     cam.target[0] += right[0] * speed;
+    cam.target[1] += right[1] * speed;
     cam.target[2] += right[2] * speed;
   }
-  if (cam.keys.has("q")) cam.target[1] -= speed;
-  if (cam.keys.has("e")) cam.target[1] += speed;
+  if (cam.keys.has("q")) {
+    cam.target[0] -= trueUp[0] * speed;
+    cam.target[1] -= trueUp[1] * speed;
+    cam.target[2] -= trueUp[2] * speed;
+  }
+  if (cam.keys.has("e")) {
+    cam.target[0] += trueUp[0] * speed;
+    cam.target[1] += trueUp[1] * speed;
+    cam.target[2] += trueUp[2] * speed;
+  }
 
   // Compute eye position from orbit
   const cosEl = Math.cos(cam.elevation);
@@ -198,20 +203,21 @@ export function screenPlaneOffset(
   ];
 }
 
-function cameraBasis(cam: Camera): { right: vec3; trueUp: vec3 } {
+export function cameraBasis(cam: Camera): { forward: vec3; right: vec3; trueUp: vec3 } {
   const cosEl = Math.cos(cam.elevation);
   const back: vec3 = [
     cosEl * Math.sin(cam.azimuth),
     Math.sin(cam.elevation),
     cosEl * Math.cos(cam.azimuth),
   ];
+  const forward: vec3 = [-back[0], -back[1], -back[2]];
   const right: vec3 = [Math.cos(cam.azimuth), 0, -Math.sin(cam.azimuth)];
   const trueUp: vec3 = [
     back[1] * right[2] - back[2] * right[1],
     back[2] * right[0] - back[0] * right[2],
     back[0] * right[1] - back[1] * right[0],
   ];
-  return { right, trueUp };
+  return { forward, right, trueUp };
 }
 
 function clamp(value: number, min: number, max: number): number {

@@ -75,3 +75,17 @@ test("orbit rotation stays away from the vertical pole singularity", () => {
   assert.equal(cam.elevation, -MAX_ORBIT_ELEVATION);
   assert.ok(MAX_ORBIT_ELEVATION < Math.PI / 2 - 0.1);
 });
+
+test("keyboard movement follows the camera frame instead of a fixed ground plane", () => {
+  const cam = createCamera();
+  cam.azimuth = 0;
+  cam.elevation = Math.PI / 4;
+  cam.distance = 2;
+  cam.navigationScale = 1;
+  cam.keys.add("w");
+
+  updateCamera(cam, 1);
+
+  assert.ok(cam.target[1] < -0.45);
+  assert.ok(cam.target[2] < -0.45);
+});
