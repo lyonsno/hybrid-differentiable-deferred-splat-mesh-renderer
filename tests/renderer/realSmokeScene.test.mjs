@@ -10,6 +10,7 @@ import {
 
 const attributes = {
   count: 3,
+  sourceKind: "real_scaniverse_ply",
   positions: new Float32Array(9),
   colors: new Float32Array(9),
   opacities: new Float32Array(3),

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
-from splat_oracle.first_smoke import export_first_smoke_asset
+from splat_oracle.first_smoke import export_first_smoke_asset, source_kind
 
 
 SH_C0 = 0.28209479
@@ -32,6 +32,7 @@ class FirstSmokeExportTests(unittest.TestCase):
 
             self.assertEqual(manifest, json.loads(manifest_path.read_text()))
             self.assertEqual(manifest["schema"], "scaniverse_first_smoke_splat_v1")
+            self.assertEqual(manifest["source"]["kind"], "scaniverse_ply")
             self.assertEqual(manifest["splat_count"], 3)
             self.assertEqual(manifest["stride_bytes"], 32)
             self.assertEqual(
@@ -172,6 +173,10 @@ class FirstSmokeExportTests(unittest.TestCase):
                     dtype=np.float32,
                 ),
             )
+
+    def test_source_kind_supports_spz_assets(self) -> None:
+        self.assertEqual(source_kind(Path("workshop_four_cups.spz")), "spz")
+        self.assertEqual(source_kind(Path("scan.ply")), "scaniverse_ply")
 
     @staticmethod
     def _write_ascii_ply(path: Path) -> None:

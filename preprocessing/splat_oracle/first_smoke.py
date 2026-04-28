@@ -9,7 +9,7 @@ from typing import Any
 
 import numpy as np
 
-from splat_oracle.loader import SplatCloud, load_ply
+from splat_oracle.loader import SplatCloud, load_splats
 
 
 SCHEMA = "scaniverse_first_smoke_splat_v1"
@@ -59,7 +59,7 @@ def export_first_smoke_asset(
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
 
-    cloud = load_ply(source)
+    cloud = load_splats(source)
     rows = make_first_smoke_rows(cloud)
     ids = np.arange(cloud.num_points, dtype="<u4")
     scales = np.asarray(cloud.scales, dtype="<f4")
@@ -161,7 +161,7 @@ def make_first_smoke_manifest(
         "schema": SCHEMA,
         "asset_name": asset_name,
         "source": {
-            "kind": "scaniverse_ply",
+            "kind": source_kind(source),
             "filename": source.name,
             "sha256": _sha256(source),
             "byte_length": source.stat().st_size,
@@ -208,6 +208,15 @@ def make_first_smoke_manifest(
             "radius": "max(exp(scale_0), exp(scale_1), exp(scale_2)) from log-space PLY scale fields",
         },
     }
+
+
+def source_kind(source: Path) -> str:
+    suffix = source.suffix.lower()
+    if suffix == ".spz":
+        return "spz"
+    if suffix == ".ply":
+        return "scaniverse_ply"
+    return suffix.lstrip(".") or "splat"
 
 
 def _json_vec3(values: np.ndarray) -> list[float]:

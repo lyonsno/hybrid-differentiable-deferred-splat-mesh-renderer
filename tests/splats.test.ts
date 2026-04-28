@@ -128,6 +128,7 @@ test("decodes first-smoke splat rows into typed browser attributes", () => {
   const decoded = decodeFirstSmokeSplatPayload(validPayload());
 
   assert.equal(decoded.count, 2);
+  assert.equal(decoded.sourceKind, "real_scaniverse_ply");
   assert.deepEqual(Array.from(decoded.positions), [1, 2, 3, -1, 0, 2]);
   assert.deepEqual(Array.from(decoded.colors), [0.25, 0.5, 0.75, 1, 0, 0.25]);
   assert.deepEqual(Array.from(decoded.opacities), f32([0.6, 0.2]));
@@ -157,6 +158,7 @@ test("accepts nested metadata with planar attribute arrays", () => {
   });
 
   assert.equal(decoded.count, 2);
+  assert.equal(decoded.sourceKind, "real_scaniverse_ply");
   assert.deepEqual(Array.from(decoded.positions), [1, 2, 3, -1, 0, 2]);
   assert.deepEqual(Array.from(decoded.originalIds), [1, 0]);
 });
@@ -173,6 +175,16 @@ test("decodes Scaniverse first-smoke binary manifest sidecars", () => {
   assert.deepEqual(Array.from(decoded.originalIds), [1, 0]);
   assert.deepEqual(Array.from(decoded.scales), f32([0, Math.log(2), Math.log(0.5), Math.log(3), Math.log(0.25), Math.log(1)]));
   assert.deepEqual(Array.from(decoded.rotations), f32([1, 0, 0, 0, 0.5, 0.5, 0.5, 0.5]));
+});
+
+test("marks SPZ manifests as real splat evidence", () => {
+  const { payload, ids, scales, rotations } = binarySidecars();
+  const manifest = binaryManifest();
+  manifest.source = { kind: "spz", filename: "workshop_four_cups.spz" };
+
+  const decoded = decodeFirstSmokeSplatManifest(manifest, payload, ids, scales, rotations);
+
+  assert.equal(decoded.sourceKind, "real_splat_spz");
 });
 
 test("validates count, bounds, and required first-smoke row fields", () => {

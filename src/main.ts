@@ -51,7 +51,8 @@ async function main() {
 
   const splatRenderer = createSplatPlateRenderer(gpu.device, gpu.format, bgl);
   statsEl.textContent = "Loading real Scaniverse splats...";
-  const splatAttributes = await fetchFirstSmokeSplatPayload(REAL_SCANIVERSE_SMOKE_ASSET_PATH);
+  const assetPath = selectedSplatAssetPath();
+  const splatAttributes = await fetchFirstSmokeSplatPayload(assetPath);
   configureCameraForSplatBounds(cam, splatAttributes.bounds);
   updateCamera(cam, 0);
   const initialView = getViewMatrix(cam);
@@ -73,7 +74,7 @@ async function main() {
   });
   const splatCount = splatAttributes.count;
   exposeMeshSplatSmokeEvidence(
-    createMeshSplatSmokeEvidence(splatAttributes, sortState.sortedIds),
+    createMeshSplatSmokeEvidence(splatAttributes, sortState.sortedIds, assetPath),
     canvas
   );
 
@@ -200,6 +201,11 @@ async function main() {
   }
 
   requestAnimationFrame(frame);
+}
+
+function selectedSplatAssetPath(): string {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("asset") || REAL_SCANIVERSE_SMOKE_ASSET_PATH;
 }
 
 main().catch((err) => {

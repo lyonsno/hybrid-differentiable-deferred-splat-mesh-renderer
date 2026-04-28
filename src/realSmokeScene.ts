@@ -17,7 +17,7 @@ const VIEWER_VERTICAL_FLIP = new Float32Array([
 
 export interface MeshSplatSmokeEvidence {
   readonly ready: boolean;
-  readonly sourceKind: "real_scaniverse_ply";
+  readonly sourceKind: string;
   readonly realScaniverse: true;
   readonly realSplatEvidence: true;
   readonly synthetic: false;
@@ -54,7 +54,7 @@ export function createMeshSplatSmokeEvidence(
 ): MeshSplatSmokeEvidence {
   return {
     ready: true,
-    sourceKind: "real_scaniverse_ply",
+    sourceKind: attributes.sourceKind,
     realScaniverse: true,
     realSplatEvidence: true,
     synthetic: false,

@@ -37,6 +37,7 @@ export interface SplatFraming {
 
 export interface SplatAttributes {
   count: number;
+  sourceKind: string;
   positions: Float32Array;
   colors: Float32Array;
   opacities: Float32Array;
@@ -176,6 +177,7 @@ export function decodeFirstSmokeSplatPayload(payload: unknown): SplatAttributes 
 
   return {
     count,
+    sourceKind: stringValue(firstDefined(metadata.sourceKind, "real_scaniverse_ply"), "sourceKind"),
     positions: decoded.positions,
     colors: decoded.colors,
     opacities: decoded.opacities,
@@ -206,6 +208,7 @@ export function decodeFirstSmokeSplatManifest(
   }
 
   const bounds = decodeBounds(root.bounds, "bounds");
+  const sourceKind = manifestSourceKind(root);
   const layout = decodeLayout(layoutSource(root), "layout");
   const payloadInfo = requireRecord(root.payload, "payload");
   const expectedPayloadBytes = count * layout.strideBytes;
@@ -255,6 +258,7 @@ export function decodeFirstSmokeSplatManifest(
 
   return {
     count,
+    sourceKind,
     positions,
     colors,
     opacities,
@@ -652,6 +656,10 @@ function requireString(value: unknown, path: string): string {
   return value;
 }
 
+function stringValue(value: unknown, path: string): string {
+  return requireString(value, path);
+}
+
 function requirePositiveFinite(value: unknown, path: string): number {
   const number = requireFiniteNumber(value, path);
   if (number <= 0) {
@@ -759,6 +767,17 @@ function sidecarShapePath(manifest: UnknownRecord, key: "scales_path" | "rotatio
     return undefined;
   }
   return requireString(shape[key], `shape.${key}`);
+}
+
+function manifestSourceKind(manifest: UnknownRecord): string {
+  if (manifest.source !== undefined) {
+    const source = requireRecord(manifest.source, "source");
+    if (source.kind !== undefined) {
+      const kind = requireString(source.kind, "source.kind");
+      return kind === "spz" ? "real_splat_spz" : kind;
+    }
+  }
+  return "real_scaniverse_ply";
 }
 
 function resolveSidecarUrl(manifestUrl: RequestInfo | URL, path: string): string {

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export a Scaniverse PLY into the first-smoke browser splat payload."""
+"""Export a real splat file into the first-smoke browser payload."""
 
 from __future__ import annotations
 
@@ -17,9 +17,9 @@ from splat_oracle.first_smoke import export_first_smoke_asset  # noqa: E402
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Export a real Scaniverse .ply into first-smoke WebGPU splat assets."
+        description="Export a real .ply or .spz splat file into first-smoke WebGPU assets."
     )
-    parser.add_argument("input", help="Input Scaniverse/3DGS PLY file")
+    parser.add_argument("input", help="Input Scaniverse/3DGS PLY or SPZ file")
     parser.add_argument(
         "-o",
         "--output",
