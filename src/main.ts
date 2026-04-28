@@ -40,15 +40,26 @@ async function main() {
 
   const splatRenderer = createSplatPlateRenderer(gpu.device, gpu.format, bgl);
   // Temporary renderer harness until sibling loader/sort lanes provide real Scaniverse buffers.
-  const syntheticSplats = new Float32Array([
-    -0.55, -0.15, 0.0, 22.0, 0.95, 0.25, 0.18, 0.82,
-    0.05, 0.22, -0.18, 26.0, 0.20, 0.70, 0.95, 0.76,
-    0.46, -0.08, 0.08, 18.0, 0.95, 0.82, 0.22, 0.70,
-    -0.04, -0.44, 0.18, 20.0, 0.45, 0.95, 0.38, 0.68,
+  const syntheticPositions = new Float32Array([
+    -0.55, -0.15, 0.0,
+    0.05, 0.22, -0.18,
+    0.46, -0.08, 0.08,
+    -0.04, -0.44, 0.18,
   ]);
+  const syntheticColors = new Float32Array([
+    0.95, 0.25, 0.18,
+    0.20, 0.70, 0.95,
+    0.95, 0.82, 0.22,
+    0.45, 0.95, 0.38,
+  ]);
+  const syntheticOpacities = new Float32Array([0.82, 0.76, 0.70, 0.68]);
+  const syntheticRadii = new Float32Array([22.0, 26.0, 18.0, 20.0]);
   const syntheticSortedIndices = new Uint32Array([3, 2, 1, 0]);
   const splatBindGroup = splatRenderer.createBindGroup({
-    splatBuffer: createStorageBuffer(gpu.device, syntheticSplats.buffer, "synthetic_splat_attributes"),
+    positionBuffer: createStorageBuffer(gpu.device, syntheticPositions.buffer, "synthetic_splat_positions"),
+    colorBuffer: createStorageBuffer(gpu.device, syntheticColors.buffer, "synthetic_splat_colors"),
+    opacityBuffer: createStorageBuffer(gpu.device, syntheticOpacities.buffer, "synthetic_splat_opacities"),
+    radiusBuffer: createStorageBuffer(gpu.device, syntheticRadii.buffer, "synthetic_splat_radii"),
     sortedIndexBuffer: createStorageBuffer(gpu.device, syntheticSortedIndices.buffer, "synthetic_sorted_splat_ids"),
   });
   const splatCount = syntheticSortedIndices.length;

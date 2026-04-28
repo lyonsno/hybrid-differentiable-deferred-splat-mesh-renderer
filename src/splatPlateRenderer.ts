@@ -1,6 +1,7 @@
 import splatPlateShader from "./shaders/splat_plate.wgsl?raw";
 import {
   getSplatPlateDrawCall,
+  SPLAT_PLATE_BUFFER_BINDINGS,
   SPLAT_PLATE_FRAME_UNIFORM_BYTES,
   SPLAT_PLATE_VERTICES_PER_SPLAT,
   writeSplatPlateFrameUniforms,
@@ -8,6 +9,7 @@ import {
 
 export {
   getSplatPlateDrawCall,
+  SPLAT_PLATE_BUFFER_BINDINGS,
   SPLAT_PLATE_FRAME_UNIFORM_BYTES,
   SPLAT_PLATE_SPLAT_ROW_BYTES,
   SPLAT_PLATE_VERTICES_PER_SPLAT,
@@ -15,7 +17,10 @@ export {
 } from "./splatPlateContract.js";
 
 export interface SplatPlateBuffers {
-  splatBuffer: GPUBuffer;
+  positionBuffer: GPUBuffer;
+  colorBuffer: GPUBuffer;
+  opacityBuffer: GPUBuffer;
+  radiusBuffer: GPUBuffer;
   sortedIndexBuffer: GPUBuffer;
 }
 
@@ -41,12 +46,27 @@ export function createSplatPlateRenderer(
     label: "splat_plate_bind_group_layout",
     entries: [
       {
-        binding: 0,
+        binding: SPLAT_PLATE_BUFFER_BINDINGS.positions,
         visibility: GPUShaderStage.VERTEX,
         buffer: { type: "read-only-storage" },
       },
       {
-        binding: 1,
+        binding: SPLAT_PLATE_BUFFER_BINDINGS.colors,
+        visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+        buffer: { type: "read-only-storage" },
+      },
+      {
+        binding: SPLAT_PLATE_BUFFER_BINDINGS.opacities,
+        visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+        buffer: { type: "read-only-storage" },
+      },
+      {
+        binding: SPLAT_PLATE_BUFFER_BINDINGS.radii,
+        visibility: GPUShaderStage.VERTEX,
+        buffer: { type: "read-only-storage" },
+      },
+      {
+        binding: SPLAT_PLATE_BUFFER_BINDINGS.sortedIndices,
         visibility: GPUShaderStage.VERTEX,
         buffer: { type: "read-only-storage" },
       },
@@ -103,8 +123,11 @@ export function createSplatPlateRenderer(
         label: "splat_plate_bind_group",
         layout: bindGroupLayout,
         entries: [
-          { binding: 0, resource: { buffer: buffers.splatBuffer } },
-          { binding: 1, resource: { buffer: buffers.sortedIndexBuffer } },
+          { binding: SPLAT_PLATE_BUFFER_BINDINGS.positions, resource: { buffer: buffers.positionBuffer } },
+          { binding: SPLAT_PLATE_BUFFER_BINDINGS.colors, resource: { buffer: buffers.colorBuffer } },
+          { binding: SPLAT_PLATE_BUFFER_BINDINGS.opacities, resource: { buffer: buffers.opacityBuffer } },
+          { binding: SPLAT_PLATE_BUFFER_BINDINGS.radii, resource: { buffer: buffers.radiusBuffer } },
+          { binding: SPLAT_PLATE_BUFFER_BINDINGS.sortedIndices, resource: { buffer: buffers.sortedIndexBuffer } },
         ],
       });
     },
