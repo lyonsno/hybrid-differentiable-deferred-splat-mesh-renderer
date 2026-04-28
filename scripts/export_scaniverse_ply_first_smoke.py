@@ -31,10 +31,19 @@ def main() -> int:
         default="scaniverse-first-smoke",
         help="Basename for emitted files",
     )
+    parser.add_argument(
+        "--max-distance-from-source-bbox-center",
+        type=float,
+        default=None,
+        help="Optional radial shell/outlier crop before export; IDs are renumbered to filtered payload row order.",
+    )
     args = parser.parse_args()
 
     manifest = export_first_smoke_asset(
-        args.input, args.output, asset_name=args.asset_name
+        args.input,
+        args.output,
+        asset_name=args.asset_name,
+        max_distance_from_source_bbox_center=args.max_distance_from_source_bbox_center,
     )
     print(
         json.dumps(

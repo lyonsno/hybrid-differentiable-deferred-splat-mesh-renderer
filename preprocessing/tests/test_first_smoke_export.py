@@ -178,61 +178,117 @@ class FirstSmokeExportTests(unittest.TestCase):
         self.assertEqual(source_kind(Path("workshop_four_cups.spz")), "spz")
         self.assertEqual(source_kind(Path("scan.ply")), "scaniverse_ply")
 
+    def test_export_can_drop_outer_shell_splats(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "shell.ply"
+            output = root / "asset"
+            self._write_ascii_ply_rows(
+                source,
+                [
+                    self._ply_row(0.0, 0.0, 0.0),
+                    self._ply_row(1.0, 0.0, 0.0),
+                    self._ply_row(100.0, 0.0, 0.0),
+                    self._ply_row(-100.0, 0.0, 0.0),
+                ],
+            )
+
+            manifest = export_first_smoke_asset(
+                source,
+                output,
+                asset_name="shell-core",
+                max_distance_from_source_bbox_center=2.0,
+            )
+
+            self.assertEqual(manifest["splat_count"], 2)
+            self.assertEqual(
+                manifest["identity"]["scheme"],
+                "row_index_is_filtered_zero_based_payload_order",
+            )
+            self.assertEqual(
+                manifest["source_filter"],
+                {
+                    "kind": "radial_distance_from_source_bbox_center",
+                    "source_bbox_center": [0.0, 0.0, 0.0],
+                    "max_distance": 2.0,
+                    "input_splat_count": 4,
+                    "kept_splat_count": 2,
+                    "dropped_splat_count": 2,
+                    "identity_note": "IDs are zero-based filtered payload row indices for renderer addressing, not original source-file row numbers.",
+                },
+            )
+            self.assertEqual(list(np.fromfile(output / "shell-core.ids.u32.bin", dtype="<u4")), [0, 1])
+            rows = np.fromfile(output / "shell-core.f32.bin", dtype="<f4").reshape(2, 8)
+            np.testing.assert_allclose(
+                rows[:, 0:3],
+                np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]], dtype=np.float32),
+            )
+            self.assertEqual(manifest["bounds"]["min"], [0.0, 0.0, 0.0])
+            self.assertEqual(manifest["bounds"]["max"], [1.0, 0.0, 0.0])
+            self.assertEqual(manifest["bounds"]["center"], [0.5, 0.0, 0.0])
+
     @staticmethod
     def _write_ascii_ply(path: Path) -> None:
         rows = [
-            (
+            FirstSmokeExportTests._ply_row(
                 0.0,
                 -1.0,
                 2.0,
-                0.0,
-                1.0,
-                -1.0,
-                0.0,
-                0.0,
-                math.log(2.0),
-                math.log(0.5),
-                1.0,
-                0.0,
-                0.0,
-                0.0,
+                dc=(0.0, 1.0, -1.0),
+                opacity=0.0,
+                scales=(0.0, math.log(2.0), math.log(0.5)),
             ),
-            (
+            FirstSmokeExportTests._ply_row(
                 2.0,
                 3.0,
                 -2.0,
-                2.0,
-                -2.0,
-                0.5,
-                -2.0,
-                math.log(0.25),
-                math.log(0.75),
-                math.log(1.5),
-                1.0,
-                0.0,
-                0.0,
-                0.0,
+                dc=(2.0, -2.0, 0.5),
+                opacity=-2.0,
+                scales=(math.log(0.25), math.log(0.75), math.log(1.5)),
             ),
-            (
+            FirstSmokeExportTests._ply_row(
                 -4.0,
                 5.0,
                 6.0,
-                -4.0,
-                0.25,
-                4.0,
-                4.0,
-                math.log(3.0),
-                math.log(0.125),
-                math.log(1.0),
-                1.0,
-                0.0,
-                0.0,
-                0.0,
+                dc=(-4.0, 0.25, 4.0),
+                opacity=4.0,
+                scales=(math.log(3.0), math.log(0.125), math.log(1.0)),
             ),
         ]
+        FirstSmokeExportTests._write_ascii_ply_rows(path, rows)
+
+    @staticmethod
+    def _ply_row(
+        x: float,
+        y: float,
+        z: float,
+        *,
+        dc: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        opacity: float = 0.0,
+        scales: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    ) -> tuple[float, ...]:
+        return (
+            x,
+            y,
+            z,
+            dc[0],
+            dc[1],
+            dc[2],
+            opacity,
+            scales[0],
+            scales[1],
+            scales[2],
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+        )
+
+    @staticmethod
+    def _write_ascii_ply_rows(path: Path, rows: list[tuple[float, ...]]) -> None:
         header = """ply
 format ascii 1.0
-element vertex 3
+element vertex {count}
 property float x
 property float y
 property float z
@@ -248,7 +304,7 @@ property float rot_1
 property float rot_2
 property float rot_3
 end_header
-"""
+""".format(count=len(rows))
         body = "\n".join(" ".join(f"{value:.9g}" for value in row) for row in rows)
         path.write_text(header + body + "\n")
 

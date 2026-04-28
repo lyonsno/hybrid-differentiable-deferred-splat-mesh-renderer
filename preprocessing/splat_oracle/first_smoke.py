@@ -47,6 +47,7 @@ def export_first_smoke_asset(
     output_dir: str | Path,
     *,
     asset_name: str = "scaniverse-first-smoke",
+    max_distance_from_source_bbox_center: float | None = None,
 ) -> dict[str, Any]:
     """Write a browser-smoke splat payload and return its manifest.
 
@@ -60,6 +61,14 @@ def export_first_smoke_asset(
     output.mkdir(parents=True, exist_ok=True)
 
     cloud = load_splats(source)
+    source_filter = None
+    identity_scheme = "row_index_is_original_zero_based_file_order"
+    if max_distance_from_source_bbox_center is not None:
+        cloud, source_filter = filter_cloud_by_radial_distance(
+            cloud, max_distance_from_source_bbox_center
+        )
+        identity_scheme = "row_index_is_filtered_zero_based_payload_order"
+
     rows = make_first_smoke_rows(cloud)
     ids = np.arange(cloud.num_points, dtype="<u4")
     scales = np.asarray(cloud.scales, dtype="<f4")
@@ -94,9 +103,54 @@ def export_first_smoke_asset(
         rotations_name=rotations_name,
         rotations_byte_length=rotations_path.stat().st_size,
         asset_name=asset_name,
+        identity_scheme=identity_scheme,
+        source_filter=source_filter,
     )
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
     return manifest
+
+
+def filter_cloud_by_radial_distance(
+    cloud: SplatCloud, max_distance_from_source_bbox_center: float
+) -> tuple[SplatCloud, dict[str, Any]]:
+    if not np.isfinite(max_distance_from_source_bbox_center):
+        raise ValueError("max distance must be finite")
+    if max_distance_from_source_bbox_center <= 0:
+        raise ValueError("max distance must be positive")
+
+    source_center = np.asarray(cloud.bbox_center, dtype=np.float32)
+    distances = np.linalg.norm(
+        np.asarray(cloud.positions, dtype=np.float32) - source_center, axis=1
+    )
+    keep = distances <= max_distance_from_source_bbox_center
+    if not np.any(keep):
+        raise ValueError("distance filter would remove every splat")
+
+    filtered = SplatCloud(
+        positions=cloud.positions[keep],
+        colors=cloud.colors[keep],
+        opacities=cloud.opacities[keep],
+        scales=cloud.scales[keep],
+        rotations=cloud.rotations[keep],
+        sh_coeffs=cloud.sh_coeffs[keep] if cloud.sh_coeffs is not None else None,
+        sh_degree=cloud.sh_degree,
+        material_class=_filter_optional(cloud.material_class, keep),
+        material_confidence=_filter_optional(cloud.material_confidence, keep),
+        albedo=_filter_optional(cloud.albedo, keep),
+        roughness=_filter_optional(cloud.roughness, keep),
+        metalness=_filter_optional(cloud.metalness, keep),
+        ghost_mask=_filter_optional(cloud.ghost_mask, keep),
+    )
+    source_filter = {
+        "kind": "radial_distance_from_source_bbox_center",
+        "source_bbox_center": _json_vec3(source_center),
+        "max_distance": float(max_distance_from_source_bbox_center),
+        "input_splat_count": int(cloud.num_points),
+        "kept_splat_count": int(filtered.num_points),
+        "dropped_splat_count": int(cloud.num_points - filtered.num_points),
+        "identity_note": "IDs are zero-based filtered payload row indices for renderer addressing, not original source-file row numbers.",
+    }
+    return filtered, source_filter
 
 
 def make_first_smoke_rows(cloud: SplatCloud) -> np.ndarray:
@@ -151,13 +205,15 @@ def make_first_smoke_manifest(
     rotations_name: str,
     rotations_byte_length: int,
     asset_name: str,
+    identity_scheme: str = "row_index_is_original_zero_based_file_order",
+    source_filter: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     bbox_min = np.asarray(cloud.bbox_min, dtype=np.float32)
     bbox_max = np.asarray(cloud.bbox_max, dtype=np.float32)
     center = ((bbox_min + bbox_max) * 0.5).astype(np.float32)
     radius = float(np.linalg.norm((bbox_max - bbox_min) * 0.5))
 
-    return {
+    manifest = {
         "schema": SCHEMA,
         "asset_name": asset_name,
         "source": {
@@ -176,7 +232,7 @@ def make_first_smoke_manifest(
             "byte_length": int(payload_byte_length),
         },
         "identity": {
-            "scheme": "row_index_is_original_zero_based_file_order",
+            "scheme": identity_scheme,
             "ids_component_type": "uint32",
             "ids_path": ids_name,
         },
@@ -208,6 +264,9 @@ def make_first_smoke_manifest(
             "radius": "max(exp(scale_0), exp(scale_1), exp(scale_2)) from log-space PLY scale fields",
         },
     }
+    if source_filter is not None:
+        manifest["source_filter"] = source_filter
+    return manifest
 
 
 def source_kind(source: Path) -> str:
@@ -226,6 +285,10 @@ def _json_vec3(values: np.ndarray) -> list[float]:
 def _require_shape(name: str, values: np.ndarray, expected: tuple[int, ...]) -> None:
     if values.shape != expected:
         raise ValueError(f"{name} must have shape {expected}, got {values.shape}")
+
+
+def _filter_optional(values: np.ndarray | None, keep: np.ndarray) -> np.ndarray | None:
+    return values[keep] if values is not None else None
 
 
 def _sha256(path: Path) -> str:
