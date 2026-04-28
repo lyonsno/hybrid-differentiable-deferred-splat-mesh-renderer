@@ -83,6 +83,16 @@ test("splat plate shader consumes anisotropic shape buffers", () => {
   assert.doesNotMatch(shader, /centerClip\.xy \+ local \* radiusNdc \* centerClip\.w/);
 });
 
+test("splat plate shader projects Gaussian covariance with a Jacobian instead of signed endpoints", () => {
+  const shader = readFileSync(new URL("../../src/shaders/splat_plate.wgsl", import.meta.url), "utf8");
+
+  assert.doesNotMatch(shader, /fn projectAxis\(/);
+  assert.doesNotMatch(shader, /position \+ offset/);
+  assert.match(shader, /projectAxisJacobian/);
+  assert.match(shader, /centerClip\.w \* viewProjRow0 - centerClip\.x \* viewProjRow3/);
+  assert.match(shader, /centerClip\.w \* viewProjRow1 - centerClip\.y \* viewProjRow3/);
+});
+
 test("splat plate shader rejects near-plane and behind-camera splat centers before projection", () => {
   const shader = readFileSync(new URL("../../src/shaders/splat_plate.wgsl", import.meta.url), "utf8");
 

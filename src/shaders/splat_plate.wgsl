@@ -42,9 +42,19 @@ fn rotateAxis(rotation: vec4f, axis: vec3f) -> vec3f {
   return axis + 2.0 * cross(u, cross(u, axis) + q.x * axis);
 }
 
-fn projectAxis(position: vec3f, centerNdc: vec2f, offset: vec3f) -> vec2f {
-  let axisClip = frame.viewProj * vec4f(position + offset, 1.0);
-  return axisClip.xy / axisClip.w - centerNdc;
+fn viewProjectionLinearRow(row: u32) -> vec3f {
+  return vec3f(frame.viewProj[0][row], frame.viewProj[1][row], frame.viewProj[2][row]);
+}
+
+fn projectAxisJacobian(axis: vec3f, centerClip: vec4f) -> vec2f {
+  let viewProjRow0 = viewProjectionLinearRow(0u);
+  let viewProjRow1 = viewProjectionLinearRow(1u);
+  let viewProjRow3 = viewProjectionLinearRow(3u);
+  let safeW = max(abs(centerClip.w), MIN_SPLAT_CLIP_W);
+  let clipW2 = safeW * safeW;
+  let viewJacobianX = (centerClip.w * viewProjRow0 - centerClip.x * viewProjRow3) / clipW2;
+  let viewJacobianY = (centerClip.w * viewProjRow1 - centerClip.y * viewProjRow3) / clipW2;
+  return vec2f(dot(viewJacobianX, axis), dot(viewJacobianY, axis));
 }
 
 fn ellipseAxesFromCovariance(
@@ -77,11 +87,10 @@ fn ellipseAxesFromCovariance(
 }
 
 fn projectSplatAxes(position: vec3f, scaleLog: vec3f, rotation: vec4f, centerClip: vec4f) -> EllipseAxes {
-  let centerNdc = centerClip.xy / centerClip.w;
   let scale = exp(scaleLog);
-  let axis0 = projectAxis(position, centerNdc, rotateAxis(rotation, vec3f(1.0, 0.0, 0.0)) * scale.x);
-  let axis1 = projectAxis(position, centerNdc, rotateAxis(rotation, vec3f(0.0, 1.0, 0.0)) * scale.y);
-  let axis2 = projectAxis(position, centerNdc, rotateAxis(rotation, vec3f(0.0, 0.0, 1.0)) * scale.z);
+  let axis0 = projectAxisJacobian(rotateAxis(rotation, vec3f(1.0, 0.0, 0.0)) * scale.x, centerClip);
+  let axis1 = projectAxisJacobian(rotateAxis(rotation, vec3f(0.0, 1.0, 0.0)) * scale.y, centerClip);
+  let axis2 = projectAxisJacobian(rotateAxis(rotation, vec3f(0.0, 0.0, 1.0)) * scale.z, centerClip);
   let viewportMin = max(min(frame.viewport.x, frame.viewport.y), 1.0);
   let minRadiusNdc = (2.0 * frame.minRadiusPx) / viewportMin;
   return ellipseAxesFromCovariance(axis0, axis1, axis2, minRadiusNdc);
