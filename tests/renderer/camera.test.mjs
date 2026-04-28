@@ -1,0 +1,77 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  cameraMoveSpeed,
+  computeWheelZoomDistance,
+  createCamera,
+  MAX_ORBIT_ELEVATION,
+  rotateCameraOrbit,
+  screenPlaneOffset,
+  updateCamera,
+  zoomCameraToCursorProjection,
+} from "../../node_modules/.cache/renderer-tests/src/camera.js";
+
+test("wheel zoom keeps the cursor-projected target-plane point fixed", () => {
+  const cam = createCamera();
+  cam.target = [10, 2, -4];
+  cam.azimuth = 0;
+  cam.elevation = 0;
+  cam.distance = 10;
+  updateCamera(cam, 0);
+
+  const ndcX = 0.5;
+  const ndcY = -0.25;
+  const aspect = 16 / 9;
+  const beforeOffset = screenPlaneOffset(cam, ndcX, ndcY, aspect);
+  const beforePoint = [
+    cam.target[0] + beforeOffset[0],
+    cam.target[1] + beforeOffset[1],
+    cam.target[2] + beforeOffset[2],
+  ];
+
+  zoomCameraToCursorProjection(cam, ndcX, ndcY, aspect, -100);
+
+  const afterOffset = screenPlaneOffset(cam, ndcX, ndcY, aspect);
+  const afterPoint = [
+    cam.target[0] + afterOffset[0],
+    cam.target[1] + afterOffset[1],
+    cam.target[2] + afterOffset[2],
+  ];
+  assert.ok(cam.distance < 10);
+  assert.deepEqual(
+    afterPoint.map((value) => Number(value.toFixed(6))),
+    beforePoint.map((value) => Number(value.toFixed(6)))
+  );
+});
+
+test("wheel zoom has an additive floor so close range does not turn sludgy", () => {
+  const near = computeWheelZoomDistance(0.05, -100, 3);
+  const nearStep = 0.05 - near;
+  const far = computeWheelZoomDistance(50, -100, 3);
+  const farStep = 50 - far;
+
+  assert.ok(nearStep > 0.05 * 0.5);
+  assert.ok(farStep > nearStep);
+});
+
+test("keyboard move speed scales with both scene scale and camera distance", () => {
+  const cam = createCamera();
+  cam.distance = 0.1;
+  cam.navigationScale = 4;
+  assert.equal(cameraMoveSpeed(cam), 1.4);
+
+  cam.distance = 10;
+  assert.equal(cameraMoveSpeed(cam), 6.5);
+});
+
+test("orbit rotation stays away from the vertical pole singularity", () => {
+  const cam = createCamera();
+
+  rotateCameraOrbit(cam, 0, 100000);
+  assert.equal(cam.elevation, MAX_ORBIT_ELEVATION);
+
+  rotateCameraOrbit(cam, 0, -200000);
+  assert.equal(cam.elevation, -MAX_ORBIT_ELEVATION);
+  assert.ok(MAX_ORBIT_ELEVATION < Math.PI / 2 - 0.1);
+});

@@ -347,14 +347,13 @@ test("uploads typed splat attributes into separate GPU storage buffers", () => {
   const buffers = uploadSplatAttributeBuffers(device, decoded);
 
   assert.equal(buffers.count, 2);
-  assert.equal(created.length, 7);
+  assert.equal(created.length, 6);
   assert.deepEqual(
     created.map((entry) => entry.desc.label),
     [
       "first_smoke_splat_positions",
       "first_smoke_splat_colors",
       "first_smoke_splat_opacities",
-      "first_smoke_splat_radii",
       "first_smoke_splat_scales",
       "first_smoke_splat_rotations",
       "first_smoke_splat_original_ids",
@@ -364,8 +363,7 @@ test("uploads typed splat attributes into separate GPU storage buffers", () => {
   assert.deepEqual(Array.from(new Float32Array(created[0].bytes.buffer)), Array.from(decoded.positions));
   assert.deepEqual(Array.from(new Float32Array(created[1].bytes.buffer)), Array.from(decoded.colors));
   assert.deepEqual(Array.from(new Float32Array(created[2].bytes.buffer)), Array.from(decoded.opacities));
-  assert.deepEqual(Array.from(new Float32Array(created[3].bytes.buffer)), Array.from(decoded.radii));
-  assert.deepEqual(Array.from(new Float32Array(created[4].bytes.buffer)), Array.from(decoded.scales));
-  assert.deepEqual(Array.from(new Float32Array(created[5].bytes.buffer)), Array.from(decoded.rotations));
-  assert.deepEqual(Array.from(new Uint32Array(created[6].bytes.buffer)), [0, 1]);
+  assert.deepEqual(Array.from(new Float32Array(created[3].bytes.buffer)), Array.from(decoded.scales));
+  assert.deepEqual(Array.from(new Float32Array(created[4].bytes.buffer)), Array.from(decoded.rotations));
+  assert.deepEqual(Array.from(new Uint32Array(created[5].bytes.buffer)), [0, 1]);
 });

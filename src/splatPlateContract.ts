@@ -5,10 +5,9 @@ export const SPLAT_PLATE_BUFFER_BINDINGS = {
   positions: 0,
   colors: 1,
   opacities: 2,
-  radii: 3,
-  scales: 4,
-  rotations: 5,
-  sortedIndices: 6,
+  scales: 3,
+  rotations: 4,
+  sortedIndices: 5,
 } as const;
 
 export interface SplatPlateDrawCall {

@@ -56,6 +56,7 @@ test("real smoke camera framing targets the Scaniverse bounds", () => {
     fovY: Math.PI / 3,
     near: 0.01,
     far: 100,
+    navigationScale: 1,
     azimuth: 1,
     elevation: 1,
     distance: 3,
@@ -67,6 +68,7 @@ test("real smoke camera framing targets the Scaniverse bounds", () => {
 
   assert.deepEqual(camera.target, attributes.bounds.center);
   assert.ok(camera.distance > attributes.bounds.radius);
+  assert.equal(camera.navigationScale, attributes.bounds.radius);
   assert.ok(camera.near > 0);
   assert.ok(camera.far > camera.distance);
 });

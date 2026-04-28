@@ -32,10 +32,9 @@ test("splat plate bindings consume uploaded attributes separately from sorted id
     positions: 0,
     colors: 1,
     opacities: 2,
-    radii: 3,
-    scales: 4,
-    rotations: 5,
-    sortedIndices: 6,
+    scales: 3,
+    rotations: 4,
+    sortedIndices: 5,
   });
 });
 
@@ -78,7 +77,17 @@ test("splat plate shader consumes anisotropic shape buffers", () => {
 
   assert.match(shader, /var<storage, read> scales: array<f32>/);
   assert.match(shader, /var<storage, read> rotations: array<f32>/);
+  assert.doesNotMatch(shader, /var<storage, read> radii: array<f32>/);
   assert.match(shader, /projectSplatAxes/);
   assert.match(shader, /ellipseAxesFromCovariance/);
   assert.doesNotMatch(shader, /centerClip\.xy \+ local \* radiusNdc \* centerClip\.w/);
+});
+
+test("splat plate shader rejects near-plane and behind-camera splat centers before projection", () => {
+  const shader = readFileSync(new URL("../../src/shaders/splat_plate.wgsl", import.meta.url), "utf8");
+
+  assert.match(shader, /splatCenterInsideClip/);
+  assert.match(shader, /centerClip\.w <= MIN_SPLAT_CLIP_W/);
+  assert.match(shader, /centerClip\.z < 0\.0/);
+  assert.match(shader, /projectSplatAxes\(position, scale, rotation, centerClip\)/);
 });

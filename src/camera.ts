@@ -1,5 +1,8 @@
 import { mat4, vec3 } from "./math.js";
 
+export const ORBIT_RADIANS_PER_PIXEL = 0.005;
+export const MAX_ORBIT_ELEVATION = Math.PI * 0.44;
+
 export interface Camera {
   position: vec3;
   target: vec3;
@@ -7,6 +10,7 @@ export interface Camera {
   fovY: number;
   near: number;
   far: number;
+  navigationScale: number;
   // Orbit state
   azimuth: number;
   elevation: number;
@@ -24,6 +28,7 @@ export function createCamera(): Camera {
     fovY: Math.PI / 3,
     near: 0.01,
     far: 100,
+    navigationScale: 1,
     azimuth: 0,
     elevation: 0.3,
     distance: 3,
@@ -49,16 +54,17 @@ export function bindCameraControls(cam: Camera, canvas: HTMLCanvasElement) {
     const dy = e.clientY - cam.mouse.lastY;
     cam.mouse.lastX = e.clientX;
     cam.mouse.lastY = e.clientY;
-    cam.azimuth -= dx * 0.005;
-    cam.elevation = Math.max(
-      -Math.PI / 2 + 0.01,
-      Math.min(Math.PI / 2 - 0.01, cam.elevation + dy * 0.005)
-    );
+    rotateCameraOrbit(cam, dx, dy);
   });
 
   canvas.addEventListener("wheel", (e) => {
     e.preventDefault();
-    cam.distance = Math.max(0.1, cam.distance * (1 + e.deltaY * 0.001));
+    const rect = canvas.getBoundingClientRect();
+    const width = rect.width || canvas.clientWidth || 1;
+    const height = rect.height || canvas.clientHeight || 1;
+    const ndcX = ((e.clientX - rect.left) / width) * 2 - 1;
+    const ndcY = 1 - ((e.clientY - rect.top) / height) * 2;
+    zoomCameraToCursorProjection(cam, ndcX, ndcY, width / height, e.deltaY);
   }, { passive: false });
 
   window.addEventListener("keydown", (e) => cam.keys.add(e.key.toLowerCase()));
@@ -66,7 +72,7 @@ export function bindCameraControls(cam: Camera, canvas: HTMLCanvasElement) {
 }
 
 export function updateCamera(cam: Camera, dt: number) {
-  const speed = 3.0 * dt;
+  const speed = cameraMoveSpeed(cam) * dt;
 
   // WASD moves the orbit target
   const forward: vec3 = [
@@ -104,6 +110,112 @@ export function updateCamera(cam: Camera, dt: number) {
     cam.target[1] + cam.distance * Math.sin(cam.elevation),
     cam.target[2] + cam.distance * cosEl * Math.cos(cam.azimuth),
   ];
+}
+
+export function rotateCameraOrbit(cam: Camera, dx: number, dy: number): void {
+  cam.azimuth -= dx * ORBIT_RADIANS_PER_PIXEL;
+  cam.elevation = clamp(
+    cam.elevation + dy * ORBIT_RADIANS_PER_PIXEL,
+    -MAX_ORBIT_ELEVATION,
+    MAX_ORBIT_ELEVATION
+  );
+}
+
+export function zoomCameraToCursorProjection(
+  cam: Camera,
+  ndcX: number,
+  ndcY: number,
+  aspect: number,
+  deltaY: number
+): void {
+  const oldDistance = cam.distance;
+  const newDistance = computeWheelZoomDistance(
+    oldDistance,
+    deltaY,
+    cam.navigationScale
+  );
+  if (newDistance === oldDistance) {
+    return;
+  }
+
+  const oldOffset = screenPlaneOffset(cam, ndcX, ndcY, aspect, oldDistance);
+  const newOffset = screenPlaneOffset(cam, ndcX, ndcY, aspect, newDistance);
+  cam.target = [
+    cam.target[0] + oldOffset[0] - newOffset[0],
+    cam.target[1] + oldOffset[1] - newOffset[1],
+    cam.target[2] + oldOffset[2] - newOffset[2],
+  ];
+  cam.distance = newDistance;
+  updateCamera(cam, 0);
+}
+
+export function computeWheelZoomDistance(
+  distance: number,
+  deltaY: number,
+  navigationScale = 1
+): number {
+  if (!Number.isFinite(distance) || distance <= 0) {
+    throw new RangeError("camera distance must be a positive finite number");
+  }
+  if (!Number.isFinite(deltaY) || deltaY === 0) {
+    return distance;
+  }
+
+  const scale = Math.max(navigationScale, 0.001);
+  const wheelUnits = Math.max(-5, Math.min(5, deltaY / 100));
+  const signedStep =
+    Math.sign(wheelUnits) *
+    Math.abs(wheelUnits) *
+    (distance * 0.16 + scale * 0.025);
+  const minDistance = Math.max(0.01, scale * 0.004);
+  return Math.max(minDistance, distance + signedStep);
+}
+
+export function cameraMoveSpeed(cam: Camera): number {
+  return Math.max(0.05, cam.distance * 0.65, cam.navigationScale * 0.35);
+}
+
+export function screenPlaneOffset(
+  cam: Camera,
+  ndcX: number,
+  ndcY: number,
+  aspect: number,
+  distance = cam.distance
+): vec3 {
+  if (!Number.isFinite(aspect) || aspect <= 0) {
+    throw new RangeError("camera aspect must be a positive finite number");
+  }
+
+  const { right, trueUp } = cameraBasis(cam);
+  const halfHeight = distance * Math.tan(cam.fovY / 2);
+  const halfWidth = halfHeight * aspect;
+  const x = ndcX * halfWidth;
+  const y = ndcY * halfHeight;
+  return [
+    right[0] * x + trueUp[0] * y,
+    right[1] * x + trueUp[1] * y,
+    right[2] * x + trueUp[2] * y,
+  ];
+}
+
+function cameraBasis(cam: Camera): { right: vec3; trueUp: vec3 } {
+  const cosEl = Math.cos(cam.elevation);
+  const back: vec3 = [
+    cosEl * Math.sin(cam.azimuth),
+    Math.sin(cam.elevation),
+    cosEl * Math.cos(cam.azimuth),
+  ];
+  const right: vec3 = [Math.cos(cam.azimuth), 0, -Math.sin(cam.azimuth)];
+  const trueUp: vec3 = [
+    back[1] * right[2] - back[2] * right[1],
+    back[2] * right[0] - back[0] * right[2],
+    back[0] * right[1] - back[1] * right[0],
+  ];
+  return { right, trueUp };
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
 export function getViewMatrix(cam: Camera): mat4 {

@@ -67,7 +67,6 @@ async function main() {
     positionBuffer: splatBuffers.positionBuffer,
     colorBuffer: splatBuffers.colorBuffer,
     opacityBuffer: splatBuffers.opacityBuffer,
-    radiusBuffer: splatBuffers.radiusBuffer,
     scaleBuffer: splatBuffers.scaleBuffer,
     rotationBuffer: splatBuffers.rotationBuffer,
     sortedIndexBuffer,

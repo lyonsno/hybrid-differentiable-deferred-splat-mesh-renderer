@@ -37,6 +37,7 @@ export function configureCameraForSplatBounds(camera: Camera, bounds: SplatBound
   const framing = framingFromBounds(bounds, { padding: 1.45 });
   camera.target = [...framing.target];
   camera.distance = framing.distance;
+  camera.navigationScale = Math.max(bounds.radius, 0.1);
   camera.near = framing.near;
   camera.far = framing.far;
   camera.azimuth = 0;

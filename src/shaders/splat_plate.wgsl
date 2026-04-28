@@ -16,10 +16,9 @@ struct VertexOut {
 @group(1) @binding(0) var<storage, read> positions: array<f32>;
 @group(1) @binding(1) var<storage, read> colors: array<f32>;
 @group(1) @binding(2) var<storage, read> opacities: array<f32>;
-@group(1) @binding(3) var<storage, read> radii: array<f32>;
-@group(1) @binding(4) var<storage, read> scales: array<f32>;
-@group(1) @binding(5) var<storage, read> rotations: array<f32>;
-@group(1) @binding(6) var<storage, read> sortedIndices: array<u32>;
+@group(1) @binding(3) var<storage, read> scales: array<f32>;
+@group(1) @binding(4) var<storage, read> rotations: array<f32>;
+@group(1) @binding(5) var<storage, read> sortedIndices: array<u32>;
 
 const quadCorners = array<vec2f, 6>(
   vec2f(-1.0, -1.0),
@@ -29,6 +28,8 @@ const quadCorners = array<vec2f, 6>(
   vec2f( 1.0, -1.0),
   vec2f( 1.0,  1.0),
 );
+
+const MIN_SPLAT_CLIP_W = 0.0001;
 
 struct EllipseAxes {
   major: vec2f,
@@ -86,6 +87,16 @@ fn projectSplatAxes(position: vec3f, scaleLog: vec3f, rotation: vec4f, centerCli
   return ellipseAxesFromCovariance(axis0, axis1, axis2, minRadiusNdc);
 }
 
+fn splatCenterInsideClip(centerClip: vec4f) -> bool {
+  if (centerClip.w <= MIN_SPLAT_CLIP_W) {
+    return false;
+  }
+  if (centerClip.z < 0.0 || centerClip.z > centerClip.w) {
+    return false;
+  }
+  return true;
+}
+
 @vertex
 fn vs(
   @builtin(vertex_index) vertexIndex: u32,
@@ -101,10 +112,19 @@ fn vs(
   let rotation = vec4f(rotations[quatBase], rotations[quatBase + 1u], rotations[quatBase + 2u], rotations[quatBase + 3u]);
   let centerClip = frame.viewProj * vec4f(position, 1.0);
   let local = quadCorners[vertexIndex];
+
+  var out: VertexOut;
+  if (!splatCenterInsideClip(centerClip)) {
+    out.position = vec4f(2.0, 2.0, 0.0, 1.0);
+    out.color = vec3f(0.0);
+    out.alpha = 0.0;
+    out.local = vec2f(2.0);
+    return out;
+  }
+
   let axes = projectSplatAxes(position, scale, rotation, centerClip);
   let ellipseOffset = axes.major * local.x + axes.minor * local.y;
 
-  var out: VertexOut;
   out.position = vec4f(
     centerClip.xy + ellipseOffset * centerClip.w,
     centerClip.z,

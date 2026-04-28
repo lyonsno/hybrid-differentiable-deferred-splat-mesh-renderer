@@ -54,7 +54,6 @@ export interface SplatGpuBuffers {
   positionBuffer: GPUBuffer;
   colorBuffer: GPUBuffer;
   opacityBuffer: GPUBuffer;
-  radiusBuffer: GPUBuffer;
   scaleBuffer: GPUBuffer;
   rotationBuffer: GPUBuffer;
   originalIdBuffer: GPUBuffer;
@@ -330,11 +329,6 @@ export function uploadSplatAttributeBuffers(
       device,
       attributes.opacities,
       "first_smoke_splat_opacities"
-    ),
-    radiusBuffer: createMappedStorageBuffer(
-      device,
-      attributes.radii,
-      "first_smoke_splat_radii"
     ),
     scaleBuffer: createMappedStorageBuffer(
       device,
