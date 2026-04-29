@@ -2,12 +2,14 @@ import {
   WITNESS_CONTRACT_INPUTS,
   WITNESS_FIELD_CANONICAL,
 } from "../../src/rendererFidelityProbes/witnessCapture.js";
+import { classifyAlphaDensityWitness } from "../../src/rendererFidelityProbes/alphaDensity.js";
 
 export const WITNESS_OWNER = {
   fieldAutopsy: "field-autopsy",
   conicReckoner: "conic-reckoner",
   slabSentinel: "slab-sentinel",
   alphaLedger: "alpha-ledger",
+  alphaDensity: "alpha-density",
   witnessScope: "witness-scope",
 };
 
@@ -16,6 +18,7 @@ export const WITNESS_FAILURE_KIND = {
   projectionAnisotropy: "projection-anisotropy",
   nearPlaneSlab: "near-plane-slab",
   compositingAmbiguous: "compositing-ambiguous",
+  alphaDensityOcclusion: "alpha-density-occlusion",
   noWitnessEvidence: "no-witness-evidence",
 };
 
@@ -49,6 +52,9 @@ export function classifyWitnessCapture({
 
   const alphaFinding = classifyAlphaWitness(witness.alpha);
   if (alphaFinding) findings.push(alphaFinding);
+
+  const alphaDensityFinding = classifyAlphaDensitySmokeWitness(witness.alphaDensity);
+  if (alphaDensityFinding) findings.push(alphaDensityFinding);
 
   if (findings.length === 0 && Object.keys(witness).length === 0) {
     findings.push({
@@ -147,6 +153,29 @@ function classifyAlphaWitness(alpha = {}) {
     severity: "blocked",
     summary: "Overlap witness is present, but alpha-ledger has not settled the compositing contract yet.",
     evidence: { ...alpha },
+  };
+}
+
+function classifyAlphaDensitySmokeWitness(alphaDensity) {
+  if (!alphaDensity || typeof alphaDensity !== "object" || Object.keys(alphaDensity).length === 0) return null;
+
+  const classification = classifyAlphaDensityWitness(alphaDensity);
+  if (classification.primaryCause === "alpha-density-not-dominant") return null;
+
+  return {
+    kind: WITNESS_FAILURE_KIND.alphaDensityOcclusion,
+    owner: WITNESS_OWNER.alphaDensity,
+    severity: classification.policy === "do-not-tune-alpha" ? "blocked" : "suspect",
+    summary:
+      `Alpha-density witness classified ${classification.primaryCause} with surface transmission ` +
+      `${formatNumber(classification.surfaceTransmission)}; ${classification.policy}.`,
+    evidence: {
+      ...classification,
+      surfaceLayerCount: finiteOrZero(alphaDensity.surfaceLayerCount),
+      surfaceAlpha: finiteOrZero(alphaDensity.surfaceAlpha),
+      projectedAreaRatio: finiteOrZero(alphaDensity.projectedAreaRatio),
+      sortInversions: finiteOrZero(alphaDensity.sortInversions),
+    },
   };
 }
 

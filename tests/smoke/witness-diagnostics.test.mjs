@@ -152,3 +152,34 @@ test("canonical renderer witness produces no diagnostic findings", () => {
 
   assert.deepEqual(result.findings, []);
 });
+
+test("witness diagnostics route dense overlap hiding bright reflection splats to alpha-density", () => {
+  const result = classifyWitnessCapture({
+    pageEvidence: {
+      sourceKind: "scaniverse-ply",
+      splatCount: 760641,
+      witness: {
+        alphaDensity: {
+          surfaceLayerCount: 72,
+          surfaceAlpha: 0.08,
+          projectedAreaRatio: 1.1,
+          sortInversions: 0,
+          hasHigherOrderSh: false,
+          handednessAnchor: {
+            sourceXyzPreserved: true,
+            sourceWxyzQuaternionPreserved: true,
+            horizontalMirror: false,
+            presentationFlipY: true,
+          },
+        },
+      },
+    },
+    imageAnalysis: { nonblank: true, changedPixelRatio: 0.22 },
+  });
+
+  assert.equal(result.findings[0].kind, WITNESS_FAILURE_KIND.alphaDensityOcclusion);
+  assert.equal(result.findings[0].owner, WITNESS_OWNER.alphaDensity);
+  assert.equal(result.findings[0].severity, "suspect");
+  assert.deepEqual(result.findings[0].evidence.blockedBy, ["missing-sh"]);
+  assert.equal(result.findings[0].evidence.rejectedExplanations.includes("horizontal-presentation-mirror"), true);
+});
