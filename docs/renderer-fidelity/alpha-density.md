@@ -46,6 +46,12 @@ This is not proof that alpha-density is the whole reference delta. The same visu
 
 The witness rejects only coordinate-reflection explanations covered by the handedness anchor.
 
+## Conic Coverage Consumed
+
+Consumed the completed conic-coverage status for `origin/cc/projected-conic-glancing-coverage-scaniverse` at `b66a798`.
+
+That lane reports that Jacobian conic geometry is the correct baseline and that a `0.75px` per-axis floor inflates its synthetic glancing-thin-ribbon footprint by `33.3333x`. Alpha-density should therefore treat projected-area compensation as blocked until the steward decides how to integrate conic coverage and min-radius policy. The formula in this document is a bounded option for a trusted area ratio, not permission to hide conic/min-radius failures with opacity tuning.
+
 ## Executable Probe
 
 Probe: `src/rendererFidelityProbes/alphaDensity.js`
