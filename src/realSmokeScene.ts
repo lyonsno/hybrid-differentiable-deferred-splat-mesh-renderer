@@ -9,6 +9,8 @@ export const REAL_SCANIVERSE_SPLAT_SCALE = 3000;
 export const REAL_SCANIVERSE_MIN_RADIUS_PX = 1.5;
 export const REAL_SCANIVERSE_NEAR_FADE_START_NDC = 0;
 export const REAL_SCANIVERSE_NEAR_FADE_END_NDC = 0.08;
+const MAX_ANISOTROPIC_MINOR_RADIUS_INFLATION = 4;
+const MIN_ANISOTROPIC_MINOR_RADIUS_FRACTION = 1 / 64;
 
 const VIEWER_VERTICAL_FLIP = new Float32Array([
   1, 0, 0, 0,
@@ -548,19 +550,33 @@ function projectedFootprintFromAxes(
 ): { readonly majorRadiusPx: number; readonly minorRadiusPx: number; readonly areaPx: number } {
   const eigenvalues = projectedCovarianceEigenvalues(projectedAxes);
   const radiusScale = splatScale / 600;
-  const majorRadiusPx = Math.max(
-    Math.sqrt(eigenvalues.major) * radiusScale * viewportMin * 0.5,
-    minRadiusPx
-  );
-  const minorRadiusPx = Math.max(
-    Math.sqrt(eigenvalues.minor) * radiusScale * viewportMin * 0.5,
-    minRadiusPx
-  );
+  const rawMajorRadiusPx = Math.sqrt(eigenvalues.major) * radiusScale * viewportMin * 0.5;
+  const rawMinorRadiusPx = Math.sqrt(eigenvalues.minor) * radiusScale * viewportMin * 0.5;
+  const majorRadiusPx = Math.max(rawMajorRadiusPx, minRadiusPx);
+  const minorRadiusPx = boundedMinorRadiusPx(rawMajorRadiusPx, rawMinorRadiusPx, minRadiusPx);
   return {
     majorRadiusPx,
     minorRadiusPx,
     areaPx: Math.PI * majorRadiusPx * minorRadiusPx,
   };
+}
+
+function boundedMinorRadiusPx(
+  rawMajorRadiusPx: number,
+  rawMinorRadiusPx: number,
+  minRadiusPx: number
+): number {
+  if (rawMinorRadiusPx >= minRadiusPx) {
+    return rawMinorRadiusPx;
+  }
+  if (rawMajorRadiusPx < minRadiusPx) {
+    return minRadiusPx;
+  }
+  const inflatedMinorPx = Math.max(
+    rawMinorRadiusPx * MAX_ANISOTROPIC_MINOR_RADIUS_INFLATION,
+    minRadiusPx * MIN_ANISOTROPIC_MINOR_RADIUS_FRACTION
+  );
+  return Math.min(minRadiusPx, inflatedMinorPx);
 }
 
 function projectedCovarianceAnisotropy(projectedAxes: readonly [number, number][]): number {

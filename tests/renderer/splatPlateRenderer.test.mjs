@@ -97,6 +97,14 @@ test("splat plate shader projects Gaussian covariance with a Jacobian instead of
   assert.match(shader, /centerClip\.w \* viewProjRow1 - centerClip\.y \* viewProjRow3/);
 });
 
+test("splat plate shader bounds minor-axis min-radius inflation for resolved anisotropic conics", () => {
+  const shader = readFileSync(new URL("../../src/shaders/splat_plate.wgsl", import.meta.url), "utf8");
+
+  assert.match(shader, /MAX_ANISOTROPIC_MINOR_RADIUS_INFLATION/);
+  assert.match(shader, /boundedMinorRadius/);
+  assert.doesNotMatch(shader, /let minorRadius = max\(sqrt\(lambda1\) \* anisotropicScale, minRadiusNdc\);/);
+});
+
 test("splat plate shader rejects near-plane and behind-camera splat centers before projection", () => {
   const shader = readFileSync(new URL("../../src/shaders/splat_plate.wgsl", import.meta.url), "utf8");
 

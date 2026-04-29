@@ -33,6 +33,8 @@ const quadCorners = array<vec2f, 6>(
 );
 
 const MIN_SPLAT_CLIP_W = 0.0001;
+const MAX_ANISOTROPIC_MINOR_RADIUS_INFLATION = 4.0;
+const MIN_ANISOTROPIC_MINOR_RADIUS_FRACTION = 0.015625;
 
 struct EllipseAxes {
   major: vec2f,
@@ -99,9 +101,25 @@ fn ellipseAxesFromCovariance(
   let minorDir = vec2f(-majorDir.y, majorDir.x);
 
   let anisotropicScale = frame.splatScale / 600.0;
-  let majorRadius = max(sqrt(lambda0) * anisotropicScale, minRadiusNdc);
-  let minorRadius = max(sqrt(lambda1) * anisotropicScale, minRadiusNdc);
+  let rawMajorRadius = sqrt(lambda0) * anisotropicScale;
+  let rawMinorRadius = sqrt(lambda1) * anisotropicScale;
+  let majorRadius = max(rawMajorRadius, minRadiusNdc);
+  let minorRadius = boundedMinorRadius(rawMajorRadius, rawMinorRadius, minRadiusNdc);
   return EllipseAxes(majorDir * majorRadius, minorDir * minorRadius);
+}
+
+fn boundedMinorRadius(rawMajorRadius: f32, rawMinorRadius: f32, minRadiusNdc: f32) -> f32 {
+  if (rawMinorRadius >= minRadiusNdc) {
+    return rawMinorRadius;
+  }
+  if (rawMajorRadius < minRadiusNdc) {
+    return minRadiusNdc;
+  }
+  let inflatedMinor = max(
+    rawMinorRadius * MAX_ANISOTROPIC_MINOR_RADIUS_INFLATION,
+    minRadiusNdc * MIN_ANISOTROPIC_MINOR_RADIUS_FRACTION,
+  );
+  return min(minRadiusNdc, inflatedMinor);
 }
 
 fn minimumRadiusNdc() -> f32 {
