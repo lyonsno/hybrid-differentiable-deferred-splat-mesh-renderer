@@ -43,6 +43,7 @@ export interface MeshSplatRendererWitness {
     readonly fieldMaxAnisotropyRatio: number;
     readonly fieldSuspiciousSplatCount: number;
     readonly rotationOrderComparison?: ProjectedAnisotropyComparison;
+    readonly footprint?: ProjectedFootprintSummary;
   };
   readonly slab: {
     readonly statusCounts: {
@@ -72,6 +73,10 @@ export interface MeshSplatRendererWitness {
 
 export interface MeshSplatRendererWitnessOptions {
   readonly viewProj?: mat4;
+  readonly viewportWidth?: number;
+  readonly viewportHeight?: number;
+  readonly splatScale?: number;
+  readonly minRadiusPx?: number;
 }
 
 export interface ProjectedAnisotropyComparison {
@@ -83,6 +88,17 @@ export interface ProjectedAnisotropySummary {
   readonly rotationOrder: "wxyz" | "xyzw";
   readonly maxProjectedAnisotropyRatio: number;
   readonly suspiciousProjectedSplatCount: number;
+  readonly projectedSplatCount: number;
+  readonly sampleOriginalIds: readonly number[];
+}
+
+export interface ProjectedFootprintSummary {
+  readonly maxMajorRadiusPx: number;
+  readonly maxMinorRadiusPx: number;
+  readonly maxAreaPx: number;
+  readonly areaCapPx: number;
+  readonly majorRadiusCapPx: number;
+  readonly highEnergySplatCount: number;
   readonly projectedSplatCount: number;
   readonly sampleOriginalIds: readonly number[];
 }
@@ -150,6 +166,9 @@ export function createMeshSplatRendererWitness(
   const projectedComparison = options.viewProj === undefined
     ? undefined
     : compareProjectedAnisotropyByRotationOrder(attributes, options.viewProj);
+  const projectedFootprint = options.viewProj === undefined
+    ? undefined
+    : summarizeProjectedFootprint(attributes, options.viewProj, options);
   const primaryProjection = projectedComparison?.wxyz;
   return {
     field: {
@@ -166,6 +185,7 @@ export function createMeshSplatRendererWitness(
       fieldMaxAnisotropyRatio: anisotropy.maxAnisotropyRatio,
       fieldSuspiciousSplatCount: anisotropy.suspiciousSplatCount,
       rotationOrderComparison: projectedComparison,
+      footprint: projectedFootprint,
     },
     slab: {
       statusCounts: {
@@ -248,28 +268,9 @@ function summarizeProjectedAnisotropy(
   const sampleOriginalIds: number[] = [];
 
   for (let index = 0; index < attributes.count; index++) {
-    const vecBase = index * 3;
-    const quatBase = index * 4;
-    const position: [number, number, number] = [
-      attributes.positions[vecBase],
-      attributes.positions[vecBase + 1],
-      attributes.positions[vecBase + 2],
-    ];
-    const centerClip = transformPoint(viewProj, position);
-    if (!clipInside(centerClip)) continue;
+    const projectedAxes = projectSplatAxesForWitness(attributes, viewProj, index, rotationOrder);
+    if (!projectedAxes) continue;
 
-    const rotation = readRotation(attributes.rotations, quatBase, rotationOrder);
-    const scales: [number, number, number] = [
-      Math.exp(attributes.scales[vecBase]),
-      Math.exp(attributes.scales[vecBase + 1]),
-      Math.exp(attributes.scales[vecBase + 2]),
-    ];
-    const axes = [
-      scale3(rotateAxis(rotation, [1, 0, 0]), scales[0]),
-      scale3(rotateAxis(rotation, [0, 1, 0]), scales[1]),
-      scale3(rotateAxis(rotation, [0, 0, 1]), scales[2]),
-    ];
-    const projectedAxes = axes.map((axis) => projectAxisJacobian(viewProj, axis, centerClip));
     const ratio = projectedCovarianceAnisotropy(projectedAxes);
     if (!Number.isFinite(ratio)) continue;
 
@@ -287,6 +288,89 @@ function summarizeProjectedAnisotropy(
     rotationOrder,
     maxProjectedAnisotropyRatio,
     suspiciousProjectedSplatCount,
+    projectedSplatCount,
+    sampleOriginalIds,
+  };
+}
+
+function projectSplatAxesForWitness(
+  attributes: SplatAttributes,
+  viewProj: mat4,
+  index: number,
+  rotationOrder: "wxyz" | "xyzw"
+): readonly [number, number][] | null {
+  const vecBase = index * 3;
+  const quatBase = index * 4;
+  const position: [number, number, number] = [
+    attributes.positions[vecBase],
+    attributes.positions[vecBase + 1],
+    attributes.positions[vecBase + 2],
+  ];
+  const centerClip = transformPoint(viewProj, position);
+  if (!clipInside(centerClip)) return null;
+
+  const rotation = readRotation(attributes.rotations, quatBase, rotationOrder);
+  const scales: [number, number, number] = [
+    Math.exp(attributes.scales[vecBase]),
+    Math.exp(attributes.scales[vecBase + 1]),
+    Math.exp(attributes.scales[vecBase + 2]),
+  ];
+  const axes = [
+    scale3(rotateAxis(rotation, [1, 0, 0]), scales[0]),
+    scale3(rotateAxis(rotation, [0, 1, 0]), scales[1]),
+    scale3(rotateAxis(rotation, [0, 0, 1]), scales[2]),
+  ];
+  return axes.map((axis) => projectAxisJacobian(viewProj, axis, centerClip));
+}
+
+function summarizeProjectedFootprint(
+  attributes: SplatAttributes,
+  viewProj: mat4,
+  options: MeshSplatRendererWitnessOptions
+): ProjectedFootprintSummary {
+  const viewportWidth = positiveOrDefault(options.viewportWidth, 1280);
+  const viewportHeight = positiveOrDefault(options.viewportHeight, 720);
+  const viewportMin = Math.max(Math.min(viewportWidth, viewportHeight), 1);
+  const splatScale = positiveOrDefault(options.splatScale, REAL_SCANIVERSE_SPLAT_SCALE);
+  const minRadiusPx = positiveOrDefault(options.minRadiusPx, REAL_SCANIVERSE_MIN_RADIUS_PX);
+  const areaCapPx = viewportWidth * viewportHeight * 0.01;
+  const majorRadiusCapPx = viewportMin * 0.65;
+  let maxMajorRadiusPx = 0;
+  let maxMinorRadiusPx = 0;
+  let maxAreaPx = 0;
+  let highEnergySplatCount = 0;
+  let projectedSplatCount = 0;
+  const sampleOriginalIds: number[] = [];
+
+  for (let index = 0; index < attributes.count; index++) {
+    const projectedAxes = projectSplatAxesForWitness(attributes, viewProj, index, "wxyz");
+    if (!projectedAxes) continue;
+
+    const footprint = projectedFootprintFromAxes(
+      projectedAxes,
+      viewportMin,
+      splatScale,
+      minRadiusPx
+    );
+    projectedSplatCount += 1;
+    maxMajorRadiusPx = Math.max(maxMajorRadiusPx, footprint.majorRadiusPx);
+    maxMinorRadiusPx = Math.max(maxMinorRadiusPx, footprint.minorRadiusPx);
+    maxAreaPx = Math.max(maxAreaPx, footprint.areaPx);
+    if (footprint.areaPx > areaCapPx || footprint.majorRadiusPx > majorRadiusCapPx) {
+      highEnergySplatCount += 1;
+      if (sampleOriginalIds.length < 8) {
+        sampleOriginalIds.push(attributes.originalIds[index] ?? index);
+      }
+    }
+  }
+
+  return {
+    maxMajorRadiusPx,
+    maxMinorRadiusPx,
+    maxAreaPx,
+    areaCapPx,
+    majorRadiusCapPx,
+    highEnergySplatCount,
     projectedSplatCount,
     sampleOriginalIds,
   };
@@ -341,7 +425,37 @@ function projectAxisJacobian(
   return [dot3(jacobianX, axis), dot3(jacobianY, axis)];
 }
 
+function projectedFootprintFromAxes(
+  projectedAxes: readonly [number, number][],
+  viewportMin: number,
+  splatScale: number,
+  minRadiusPx: number
+): { readonly majorRadiusPx: number; readonly minorRadiusPx: number; readonly areaPx: number } {
+  const eigenvalues = projectedCovarianceEigenvalues(projectedAxes);
+  const radiusScale = splatScale / 600;
+  const majorRadiusPx = Math.max(
+    Math.sqrt(eigenvalues.major) * radiusScale * viewportMin * 0.5,
+    minRadiusPx
+  );
+  const minorRadiusPx = Math.max(
+    Math.sqrt(eigenvalues.minor) * radiusScale * viewportMin * 0.5,
+    minRadiusPx
+  );
+  return {
+    majorRadiusPx,
+    minorRadiusPx,
+    areaPx: Math.PI * majorRadiusPx * minorRadiusPx,
+  };
+}
+
 function projectedCovarianceAnisotropy(projectedAxes: readonly [number, number][]): number {
+  const eigenvalues = projectedCovarianceEigenvalues(projectedAxes);
+  return Math.sqrt(eigenvalues.major) / Math.max(Math.sqrt(eigenvalues.minor), 1e-12);
+}
+
+function projectedCovarianceEigenvalues(
+  projectedAxes: readonly [number, number][]
+): { readonly major: number; readonly minor: number } {
   let a = 0;
   let b = 0;
   let d = 0;
@@ -355,7 +469,7 @@ function projectedCovarianceAnisotropy(projectedAxes: readonly [number, number][
   const root = Math.sqrt(diff * diff + b * b);
   const lambda0 = Math.max(trace + root, 0);
   const lambda1 = Math.max(trace - root, 0);
-  return Math.sqrt(lambda0) / Math.max(Math.sqrt(lambda1), 1e-12);
+  return { major: lambda0, minor: lambda1 };
 }
 
 function rotateAxis(
@@ -392,6 +506,10 @@ function cross3(a: readonly [number, number, number], b: readonly [number, numbe
 
 function dot3(a: readonly [number, number, number], b: readonly [number, number, number]): number {
   return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+function positiveOrDefault(value: number | undefined, fallback: number): number {
+  return Number.isFinite(value) && value !== undefined && value > 0 ? value : fallback;
 }
 
 export function exposeMeshSplatSmokeEvidence(

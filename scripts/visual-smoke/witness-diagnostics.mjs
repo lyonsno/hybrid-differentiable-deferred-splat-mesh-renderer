@@ -92,21 +92,36 @@ function classifyProjectionWitness(projection = {}, blockedByField) {
 
   const maxAnisotropyRatio = finiteOrZero(projection.maxAnisotropyRatio);
   const suspiciousSplatCount = finiteOrZero(projection.suspiciousSplatCount);
-  if (maxAnisotropyRatio < ANISOTROPY_RATIO_SUSPECT && suspiciousSplatCount <= 0) {
+  const footprint = projection.footprint && typeof projection.footprint === "object" ? projection.footprint : {};
+  const highEnergySplatCount = finiteOrZero(footprint.highEnergySplatCount);
+  if (maxAnisotropyRatio < ANISOTROPY_RATIO_SUSPECT && suspiciousSplatCount <= 0 && highEnergySplatCount <= 0) {
     return null;
   }
 
+  const footprintSummary = highEnergySplatCount > 0
+    ? `; footprint witness found ${highEnergySplatCount} high-energy splats with max major radius ${formatNumber(finiteOrZero(footprint.maxMajorRadiusPx))} px`
+    : "";
   return {
     kind: WITNESS_FAILURE_KIND.projectionAnisotropy,
     owner: WITNESS_OWNER.conicReckoner,
     severity: blockedByField ? "blocked" : "suspect",
     summary:
       `Projection anisotropy witness found ratio ${formatNumber(maxAnisotropyRatio)} ` +
-      `across ${suspiciousSplatCount} splats; route to conic-reckoner after field metadata is canonical.`,
+      `across ${suspiciousSplatCount} splats${footprintSummary}; route to conic-reckoner after field metadata is canonical.`,
     evidence: {
       maxAnisotropyRatio,
       suspiciousSplatCount,
       sampleOriginalIds: normalizeIds(projection.sampleOriginalIds),
+      footprint: {
+        maxMajorRadiusPx: finiteOrZero(footprint.maxMajorRadiusPx),
+        maxMinorRadiusPx: finiteOrZero(footprint.maxMinorRadiusPx),
+        maxAreaPx: finiteOrZero(footprint.maxAreaPx),
+        areaCapPx: finiteOrZero(footprint.areaCapPx),
+        majorRadiusCapPx: finiteOrZero(footprint.majorRadiusCapPx),
+        highEnergySplatCount,
+        projectedSplatCount: finiteOrZero(footprint.projectedSplatCount),
+        sampleOriginalIds: normalizeIds(footprint.sampleOriginalIds),
+      },
     },
   };
 }

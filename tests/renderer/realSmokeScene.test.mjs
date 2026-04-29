@@ -146,3 +146,36 @@ test("projected anisotropy comparison distinguishes wxyz from xyzw rotation inte
   assert.ok(comparison.xyzw.maxProjectedAnisotropyRatio > 50);
   assert.deepEqual(comparison.xyzw.sampleOriginalIds, [7]);
 });
+
+test("projected footprint witness reports high-energy splats instead of only anisotropy", () => {
+  const hugeProjectedFootprint = {
+    ...attributes,
+    count: 2,
+    positions: new Float32Array([0, 0, 0.5, 0.4, 0, 0.5]),
+    scales: new Float32Array([
+      Math.log(2), Math.log(0.2), Math.log(0.01),
+      Math.log(0.01), Math.log(0.01), Math.log(0.01),
+    ]),
+    rotations: new Float32Array([1, 0, 0, 0, 1, 0, 0, 0]),
+    originalIds: new Uint32Array([99, 100]),
+  };
+  const identityViewProjection = new Float32Array([
+    1, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 0, 1, 0,
+    0, 0, 0, 1,
+  ]);
+
+  const witness = createMeshSplatRendererWitness(
+    hugeProjectedFootprint,
+    hugeProjectedFootprint.count,
+    "synthetic:footprint",
+    "test",
+    { viewProj: identityViewProjection, viewportWidth: 1000, viewportHeight: 1000, splatScale: 3000 }
+  );
+
+  assert.ok(witness.projection.footprint.maxMajorRadiusPx > 4000);
+  assert.ok(witness.projection.footprint.maxAreaPx > witness.projection.footprint.areaCapPx);
+  assert.equal(witness.projection.footprint.highEnergySplatCount, 1);
+  assert.deepEqual(witness.projection.footprint.sampleOriginalIds, [99]);
+});

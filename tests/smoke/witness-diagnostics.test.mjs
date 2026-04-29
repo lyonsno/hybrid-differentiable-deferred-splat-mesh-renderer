@@ -24,6 +24,16 @@ test("witness diagnostics route dessert-style anisotropy away from field decode 
           maxAnisotropyRatio: 17.5,
           suspiciousSplatCount: 34,
           sampleOriginalIds: [804, 1205, 1209],
+          footprint: {
+            maxMajorRadiusPx: 913,
+            maxMinorRadiusPx: 42,
+            maxAreaPx: 120531,
+            areaCapPx: 9216,
+            majorRadiusCapPx: 468,
+            highEnergySplatCount: 11,
+            projectedSplatCount: 94406,
+            sampleOriginalIds: [804, 1205],
+          },
         },
       },
     },
@@ -40,6 +50,8 @@ test("witness diagnostics route dessert-style anisotropy away from field decode 
   assert.equal(result.findings[0].owner, WITNESS_OWNER.conicReckoner);
   assert.equal(result.findings[0].severity, "suspect");
   assert.match(result.findings[0].summary, /anisotropy/i);
+  assert.match(result.findings[0].summary, /footprint/i);
+  assert.equal(result.findings[0].evidence.footprint.highEnergySplatCount, 11);
   assert.equal(result.findings.some((finding) => finding.owner === WITNESS_OWNER.fieldAutopsy), false);
 });
 

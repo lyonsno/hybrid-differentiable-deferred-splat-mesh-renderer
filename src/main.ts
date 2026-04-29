@@ -92,8 +92,9 @@ async function main() {
     configureCameraForSplatBounds(cam, attributes.bounds);
     updateCamera(cam, 0);
     const initialView = getViewMatrix(cam);
-    const initialAspect = Math.max(canvas.clientWidth || canvas.width || 1, 1) /
-      Math.max(canvas.clientHeight || canvas.height || 1, 1);
+    const initialViewportWidth = Math.max(canvas.clientWidth || canvas.width || 1, 1);
+    const initialViewportHeight = Math.max(canvas.clientHeight || canvas.height || 1, 1);
+    const initialAspect = initialViewportWidth / initialViewportHeight;
     const initialViewProj = composeFirstSmokeViewProjection(
       getProjectionMatrix(cam, initialAspect),
       initialView
@@ -130,7 +131,13 @@ async function main() {
         attributes.count,
         sceneAssetPath,
         SORT_BACKEND,
-        { viewProj: initialViewProj }
+        {
+          viewProj: initialViewProj,
+          viewportWidth: initialViewportWidth,
+          viewportHeight: initialViewportHeight,
+          splatScale: REAL_SCANIVERSE_SPLAT_SCALE,
+          minRadiusPx: REAL_SCANIVERSE_MIN_RADIUS_PX,
+        }
       ),
       canvas
     );

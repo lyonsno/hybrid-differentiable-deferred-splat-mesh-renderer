@@ -1,8 +1,8 @@
 # Visual Smoke Report
 
 - Status: PASS
-- Generated: 2026-04-29T09:00:57.293Z
-- URL: http://127.0.0.1:50552/
+- Generated: 2026-04-29T09:48:15.513Z
+- URL: http://127.0.0.1:53667/
 - Screenshot: `canvas.png`
 - Analysis JSON: `analysis.json`
 
@@ -70,7 +70,17 @@
           105,
           238,
           256
-        ]
+        ],
+        "footprint": {
+          "maxMajorRadiusPx": 51.362080196886815,
+          "maxMinorRadiusPx": 24.028910843904978,
+          "maxAreaPx": 3334.11186316797,
+          "areaCapPx": 9216,
+          "majorRadiusCapPx": 468,
+          "highEnergySplatCount": 0,
+          "projectedSplatCount": 94406,
+          "sampleOriginalIds": []
+        }
       }
     }
   ]
@@ -153,6 +163,16 @@
             863
           ]
         }
+      },
+      "footprint": {
+        "maxMajorRadiusPx": 51.362080196886815,
+        "maxMinorRadiusPx": 24.028910843904978,
+        "maxAreaPx": 3334.11186316797,
+        "areaCapPx": 9216,
+        "majorRadiusCapPx": 468,
+        "highEnergySplatCount": 0,
+        "projectedSplatCount": 94406,
+        "sampleOriginalIds": []
       }
     },
     "slab": {
@@ -180,9 +200,9 @@
       "sortedSampleOriginalIds": []
     }
   },
-  "statsText": "1280×720 | 123 fps | 94,406 real Scaniverse splats | sort: gpu-bitonic-cpu-depth-keys | render: 0.85ms",
+  "statsText": "1280×720 | 122 fps | 94,406 real Scaniverse splats | sort: gpu-bitonic-cpu-depth-keys | render: 1.28ms",
   "title": "Deferred Splat+Mesh Renderer",
-  "bodyText": "1280×720 | 123 fps | 94,406 real Scaniverse splats | sort: gpu-bitonic-cpu-depth-keys | render: 0.85ms",
+  "bodyText": "1280×720 | 122 fps | 94,406 real Scaniverse splats | sort: gpu-bitonic-cpu-depth-keys | render: 1.28ms",
   "canvas": {
     "width": 1280,
     "height": 720,
