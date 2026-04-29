@@ -1,8 +1,9 @@
 # Meshsplat Renderer Fidelity Production Spine Synthesis
 
-This branch is the contract-synthesis carrier for the production fidelity spine.
-It imports the investigation docs, probes, and tests without changing production
-renderer behavior.
+This document records the production fidelity spine baseline now landed on
+renderer main at `1e6034f`. The original contract-synthesis carrier imported
+the investigation docs, probes, and tests; subsequent renderer slices promoted
+the first bounded production behavior into the smoke viewer.
 
 Imported investigation contracts:
 
@@ -36,9 +37,14 @@ Guardrail:
 - `627ed09`: production shader projection moved from signed endpoint projection
   to Jacobian covariance projection. Epanorthosis regression review found no
   issues for `b16af1b..627ed09`.
-- Current slab/alpha slice: center-invalid splats still reject as before;
+- Slab/alpha slice: center-invalid splats still reject as before;
   valid centers whose scaled rotated support endpoints cross clip route to a
   bounded first-smoke LOD proxy instead of raw support projection. The LOD proxy
   keeps activated per-splat opacity and intentionally caps total screen energy
   by bounding footprint area rather than attempting to preserve pathological
   near-plane support energy.
+- `1e6034f`: renderer main now carries the production-spine smoke baseline:
+  real Scaniverse visual smoke, witness diagnostics, fly-camera framing,
+  deferred CPU depth-key refresh, and WebGPU bitonic sorting wired into the
+  smoke viewer. Remaining renderer-fidelity triage is still open before this
+  can be treated as the finished production renderer.

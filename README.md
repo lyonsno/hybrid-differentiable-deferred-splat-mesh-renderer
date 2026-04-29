@@ -58,12 +58,12 @@ Requires Apple Silicon (MLX) for SAM3 segmentation. Outputs `oracle_output.npz` 
 
 ## First-smoke pipeline
 
-The current browser path is a real-splat smoke viewer, not the full deferred renderer yet. It:
+The current browser path is a real-splat smoke viewer with the production-spine fidelity baseline landed at `1e6034f`, not the full deferred renderer yet. It:
 
 - loads the committed Scaniverse PLY-derived smoke asset
 - decodes packed position/color/opacity/radius rows plus original-ID, scale, and quaternion sidecars
 - uploads separate WebGPU storage buffers for positions, colors, opacities, scales, rotations, and sorted IDs
-- CPU-sorts splat IDs back-to-front from the current view matrix and refreshes them at a bounded cadence while navigating
+- computes view-depth keys on the CPU, then refreshes back-to-front splat IDs through the integrated WebGPU bitonic sort path at a bounded cadence while navigating
 - renders baked-color WebGPU splat plates as projected anisotropic ellipses
 - exposes `window.__MESH_SPLAT_SMOKE__` so visual smoke tests can distinguish real splat evidence from a synthetic harness
 
@@ -86,7 +86,8 @@ src/                           — WebGPU deferred renderer (TypeScript)
   buffers.ts                     buffer/texture creation helpers
   splats.ts                      first-smoke manifest decode and GPU upload
   localPly.ts                    browser-side dropped PLY decoder
-  splatSort.ts                   CPU back-to-front original-ID sort
+  splatSort.ts                   CPU depth-key generation and settle cadence
+  gpuSortPrototype.ts            WebGPU bitonic index sort for smoke-viewer draw order
   splatPlateRenderer.ts          WebGPU baked-color splat plate pipeline
   realSmokeScene.ts              first-smoke framing and evidence surface
   timestamps.ts                  GPU timestamp query profiling
@@ -121,7 +122,7 @@ npm run smoke:visual:real
 
 ## Status
 
-The preprocessing oracle (Packet L) is feature-complete. Validated on real Scaniverse phone scans with SAM3 MLX running at 90ms/concept on M4 Max. First real-splat visual smoke is passing in the WebGPU viewer. The renderer is still a first-smoke approximation: splat anisotropy, projected conic math, clipping/culling, compositing, SH evaluation, and deferred G-buffer integration still need fidelity work before this should be treated as the production renderer. See [FANOUT.md](FANOUT.md) for the original coordination plan.
+The preprocessing oracle (Packet L) is feature-complete. Validated on real Scaniverse phone scans with SAM3 MLX running at 90ms/concept on M4 Max. First real-splat visual smoke is passing in the WebGPU viewer against the committed Scaniverse asset. Renderer main has the production-spine baseline landed at `1e6034f`: Jacobian covariance projection, bounded near-plane LOD policy, fidelity witness diagnostics, fly-camera framing, deferred CPU depth-key refresh, and the WebGPU bitonic sort path are now integrated into the smoke viewer. This is still a first-smoke renderer-fidelity baseline, not the finished production renderer; remaining triage includes final conic/parity validation, clipping and culling policy, opacity compensation, SH evaluation, and deferred G-buffer integration. See [FANOUT.md](FANOUT.md) for the original coordination plan.
 
 ## License
 
