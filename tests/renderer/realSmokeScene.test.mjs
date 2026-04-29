@@ -279,6 +279,53 @@ test("alpha density compensation locally reduces only hot overlap tiles", () => 
   assert.ok(Math.abs(target[4] - 0.4) < 0.000001);
 });
 
+test("alpha density compensation does not erase individual hot-tile splats", () => {
+  const denseSplats = {
+    ...attributes,
+    count: 4,
+    positions: new Float32Array([
+      0, 0, 0.5,
+      0.01, 0, 0.5,
+      -0.01, 0, 0.5,
+      0, 0.01, 0.5,
+    ]),
+    scales: new Float32Array([
+      Math.log(0.02), Math.log(0.02), Math.log(0.02),
+      Math.log(0.02), Math.log(0.02), Math.log(0.02),
+      Math.log(0.02), Math.log(0.02), Math.log(0.02),
+      Math.log(0.02), Math.log(0.02), Math.log(0.02),
+    ]),
+    opacities: new Float32Array([0.9, 0.9, 0.9, 0.9]),
+    rotations: new Float32Array([
+      1, 0, 0, 0,
+      1, 0, 0, 0,
+      1, 0, 0, 0,
+      1, 0, 0, 0,
+    ]),
+    originalIds: new Uint32Array([30, 31, 32, 33]),
+  };
+  const identityViewProjection = new Float32Array([
+    1, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 0, 1, 0,
+    0, 0, 0, 1,
+  ]);
+  const target = new Float32Array(denseSplats.count);
+
+  const summary = writeAlphaDensityCompensatedOpacities(
+    target,
+    denseSplats,
+    identityViewProjection,
+    1000,
+    1000,
+    3000
+  );
+
+  assert.equal(summary.hotTileCount, 1);
+  assert.equal(summary.compensatedSplatCount, 4);
+  assert.ok(target[0] >= 0.449, `expected bounded opacity, saw ${target[0]}`);
+});
+
 test("renderer updates the uploaded opacity buffer with alpha density compensation", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
 

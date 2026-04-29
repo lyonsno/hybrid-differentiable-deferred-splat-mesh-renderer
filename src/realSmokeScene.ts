@@ -11,6 +11,7 @@ export const REAL_SCANIVERSE_NEAR_FADE_START_NDC = 0;
 export const REAL_SCANIVERSE_NEAR_FADE_END_NDC = 0.08;
 const MAX_ANISOTROPIC_MINOR_RADIUS_INFLATION = 4;
 const MIN_ANISOTROPIC_MINOR_RADIUS_FRACTION = 1 / 64;
+const MIN_ALPHA_DENSITY_OPACITY_FRACTION = 0.5;
 
 const VIEWER_VERTICAL_FLIP = new Float32Array([
   1, 0, 0, 0,
@@ -549,7 +550,8 @@ export function writeAlphaDensityCompensatedOpacities(
     if (!tile || tile.alphaMass <= alphaMassCap) continue;
 
     const exponent = Math.max(0, Math.min(1, alphaMassCap / tile.alphaMass));
-    target[index] = compensateAlphaOpticalDepth(target[index], exponent);
+    const opacityFloor = target[index] * MIN_ALPHA_DENSITY_OPACITY_FRACTION;
+    target[index] = Math.max(compensateAlphaOpticalDepth(target[index], exponent), opacityFloor);
     compensatedSplatCount += 1;
     minCompensationExponent = Math.min(minCompensationExponent, exponent);
   }
