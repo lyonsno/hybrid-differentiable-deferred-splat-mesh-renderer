@@ -37,15 +37,21 @@ export function createCamera(): Camera {
   };
 }
 
-export function bindCameraControls(cam: Camera, canvas: HTMLCanvasElement) {
+export function bindCameraControls(
+  cam: Camera,
+  canvas: HTMLCanvasElement,
+  requestRender: () => void = () => {}
+) {
   canvas.addEventListener("mousedown", (e) => {
     cam.mouse.down = true;
     cam.mouse.lastX = e.clientX;
     cam.mouse.lastY = e.clientY;
+    requestRender();
   });
 
   window.addEventListener("mouseup", () => {
     cam.mouse.down = false;
+    requestRender();
   });
 
   canvas.addEventListener("mousemove", (e) => {
@@ -55,6 +61,7 @@ export function bindCameraControls(cam: Camera, canvas: HTMLCanvasElement) {
     cam.mouse.lastX = e.clientX;
     cam.mouse.lastY = e.clientY;
     rotateCameraView(cam, dx, dy);
+    requestRender();
   });
 
   canvas.addEventListener("wheel", (e) => {
@@ -65,10 +72,17 @@ export function bindCameraControls(cam: Camera, canvas: HTMLCanvasElement) {
     const ndcX = ((e.clientX - rect.left) / width) * 2 - 1;
     const ndcY = 1 - ((e.clientY - rect.top) / height) * 2;
     zoomCameraToCursorProjection(cam, ndcX, ndcY, width / height, e.deltaY);
+    requestRender();
   }, { passive: false });
 
-  window.addEventListener("keydown", (e) => cam.keys.add(e.key.toLowerCase()));
-  window.addEventListener("keyup", (e) => cam.keys.delete(e.key.toLowerCase()));
+  window.addEventListener("keydown", (e) => {
+    cam.keys.add(e.key.toLowerCase());
+    requestRender();
+  });
+  window.addEventListener("keyup", (e) => {
+    cam.keys.delete(e.key.toLowerCase());
+    requestRender();
+  });
 }
 
 export function updateCamera(cam: Camera, dt: number) {
@@ -113,6 +127,10 @@ export function updateCamera(cam: Camera, dt: number) {
   cam.position[1] += movement[1];
   cam.position[2] += movement[2];
   syncCameraTargetFromPosition(cam);
+}
+
+export function cameraHasActiveInput(cam: Camera): boolean {
+  return cam.mouse.down || cam.keys.size > 0;
 }
 
 export function positionCameraFromTarget(cam: Camera): void {

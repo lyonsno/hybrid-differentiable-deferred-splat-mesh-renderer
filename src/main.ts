@@ -4,7 +4,14 @@ import {
   type AlphaDensityRefreshState,
 } from "./alphaDensityRefresh.js";
 import { initGPU, resizeCanvas, GPU } from "./gpu.js";
-import { createCamera, bindCameraControls, updateCamera, getViewMatrix, getProjectionMatrix } from "./camera.js";
+import {
+  bindCameraControls,
+  cameraHasActiveInput,
+  createCamera,
+  getProjectionMatrix,
+  getViewMatrix,
+  updateCamera,
+} from "./camera.js";
 import { createUniformBuffer } from "./buffers.js";
 import {
   createGpuSortPrototype,
@@ -13,6 +20,12 @@ import {
   type GpuSortPrototype,
 } from "./gpuSortPrototype.js";
 import { loadDroppedSplatFile } from "./localPly.js";
+import {
+  createRenderDemandState,
+  markRenderFrameFinished,
+  requestRenderFrame,
+  shouldContinueRendering,
+} from "./renderDemand.js";
 import { createTimestamps, resolveTimestamps, readTimestamps, TimestampHelper } from "./timestamps.js";
 import {
   REAL_SCANIVERSE_MIN_RADIUS_PX,
@@ -78,7 +91,14 @@ interface AlphaDensityState {
 async function main() {
   const gpu = await initGPU(canvas);
   const cam = createCamera();
-  bindCameraControls(cam, canvas);
+  const renderDemand = createRenderDemandState();
+  const requestFrame = () => {
+    if (requestRenderFrame(renderDemand)) {
+      requestAnimationFrame(frame);
+    }
+  };
+  bindCameraControls(cam, canvas, requestFrame);
+  window.addEventListener("resize", requestFrame);
 
   const ts = createTimestamps(gpu.device, gpu.timestampsSupported);
 
@@ -182,6 +202,7 @@ async function main() {
       canvas
     );
     destroySplatScene(previous);
+    requestFrame();
   }
 
   replaceSplatScene(await fetchFirstSmokeSplatPayload(assetPath), assetPath);
@@ -191,6 +212,7 @@ async function main() {
       replaceSplatScene(await loadDroppedSplatFile(file), `local-file:${file.name}`);
     } catch (err) {
       statsEl.textContent = err instanceof Error ? err.message : String(err);
+      requestFrame();
     }
   });
 
@@ -203,12 +225,12 @@ async function main() {
   let gpuTimings: Map<string, number> = new Map();
 
   async function frame() {
+    markRenderFrameFinished(renderDemand);
     const now = performance.now();
     const dt = (now - lastTime) / 1000;
     lastTime = now;
     const scene = activeScene;
     if (!scene) {
-      requestAnimationFrame(frame);
       return;
     }
 
@@ -239,14 +261,15 @@ async function main() {
     const view = getViewMatrix(cam);
     const proj = getProjectionMatrix(cam, aspect);
     const viewProj = composeFirstSmokeViewProjection(proj, view);
-    if (shouldRefreshAlphaDensity(
+    const alphaRefreshed = shouldRefreshAlphaDensity(
       scene.alphaDensityState.refreshState,
       view,
       width,
       height,
       now,
       ALPHA_DENSITY_SETTLE_MS
-    )) {
+    );
+    if (alphaRefreshed) {
       scene.alphaDensityState.summary = writeAlphaDensityCompensatedOpacities(
         scene.effectiveOpacities,
         scene.attributes,
@@ -272,7 +295,8 @@ async function main() {
     gpu.device.queue.writeBuffer(uniformBuffer, 0, uniformData);
 
     const encoder = gpu.device.createCommandEncoder();
-    if (shouldRefreshGpuSort(scene.sortState, view, now)) {
+    const gpuSortRefreshed = shouldRefreshGpuSort(scene.sortState, view, now);
+    if (gpuSortRefreshed) {
       writeViewDepthSortInput(gpu.device.queue, scene.gpuSort, scene.attributes.positions, view);
       encodeGpuSortPrototype(encoder, scene.gpuSort);
     }
@@ -337,10 +361,16 @@ async function main() {
     }
     statsEl.textContent = statsText;
 
-    requestAnimationFrame(frame);
+    if (shouldContinueRendering({
+      activeInput: cameraHasActiveInput(cam),
+      pendingGpuSort: gpuSortRefreshPending(scene.sortState, view),
+      pendingAlphaDensity: scene.alphaDensityState.refreshState.needsRefresh,
+    })) {
+      requestFrame();
+    }
   }
 
-  requestAnimationFrame(frame);
+  requestFrame();
 }
 
 function createSortSettleState(viewMatrix: Float32Array): SortSettleState {
@@ -374,6 +404,10 @@ function shouldRefreshGpuSort(
   state.observedViewDepthKey = state.lastSortedViewDepthKey;
   state.needsSort = false;
   return true;
+}
+
+function gpuSortRefreshPending(state: SortSettleState, viewMatrix: Float32Array): boolean {
+  return state.needsSort || viewDepthKeyChanged(state.lastSortedViewDepthKey, viewMatrix);
 }
 
 function selectedSplatAssetPath(): string {
