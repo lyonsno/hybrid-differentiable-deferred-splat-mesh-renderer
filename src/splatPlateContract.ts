@@ -1,5 +1,5 @@
 export const SPLAT_PLATE_VERTICES_PER_SPLAT = 6;
-export const SPLAT_PLATE_FRAME_UNIFORM_BYTES = 80;
+export const SPLAT_PLATE_FRAME_UNIFORM_BYTES = 96;
 export const SPLAT_PLATE_SPLAT_ROW_BYTES = 32;
 export const SPLAT_PLATE_BUFFER_BINDINGS = {
   positions: 0,
@@ -59,7 +59,9 @@ export function writeSplatPlateFrameUniforms(
   width: number,
   height: number,
   splatScale = 1,
-  minRadiusPx = 1.5
+  minRadiusPx = 1.5,
+  nearFadeStartNdc = 0,
+  nearFadeEndNdc = 0.08
 ): void {
   if (target.length < SPLAT_PLATE_FRAME_UNIFORM_BYTES / Float32Array.BYTES_PER_ELEMENT) {
     throw new Error("Splat plate frame uniform target is too small");
@@ -70,4 +72,8 @@ export function writeSplatPlateFrameUniforms(
   target[17] = height;
   target[18] = splatScale;
   target[19] = minRadiusPx;
+  target[20] = nearFadeStartNdc;
+  target[21] = nearFadeEndNdc;
+  target[22] = 0;
+  target[23] = 0;
 }

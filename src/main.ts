@@ -11,6 +11,8 @@ import { loadDroppedSplatFile } from "./localPly.js";
 import { createTimestamps, resolveTimestamps, readTimestamps, TimestampHelper } from "./timestamps.js";
 import {
   REAL_SCANIVERSE_MIN_RADIUS_PX,
+  REAL_SCANIVERSE_NEAR_FADE_END_NDC,
+  REAL_SCANIVERSE_NEAR_FADE_START_NDC,
   REAL_SCANIVERSE_SMOKE_ASSET_PATH,
   REAL_SCANIVERSE_SPLAT_SCALE,
   composeFirstSmokeViewProjection,
@@ -205,7 +207,9 @@ async function main() {
       width,
       height,
       REAL_SCANIVERSE_SPLAT_SCALE,
-      REAL_SCANIVERSE_MIN_RADIUS_PX
+      REAL_SCANIVERSE_MIN_RADIUS_PX,
+      REAL_SCANIVERSE_NEAR_FADE_START_NDC,
+      REAL_SCANIVERSE_NEAR_FADE_END_NDC
     );
     gpu.device.queue.writeBuffer(uniformBuffer, 0, uniformData);
 

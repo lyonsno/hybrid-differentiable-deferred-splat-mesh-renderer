@@ -7,6 +7,8 @@ export const REAL_SCANIVERSE_SMOKE_ASSET_PATH =
 
 export const REAL_SCANIVERSE_SPLAT_SCALE = 3000;
 export const REAL_SCANIVERSE_MIN_RADIUS_PX = 1.5;
+export const REAL_SCANIVERSE_NEAR_FADE_START_NDC = 0;
+export const REAL_SCANIVERSE_NEAR_FADE_END_NDC = 0.08;
 
 const VIEWER_VERTICAL_FLIP = new Float32Array([
   1, 0, 0, 0,
@@ -57,6 +59,10 @@ export interface MeshSplatRendererWitness {
   };
   readonly alpha: {
     readonly alphaEnergyPolicy: "bounded-footprint-energy-cap";
+    readonly nearPlaneAlphaFade: {
+      readonly startNdc: number;
+      readonly endNdc: number;
+    };
     readonly compositing: "straight-source-over";
     readonly ambiguousOverlapCount: 0;
     readonly overlapDensity?: AlphaOverlapDensitySummary;
@@ -212,6 +218,10 @@ export function createMeshSplatRendererWitness(
     },
     alpha: {
       alphaEnergyPolicy: "bounded-footprint-energy-cap",
+      nearPlaneAlphaFade: {
+        startNdc: REAL_SCANIVERSE_NEAR_FADE_START_NDC,
+        endNdc: REAL_SCANIVERSE_NEAR_FADE_END_NDC,
+      },
       compositing: "straight-source-over",
       ambiguousOverlapCount: 0,
       overlapDensity,

@@ -1,8 +1,8 @@
 # Visual Smoke Report
 
 - Status: PASS
-- Generated: 2026-04-29T09:58:19.090Z
-- URL: http://127.0.0.1:55054/
+- Generated: 2026-04-29T10:18:42.226Z
+- URL: http://127.0.0.1:56690/
 - Screenshot: `canvas.png`
 - Analysis JSON: `analysis.json`
 
@@ -90,6 +90,10 @@
       "summary": "Alpha density witness found 15 hot tiles with max mass 281820.45.",
       "evidence": {
         "alphaEnergyPolicy": "bounded-footprint-energy-cap",
+        "nearPlaneAlphaFade": {
+          "startNdc": 0,
+          "endNdc": 0.08
+        },
         "compositing": "straight-source-over",
         "ambiguousOverlapCount": 0,
         "overlapDensity": {
@@ -215,6 +219,10 @@
     },
     "alpha": {
       "alphaEnergyPolicy": "bounded-footprint-energy-cap",
+      "nearPlaneAlphaFade": {
+        "startNdc": 0,
+        "endNdc": 0.08
+      },
       "compositing": "straight-source-over",
       "ambiguousOverlapCount": 0,
       "overlapDensity": {

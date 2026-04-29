@@ -100,6 +100,7 @@ test("real smoke scene exposes renderer fidelity witness data", () => {
   assert.match(source, /scaleSpace: "log"/);
   assert.match(source, /projectionMode: "jacobian-covariance"/);
   assert.match(source, /alphaEnergyPolicy: "bounded-footprint-energy-cap"/);
+  assert.match(source, /nearPlaneAlphaFade/);
 });
 
 test("renderer witness reports anisotropic field risk instead of placeholder zeroes", () => {

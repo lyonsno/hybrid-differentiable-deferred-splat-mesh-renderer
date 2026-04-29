@@ -38,21 +38,23 @@ test("splat plate bindings consume uploaded attributes separately from sorted id
   });
 });
 
-test("splat plate frame uniforms pack matrix, viewport, and radius controls at shader offsets", () => {
+test("splat plate frame uniforms pack matrix, viewport, radius controls, and near fade at shader offsets", () => {
   const matrix = Float32Array.from({ length: 16 }, (_, i) => i + 0.25);
   const target = new Float32Array(SPLAT_PLATE_FRAME_UNIFORM_BYTES / Float32Array.BYTES_PER_ELEMENT);
 
-  writeSplatPlateFrameUniforms(target, matrix, 1280, 720, 2.5, 3.5);
+  writeSplatPlateFrameUniforms(target, matrix, 1280, 720, 2.5, 3.5, 0.02, 0.12);
 
   assert.deepEqual(Array.from(target.slice(0, 16)), Array.from(matrix));
   assert.equal(target[16], 1280);
   assert.equal(target[17], 720);
   assert.equal(target[18], 2.5);
   assert.equal(target[19], 3.5);
+  assert.ok(Math.abs(target[20] - 0.02) < 0.000001);
+  assert.ok(Math.abs(target[21] - 0.12) < 0.000001);
   assert.throws(() => writeSplatPlateFrameUniforms(new Float32Array(4), matrix, 1, 1), /too small/i);
 });
 
-test("splat plate frame uniforms use stable radius defaults", () => {
+test("splat plate frame uniforms use stable radius and near fade defaults", () => {
   const matrix = Float32Array.from({ length: 16 }, (_, i) => i);
   const target = new Float32Array(SPLAT_PLATE_FRAME_UNIFORM_BYTES / Float32Array.BYTES_PER_ELEMENT);
 
@@ -60,6 +62,8 @@ test("splat plate frame uniforms use stable radius defaults", () => {
 
   assert.equal(target[18], 1);
   assert.equal(target[19], 1.5);
+  assert.equal(target[20], 0);
+  assert.ok(Math.abs(target[21] - 0.08) < 0.000001);
 });
 
 test("splat plate radius scales with perspective depth during zoom", () => {
@@ -118,5 +122,15 @@ test("splat plate shader names the alpha policy for bounded footprint LOD", () =
 
   assert.match(shader, /alphaForFootprintPolicy/);
   assert.match(shader, /bounded footprint cap intentionally reduces total screen energy/);
-  assert.match(shader, /alphaForFootprintPolicy\(opacity, usingLodProxy\)/);
+  assert.match(shader, /alphaForFootprintPolicy\(opacity, usingLodProxy, centerClip\)/);
+});
+
+test("splat plate shader fades valid splats through a near-plane alpha band", () => {
+  const shader = readFileSync(new URL("../../src/shaders/splat_plate.wgsl", import.meta.url), "utf8");
+
+  assert.match(shader, /nearFadeStartNdc: f32/);
+  assert.match(shader, /nearFadeEndNdc: f32/);
+  assert.match(shader, /nearPlaneAlphaFade/);
+  assert.match(shader, /centerClip\.z \/ max\(centerClip\.w, MIN_SPLAT_CLIP_W\)/);
+  assert.match(shader, /alphaForFootprintPolicy\(opacity, usingLodProxy, centerClip\)/);
 });

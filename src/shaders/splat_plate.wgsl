@@ -3,6 +3,9 @@ struct FrameUniforms {
   viewport: vec2f,
   splatScale: f32,
   minRadiusPx: f32,
+  nearFadeStartNdc: f32,
+  nearFadeEndNdc: f32,
+  uniformPadding: vec2f,
 };
 
 struct VertexOut {
@@ -135,13 +138,20 @@ fn splatSupportInsideClip(position: vec3f, shape: SplatShape) -> bool {
   return true;
 }
 
-fn alphaForFootprintPolicy(opacity: f32, usingLodProxy: bool) -> f32 {
+fn nearPlaneAlphaFade(centerClip: vec4f) -> f32 {
+  let ndcDepth = centerClip.z / max(centerClip.w, MIN_SPLAT_CLIP_W);
+  let fadeWidth = max(frame.nearFadeEndNdc - frame.nearFadeStartNdc, 0.000001);
+  return clamp((ndcDepth - frame.nearFadeStartNdc) / fadeWidth, 0.0, 1.0);
+}
+
+fn alphaForFootprintPolicy(opacity: f32, usingLodProxy: bool, centerClip: vec4f) -> f32 {
   let activatedOpacity = clamp(opacity, 0.0, 1.0);
+  let nearPlaneFade = nearPlaneAlphaFade(centerClip);
   if (usingLodProxy) {
     // First-smoke LOD keeps activated opacity, but the bounded footprint cap intentionally reduces total screen energy.
-    return activatedOpacity;
+    return activatedOpacity * nearPlaneFade;
   }
-  return activatedOpacity;
+  return activatedOpacity * nearPlaneFade;
 }
 
 fn splatCenterInsideClip(centerClip: vec4f) -> bool {
@@ -194,7 +204,7 @@ fn vs(
     centerClip.w,
   );
   out.color = clamp(color, vec3f(0.0), vec3f(1.0));
-  out.alpha = alphaForFootprintPolicy(opacity, usingLodProxy);
+  out.alpha = alphaForFootprintPolicy(opacity, usingLodProxy, centerClip);
   out.local = local;
   return out;
 }
