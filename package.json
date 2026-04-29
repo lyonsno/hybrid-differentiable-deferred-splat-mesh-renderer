@@ -7,7 +7,7 @@
     "dev": "vite",
     "test": "npm run test:unit && npm run test:renderer",
     "test:unit": "node --experimental-strip-types --experimental-transform-types --test tests/*.test.ts",
-    "test:renderer": "tsc --ignoreConfig --module NodeNext --moduleResolution NodeNext --target ES2022 --types @webgpu/types --skipLibCheck --outDir node_modules/.cache/renderer-tests --rootDir . src/camera.ts src/splatPlateContract.ts src/realSmokeScene.ts && node --test tests/renderer/*.test.mjs",
+    "test:renderer": "tsc --ignoreConfig --module NodeNext --moduleResolution NodeNext --target ES2022 --types @webgpu/types --skipLibCheck --outDir node_modules/.cache/renderer-tests --rootDir . src/camera.ts src/splatPlateContract.ts src/realSmokeScene.ts src/gpuTileCoverage.ts && node --test tests/renderer/*.test.mjs",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test:smoke": "node --test tests/smoke/*.test.mjs",
