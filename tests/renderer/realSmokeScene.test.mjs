@@ -6,6 +6,7 @@ import {
   REAL_SCANIVERSE_SMOKE_ASSET_PATH,
   composeFirstSmokeViewProjection,
   configureCameraForSplatBounds,
+  compareProjectedAnisotropyByRotationOrder,
   createMeshSplatRendererWitness,
   createMeshSplatSmokeEvidence,
 } from "../../node_modules/.cache/renderer-tests/src/realSmokeScene.js";
@@ -118,4 +119,30 @@ test("renderer witness reports anisotropic field risk instead of placeholder zer
   assert.ok(witness.projection.maxAnisotropyRatio >= 60);
   assert.equal(witness.projection.suspiciousSplatCount, 1);
   assert.deepEqual(witness.projection.sampleOriginalIds, [42]);
+});
+
+test("projected anisotropy comparison distinguishes wxyz from xyzw rotation interpretation", () => {
+  const conventionSensitiveSplat = {
+    ...attributes,
+    count: 1,
+    positions: new Float32Array([0, 0, 0.5]),
+    scales: new Float32Array([Math.log(2), Math.log(0.2), Math.log(0.01)]),
+    rotations: new Float32Array([-1, -0.75, -0.75, 1]),
+    originalIds: new Uint32Array([7]),
+  };
+  const identityViewProjection = new Float32Array([
+    1, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 0, 1, 0,
+    0, 0, 0, 1,
+  ]);
+
+  const comparison = compareProjectedAnisotropyByRotationOrder(
+    conventionSensitiveSplat,
+    identityViewProjection
+  );
+
+  assert.ok(comparison.wxyz.maxProjectedAnisotropyRatio < 3);
+  assert.ok(comparison.xyzw.maxProjectedAnisotropyRatio > 50);
+  assert.deepEqual(comparison.xyzw.sampleOriginalIds, [7]);
 });

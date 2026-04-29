@@ -40,6 +40,9 @@ export interface MeshSplatRendererWitness {
     readonly maxAnisotropyRatio: number;
     readonly suspiciousSplatCount: number;
     readonly sampleOriginalIds: readonly number[];
+    readonly fieldMaxAnisotropyRatio: number;
+    readonly fieldSuspiciousSplatCount: number;
+    readonly rotationOrderComparison?: ProjectedAnisotropyComparison;
   };
   readonly slab: {
     readonly statusCounts: {
@@ -65,6 +68,23 @@ export interface MeshSplatRendererWitness {
     readonly splatCount: number;
     readonly sortedSampleOriginalIds: readonly number[];
   };
+}
+
+export interface MeshSplatRendererWitnessOptions {
+  readonly viewProj?: mat4;
+}
+
+export interface ProjectedAnisotropyComparison {
+  readonly wxyz: ProjectedAnisotropySummary;
+  readonly xyzw: ProjectedAnisotropySummary;
+}
+
+export interface ProjectedAnisotropySummary {
+  readonly rotationOrder: "wxyz" | "xyzw";
+  readonly maxProjectedAnisotropyRatio: number;
+  readonly suspiciousProjectedSplatCount: number;
+  readonly projectedSplatCount: number;
+  readonly sampleOriginalIds: readonly number[];
 }
 
 declare global {
@@ -117,7 +137,8 @@ export function createMeshSplatRendererWitness(
   attributes: SplatAttributes,
   sortedIdsOrCount: Uint32Array | number,
   assetPath = REAL_SCANIVERSE_SMOKE_ASSET_PATH,
-  sortBackend = "unknown"
+  sortBackend = "unknown",
+  options: MeshSplatRendererWitnessOptions = {}
 ): MeshSplatRendererWitness {
   const sortedIdCount = typeof sortedIdsOrCount === "number"
     ? sortedIdsOrCount
@@ -126,6 +147,10 @@ export function createMeshSplatRendererWitness(
     ? []
     : Array.from(sortedIdsOrCount.slice(0, 8));
   const anisotropy = summarizeFieldAnisotropy(attributes);
+  const projectedComparison = options.viewProj === undefined
+    ? undefined
+    : compareProjectedAnisotropyByRotationOrder(attributes, options.viewProj);
+  const primaryProjection = projectedComparison?.wxyz;
   return {
     field: {
       scaleSpace: "log",
@@ -135,9 +160,12 @@ export function createMeshSplatRendererWitness(
     },
     projection: {
       projectionMode: "jacobian-covariance",
-      maxAnisotropyRatio: anisotropy.maxAnisotropyRatio,
-      suspiciousSplatCount: anisotropy.suspiciousSplatCount,
-      sampleOriginalIds: anisotropy.sampleOriginalIds,
+      maxAnisotropyRatio: primaryProjection?.maxProjectedAnisotropyRatio ?? anisotropy.maxAnisotropyRatio,
+      suspiciousSplatCount: primaryProjection?.suspiciousProjectedSplatCount ?? anisotropy.suspiciousSplatCount,
+      sampleOriginalIds: primaryProjection?.sampleOriginalIds ?? anisotropy.sampleOriginalIds,
+      fieldMaxAnisotropyRatio: anisotropy.maxAnisotropyRatio,
+      fieldSuspiciousSplatCount: anisotropy.suspiciousSplatCount,
+      rotationOrderComparison: projectedComparison,
     },
     slab: {
       statusCounts: {
@@ -163,6 +191,16 @@ export function createMeshSplatRendererWitness(
       splatCount: attributes.count,
       sortedSampleOriginalIds: sampleOriginalIds,
     },
+  };
+}
+
+export function compareProjectedAnisotropyByRotationOrder(
+  attributes: SplatAttributes,
+  viewProj: mat4
+): ProjectedAnisotropyComparison {
+  return {
+    wxyz: summarizeProjectedAnisotropy(attributes, viewProj, "wxyz"),
+    xyzw: summarizeProjectedAnisotropy(attributes, viewProj, "xyzw"),
   };
 }
 
@@ -196,6 +234,164 @@ function summarizeFieldAnisotropy(attributes: SplatAttributes): {
   }
 
   return { maxAnisotropyRatio, suspiciousSplatCount, sampleOriginalIds };
+}
+
+function summarizeProjectedAnisotropy(
+  attributes: SplatAttributes,
+  viewProj: mat4,
+  rotationOrder: "wxyz" | "xyzw"
+): ProjectedAnisotropySummary {
+  const suspiciousRatio = 8;
+  let maxProjectedAnisotropyRatio = 0;
+  let suspiciousProjectedSplatCount = 0;
+  let projectedSplatCount = 0;
+  const sampleOriginalIds: number[] = [];
+
+  for (let index = 0; index < attributes.count; index++) {
+    const vecBase = index * 3;
+    const quatBase = index * 4;
+    const position: [number, number, number] = [
+      attributes.positions[vecBase],
+      attributes.positions[vecBase + 1],
+      attributes.positions[vecBase + 2],
+    ];
+    const centerClip = transformPoint(viewProj, position);
+    if (!clipInside(centerClip)) continue;
+
+    const rotation = readRotation(attributes.rotations, quatBase, rotationOrder);
+    const scales: [number, number, number] = [
+      Math.exp(attributes.scales[vecBase]),
+      Math.exp(attributes.scales[vecBase + 1]),
+      Math.exp(attributes.scales[vecBase + 2]),
+    ];
+    const axes = [
+      scale3(rotateAxis(rotation, [1, 0, 0]), scales[0]),
+      scale3(rotateAxis(rotation, [0, 1, 0]), scales[1]),
+      scale3(rotateAxis(rotation, [0, 0, 1]), scales[2]),
+    ];
+    const projectedAxes = axes.map((axis) => projectAxisJacobian(viewProj, axis, centerClip));
+    const ratio = projectedCovarianceAnisotropy(projectedAxes);
+    if (!Number.isFinite(ratio)) continue;
+
+    projectedSplatCount += 1;
+    maxProjectedAnisotropyRatio = Math.max(maxProjectedAnisotropyRatio, ratio);
+    if (ratio >= suspiciousRatio) {
+      suspiciousProjectedSplatCount += 1;
+      if (sampleOriginalIds.length < 8) {
+        sampleOriginalIds.push(attributes.originalIds[index] ?? index);
+      }
+    }
+  }
+
+  return {
+    rotationOrder,
+    maxProjectedAnisotropyRatio,
+    suspiciousProjectedSplatCount,
+    projectedSplatCount,
+    sampleOriginalIds,
+  };
+}
+
+function readRotation(
+  rotations: Float32Array,
+  quatBase: number,
+  rotationOrder: "wxyz" | "xyzw"
+): [number, number, number, number] {
+  const a = rotations[quatBase];
+  const b = rotations[quatBase + 1];
+  const c = rotations[quatBase + 2];
+  const d = rotations[quatBase + 3];
+  return rotationOrder === "wxyz" ? [a, b, c, d] : [d, a, b, c];
+}
+
+function transformPoint(matrix: mat4, point: readonly [number, number, number]): [number, number, number, number] {
+  const [x, y, z] = point;
+  return [
+    matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12],
+    matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13],
+    matrix[2] * x + matrix[6] * y + matrix[10] * z + matrix[14],
+    matrix[3] * x + matrix[7] * y + matrix[11] * z + matrix[15],
+  ];
+}
+
+function clipInside(clip: readonly [number, number, number, number]): boolean {
+  return clip[3] > 0.0001 && clip[2] >= 0 && clip[2] <= clip[3];
+}
+
+function projectAxisJacobian(
+  viewProj: mat4,
+  axis: readonly [number, number, number],
+  centerClip: readonly [number, number, number, number]
+): [number, number] {
+  const safeW = Math.max(Math.abs(centerClip[3]), 0.0001);
+  const clipW2 = safeW * safeW;
+  const row0: [number, number, number] = [viewProj[0], viewProj[4], viewProj[8]];
+  const row1: [number, number, number] = [viewProj[1], viewProj[5], viewProj[9]];
+  const row3: [number, number, number] = [viewProj[3], viewProj[7], viewProj[11]];
+  const jacobianX: [number, number, number] = [
+    (centerClip[3] * row0[0] - centerClip[0] * row3[0]) / clipW2,
+    (centerClip[3] * row0[1] - centerClip[0] * row3[1]) / clipW2,
+    (centerClip[3] * row0[2] - centerClip[0] * row3[2]) / clipW2,
+  ];
+  const jacobianY: [number, number, number] = [
+    (centerClip[3] * row1[0] - centerClip[1] * row3[0]) / clipW2,
+    (centerClip[3] * row1[1] - centerClip[1] * row3[1]) / clipW2,
+    (centerClip[3] * row1[2] - centerClip[1] * row3[2]) / clipW2,
+  ];
+  return [dot3(jacobianX, axis), dot3(jacobianY, axis)];
+}
+
+function projectedCovarianceAnisotropy(projectedAxes: readonly [number, number][]): number {
+  let a = 0;
+  let b = 0;
+  let d = 0;
+  for (const axis of projectedAxes) {
+    a += axis[0] * axis[0];
+    b += axis[0] * axis[1];
+    d += axis[1] * axis[1];
+  }
+  const trace = 0.5 * (a + d);
+  const diff = 0.5 * (a - d);
+  const root = Math.sqrt(diff * diff + b * b);
+  const lambda0 = Math.max(trace + root, 0);
+  const lambda1 = Math.max(trace - root, 0);
+  return Math.sqrt(lambda0) / Math.max(Math.sqrt(lambda1), 1e-12);
+}
+
+function rotateAxis(
+  rotation: readonly [number, number, number, number],
+  axis: readonly [number, number, number]
+): [number, number, number] {
+  const length = Math.hypot(rotation[0], rotation[1], rotation[2], rotation[3]);
+  const safeLength = Math.max(length, 0.000001);
+  const w = rotation[0] / safeLength;
+  const u: [number, number, number] = [
+    rotation[1] / safeLength,
+    rotation[2] / safeLength,
+    rotation[3] / safeLength,
+  ];
+  const inner = add3(cross3(u, axis), scale3(axis, w));
+  return add3(axis, scale3(cross3(u, inner), 2));
+}
+
+function add3(a: readonly [number, number, number], b: readonly [number, number, number]): [number, number, number] {
+  return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+}
+
+function scale3(v: readonly [number, number, number], scalar: number): [number, number, number] {
+  return [v[0] * scalar, v[1] * scalar, v[2] * scalar];
+}
+
+function cross3(a: readonly [number, number, number], b: readonly [number, number, number]): [number, number, number] {
+  return [
+    a[1] * b[2] - a[2] * b[1],
+    a[2] * b[0] - a[0] * b[2],
+    a[0] * b[1] - a[1] * b[0],
+  ];
+}
+
+function dot3(a: readonly [number, number, number], b: readonly [number, number, number]): number {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 }
 
 export function exposeMeshSplatSmokeEvidence(

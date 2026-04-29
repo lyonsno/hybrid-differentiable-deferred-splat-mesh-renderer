@@ -92,6 +92,12 @@ async function main() {
     configureCameraForSplatBounds(cam, attributes.bounds);
     updateCamera(cam, 0);
     const initialView = getViewMatrix(cam);
+    const initialAspect = Math.max(canvas.clientWidth || canvas.width || 1, 1) /
+      Math.max(canvas.clientHeight || canvas.height || 1, 1);
+    const initialViewProj = composeFirstSmokeViewProjection(
+      getProjectionMatrix(cam, initialAspect),
+      initialView
+    );
     const gpuSort = createGpuSortPrototype(gpu.device, attributes.count, "first_smoke_gpu_bitonic_sort");
     const sortState = createSortSettleState(initialView);
     const buffers = uploadSplatAttributeBuffers(gpu.device, attributes);
@@ -119,7 +125,13 @@ async function main() {
       canvas
     );
     exposeMeshSplatRendererWitness(
-      createMeshSplatRendererWitness(attributes, attributes.count, sceneAssetPath, SORT_BACKEND),
+      createMeshSplatRendererWitness(
+        attributes,
+        attributes.count,
+        sceneAssetPath,
+        SORT_BACKEND,
+        { viewProj: initialViewProj }
+      ),
       canvas
     );
     destroySplatScene(previous);

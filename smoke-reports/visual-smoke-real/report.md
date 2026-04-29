@@ -1,8 +1,8 @@
 # Visual Smoke Report
 
 - Status: PASS
-- Generated: 2026-04-29T08:29:40.196Z
-- URL: http://127.0.0.1:64191/
+- Generated: 2026-04-29T09:00:57.293Z
+- URL: http://127.0.0.1:50552/
 - Screenshot: `canvas.png`
 - Analysis JSON: `analysis.json`
 
@@ -57,19 +57,19 @@
       "kind": "projection-anisotropy",
       "owner": "conic-reckoner",
       "severity": "suspect",
-      "summary": "Projection anisotropy witness found ratio 190.57 across 8398 splats; route to conic-reckoner after field metadata is canonical.",
+      "summary": "Projection anisotropy witness found ratio 70.33 across 1174 splats; route to conic-reckoner after field metadata is canonical.",
       "evidence": {
-        "maxAnisotropyRatio": 190.56626845863002,
-        "suspiciousSplatCount": 8398,
+        "maxAnisotropyRatio": 70.32900677284606,
+        "suspiciousSplatCount": 1174,
         "sampleOriginalIds": [
-          16,
-          17,
-          66,
-          73,
-          74,
-          80,
-          81,
-          87
+          89,
+          91,
+          102,
+          103,
+          104,
+          105,
+          238,
+          256
         ]
       }
     }
@@ -106,18 +106,54 @@
     },
     "projection": {
       "projectionMode": "jacobian-covariance",
-      "maxAnisotropyRatio": 190.56626845863002,
-      "suspiciousSplatCount": 8398,
+      "maxAnisotropyRatio": 70.32900677284606,
+      "suspiciousSplatCount": 1174,
       "sampleOriginalIds": [
-        16,
-        17,
-        66,
-        73,
-        74,
-        80,
-        81,
-        87
-      ]
+        89,
+        91,
+        102,
+        103,
+        104,
+        105,
+        238,
+        256
+      ],
+      "fieldMaxAnisotropyRatio": 190.56626845863002,
+      "fieldSuspiciousSplatCount": 8398,
+      "rotationOrderComparison": {
+        "wxyz": {
+          "rotationOrder": "wxyz",
+          "maxProjectedAnisotropyRatio": 70.32900677284606,
+          "suspiciousProjectedSplatCount": 1174,
+          "projectedSplatCount": 94406,
+          "sampleOriginalIds": [
+            89,
+            91,
+            102,
+            103,
+            104,
+            105,
+            238,
+            256
+          ]
+        },
+        "xyzw": {
+          "rotationOrder": "xyzw",
+          "maxProjectedAnisotropyRatio": 62.84627883219033,
+          "suspiciousProjectedSplatCount": 1714,
+          "projectedSplatCount": 94406,
+          "sampleOriginalIds": [
+            87,
+            93,
+            131,
+            250,
+            549,
+            632,
+            692,
+            863
+          ]
+        }
+      }
     },
     "slab": {
       "statusCounts": {
@@ -144,9 +180,9 @@
       "sortedSampleOriginalIds": []
     }
   },
-  "statsText": "1280×720 | 123 fps | 94,406 real Scaniverse splats | sort: gpu-bitonic-cpu-depth-keys | render: 1.26ms",
+  "statsText": "1280×720 | 123 fps | 94,406 real Scaniverse splats | sort: gpu-bitonic-cpu-depth-keys | render: 0.85ms",
   "title": "Deferred Splat+Mesh Renderer",
-  "bodyText": "1280×720 | 123 fps | 94,406 real Scaniverse splats | sort: gpu-bitonic-cpu-depth-keys | render: 1.26ms",
+  "bodyText": "1280×720 | 123 fps | 94,406 real Scaniverse splats | sort: gpu-bitonic-cpu-depth-keys | render: 0.85ms",
   "canvas": {
     "width": 1280,
     "height": 720,
