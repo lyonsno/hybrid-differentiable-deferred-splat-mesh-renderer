@@ -125,6 +125,43 @@ test("witness diagnostics flag field decode before routing projection symptoms",
   assert.equal(result.findings[1].severity, "blocked");
 });
 
+test("witness diagnostics route local alpha density to alpha-ledger", () => {
+  const result = classifyWitnessCapture({
+    pageEvidence: {
+      sourceKind: "scaniverse-ply",
+      splatCount: 94406,
+      witness: {
+        field: {
+          scaleSpace: "log",
+          rotationOrder: "wxyz",
+          opacitySpace: "unit",
+          colorSpace: "sh_dc_rgb",
+        },
+        alpha: {
+          alphaEnergyPolicy: "bounded-footprint-energy-cap",
+          compositing: "straight-source-over",
+          ambiguousOverlapCount: 0,
+          overlapDensity: {
+            tileSizePx: 48,
+            alphaMassCap: 1728,
+            maxTileAlphaMass: 3400,
+            maxTileSplatCount: 17,
+            hotTileCount: 3,
+            sampleOriginalIds: [20, 21, 22],
+          },
+        },
+      },
+    },
+    imageAnalysis: { nonblank: true, changedPixelRatio: 0.18 },
+  });
+
+  assert.equal(result.findings[0].kind, WITNESS_FAILURE_KIND.compositingAmbiguous);
+  assert.equal(result.findings[0].owner, WITNESS_OWNER.alphaLedger);
+  assert.equal(result.findings[0].severity, "suspect");
+  assert.match(result.findings[0].summary, /alpha density/i);
+  assert.equal(result.findings[0].evidence.overlapDensity.hotTileCount, 3);
+});
+
 test("canonical renderer witness produces no diagnostic findings", () => {
   const result = classifyWitnessCapture({
     pageEvidence: {

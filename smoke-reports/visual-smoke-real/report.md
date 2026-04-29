@@ -1,8 +1,8 @@
 # Visual Smoke Report
 
 - Status: PASS
-- Generated: 2026-04-29T09:48:15.513Z
-- URL: http://127.0.0.1:53667/
+- Generated: 2026-04-29T09:58:19.090Z
+- URL: http://127.0.0.1:55054/
 - Screenshot: `canvas.png`
 - Analysis JSON: `analysis.json`
 
@@ -26,7 +26,7 @@
 ## Renderer Fidelity Witness
 
 - Threshold policy: witness-only; does not alter visual smoke pass/fail thresholds
-- Findings: 1
+- Findings: 2
 
 ```json
 {
@@ -80,6 +80,34 @@
           "highEnergySplatCount": 0,
           "projectedSplatCount": 94406,
           "sampleOriginalIds": []
+        }
+      }
+    },
+    {
+      "kind": "compositing-ambiguous",
+      "owner": "alpha-ledger",
+      "severity": "suspect",
+      "summary": "Alpha density witness found 15 hot tiles with max mass 281820.45.",
+      "evidence": {
+        "alphaEnergyPolicy": "bounded-footprint-energy-cap",
+        "compositing": "straight-source-over",
+        "ambiguousOverlapCount": 0,
+        "overlapDensity": {
+          "tileSizePx": 48,
+          "alphaMassCap": 1728,
+          "maxTileAlphaMass": 281820.4521666653,
+          "maxTileSplatCount": 9560,
+          "hotTileCount": 15,
+          "sampleOriginalIds": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ]
         }
       }
     }
@@ -188,7 +216,24 @@
     "alpha": {
       "alphaEnergyPolicy": "bounded-footprint-energy-cap",
       "compositing": "straight-source-over",
-      "ambiguousOverlapCount": 0
+      "ambiguousOverlapCount": 0,
+      "overlapDensity": {
+        "tileSizePx": 48,
+        "alphaMassCap": 1728,
+        "maxTileAlphaMass": 281820.4521666653,
+        "maxTileSplatCount": 9560,
+        "hotTileCount": 15,
+        "sampleOriginalIds": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ]
+      }
     },
     "sort": {
       "backend": "gpu-bitonic-cpu-depth-keys",
@@ -200,9 +245,9 @@
       "sortedSampleOriginalIds": []
     }
   },
-  "statsText": "1280×720 | 122 fps | 94,406 real Scaniverse splats | sort: gpu-bitonic-cpu-depth-keys | render: 1.28ms",
+  "statsText": "1280×720 | 120 fps | 94,406 real Scaniverse splats | sort: gpu-bitonic-cpu-depth-keys | render: 0.85ms",
   "title": "Deferred Splat+Mesh Renderer",
-  "bodyText": "1280×720 | 122 fps | 94,406 real Scaniverse splats | sort: gpu-bitonic-cpu-depth-keys | render: 1.28ms",
+  "bodyText": "1280×720 | 120 fps | 94,406 real Scaniverse splats | sort: gpu-bitonic-cpu-depth-keys | render: 0.85ms",
   "canvas": {
     "width": 1280,
     "height": 720,

@@ -59,6 +59,7 @@ export interface MeshSplatRendererWitness {
     readonly alphaEnergyPolicy: "bounded-footprint-energy-cap";
     readonly compositing: "straight-source-over";
     readonly ambiguousOverlapCount: 0;
+    readonly overlapDensity?: AlphaOverlapDensitySummary;
   };
   readonly sort: {
     readonly backend: string;
@@ -100,6 +101,15 @@ export interface ProjectedFootprintSummary {
   readonly majorRadiusCapPx: number;
   readonly highEnergySplatCount: number;
   readonly projectedSplatCount: number;
+  readonly sampleOriginalIds: readonly number[];
+}
+
+export interface AlphaOverlapDensitySummary {
+  readonly tileSizePx: number;
+  readonly alphaMassCap: number;
+  readonly maxTileAlphaMass: number;
+  readonly maxTileSplatCount: number;
+  readonly hotTileCount: number;
   readonly sampleOriginalIds: readonly number[];
 }
 
@@ -169,6 +179,9 @@ export function createMeshSplatRendererWitness(
   const projectedFootprint = options.viewProj === undefined
     ? undefined
     : summarizeProjectedFootprint(attributes, options.viewProj, options);
+  const overlapDensity = options.viewProj === undefined
+    ? undefined
+    : summarizeAlphaOverlapDensity(attributes, options.viewProj, options);
   const primaryProjection = projectedComparison?.wxyz;
   return {
     field: {
@@ -201,6 +214,7 @@ export function createMeshSplatRendererWitness(
       alphaEnergyPolicy: "bounded-footprint-energy-cap",
       compositing: "straight-source-over",
       ambiguousOverlapCount: 0,
+      overlapDensity,
     },
     sort: {
       backend: sortBackend,
@@ -376,6 +390,97 @@ function summarizeProjectedFootprint(
   };
 }
 
+function summarizeAlphaOverlapDensity(
+  attributes: SplatAttributes,
+  viewProj: mat4,
+  options: MeshSplatRendererWitnessOptions
+): AlphaOverlapDensitySummary {
+  const viewportWidth = positiveOrDefault(options.viewportWidth, 1280);
+  const viewportHeight = positiveOrDefault(options.viewportHeight, 720);
+  const viewportMin = Math.max(Math.min(viewportWidth, viewportHeight), 1);
+  const splatScale = positiveOrDefault(options.splatScale, REAL_SCANIVERSE_SPLAT_SCALE);
+  const minRadiusPx = positiveOrDefault(options.minRadiusPx, REAL_SCANIVERSE_MIN_RADIUS_PX);
+  const tileSizePx = 48;
+  const alphaMassCap = tileSizePx * tileSizePx * 0.75;
+  const tileColumns = Math.max(1, Math.ceil(viewportWidth / tileSizePx));
+  const tiles = new Map<number, { alphaMass: number; splatCount: number; sampleOriginalIds: number[] }>();
+
+  for (let index = 0; index < attributes.count; index++) {
+    const center = projectSplatCenterPx(attributes, viewProj, index, viewportWidth, viewportHeight);
+    if (!center) continue;
+
+    const projectedAxes = projectSplatAxesForWitness(attributes, viewProj, index, "wxyz");
+    if (!projectedAxes) continue;
+
+    const footprint = projectedFootprintFromAxes(projectedAxes, viewportMin, splatScale, minRadiusPx);
+    const tileX = Math.floor(center[0] / tileSizePx);
+    const tileY = Math.floor(center[1] / tileSizePx);
+    const tileKey = tileY * tileColumns + tileX;
+    const tile = tiles.get(tileKey) ?? { alphaMass: 0, splatCount: 0, sampleOriginalIds: [] };
+    tile.alphaMass += clampUnit(attributes.opacities[index]) * footprint.areaPx;
+    tile.splatCount += 1;
+    if (tile.sampleOriginalIds.length < 8) {
+      tile.sampleOriginalIds.push(attributes.originalIds[index] ?? index);
+    }
+    tiles.set(tileKey, tile);
+  }
+
+  let maxTileAlphaMass = 0;
+  let maxTileSplatCount = 0;
+  let hotTileCount = 0;
+  let sampleOriginalIds: number[] = [];
+  for (const tile of tiles.values()) {
+    if (tile.alphaMass > alphaMassCap) {
+      hotTileCount += 1;
+      if (sampleOriginalIds.length === 0) {
+        sampleOriginalIds = tile.sampleOriginalIds;
+      }
+    }
+    if (tile.alphaMass > maxTileAlphaMass) {
+      maxTileAlphaMass = tile.alphaMass;
+      maxTileSplatCount = tile.splatCount;
+      if (hotTileCount === 0) {
+        sampleOriginalIds = tile.sampleOriginalIds;
+      }
+    }
+  }
+
+  return {
+    tileSizePx,
+    alphaMassCap,
+    maxTileAlphaMass,
+    maxTileSplatCount,
+    hotTileCount,
+    sampleOriginalIds,
+  };
+}
+
+function projectSplatCenterPx(
+  attributes: SplatAttributes,
+  viewProj: mat4,
+  index: number,
+  viewportWidth: number,
+  viewportHeight: number
+): [number, number] | null {
+  const vecBase = index * 3;
+  const position: [number, number, number] = [
+    attributes.positions[vecBase],
+    attributes.positions[vecBase + 1],
+    attributes.positions[vecBase + 2],
+  ];
+  const centerClip = transformPoint(viewProj, position);
+  if (!clipInside(centerClip)) return null;
+
+  const ndcX = centerClip[0] / centerClip[3];
+  const ndcY = centerClip[1] / centerClip[3];
+  const pixelX = (ndcX * 0.5 + 0.5) * viewportWidth;
+  const pixelY = (0.5 - ndcY * 0.5) * viewportHeight;
+  if (pixelX < 0 || pixelX >= viewportWidth || pixelY < 0 || pixelY >= viewportHeight) {
+    return null;
+  }
+  return [pixelX, pixelY];
+}
+
 function readRotation(
   rotations: Float32Array,
   quatBase: number,
@@ -510,6 +615,10 @@ function dot3(a: readonly [number, number, number], b: readonly [number, number,
 
 function positiveOrDefault(value: number | undefined, fallback: number): number {
   return Number.isFinite(value) && value !== undefined && value > 0 ? value : fallback;
+}
+
+function clampUnit(value: number): number {
+  return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
 }
 
 export function exposeMeshSplatSmokeEvidence(

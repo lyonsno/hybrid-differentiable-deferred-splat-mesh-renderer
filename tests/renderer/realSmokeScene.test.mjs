@@ -179,3 +179,44 @@ test("projected footprint witness reports high-energy splats instead of only ani
   assert.equal(witness.projection.footprint.highEnergySplatCount, 1);
   assert.deepEqual(witness.projection.footprint.sampleOriginalIds, [99]);
 });
+
+test("alpha witness reports local overlap density for plausible-sized splats", () => {
+  const overlappingSplats = {
+    ...attributes,
+    count: 4,
+    positions: new Float32Array([
+      0, 0, 0.5,
+      0.01, 0, 0.5,
+      -0.01, 0, 0.5,
+      0, 0.01, 0.5,
+    ]),
+    scales: new Float32Array([
+      Math.log(0.005), Math.log(0.005), Math.log(0.005),
+      Math.log(0.005), Math.log(0.005), Math.log(0.005),
+      Math.log(0.005), Math.log(0.005), Math.log(0.005),
+      Math.log(0.005), Math.log(0.005), Math.log(0.005),
+    ]),
+    opacities: new Float32Array([0.9, 0.9, 0.9, 0.9]),
+    rotations: new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]),
+    originalIds: new Uint32Array([20, 21, 22, 23]),
+  };
+  const identityViewProjection = new Float32Array([
+    1, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 0, 1, 0,
+    0, 0, 0, 1,
+  ]);
+
+  const witness = createMeshSplatRendererWitness(
+    overlappingSplats,
+    overlappingSplats.count,
+    "synthetic:overlap",
+    "test",
+    { viewProj: identityViewProjection, viewportWidth: 1000, viewportHeight: 1000, splatScale: 3000 }
+  );
+
+  assert.equal(witness.alpha.overlapDensity.maxTileSplatCount, 4);
+  assert.ok(witness.alpha.overlapDensity.maxTileAlphaMass > witness.alpha.overlapDensity.alphaMassCap);
+  assert.equal(witness.alpha.overlapDensity.hotTileCount, 1);
+  assert.deepEqual(witness.alpha.overlapDensity.sampleOriginalIds, [20, 21, 22, 23]);
+});

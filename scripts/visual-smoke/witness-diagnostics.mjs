@@ -154,14 +154,31 @@ function classifySlabWitness(slab = {}, imageAnalysis = {}) {
 }
 
 function classifyAlphaWitness(alpha = {}) {
-  if (!alpha || typeof alpha !== "object" || !alpha.ambiguousOverlapCount) return null;
+  if (!alpha || typeof alpha !== "object") return null;
+  const overlapDensity = alpha.overlapDensity && typeof alpha.overlapDensity === "object"
+    ? alpha.overlapDensity
+    : {};
+  const hotTileCount = finiteOrZero(overlapDensity.hotTileCount);
+  if (!alpha.ambiguousOverlapCount && hotTileCount <= 0) return null;
 
   return {
     kind: WITNESS_FAILURE_KIND.compositingAmbiguous,
     owner: WITNESS_OWNER.alphaLedger,
-    severity: "blocked",
-    summary: "Overlap witness is present, but alpha-ledger has not settled the compositing contract yet.",
-    evidence: { ...alpha },
+    severity: alpha.ambiguousOverlapCount ? "blocked" : "suspect",
+    summary: alpha.ambiguousOverlapCount
+      ? "Overlap witness is present, but alpha-ledger has not settled the compositing contract yet."
+      : `Alpha density witness found ${hotTileCount} hot tiles with max mass ${formatNumber(finiteOrZero(overlapDensity.maxTileAlphaMass))}.`,
+    evidence: {
+      ...alpha,
+      overlapDensity: {
+        tileSizePx: finiteOrZero(overlapDensity.tileSizePx),
+        alphaMassCap: finiteOrZero(overlapDensity.alphaMassCap),
+        maxTileAlphaMass: finiteOrZero(overlapDensity.maxTileAlphaMass),
+        maxTileSplatCount: finiteOrZero(overlapDensity.maxTileSplatCount),
+        hotTileCount,
+        sampleOriginalIds: normalizeIds(overlapDensity.sampleOriginalIds),
+      },
+    },
   };
 }
 
