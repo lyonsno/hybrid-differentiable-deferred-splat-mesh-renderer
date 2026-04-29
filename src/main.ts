@@ -1,3 +1,8 @@
+import {
+  createAlphaDensityRefreshState,
+  shouldRefreshAlphaDensity,
+  type AlphaDensityRefreshState,
+} from "./alphaDensityRefresh.js";
 import { initGPU, resizeCanvas, GPU } from "./gpu.js";
 import { createCamera, bindCameraControls, updateCamera, getViewMatrix, getProjectionMatrix } from "./camera.js";
 import { createUniformBuffer } from "./buffers.js";
@@ -42,7 +47,7 @@ const statsEl = document.getElementById("stats")!;
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 const SORT_BACKEND = "gpu-bitonic-cpu-depth-keys";
 const GPU_SORT_SETTLE_MS = 160;
-const ALPHA_DENSITY_REFRESH_MS = 180;
+const ALPHA_DENSITY_SETTLE_MS = 160;
 const ALPHA_DENSITY_MODE = selectedAlphaDensityMode();
 
 interface ActiveSplatScene {
@@ -66,7 +71,7 @@ interface SortSettleState {
 }
 
 interface AlphaDensityState {
-  lastRefreshMs: number;
+  refreshState: AlphaDensityRefreshState;
   summary: AlphaDensityCompensationSummary;
 }
 
@@ -146,7 +151,11 @@ async function main() {
       sortState,
       effectiveOpacities,
       alphaDensityState: {
-        lastRefreshMs: Number.NEGATIVE_INFINITY,
+        refreshState: createAlphaDensityRefreshState(
+          initialView,
+          initialViewportWidth,
+          initialViewportHeight
+        ),
         summary: alphaDensitySummary,
       },
       count: attributes.count,
@@ -230,7 +239,14 @@ async function main() {
     const view = getViewMatrix(cam);
     const proj = getProjectionMatrix(cam, aspect);
     const viewProj = composeFirstSmokeViewProjection(proj, view);
-    if (shouldRefreshAlphaDensity(scene.alphaDensityState, now)) {
+    if (shouldRefreshAlphaDensity(
+      scene.alphaDensityState.refreshState,
+      view,
+      width,
+      height,
+      now,
+      ALPHA_DENSITY_SETTLE_MS
+    )) {
       scene.alphaDensityState.summary = writeAlphaDensityCompensatedOpacities(
         scene.effectiveOpacities,
         scene.attributes,
@@ -241,7 +257,6 @@ async function main() {
         REAL_SCANIVERSE_MIN_RADIUS_PX,
         ALPHA_DENSITY_MODE
       );
-      scene.alphaDensityState.lastRefreshMs = now;
       gpu.device.queue.writeBuffer(scene.buffers.opacityBuffer, 0, scene.effectiveOpacities);
     }
     writeSplatPlateFrameUniforms(
@@ -326,10 +341,6 @@ async function main() {
   }
 
   requestAnimationFrame(frame);
-}
-
-function shouldRefreshAlphaDensity(state: AlphaDensityState, nowMs: number): boolean {
-  return nowMs - state.lastRefreshMs >= ALPHA_DENSITY_REFRESH_MS;
 }
 
 function createSortSettleState(viewMatrix: Float32Array): SortSettleState {
