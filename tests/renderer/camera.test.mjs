@@ -5,6 +5,7 @@ import {
   cameraMoveSpeed,
   computeWheelZoomDistance,
   createCamera,
+  getViewMatrix,
   MAX_ORBIT_ELEVATION,
   rotateCameraView,
   screenPlaneOffset,
@@ -96,6 +97,23 @@ test("drag rotation pivots the view around the camera position, not a scene targ
   assert.notDeepEqual(
     cam.target.map((value) => Number(value.toFixed(6))),
     beforeTarget.map((value) => Number(value.toFixed(6)))
+  );
+});
+
+test("view matrix is derived from the camera pose, not a stored look-at terminus", () => {
+  const cam = createCamera();
+  cam.position = [2, 3, 4];
+  cam.azimuth = 0.7;
+  cam.elevation = -0.2;
+  cam.distance = 5;
+  updateCamera(cam, 0);
+  const expected = Array.from(getViewMatrix(cam)).map((value) => Number(value.toFixed(6)));
+
+  cam.target = [1000, -800, 600];
+
+  assert.deepEqual(
+    Array.from(getViewMatrix(cam)).map((value) => Number(value.toFixed(6))),
+    expected
   );
 });
 

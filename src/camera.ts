@@ -152,17 +152,17 @@ export function zoomCameraToCursorProjection(
 
   const oldOffset = screenPlaneOffset(cam, ndcX, ndcY, aspect, oldDistance);
   const newOffset = screenPlaneOffset(cam, ndcX, ndcY, aspect, newDistance);
+  const { forward } = cameraBasis(cam);
   const cursorPoint: vec3 = [
-    cam.target[0] + oldOffset[0],
-    cam.target[1] + oldOffset[1],
-    cam.target[2] + oldOffset[2],
+    cam.position[0] + forward[0] * oldDistance + oldOffset[0],
+    cam.position[1] + forward[1] * oldDistance + oldOffset[1],
+    cam.position[2] + forward[2] * oldDistance + oldOffset[2],
   ];
   const nextTarget: vec3 = [
     cursorPoint[0] - newOffset[0],
     cursorPoint[1] - newOffset[1],
     cursorPoint[2] - newOffset[2],
   ];
-  const { forward } = cameraBasis(cam);
   cam.distance = newDistance;
   cam.position = [
     nextTarget[0] - forward[0] * newDistance,
@@ -257,7 +257,7 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 export function getViewMatrix(cam: Camera): mat4 {
-  return lookAt(cam.position, cam.target, cam.up);
+  return viewMatrixFromPose(cam);
 }
 
 export function getProjectionMatrix(
@@ -267,38 +267,23 @@ export function getProjectionMatrix(
   return perspective(cam.fovY, aspect, cam.near, cam.far);
 }
 
-// Minimal mat4 helpers — no dependency
+function viewMatrixFromPose(cam: Camera): mat4 {
+  const eye = cam.position;
+  const { right, trueUp } = cameraBasis(cam);
+  const fz = cameraBackVector(cam);
 
-function lookAt(eye: vec3, target: vec3, up: vec3): mat4 {
-  const zx = eye[0] - target[0];
-  const zy = eye[1] - target[1];
-  const zz = eye[2] - target[2];
-  const zlen = Math.hypot(zx, zy, zz) || 1;
-  const fz: vec3 = [zx / zlen, zy / zlen, zz / zlen];
-
-  // right = up × forward
-  let rx = up[1] * fz[2] - up[2] * fz[1];
-  let ry = up[2] * fz[0] - up[0] * fz[2];
-  let rz = up[0] * fz[1] - up[1] * fz[0];
-  const rlen = Math.hypot(rx, ry, rz) || 1;
-  rx /= rlen; ry /= rlen; rz /= rlen;
-
-  // true up = forward × right
-  const ux = fz[1] * rz - fz[2] * ry;
-  const uy = fz[2] * rx - fz[0] * rz;
-  const uz = fz[0] * ry - fz[1] * rx;
-
-  // Column-major for WebGPU
   return new Float32Array([
-    rx, ux, fz[0], 0,
-    ry, uy, fz[1], 0,
-    rz, uz, fz[2], 0,
-    -(rx * eye[0] + ry * eye[1] + rz * eye[2]),
-    -(ux * eye[0] + uy * eye[1] + uz * eye[2]),
+    right[0], trueUp[0], fz[0], 0,
+    right[1], trueUp[1], fz[1], 0,
+    right[2], trueUp[2], fz[2], 0,
+    -(right[0] * eye[0] + right[1] * eye[1] + right[2] * eye[2]),
+    -(trueUp[0] * eye[0] + trueUp[1] * eye[1] + trueUp[2] * eye[2]),
     -(fz[0] * eye[0] + fz[1] * eye[1] + fz[2] * eye[2]),
     1,
   ]);
 }
+
+// Minimal mat4 helpers — no dependency
 
 function perspective(fovY: number, aspect: number, near: number, far: number): mat4 {
   const f = 1 / Math.tan(fovY / 2);
