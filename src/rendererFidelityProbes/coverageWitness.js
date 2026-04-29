@@ -100,8 +100,49 @@ export function measureCoverageCase(
 export function makeCoverageSyntheticCases() {
   const identity = [1, 0, 0, 0];
   const logScales = (values) => values.map((value) => Math.log(value));
+  const denseSheetLayers = [
+    { id: "bright-behind", depth: -10, color: [8, 8, 8], alpha: 0.6 },
+    ...Array.from({ length: 72 }, (_, index) => ({
+      id: `sheet-${String(index).padStart(2, "0")}`,
+      depth: -9 + index * 0.1,
+      color: [0.4, 0.45, 0.5],
+      alpha: 0.08,
+    })),
+  ];
 
-  return {
+  const cases = {
+    singleSplat: {
+      name: "single-splat",
+      position: [0.2, -0.1, 7],
+      scaleLog: logScales([0.45, 0.12, 0.08]),
+      rotation: identity,
+      opacity: 0.7,
+      color: [1, 0.9, 0.7],
+      tolerance: 0.01,
+      coverageSamples: [
+        {
+          name: "center",
+          radiusSquared: 0,
+          expectedCoverageWeight: 1,
+          expectedAlpha: 0.7,
+        },
+        {
+          name: "one-sigma-major",
+          radiusSquared: 1,
+          expectedCoverageWeight: Math.exp(-2),
+          expectedAlpha: 0.7 * Math.exp(-2),
+        },
+      ],
+    },
+    extremeAnisotropicSplat: {
+      name: "extreme-anisotropic-splat",
+      position: [0, 0, 8],
+      scaleLog: logScales([1.6, 0.001, 0.05]),
+      rotation: identity,
+      opacity: 0.45,
+      color: [0.8, 0.95, 1],
+      tolerance: 0.01,
+    },
     glancingThinRibbon: {
       name: "glancing-thin-ribbon",
       position: [0.4, 0, 8],
@@ -109,12 +150,43 @@ export function makeCoverageSyntheticCases() {
       rotation: identity,
       tolerance: 0.01,
     },
-    resolvedEllipticalSplat: {
-      name: "resolved-elliptical-splat",
-      position: [0.2, -0.1, 7],
-      scaleLog: logScales([0.45, 0.12, 0.08]),
-      rotation: identity,
-      tolerance: 0.01,
+    denseTransparentSheetWithBrightBehind: {
+      name: "dense-transparent-sheet-with-bright-behind",
+      surfaceLayerCount: 72,
+      surfaceAlpha: 0.08,
+      brightBehindAlpha: 0.6,
+      layers: denseSheetLayers,
+      expectedBrightBehindWeight: 0.6 * Math.pow(0.92, 72),
+    },
+    crossingTranslucentLayers: {
+      name: "crossing-translucent-layers",
+      samples: [
+        {
+          name: "red-front-sample",
+          layers: [
+            { id: "blue-layer", depth: -2, color: [0, 0, 1], alpha: 0.5 },
+            { id: "red-layer", depth: -1, color: [1, 0, 0], alpha: 0.5 },
+          ],
+          expectedDrawIds: ["blue-layer", "red-layer"],
+          expectedColor: [0.505, 0.005, 0.26],
+        },
+        {
+          name: "blue-front-sample",
+          layers: [
+            { id: "red-layer", depth: -2, color: [1, 0, 0], alpha: 0.5 },
+            { id: "blue-layer", depth: -1, color: [0, 0, 1], alpha: 0.5 },
+          ],
+          expectedDrawIds: ["red-layer", "blue-layer"],
+          expectedColor: [0.255, 0.005, 0.51],
+        },
+      ],
     },
   };
+
+  Object.defineProperty(cases, "resolvedEllipticalSplat", {
+    value: cases.singleSplat,
+    enumerable: false,
+  });
+
+  return cases;
 }
