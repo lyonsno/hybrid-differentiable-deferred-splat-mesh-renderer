@@ -155,10 +155,18 @@ def load_ply(path: str | Path) -> SplatCloud:
     )
     if rest_names:
         n_rest = len(rest_names)
+        if n_rest % 3 != 0:
+            raise ValueError(
+                f"PLY f_rest_* field count must be divisible by 3 RGB channels, got {n_rest}"
+            )
         n_coeffs = n_rest // 3
         sh_degree = int(np.sqrt(n_coeffs + 1)) - 1
+        if (sh_degree + 1) ** 2 - 1 != n_coeffs:
+            raise ValueError(
+                f"PLY f_rest_* field count {n_rest} does not describe a complete SH degree"
+            )
         raw = np.stack([vertex[n] for n in rest_names], axis=-1).astype(np.float32)
-        sh_coeffs = raw.reshape(-1, n_coeffs, 3)
+        sh_coeffs = raw.reshape(-1, 3, n_coeffs).transpose(0, 2, 1).copy()
 
     return SplatCloud(
         positions=positions,

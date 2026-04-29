@@ -62,6 +62,11 @@ export function decodeLocalPlySplatPayload(
   const hasByteColor = fields.has("red") && fields.has("green") && fields.has("blue");
   const hasScales = fields.has("scale_0") && fields.has("scale_1") && fields.has("scale_2");
   const hasRotations = fields.has("rot_0") && fields.has("rot_1") && fields.has("rot_2") && fields.has("rot_3");
+  const shLayout = discoverPlyShLayout(fields);
+  const shCoefficients =
+    shLayout === undefined
+      ? undefined
+      : new Float32Array(count * shLayout.coefficientCount * 3);
 
   if (header.dataOffset + count * header.rowStride > bytes.byteLength) {
     throw new Error(`${fileName} ended before all ${count} vertex rows could be read`);
@@ -128,6 +133,9 @@ export function decodeLocalPlySplatPayload(
     } else {
       rotations[quatBase] = 1;
     }
+    if (shLayout !== undefined && shCoefficients !== undefined) {
+      writePlyShRow(view, rowOffset, shLayout, shCoefficients, row);
+    }
     originalIds[row] = row;
   }
 
@@ -141,10 +149,71 @@ export function decodeLocalPlySplatPayload(
     radii,
     scales,
     rotations,
+    sh:
+      shLayout === undefined || shCoefficients === undefined
+        ? undefined
+        : {
+            degree: shLayout.degree,
+            basis: "3dgs_real_sh",
+            coefficientCount: shLayout.coefficientCount,
+            layout: "splat_coeff_rgb",
+            coefficients: shCoefficients,
+          },
     originalIds,
     bounds,
     layout: FIRST_SMOKE_SPLAT_LAYOUT,
   };
+}
+
+interface PlyShLayout {
+  degree: number;
+  coefficientCount: number;
+  restPropertiesByChannel: PlyProperty[][];
+}
+
+function discoverPlyShLayout(fields: Map<string, PlyProperty>): PlyShLayout | undefined {
+  const restProperties = Array.from(fields.entries())
+    .filter(([name]) => /^f_rest_\d+$/.test(name))
+    .sort(([left], [right]) => Number(left.slice("f_rest_".length)) - Number(right.slice("f_rest_".length)))
+    .map(([, property]) => property);
+  if (restProperties.length === 0) {
+    return undefined;
+  }
+  if (restProperties.length % 3 !== 0) {
+    throw new Error(`PLY f_rest_* field count must be divisible by 3 RGB channels, got ${restProperties.length}`);
+  }
+  const coefficientCount = restProperties.length / 3;
+  const degree = Math.sqrt(coefficientCount + 1) - 1;
+  if (!Number.isInteger(degree) || degree <= 0) {
+    throw new Error(`PLY f_rest_* field count ${restProperties.length} does not describe a complete SH degree`);
+  }
+
+  const restPropertiesByChannel: PlyProperty[][] = [];
+  for (let channel = 0; channel < 3; channel++) {
+    restPropertiesByChannel.push(
+      restProperties.slice(channel * coefficientCount, (channel + 1) * coefficientCount)
+    );
+  }
+  return { degree, coefficientCount, restPropertiesByChannel };
+}
+
+function writePlyShRow(
+  view: DataView,
+  rowOffset: number,
+  layout: PlyShLayout,
+  target: Float32Array,
+  row: number
+): void {
+  const rowBase = row * layout.coefficientCount * 3;
+  for (let coeff = 0; coeff < layout.coefficientCount; coeff++) {
+    for (let channel = 0; channel < 3; channel++) {
+      target[rowBase + coeff * 3 + channel] = readProperty(
+        view,
+        rowOffset,
+        layout.restPropertiesByChannel[channel][coeff]
+      );
+    }
+  }
 }
 
 function parseBinaryLittleEndianPlyHeader(bytes: ArrayBuffer): PlyHeader {

@@ -89,6 +89,16 @@ function binaryManifest() {
       rotation_order: "wxyz",
       scale_space: "log",
     },
+    sh: {
+      degree: 1,
+      basis: "3dgs_real_sh",
+      coefficients_layout: "splat_coeff_rgb",
+      coefficients_path: "scaniverse-first-smoke.sh.f32.bin",
+      coefficients_component_type: "float32",
+      coefficient_count: 3,
+      coefficients_byte_length: 72,
+      dc_source: "payload.color contains displayable RGB decoded from SH DC",
+    },
     bounds: validPayload().bounds,
   };
 }
@@ -122,6 +132,22 @@ function binarySidecars() {
   });
 
   return { payload, ids, scales, rotations };
+}
+
+function shSidecar() {
+  const sh = new ArrayBuffer(72);
+  const view = new DataView(sh);
+  [
+    0.25, 0.5, 0.75,
+    1, 1.25, 1.5,
+    -0.25, -0.5, -0.75,
+    2, 2.25, 2.5,
+    3, 3.25, 3.5,
+    4, 4.25, 4.5,
+  ].forEach((value, index) => {
+    view.setFloat32(index * 4, value, true);
+  });
+  return sh;
 }
 
 test("decodes first-smoke splat rows into typed browser attributes", () => {
@@ -165,7 +191,7 @@ test("accepts nested metadata with planar attribute arrays", () => {
 
 test("decodes Scaniverse first-smoke binary manifest sidecars", () => {
   const { payload, ids, scales, rotations } = binarySidecars();
-  const decoded = decodeFirstSmokeSplatManifest(binaryManifest(), payload, ids, scales, rotations);
+  const decoded = decodeFirstSmokeSplatManifest(binaryManifest(), payload, ids, scales, rotations, shSidecar());
 
   assert.equal(decoded.count, 2);
   assert.deepEqual(Array.from(decoded.positions), [1, 2, 3, -1, 0, 2]);
@@ -175,6 +201,21 @@ test("decodes Scaniverse first-smoke binary manifest sidecars", () => {
   assert.deepEqual(Array.from(decoded.originalIds), [1, 0]);
   assert.deepEqual(Array.from(decoded.scales), f32([0, Math.log(2), Math.log(0.5), Math.log(3), Math.log(0.25), Math.log(1)]));
   assert.deepEqual(Array.from(decoded.rotations), f32([1, 0, 0, 0, 0.5, 0.5, 0.5, 0.5]));
+  assert.deepEqual(decoded.sh, {
+    degree: 1,
+    basis: "3dgs_real_sh",
+    coefficientCount: 3,
+    layout: "splat_coeff_rgb",
+    coefficients: decoded.sh?.coefficients,
+  });
+  assert.deepEqual(Array.from(decoded.sh!.coefficients), f32([
+    0.25, 0.5, 0.75,
+    1, 1.25, 1.5,
+    -0.25, -0.5, -0.75,
+    2, 2.25, 2.5,
+    3, 3.25, 3.5,
+    4, 4.25, 4.5,
+  ]));
 });
 
 test("marks SPZ manifests as real splat evidence", () => {
@@ -182,7 +223,7 @@ test("marks SPZ manifests as real splat evidence", () => {
   const manifest = binaryManifest();
   manifest.source = { kind: "spz", filename: "workshop_four_cups.spz" };
 
-  const decoded = decodeFirstSmokeSplatManifest(manifest, payload, ids, scales, rotations);
+  const decoded = decodeFirstSmokeSplatManifest(manifest, payload, ids, scales, rotations, shSidecar());
 
   assert.equal(decoded.sourceKind, "real_splat_spz");
 });
@@ -256,6 +297,7 @@ test("fetches and decodes browser-visible first-smoke payloads", async () => {
 
 test("fetches Scaniverse manifest sidecars relative to the manifest URL", async () => {
   const { payload, ids, scales, rotations } = binarySidecars();
+  const sh = shSidecar();
   const requested: string[] = [];
   const decoded = await fetchFirstSmokeSplatPayload(
     "smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
@@ -276,6 +318,14 @@ test("fetches Scaniverse manifest sidecars relative to the manifest URL", async 
             status: 200,
             statusText: "OK",
             arrayBuffer: async () => rotations,
+          } as Response;
+        }
+        if (String(input).endsWith(".sh.f32.bin")) {
+          return {
+            ok: true,
+            status: 200,
+            statusText: "OK",
+            arrayBuffer: async () => sh,
           } as Response;
         }
         if (String(input).endsWith(".f32.bin")) {
@@ -303,10 +353,13 @@ test("fetches Scaniverse manifest sidecars relative to the manifest URL", async 
     "smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.ids.u32.bin",
     "smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.scales.f32.bin",
     "smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.rotations.f32.bin",
+    "smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.sh.f32.bin",
   ]);
   assert.deepEqual(Array.from(decoded.originalIds), [1, 0]);
   assert.deepEqual(Array.from(decoded.scales), f32([0, Math.log(2), Math.log(0.5), Math.log(3), Math.log(0.25), Math.log(1)]));
   assert.deepEqual(Array.from(decoded.rotations), f32([1, 0, 0, 0, 0.5, 0.5, 0.5, 0.5]));
+  assert.equal(decoded.sh?.degree, 1);
+  assert.deepEqual(Array.from(decoded.sh!.coefficients), Array.from(new Float32Array(sh)));
 });
 
 test("derives stable camera framing metadata from payload bounds", () => {
