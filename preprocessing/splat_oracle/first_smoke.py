@@ -73,23 +73,28 @@ def export_first_smoke_asset(
     ids = np.arange(cloud.num_points, dtype="<u4")
     scales = np.asarray(cloud.scales, dtype="<f4")
     rotations = np.asarray(cloud.rotations, dtype="<f4")
+    sh_coeffs = sh_coefficients_for_export(cloud)
 
     payload_name = f"{asset_name}.f32.bin"
     ids_name = f"{asset_name}.ids.u32.bin"
     scales_name = f"{asset_name}.scales.f32.bin"
     rotations_name = f"{asset_name}.rotations.f32.bin"
+    sh_name = f"{asset_name}.sh.f32.bin"
     manifest_name = f"{asset_name}.json"
 
     payload_path = output / payload_name
     ids_path = output / ids_name
     scales_path = output / scales_name
     rotations_path = output / rotations_name
+    sh_path = output / sh_name
     manifest_path = output / manifest_name
 
     rows.astype("<f4", copy=False).tofile(payload_path)
     ids.tofile(ids_path)
     scales.tofile(scales_path)
     rotations.tofile(rotations_path)
+    if sh_coeffs is not None:
+        sh_coeffs.tofile(sh_path)
 
     manifest = make_first_smoke_manifest(
         source,
@@ -102,6 +107,8 @@ def export_first_smoke_asset(
         scales_byte_length=scales_path.stat().st_size,
         rotations_name=rotations_name,
         rotations_byte_length=rotations_path.stat().st_size,
+        sh_name=sh_name,
+        sh_byte_length=sh_path.stat().st_size if sh_coeffs is not None else None,
         asset_name=asset_name,
         identity_scheme=identity_scheme,
         source_filter=source_filter,
@@ -192,6 +199,19 @@ def radius_seed_from_scales(scales: np.ndarray) -> np.ndarray:
     return radii.astype(np.float32, copy=False)
 
 
+def sh_coefficients_for_export(cloud: SplatCloud) -> np.ndarray | None:
+    """Return optional higher-order SH coefficients in (splat, coeff, rgb) order."""
+
+    if cloud.sh_coeffs is None or cloud.sh_degree <= 0:
+        return None
+    coeffs = np.asarray(cloud.sh_coeffs, dtype="<f4")
+    expected_coeffs = (int(cloud.sh_degree) + 1) ** 2 - 1
+    _require_shape("sh_coeffs", coeffs, (cloud.num_points, expected_coeffs, 3))
+    if not np.isfinite(coeffs).all():
+        raise ValueError("SH coefficient sidecar contains non-finite values")
+    return coeffs.astype("<f4", copy=False)
+
+
 def make_first_smoke_manifest(
     source: Path,
     cloud: SplatCloud,
@@ -204,6 +224,8 @@ def make_first_smoke_manifest(
     scales_byte_length: int,
     rotations_name: str,
     rotations_byte_length: int,
+    sh_name: str,
+    sh_byte_length: int | None,
     asset_name: str,
     identity_scheme: str = "row_index_is_original_zero_based_file_order",
     source_filter: dict[str, Any] | None = None,
@@ -264,6 +286,17 @@ def make_first_smoke_manifest(
             "radius": "max(exp(scale_0), exp(scale_1), exp(scale_2)) from log-space PLY scale fields",
         },
     }
+    if sh_byte_length is not None and cloud.sh_degree > 0:
+        manifest["sh"] = {
+            "degree": int(cloud.sh_degree),
+            "basis": "3dgs_real_sh",
+            "coefficients_layout": "splat_coeff_rgb",
+            "coefficients_path": sh_name,
+            "coefficients_component_type": "float32",
+            "coefficient_count": int((cloud.sh_degree + 1) ** 2 - 1),
+            "coefficients_byte_length": int(sh_byte_length),
+            "dc_source": "payload.color contains displayable RGB decoded from SH DC",
+        }
     if source_filter is not None:
         manifest["source_filter"] = source_filter
     return manifest

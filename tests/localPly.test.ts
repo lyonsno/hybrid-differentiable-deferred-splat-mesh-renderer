@@ -13,6 +13,7 @@ test("decodes dropped binary 3DGS PLY into browser splat attributes", () => {
       opacity: 0,
       scales: [0, Math.log(2), Math.log(0.5)],
       rotation: [1, 0, 0, 0],
+      shRest: [0.25, 0.5, 0.75, 1, 1.25, 1.5, -0.25, -0.5, -0.75],
     },
     {
       position: [-1, 0, 2],
@@ -20,6 +21,7 @@ test("decodes dropped binary 3DGS PLY into browser splat attributes", () => {
       opacity: -2,
       scales: [Math.log(0.25), Math.log(0.75), Math.log(1.5)],
       rotation: [0.5, 0.5, 0.5, 0.5],
+      shRest: [2, 2.25, 2.5, 3, 3.25, 3.5, 4, 4.25, 4.5],
     },
   ]);
 
@@ -64,6 +66,21 @@ test("decodes dropped binary 3DGS PLY into browser splat attributes", () => {
     Array.from(new Float32Array([1, 0, 0, 0, 0.5, 0.5, 0.5, 0.5]))
   );
   assert.deepEqual(Array.from(decoded.originalIds), [0, 1]);
+  assert.equal(decoded.sh?.degree, 1);
+  assert.equal(decoded.sh?.coefficientCount, 3);
+  assert.deepEqual(
+    Array.from(decoded.sh!.coefficients),
+    Array.from(
+      new Float32Array([
+        0.25, 1, -0.25,
+        0.5, 1.25, -0.5,
+        0.75, 1.5, -0.75,
+        2, 3, 4,
+        2.25, 3.25, 4.25,
+        2.5, 3.5, 4.5,
+      ])
+    )
+  );
   assert.deepEqual(decoded.bounds.min, [-1, 0, 2]);
   assert.deepEqual(decoded.bounds.max, [1, 2, 3]);
   assert.deepEqual(decoded.bounds.center, [0, 1, 2.5]);
@@ -82,9 +99,11 @@ interface PlyFixtureRow {
   opacity: number;
   scales: [number, number, number];
   rotation: [number, number, number, number];
+  shRest?: number[];
 }
 
 function binaryPlyFixture(rows: PlyFixtureRow[]): ArrayBuffer {
+  const hasShRest = rows.some((row) => row.shRest !== undefined);
   const properties = [
     "x",
     "y",
@@ -101,6 +120,11 @@ function binaryPlyFixture(rows: PlyFixtureRow[]): ArrayBuffer {
     "rot_2",
     "rot_3",
   ];
+  if (hasShRest) {
+    for (let index = 0; index < 9; index++) {
+      properties.push(`f_rest_${index}`);
+    }
+  }
   const header = [
     "ply",
     "format binary_little_endian 1.0",
@@ -121,10 +145,18 @@ function binaryPlyFixture(rows: PlyFixtureRow[]): ArrayBuffer {
       row.opacity,
       ...row.scales,
       ...row.rotation,
+      ...(hasShRest ? requireShRest(row) : []),
     ];
     values.forEach((value, valueIndex) => {
       view.setFloat32(rowIndex * rowStride + valueIndex * 4, value, true);
     });
   });
   return buffer;
+}
+
+function requireShRest(row: PlyFixtureRow): number[] {
+  if (row.shRest === undefined || row.shRest.length !== 9) {
+    throw new Error("fixture row must provide 9 f_rest fields");
+  }
+  return row.shRest;
 }

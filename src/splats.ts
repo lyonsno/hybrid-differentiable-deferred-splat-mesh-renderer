@@ -44,9 +44,18 @@ export interface SplatAttributes {
   radii: Float32Array;
   scales: Float32Array;
   rotations: Float32Array;
+  sh?: SplatSphericalHarmonics;
   originalIds: Uint32Array;
   bounds: SplatBounds;
   layout: FirstSmokeSplatLayout;
+}
+
+export interface SplatSphericalHarmonics {
+  degree: number;
+  basis: "3dgs_real_sh";
+  coefficientCount: number;
+  layout: "splat_coeff_rgb";
+  coefficients: Float32Array;
 }
 
 export interface SplatGpuBuffers {
@@ -149,8 +158,18 @@ export async function fetchFirstSmokeSplatPayload(
             init,
             "first-smoke splat rotation sidecar"
           );
+    const shPath = sidecarShPath(root);
+    const shBytes =
+      shPath === undefined
+        ? undefined
+        : await fetchArrayBuffer(
+            fetchImpl,
+            resolveSidecarUrl(input, shPath),
+            init,
+            "first-smoke splat SH sidecar"
+          );
 
-    return decodeFirstSmokeSplatManifest(payload, payloadBytes, idsBytes, scalesBytes, rotationsBytes);
+    return decodeFirstSmokeSplatManifest(payload, payloadBytes, idsBytes, scalesBytes, rotationsBytes, shBytes);
   }
 
   return decodeFirstSmokeSplatPayload(payload);
@@ -194,7 +213,8 @@ export function decodeFirstSmokeSplatManifest(
   payloadBytes: ArrayBuffer,
   idsBytes?: ArrayBuffer,
   scalesBytes?: ArrayBuffer,
-  rotationsBytes?: ArrayBuffer
+  rotationsBytes?: ArrayBuffer,
+  shBytes?: ArrayBuffer
 ): SplatAttributes {
   const root = requireRecord(manifest, "manifest");
   const count = requirePositiveInteger(
@@ -270,6 +290,7 @@ export function decodeFirstSmokeSplatManifest(
       rotationsBytes === undefined
         ? identityRotations(count)
         : decodeFloat32Bytes(rotationsBytes, count * 4, "shape.rotations"),
+    sh: decodeShSidecar(root, count, shBytes),
     originalIds:
       idsBytes === undefined
         ? decodeOriginalIds(undefined, count)
@@ -761,6 +782,74 @@ function sidecarShapePath(manifest: UnknownRecord, key: "scales_path" | "rotatio
     return undefined;
   }
   return requireString(shape[key], `shape.${key}`);
+}
+
+function sidecarShPath(manifest: UnknownRecord): string | undefined {
+  if (manifest.sh === undefined) {
+    return undefined;
+  }
+  const sh = requireRecord(manifest.sh, "sh");
+  return requireString(sh.coefficients_path, "sh.coefficients_path");
+}
+
+function decodeShSidecar(
+  manifest: UnknownRecord,
+  count: number,
+  shBytes: ArrayBuffer | undefined
+): SplatSphericalHarmonics | undefined {
+  if (manifest.sh === undefined) {
+    return undefined;
+  }
+  const sh = requireRecord(manifest.sh, "sh");
+  const degree = requireNonNegativeInteger(sh.degree, "sh.degree");
+  if (degree <= 0) {
+    throw new Error("sh.degree must be greater than zero when an SH sidecar is declared");
+  }
+  if (sh.basis !== "3dgs_real_sh") {
+    throw new Error("sh.basis must be 3dgs_real_sh");
+  }
+  if (sh.coefficients_layout !== "splat_coeff_rgb") {
+    throw new Error("sh.coefficients_layout must be splat_coeff_rgb");
+  }
+  if (sh.coefficients_component_type !== "float32") {
+    throw new Error("sh.coefficients_component_type must be float32");
+  }
+
+  const coefficientCount = (degree + 1) ** 2 - 1;
+  const declaredCoefficientCount = requirePositiveInteger(
+    sh.coefficient_count,
+    "sh.coefficient_count"
+  );
+  if (declaredCoefficientCount !== coefficientCount) {
+    throw new Error(
+      `sh.coefficient_count must be ${coefficientCount} for degree ${degree}`
+    );
+  }
+  const expectedBytes = count * coefficientCount * 3 * Float32Array.BYTES_PER_ELEMENT;
+  const declaredBytes = requirePositiveInteger(
+    sh.coefficients_byte_length,
+    "sh.coefficients_byte_length"
+  );
+  if (declaredBytes !== expectedBytes) {
+    throw new Error(
+      `sh.coefficients_byte_length must be ${expectedBytes} for ${count} splats at degree ${degree}`
+    );
+  }
+  if (shBytes === undefined) {
+    throw new Error("SH sidecar bytes are required when manifest.sh is declared");
+  }
+
+  return {
+    degree,
+    basis: "3dgs_real_sh",
+    coefficientCount,
+    layout: "splat_coeff_rgb",
+    coefficients: decodeFloat32Bytes(
+      shBytes,
+      count * coefficientCount * 3,
+      "sh.coefficients"
+    ),
+  };
 }
 
 function manifestSourceKind(manifest: UnknownRecord): string {
