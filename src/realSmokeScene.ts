@@ -24,6 +24,7 @@ export interface MeshSplatSmokeEvidence {
   readonly assetPath: string;
   readonly splatCount: number;
   readonly sortedIdCount: number;
+  readonly sortBackend: string;
   readonly boundsRadius: number;
 }
 
@@ -54,6 +55,10 @@ export interface MeshSplatRendererWitness {
     readonly alphaEnergyPolicy: "bounded-footprint-energy-cap";
     readonly compositing: "straight-source-over";
     readonly ambiguousOverlapCount: 0;
+  };
+  readonly sort: {
+    readonly backend: string;
+    readonly sortedIdCount: number;
   };
   readonly source: {
     readonly assetPath: string;
@@ -87,9 +92,13 @@ export function composeFirstSmokeViewProjection(projection: mat4, view: mat4): m
 
 export function createMeshSplatSmokeEvidence(
   attributes: SplatAttributes,
-  sortedIds: Uint32Array,
-  assetPath = REAL_SCANIVERSE_SMOKE_ASSET_PATH
+  sortedIdsOrCount: Uint32Array | number,
+  assetPath = REAL_SCANIVERSE_SMOKE_ASSET_PATH,
+  sortBackend = "unknown"
 ): MeshSplatSmokeEvidence {
+  const sortedIdCount = typeof sortedIdsOrCount === "number"
+    ? sortedIdsOrCount
+    : sortedIdsOrCount.length;
   return {
     ready: true,
     sourceKind: attributes.sourceKind,
@@ -98,17 +107,24 @@ export function createMeshSplatSmokeEvidence(
     synthetic: false,
     assetPath,
     splatCount: attributes.count,
-    sortedIdCount: sortedIds.length,
+    sortedIdCount,
+    sortBackend,
     boundsRadius: attributes.bounds.radius,
   };
 }
 
 export function createMeshSplatRendererWitness(
   attributes: SplatAttributes,
-  sortedIds: Uint32Array,
-  assetPath = REAL_SCANIVERSE_SMOKE_ASSET_PATH
+  sortedIdsOrCount: Uint32Array | number,
+  assetPath = REAL_SCANIVERSE_SMOKE_ASSET_PATH,
+  sortBackend = "unknown"
 ): MeshSplatRendererWitness {
-  const sampleOriginalIds = Array.from(sortedIds.slice(0, 8));
+  const sortedIdCount = typeof sortedIdsOrCount === "number"
+    ? sortedIdsOrCount
+    : sortedIdsOrCount.length;
+  const sampleOriginalIds = typeof sortedIdsOrCount === "number"
+    ? []
+    : Array.from(sortedIdsOrCount.slice(0, 8));
   return {
     field: {
       scaleSpace: "log",
@@ -137,6 +153,10 @@ export function createMeshSplatRendererWitness(
       compositing: "straight-source-over",
       ambiguousOverlapCount: 0,
     },
+    sort: {
+      backend: sortBackend,
+      sortedIdCount,
+    },
     source: {
       assetPath,
       splatCount: attributes.count,
@@ -154,9 +174,11 @@ export function exposeMeshSplatSmokeEvidence(
   document.body.dataset.smokeSplatCount = String(evidence.splatCount);
   document.body.dataset.smokeAssetPath = evidence.assetPath;
   document.body.dataset.smokeReady = String(evidence.ready);
+  document.body.dataset.smokeSortBackend = evidence.sortBackend;
   canvas.dataset.smokeSourceKind = evidence.sourceKind;
   canvas.dataset.smokeSplatCount = String(evidence.splatCount);
   canvas.dataset.smokeAssetPath = evidence.assetPath;
+  canvas.dataset.smokeSortBackend = evidence.sortBackend;
 }
 
 export function exposeMeshSplatRendererWitness(

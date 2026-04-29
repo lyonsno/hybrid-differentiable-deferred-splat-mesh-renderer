@@ -156,6 +156,7 @@ async function collectPageEvidence(page) {
       sourceKind: smoke.sourceKind ?? firstDatasetValue("smokeSourceKind", "sourceKind"),
       splatCount: smoke.splatCount ?? firstDatasetValue("splatCount", "smokeSplatCount"),
       assetPath: smoke.assetPath ?? firstDatasetValue("assetPath", "smokeAssetPath"),
+      sortBackend: smoke.sortBackend ?? firstDatasetValue("sortBackend", "smokeSortBackend"),
       ready: smoke.ready ?? firstDatasetValue("smokeReady", "ready"),
       witness,
       statsText: stats?.textContent ?? "",
@@ -215,6 +216,7 @@ function renderMarkdownReport(result) {
 - Source kind: ${classification.sourceKind || "not reported"}
 - Splat count: ${classification.splatCount || 0}
 - Asset path: ${classification.assetPath || "not reported"}
+- Sort backend: ${result.pageEvidence.sortBackend || "not reported"}
 - Summary: ${classification.summary}
 
 ## Renderer Fidelity Witness

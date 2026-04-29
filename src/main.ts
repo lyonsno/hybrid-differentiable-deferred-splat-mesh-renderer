@@ -1,6 +1,12 @@
 import { initGPU, resizeCanvas, GPU } from "./gpu.js";
 import { createCamera, bindCameraControls, updateCamera, getViewMatrix, getProjectionMatrix } from "./camera.js";
-import { createStorageBuffer, createUniformBuffer } from "./buffers.js";
+import { createUniformBuffer } from "./buffers.js";
+import {
+  createGpuSortPrototype,
+  encodeGpuSortPrototype,
+  writeViewDepthSortInput,
+  type GpuSortPrototype,
+} from "./gpuSortPrototype.js";
 import { loadDroppedSplatFile } from "./localPly.js";
 import { createTimestamps, resolveTimestamps, readTimestamps, TimestampHelper } from "./timestamps.js";
 import {
@@ -19,7 +25,7 @@ import {
   SPLAT_PLATE_FRAME_UNIFORM_BYTES,
   writeSplatPlateFrameUniforms,
 } from "./splatPlateRenderer.js";
-import { createSplatSortRefreshState, refreshSplatSortForView } from "./splatSort.js";
+import { captureViewDepthKey, viewDepthKeyChanged } from "./splatSort.js";
 import {
   fetchFirstSmokeSplatPayload,
   uploadSplatAttributeBuffers,
@@ -29,16 +35,25 @@ import {
 
 const statsEl = document.getElementById("stats")!;
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
-const CPU_SORT_SETTLE_MS = 160;
+const SORT_BACKEND = "gpu-bitonic-cpu-depth-keys";
+const GPU_SORT_SETTLE_MS = 160;
 
 interface ActiveSplatScene {
   attributes: SplatAttributes;
   buffers: SplatGpuBuffers;
   sortedIndexBuffer: GPUBuffer;
   splatBindGroup: GPUBindGroup;
-  sortState: ReturnType<typeof createSplatSortRefreshState>;
+  gpuSort: GpuSortPrototype;
+  sortState: SortSettleState;
   count: number;
   assetPath: string;
+}
+
+interface SortSettleState {
+  lastSortedViewDepthKey: Float32Array;
+  observedViewDepthKey: Float32Array;
+  lastViewDepthChangeMs: number;
+  needsSort: boolean;
 }
 
 async function main() {
@@ -77,13 +92,10 @@ async function main() {
     configureCameraForSplatBounds(cam, attributes.bounds);
     updateCamera(cam, 0);
     const initialView = getViewMatrix(cam);
-    const sortState = createSplatSortRefreshState(attributes.positions, initialView);
+    const gpuSort = createGpuSortPrototype(gpu.device, attributes.count, "first_smoke_gpu_bitonic_sort");
+    const sortState = createSortSettleState(initialView);
     const buffers = uploadSplatAttributeBuffers(gpu.device, attributes);
-    const sortedIndexBuffer = createStorageBuffer(
-      gpu.device,
-      sortState.sortedIds.buffer as ArrayBuffer,
-      "first_smoke_sorted_splat_ids"
-    );
+    const sortedIndexBuffer = gpuSort.indexBuffer;
     const splatBindGroup = splatRenderer.createBindGroup({
       positionBuffer: buffers.positionBuffer,
       colorBuffer: buffers.colorBuffer,
@@ -97,16 +109,17 @@ async function main() {
       buffers,
       sortedIndexBuffer,
       splatBindGroup,
+      gpuSort,
       sortState,
       count: attributes.count,
       assetPath: sceneAssetPath,
     };
     exposeMeshSplatSmokeEvidence(
-      createMeshSplatSmokeEvidence(attributes, sortState.sortedIds, sceneAssetPath),
+      createMeshSplatSmokeEvidence(attributes, attributes.count, sceneAssetPath, SORT_BACKEND),
       canvas
     );
     exposeMeshSplatRendererWitness(
-      createMeshSplatRendererWitness(attributes, sortState.sortedIds, sceneAssetPath),
+      createMeshSplatRendererWitness(attributes, attributes.count, sceneAssetPath, SORT_BACKEND),
       canvas
     );
     destroySplatScene(previous);
@@ -167,14 +180,6 @@ async function main() {
     const view = getViewMatrix(cam);
     const proj = getProjectionMatrix(cam, aspect);
     const viewProj = composeFirstSmokeViewProjection(proj, view);
-    if (
-      refreshSplatSortForView(scene.attributes.positions, view, scene.sortState, {
-        settleMs: CPU_SORT_SETTLE_MS,
-        nowMs: now,
-      })
-    ) {
-      gpu.device.queue.writeBuffer(scene.sortedIndexBuffer, 0, scene.sortState.sortedIds);
-    }
     writeSplatPlateFrameUniforms(
       uniformData,
       viewProj,
@@ -186,6 +191,10 @@ async function main() {
     gpu.device.queue.writeBuffer(uniformBuffer, 0, uniformData);
 
     const encoder = gpu.device.createCommandEncoder();
+    if (shouldRefreshGpuSort(scene.sortState, view, now)) {
+      writeViewDepthSortInput(gpu.device.queue, scene.gpuSort, scene.attributes.positions, view);
+      encodeGpuSortPrototype(encoder, scene.gpuSort);
+    }
 
     const textureView = gpu.context.getCurrentTexture().createView();
 
@@ -238,7 +247,7 @@ async function main() {
     }
 
     // Stats overlay
-    let statsText = `${width}×${height} | ${displayFps} fps | ${scene.count.toLocaleString()} real Scaniverse splats`;
+    let statsText = `${width}×${height} | ${displayFps} fps | ${scene.count.toLocaleString()} real Scaniverse splats | sort: ${SORT_BACKEND}`;
     if (gpuTimings.size > 0) {
       for (const [label, ms] of gpuTimings) {
         statsText += ` | ${label}: ${ms.toFixed(2)}ms`;
@@ -250,6 +259,39 @@ async function main() {
   }
 
   requestAnimationFrame(frame);
+}
+
+function createSortSettleState(viewMatrix: Float32Array): SortSettleState {
+  const viewDepthKey = captureViewDepthKey(viewMatrix);
+  return {
+    lastSortedViewDepthKey: viewDepthKey,
+    observedViewDepthKey: viewDepthKey,
+    lastViewDepthChangeMs: Number.NEGATIVE_INFINITY,
+    needsSort: true,
+  };
+}
+
+function shouldRefreshGpuSort(
+  state: SortSettleState,
+  viewMatrix: Float32Array,
+  nowMs: number
+): boolean {
+  if (viewDepthKeyChanged(state.observedViewDepthKey, viewMatrix)) {
+    state.observedViewDepthKey = captureViewDepthKey(viewMatrix);
+    state.lastViewDepthChangeMs = nowMs;
+  }
+
+  if (!state.needsSort && !viewDepthKeyChanged(state.lastSortedViewDepthKey, viewMatrix)) {
+    return false;
+  }
+  if (!state.needsSort && nowMs - state.lastViewDepthChangeMs < GPU_SORT_SETTLE_MS) {
+    return false;
+  }
+
+  state.lastSortedViewDepthKey = captureViewDepthKey(viewMatrix);
+  state.observedViewDepthKey = state.lastSortedViewDepthKey;
+  state.needsSort = false;
+  return true;
 }
 
 function selectedSplatAssetPath(): string {
@@ -296,6 +338,7 @@ function destroySplatScene(scene: ActiveSplatScene | null): void {
   scene.buffers.scaleBuffer.destroy();
   scene.buffers.rotationBuffer.destroy();
   scene.buffers.originalIdBuffer.destroy();
+  scene.gpuSort.keyBuffer.destroy();
   scene.sortedIndexBuffer.destroy();
 }
 
