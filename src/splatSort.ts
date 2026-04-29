@@ -8,18 +8,22 @@ interface DepthKey {
 export interface SplatSortRefreshState {
   sortedIds: Uint32Array;
   viewDepthKey: Float32Array;
+  observedViewDepthKey: Float32Array;
+  lastViewDepthChangeMs: number;
   lastRefreshMs: number;
 }
 
 export interface SplatSortRefreshOptions {
   epsilon?: number;
   minIntervalMs?: number;
+  settleMs?: number;
   nowMs?: number;
 }
 
 type NormalizedSplatSortRefreshOptions = {
   epsilon: number;
   minIntervalMs?: number;
+  settleMs?: number;
   nowMs?: number;
 };
 
@@ -57,6 +61,8 @@ export function createSplatSortRefreshState(
   return {
     sortedIds: sortSplatIdsBackToFront(positions, viewMatrix),
     viewDepthKey: captureViewDepthKey(viewMatrix),
+    observedViewDepthKey: captureViewDepthKey(viewMatrix),
+    lastViewDepthChangeMs: Number.NEGATIVE_INFINITY,
     lastRefreshMs: Number.NEGATIVE_INFINITY,
   };
 }
@@ -67,8 +73,22 @@ export function refreshSplatSortForView(
   state: SplatSortRefreshState,
   options: SplatSortRefreshOptions | number = {}
 ): boolean {
-  const { epsilon, minIntervalMs, nowMs } = normalizeRefreshOptions(options);
+  const { epsilon, minIntervalMs, settleMs, nowMs } = normalizeRefreshOptions(options);
+  const observedChanged = viewDepthKeyChanged(state.observedViewDepthKey, viewMatrix, epsilon);
+  if (observedChanged) {
+    state.observedViewDepthKey = captureViewDepthKey(viewMatrix);
+    if (nowMs !== undefined) {
+      state.lastViewDepthChangeMs = nowMs;
+    }
+  }
   if (!viewDepthKeyChanged(state.viewDepthKey, viewMatrix, epsilon)) {
+    return false;
+  }
+  if (
+    settleMs !== undefined &&
+    nowMs !== undefined &&
+    nowMs - state.lastViewDepthChangeMs < settleMs
+  ) {
     return false;
   }
   if (
@@ -81,6 +101,7 @@ export function refreshSplatSortForView(
 
   state.sortedIds = sortSplatIdsBackToFront(positions, viewMatrix);
   state.viewDepthKey = captureViewDepthKey(viewMatrix);
+  state.observedViewDepthKey = captureViewDepthKey(viewMatrix);
   if (nowMs !== undefined) {
     state.lastRefreshMs = nowMs;
   }
@@ -96,6 +117,7 @@ function normalizeRefreshOptions(
   return {
     epsilon: options.epsilon ?? 1e-6,
     minIntervalMs: options.minIntervalMs,
+    settleMs: options.settleMs,
     nowMs: options.nowMs,
   };
 }

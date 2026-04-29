@@ -29,7 +29,7 @@ import {
 
 const statsEl = document.getElementById("stats")!;
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
-const CPU_SORT_REFRESH_MIN_INTERVAL_MS = 125;
+const CPU_SORT_SETTLE_MS = 160;
 
 interface ActiveSplatScene {
   attributes: SplatAttributes;
@@ -169,7 +169,7 @@ async function main() {
     const viewProj = composeFirstSmokeViewProjection(proj, view);
     if (
       refreshSplatSortForView(scene.attributes.positions, view, scene.sortState, {
-        minIntervalMs: CPU_SORT_REFRESH_MIN_INTERVAL_MS,
+        settleMs: CPU_SORT_SETTLE_MS,
         nowMs: now,
       })
     ) {
