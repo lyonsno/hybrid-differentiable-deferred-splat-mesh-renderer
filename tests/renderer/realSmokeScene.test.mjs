@@ -9,6 +9,7 @@ import {
   compareProjectedAnisotropyByRotationOrder,
   createMeshSplatRendererWitness,
   createMeshSplatSmokeEvidence,
+  writeAlphaDensityCompensatedOpacities,
 } from "../../node_modules/.cache/renderer-tests/src/realSmokeScene.js";
 
 const attributes = {
@@ -222,4 +223,66 @@ test("alpha witness reports local overlap density for plausible-sized splats", (
   assert.ok(witness.alpha.overlapDensity.maxTileAlphaMass > witness.alpha.overlapDensity.alphaMassCap);
   assert.equal(witness.alpha.overlapDensity.hotTileCount, 1);
   assert.deepEqual(witness.alpha.overlapDensity.sampleOriginalIds, [20, 21, 22, 23]);
+});
+
+test("alpha density compensation locally reduces only hot overlap tiles", () => {
+  const densitySplats = {
+    ...attributes,
+    count: 5,
+    positions: new Float32Array([
+      0, 0, 0.5,
+      0.01, 0, 0.5,
+      -0.01, 0, 0.5,
+      0, 0.01, 0.5,
+      0.8, 0.8, 0.5,
+    ]),
+    scales: new Float32Array([
+      Math.log(0.005), Math.log(0.005), Math.log(0.005),
+      Math.log(0.005), Math.log(0.005), Math.log(0.005),
+      Math.log(0.005), Math.log(0.005), Math.log(0.005),
+      Math.log(0.005), Math.log(0.005), Math.log(0.005),
+      Math.log(0.0001), Math.log(0.0001), Math.log(0.0001),
+    ]),
+    opacities: new Float32Array([0.9, 0.9, 0.9, 0.9, 0.4]),
+    rotations: new Float32Array([
+      1, 0, 0, 0,
+      1, 0, 0, 0,
+      1, 0, 0, 0,
+      1, 0, 0, 0,
+      1, 0, 0, 0,
+    ]),
+    originalIds: new Uint32Array([20, 21, 22, 23, 24]),
+  };
+  const identityViewProjection = new Float32Array([
+    1, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 0, 1, 0,
+    0, 0, 0, 1,
+  ]);
+  const target = new Float32Array(densitySplats.count);
+
+  const summary = writeAlphaDensityCompensatedOpacities(
+    target,
+    densitySplats,
+    identityViewProjection,
+    1000,
+    1000,
+    3000
+  );
+
+  assert.equal(summary.hotTileCount, 1);
+  assert.equal(summary.compensatedSplatCount, 4);
+  assert.ok(summary.minCompensationExponent > 0);
+  assert.ok(summary.minCompensationExponent < 1);
+  assert.ok(target[0] < 0.9);
+  assert.ok(target[0] > 0);
+  assert.ok(Math.abs(target[4] - 0.4) < 0.000001);
+});
+
+test("renderer updates the uploaded opacity buffer with alpha density compensation", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+
+  assert.match(source, /writeAlphaDensityCompensatedOpacities/);
+  assert.match(source, /queue\.writeBuffer\(scene\.buffers\.opacityBuffer/);
+  assert.match(source, /alpha: density/);
 });

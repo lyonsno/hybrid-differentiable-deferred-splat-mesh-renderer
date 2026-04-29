@@ -121,6 +121,11 @@ export interface AlphaOverlapDensitySummary {
   readonly sampleOriginalIds: readonly number[];
 }
 
+export interface AlphaDensityCompensationSummary extends AlphaOverlapDensitySummary {
+  readonly compensatedSplatCount: number;
+  readonly minCompensationExponent: number;
+}
+
 declare global {
   interface Window {
     __MESH_SPLAT_SMOKE__?: MeshSplatSmokeEvidence;
@@ -467,6 +472,100 @@ function summarizeAlphaOverlapDensity(
   };
 }
 
+export function writeAlphaDensityCompensatedOpacities(
+  target: Float32Array,
+  attributes: SplatAttributes,
+  viewProj: mat4,
+  viewportWidth: number,
+  viewportHeight: number,
+  splatScale = REAL_SCANIVERSE_SPLAT_SCALE,
+  minRadiusPx = REAL_SCANIVERSE_MIN_RADIUS_PX
+): AlphaDensityCompensationSummary {
+  if (target.length < attributes.count) {
+    throw new RangeError("alpha density target is too small for the splat count");
+  }
+
+  const safeViewportWidth = positiveOrDefault(viewportWidth, 1280);
+  const safeViewportHeight = positiveOrDefault(viewportHeight, 720);
+  const viewportMin = Math.max(Math.min(safeViewportWidth, safeViewportHeight), 1);
+  const safeSplatScale = positiveOrDefault(splatScale, REAL_SCANIVERSE_SPLAT_SCALE);
+  const safeMinRadiusPx = positiveOrDefault(minRadiusPx, REAL_SCANIVERSE_MIN_RADIUS_PX);
+  const tileSizePx = 48;
+  const alphaMassCap = tileSizePx * tileSizePx * 0.75;
+  const tileColumns = Math.max(1, Math.ceil(safeViewportWidth / tileSizePx));
+  const tileKeyBySplat = new Int32Array(attributes.count);
+  tileKeyBySplat.fill(-1);
+  const tiles = new Map<number, { alphaMass: number; splatCount: number; sampleOriginalIds: number[] }>();
+
+  for (let index = 0; index < attributes.count; index++) {
+    const opacity = clampUnit(attributes.opacities[index]);
+    target[index] = opacity;
+    const center = projectSplatCenterPx(attributes, viewProj, index, safeViewportWidth, safeViewportHeight);
+    if (!center) continue;
+
+    const projectedAxes = projectSplatAxesForWitness(attributes, viewProj, index, "wxyz");
+    if (!projectedAxes) continue;
+
+    const footprint = projectedFootprintFromAxes(projectedAxes, viewportMin, safeSplatScale, safeMinRadiusPx);
+    const tileX = Math.floor(center[0] / tileSizePx);
+    const tileY = Math.floor(center[1] / tileSizePx);
+    const tileKey = tileY * tileColumns + tileX;
+    const tile = tiles.get(tileKey) ?? { alphaMass: 0, splatCount: 0, sampleOriginalIds: [] };
+    tile.alphaMass += opacity * footprint.areaPx;
+    tile.splatCount += 1;
+    if (tile.sampleOriginalIds.length < 8) {
+      tile.sampleOriginalIds.push(attributes.originalIds[index] ?? index);
+    }
+    tiles.set(tileKey, tile);
+    tileKeyBySplat[index] = tileKey;
+  }
+
+  let maxTileAlphaMass = 0;
+  let maxTileSplatCount = 0;
+  let hotTileCount = 0;
+  let sampleOriginalIds: number[] = [];
+  for (const tile of tiles.values()) {
+    if (tile.alphaMass > alphaMassCap) {
+      hotTileCount += 1;
+      if (sampleOriginalIds.length === 0) {
+        sampleOriginalIds = tile.sampleOriginalIds;
+      }
+    }
+    if (tile.alphaMass > maxTileAlphaMass) {
+      maxTileAlphaMass = tile.alphaMass;
+      maxTileSplatCount = tile.splatCount;
+      if (hotTileCount === 0) {
+        sampleOriginalIds = tile.sampleOriginalIds;
+      }
+    }
+  }
+
+  let compensatedSplatCount = 0;
+  let minCompensationExponent = 1;
+  for (let index = 0; index < attributes.count; index++) {
+    const tileKey = tileKeyBySplat[index];
+    if (tileKey < 0) continue;
+    const tile = tiles.get(tileKey);
+    if (!tile || tile.alphaMass <= alphaMassCap) continue;
+
+    const exponent = Math.max(0, Math.min(1, alphaMassCap / tile.alphaMass));
+    target[index] = compensateAlphaOpticalDepth(target[index], exponent);
+    compensatedSplatCount += 1;
+    minCompensationExponent = Math.min(minCompensationExponent, exponent);
+  }
+
+  return {
+    tileSizePx,
+    alphaMassCap,
+    maxTileAlphaMass,
+    maxTileSplatCount,
+    hotTileCount,
+    sampleOriginalIds,
+    compensatedSplatCount,
+    minCompensationExponent,
+  };
+}
+
 function projectSplatCenterPx(
   attributes: SplatAttributes,
   viewProj: mat4,
@@ -645,6 +744,10 @@ function positiveOrDefault(value: number | undefined, fallback: number): number 
 
 function clampUnit(value: number): number {
   return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
+}
+
+function compensateAlphaOpticalDepth(alpha: number, exponent: number): number {
+  return 1 - Math.pow(1 - clampUnit(alpha), exponent);
 }
 
 export function exposeMeshSplatSmokeEvidence(

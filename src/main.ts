@@ -21,6 +21,8 @@ import {
   createMeshSplatRendererWitness,
   exposeMeshSplatSmokeEvidence,
   exposeMeshSplatRendererWitness,
+  writeAlphaDensityCompensatedOpacities,
+  type AlphaDensityCompensationSummary,
 } from "./realSmokeScene.js";
 import {
   createSplatPlateRenderer,
@@ -39,6 +41,7 @@ const statsEl = document.getElementById("stats")!;
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 const SORT_BACKEND = "gpu-bitonic-cpu-depth-keys";
 const GPU_SORT_SETTLE_MS = 160;
+const ALPHA_DENSITY_REFRESH_MS = 180;
 
 interface ActiveSplatScene {
   attributes: SplatAttributes;
@@ -47,6 +50,8 @@ interface ActiveSplatScene {
   splatBindGroup: GPUBindGroup;
   gpuSort: GpuSortPrototype;
   sortState: SortSettleState;
+  effectiveOpacities: Float32Array;
+  alphaDensityState: AlphaDensityState;
   count: number;
   assetPath: string;
 }
@@ -56,6 +61,11 @@ interface SortSettleState {
   observedViewDepthKey: Float32Array;
   lastViewDepthChangeMs: number;
   needsSort: boolean;
+}
+
+interface AlphaDensityState {
+  lastRefreshMs: number;
+  summary: AlphaDensityCompensationSummary;
 }
 
 async function main() {
@@ -104,6 +114,17 @@ async function main() {
     const gpuSort = createGpuSortPrototype(gpu.device, attributes.count, "first_smoke_gpu_bitonic_sort");
     const sortState = createSortSettleState(initialView);
     const buffers = uploadSplatAttributeBuffers(gpu.device, attributes);
+    const effectiveOpacities = new Float32Array(attributes.count);
+    const alphaDensitySummary = writeAlphaDensityCompensatedOpacities(
+      effectiveOpacities,
+      attributes,
+      initialViewProj,
+      initialViewportWidth,
+      initialViewportHeight,
+      REAL_SCANIVERSE_SPLAT_SCALE,
+      REAL_SCANIVERSE_MIN_RADIUS_PX
+    );
+    gpu.device.queue.writeBuffer(buffers.opacityBuffer, 0, effectiveOpacities);
     const sortedIndexBuffer = gpuSort.indexBuffer;
     const splatBindGroup = splatRenderer.createBindGroup({
       positionBuffer: buffers.positionBuffer,
@@ -120,6 +141,11 @@ async function main() {
       splatBindGroup,
       gpuSort,
       sortState,
+      effectiveOpacities,
+      alphaDensityState: {
+        lastRefreshMs: Number.NEGATIVE_INFINITY,
+        summary: alphaDensitySummary,
+      },
       count: attributes.count,
       assetPath: sceneAssetPath,
     };
@@ -201,6 +227,19 @@ async function main() {
     const view = getViewMatrix(cam);
     const proj = getProjectionMatrix(cam, aspect);
     const viewProj = composeFirstSmokeViewProjection(proj, view);
+    if (shouldRefreshAlphaDensity(scene.alphaDensityState, now)) {
+      scene.alphaDensityState.summary = writeAlphaDensityCompensatedOpacities(
+        scene.effectiveOpacities,
+        scene.attributes,
+        viewProj,
+        width,
+        height,
+        REAL_SCANIVERSE_SPLAT_SCALE,
+        REAL_SCANIVERSE_MIN_RADIUS_PX
+      );
+      scene.alphaDensityState.lastRefreshMs = now;
+      gpu.device.queue.writeBuffer(scene.buffers.opacityBuffer, 0, scene.effectiveOpacities);
+    }
     writeSplatPlateFrameUniforms(
       uniformData,
       viewProj,
@@ -270,7 +309,8 @@ async function main() {
     }
 
     // Stats overlay
-    let statsText = `${width}×${height} | ${displayFps} fps | ${scene.count.toLocaleString()} real Scaniverse splats | sort: ${SORT_BACKEND}`;
+    const alphaSummary = scene.alphaDensityState.summary;
+    let statsText = `${width}×${height} | ${displayFps} fps | ${scene.count.toLocaleString()} real Scaniverse splats | sort: ${SORT_BACKEND} | alpha: density ${alphaSummary.compensatedSplatCount.toLocaleString()} splats/${alphaSummary.hotTileCount} tiles`;
     if (gpuTimings.size > 0) {
       for (const [label, ms] of gpuTimings) {
         statsText += ` | ${label}: ${ms.toFixed(2)}ms`;
@@ -282,6 +322,10 @@ async function main() {
   }
 
   requestAnimationFrame(frame);
+}
+
+function shouldRefreshAlphaDensity(state: AlphaDensityState, nowMs: number): boolean {
+  return nowMs - state.lastRefreshMs >= ALPHA_DENSITY_REFRESH_MS;
 }
 
 function createSortSettleState(viewMatrix: Float32Array): SortSettleState {
