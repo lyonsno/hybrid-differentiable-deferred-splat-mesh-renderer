@@ -22,6 +22,7 @@ import {
   exposeMeshSplatSmokeEvidence,
   exposeMeshSplatRendererWitness,
   writeAlphaDensityCompensatedOpacities,
+  type AlphaDensityAccountingMode,
   type AlphaDensityCompensationSummary,
 } from "./realSmokeScene.js";
 import {
@@ -42,6 +43,7 @@ const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 const SORT_BACKEND = "gpu-bitonic-cpu-depth-keys";
 const GPU_SORT_SETTLE_MS = 160;
 const ALPHA_DENSITY_REFRESH_MS = 180;
+const ALPHA_DENSITY_MODE = selectedAlphaDensityMode();
 
 interface ActiveSplatScene {
   attributes: SplatAttributes;
@@ -122,7 +124,8 @@ async function main() {
       initialViewportWidth,
       initialViewportHeight,
       REAL_SCANIVERSE_SPLAT_SCALE,
-      REAL_SCANIVERSE_MIN_RADIUS_PX
+      REAL_SCANIVERSE_MIN_RADIUS_PX,
+      ALPHA_DENSITY_MODE
     );
     gpu.device.queue.writeBuffer(buffers.opacityBuffer, 0, effectiveOpacities);
     const sortedIndexBuffer = gpuSort.indexBuffer;
@@ -235,7 +238,8 @@ async function main() {
         width,
         height,
         REAL_SCANIVERSE_SPLAT_SCALE,
-        REAL_SCANIVERSE_MIN_RADIUS_PX
+        REAL_SCANIVERSE_MIN_RADIUS_PX,
+        ALPHA_DENSITY_MODE
       );
       scene.alphaDensityState.lastRefreshMs = now;
       gpu.device.queue.writeBuffer(scene.buffers.opacityBuffer, 0, scene.effectiveOpacities);
@@ -310,7 +314,7 @@ async function main() {
 
     // Stats overlay
     const alphaSummary = scene.alphaDensityState.summary;
-    let statsText = `${width}×${height} | ${displayFps} fps | ${scene.count.toLocaleString()} real Scaniverse splats | sort: ${SORT_BACKEND} | alpha: density ${alphaSummary.compensatedSplatCount.toLocaleString()} splats/${alphaSummary.hotTileCount} tiles`;
+    let statsText = `${width}×${height} | ${displayFps} fps | ${scene.count.toLocaleString()} real Scaniverse splats | sort: ${SORT_BACKEND} | alpha: ${alphaSummary.accountingMode} density ${alphaSummary.compensatedSplatCount.toLocaleString()} splats/${alphaSummary.hotTileCount} tiles`;
     if (gpuTimings.size > 0) {
       for (const [label, ms] of gpuTimings) {
         statsText += ` | ${label}: ${ms.toFixed(2)}ms`;
@@ -364,6 +368,11 @@ function shouldRefreshGpuSort(
 function selectedSplatAssetPath(): string {
   const params = new URLSearchParams(window.location.search);
   return params.get("asset") || REAL_SCANIVERSE_SMOKE_ASSET_PATH;
+}
+
+function selectedAlphaDensityMode(): AlphaDensityAccountingMode {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("alpha") === "center-tile" ? "center-tile" : "coverage-aware";
 }
 
 function bindDroppedSplatLoading(

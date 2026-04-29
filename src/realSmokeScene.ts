@@ -12,6 +12,9 @@ export const REAL_SCANIVERSE_NEAR_FADE_END_NDC = 0.08;
 const MAX_ANISOTROPIC_MINOR_RADIUS_INFLATION = 4;
 const MIN_ANISOTROPIC_MINOR_RADIUS_FRACTION = 1 / 64;
 const MIN_ALPHA_DENSITY_OPACITY_FRACTION = 0.5;
+const ALPHA_DENSITY_TILE_SIZE_PX = 48;
+const ALPHA_DENSITY_GAUSSIAN_SUPPORT_SIGMA = 3;
+const ALPHA_DENSITY_COVERAGE_SAMPLES_PER_AXIS = 5;
 
 const VIEWER_VERTICAL_FLIP = new Float32Array([
   1, 0, 0, 0,
@@ -114,17 +117,35 @@ export interface ProjectedFootprintSummary {
 }
 
 export interface AlphaOverlapDensitySummary {
+  readonly accountingMode: AlphaDensityAccountingMode;
   readonly tileSizePx: number;
   readonly alphaMassCap: number;
   readonly maxTileAlphaMass: number;
   readonly maxTileSplatCount: number;
   readonly hotTileCount: number;
+  readonly tileEntryCount: number;
+  readonly maxSplatCoveredTileCount: number;
+  readonly maxCenterTileDroppedCoverageFraction: number;
   readonly sampleOriginalIds: readonly number[];
 }
 
 export interface AlphaDensityCompensationSummary extends AlphaOverlapDensitySummary {
   readonly compensatedSplatCount: number;
   readonly minCompensationExponent: number;
+}
+
+export type AlphaDensityAccountingMode = "coverage-aware" | "center-tile";
+
+interface AlphaDensityTile {
+  alphaMass: number;
+  splatCount: number;
+  sampleOriginalIds: number[];
+}
+
+interface AlphaDensityAccounting {
+  readonly summary: AlphaOverlapDensitySummary;
+  readonly tiles: Map<number, AlphaDensityTile>;
+  readonly splatTileKeys: number[][];
 }
 
 declare global {
@@ -415,62 +436,17 @@ function summarizeAlphaOverlapDensity(
 ): AlphaOverlapDensitySummary {
   const viewportWidth = positiveOrDefault(options.viewportWidth, 1280);
   const viewportHeight = positiveOrDefault(options.viewportHeight, 720);
-  const viewportMin = Math.max(Math.min(viewportWidth, viewportHeight), 1);
   const splatScale = positiveOrDefault(options.splatScale, REAL_SCANIVERSE_SPLAT_SCALE);
   const minRadiusPx = positiveOrDefault(options.minRadiusPx, REAL_SCANIVERSE_MIN_RADIUS_PX);
-  const tileSizePx = 48;
-  const alphaMassCap = tileSizePx * tileSizePx * 0.75;
-  const tileColumns = Math.max(1, Math.ceil(viewportWidth / tileSizePx));
-  const tiles = new Map<number, { alphaMass: number; splatCount: number; sampleOriginalIds: number[] }>();
-
-  for (let index = 0; index < attributes.count; index++) {
-    const center = projectSplatCenterPx(attributes, viewProj, index, viewportWidth, viewportHeight);
-    if (!center) continue;
-
-    const projectedAxes = projectSplatAxesForWitness(attributes, viewProj, index, "wxyz");
-    if (!projectedAxes) continue;
-
-    const footprint = projectedFootprintFromAxes(projectedAxes, viewportMin, splatScale, minRadiusPx);
-    const tileX = Math.floor(center[0] / tileSizePx);
-    const tileY = Math.floor(center[1] / tileSizePx);
-    const tileKey = tileY * tileColumns + tileX;
-    const tile = tiles.get(tileKey) ?? { alphaMass: 0, splatCount: 0, sampleOriginalIds: [] };
-    tile.alphaMass += clampUnit(attributes.opacities[index]) * footprint.areaPx;
-    tile.splatCount += 1;
-    if (tile.sampleOriginalIds.length < 8) {
-      tile.sampleOriginalIds.push(attributes.originalIds[index] ?? index);
-    }
-    tiles.set(tileKey, tile);
-  }
-
-  let maxTileAlphaMass = 0;
-  let maxTileSplatCount = 0;
-  let hotTileCount = 0;
-  let sampleOriginalIds: number[] = [];
-  for (const tile of tiles.values()) {
-    if (tile.alphaMass > alphaMassCap) {
-      hotTileCount += 1;
-      if (sampleOriginalIds.length === 0) {
-        sampleOriginalIds = tile.sampleOriginalIds;
-      }
-    }
-    if (tile.alphaMass > maxTileAlphaMass) {
-      maxTileAlphaMass = tile.alphaMass;
-      maxTileSplatCount = tile.splatCount;
-      if (hotTileCount === 0) {
-        sampleOriginalIds = tile.sampleOriginalIds;
-      }
-    }
-  }
-
-  return {
-    tileSizePx,
-    alphaMassCap,
-    maxTileAlphaMass,
-    maxTileSplatCount,
-    hotTileCount,
-    sampleOriginalIds,
-  };
+  return buildAlphaDensityAccounting(
+    attributes,
+    viewProj,
+    viewportWidth,
+    viewportHeight,
+    splatScale,
+    minRadiusPx,
+    "coverage-aware"
+  ).summary;
 }
 
 export function writeAlphaDensityCompensatedOpacities(
@@ -480,7 +456,8 @@ export function writeAlphaDensityCompensatedOpacities(
   viewportWidth: number,
   viewportHeight: number,
   splatScale = REAL_SCANIVERSE_SPLAT_SCALE,
-  minRadiusPx = REAL_SCANIVERSE_MIN_RADIUS_PX
+  minRadiusPx = REAL_SCANIVERSE_MIN_RADIUS_PX,
+  accountingMode: AlphaDensityAccountingMode = "coverage-aware"
 ): AlphaDensityCompensationSummary {
   if (target.length < attributes.count) {
     throw new RangeError("alpha density target is too small for the splat count");
@@ -488,39 +465,180 @@ export function writeAlphaDensityCompensatedOpacities(
 
   const safeViewportWidth = positiveOrDefault(viewportWidth, 1280);
   const safeViewportHeight = positiveOrDefault(viewportHeight, 720);
-  const viewportMin = Math.max(Math.min(safeViewportWidth, safeViewportHeight), 1);
   const safeSplatScale = positiveOrDefault(splatScale, REAL_SCANIVERSE_SPLAT_SCALE);
   const safeMinRadiusPx = positiveOrDefault(minRadiusPx, REAL_SCANIVERSE_MIN_RADIUS_PX);
-  const tileSizePx = 48;
+
+  for (let index = 0; index < attributes.count; index++) {
+    target[index] = clampUnit(attributes.opacities[index]);
+  }
+
+  const accounting = buildAlphaDensityAccounting(
+    attributes,
+    viewProj,
+    safeViewportWidth,
+    safeViewportHeight,
+    safeSplatScale,
+    safeMinRadiusPx,
+    accountingMode
+  );
+  const alphaMassCap = accounting.summary.alphaMassCap;
+
+  let compensatedSplatCount = 0;
+  let minCompensationExponent = 1;
+  for (let index = 0; index < attributes.count; index++) {
+    const tileKeys = accounting.splatTileKeys[index];
+    if (!tileKeys?.length) continue;
+
+    let exponent = 1;
+    for (const tileKey of tileKeys) {
+      const tile = accounting.tiles.get(tileKey);
+      if (!tile || tile.alphaMass <= alphaMassCap) continue;
+      exponent = Math.min(exponent, Math.max(0, Math.min(1, alphaMassCap / tile.alphaMass)));
+    }
+    if (exponent >= 1) continue;
+
+    const opacityFloor = target[index] * MIN_ALPHA_DENSITY_OPACITY_FRACTION;
+    target[index] = Math.max(compensateAlphaOpticalDepth(target[index], exponent), opacityFloor);
+    compensatedSplatCount += 1;
+    minCompensationExponent = Math.min(minCompensationExponent, exponent);
+  }
+
+  return {
+    ...accounting.summary,
+    compensatedSplatCount,
+    minCompensationExponent,
+  };
+}
+
+function buildAlphaDensityAccounting(
+  attributes: SplatAttributes,
+  viewProj: mat4,
+  viewportWidth: number,
+  viewportHeight: number,
+  splatScale: number,
+  minRadiusPx: number,
+  accountingMode: AlphaDensityAccountingMode
+): AlphaDensityAccounting {
+  const viewportMin = Math.max(Math.min(viewportWidth, viewportHeight), 1);
+  const tileSizePx = ALPHA_DENSITY_TILE_SIZE_PX;
   const alphaMassCap = tileSizePx * tileSizePx * 0.75;
-  const tileColumns = Math.max(1, Math.ceil(safeViewportWidth / tileSizePx));
-  const tileKeyBySplat = new Int32Array(attributes.count);
-  tileKeyBySplat.fill(-1);
-  const tiles = new Map<number, { alphaMass: number; splatCount: number; sampleOriginalIds: number[] }>();
+  const tileColumns = Math.max(1, Math.ceil(viewportWidth / tileSizePx));
+  const tileRows = Math.max(1, Math.ceil(viewportHeight / tileSizePx));
+  const splatTileKeys = Array.from({ length: attributes.count }, () => [] as number[]);
+  const tiles = new Map<number, AlphaDensityTile>();
+  let tileEntryCount = 0;
+  let maxSplatCoveredTileCount = 0;
+  let maxCenterTileDroppedCoverageFraction = 0;
 
   for (let index = 0; index < attributes.count; index++) {
     const opacity = clampUnit(attributes.opacities[index]);
-    target[index] = opacity;
-    const center = projectSplatCenterPx(attributes, viewProj, index, safeViewportWidth, safeViewportHeight);
+    const center = projectSplatCenterPx(attributes, viewProj, index, viewportWidth, viewportHeight);
     if (!center) continue;
 
     const projectedAxes = projectSplatAxesForWitness(attributes, viewProj, index, "wxyz");
     if (!projectedAxes) continue;
 
-    const footprint = projectedFootprintFromAxes(projectedAxes, viewportMin, safeSplatScale, safeMinRadiusPx);
-    const tileX = Math.floor(center[0] / tileSizePx);
-    const tileY = Math.floor(center[1] / tileSizePx);
-    const tileKey = tileY * tileColumns + tileX;
-    const tile = tiles.get(tileKey) ?? { alphaMass: 0, splatCount: 0, sampleOriginalIds: [] };
-    tile.alphaMass += opacity * footprint.areaPx;
-    tile.splatCount += 1;
-    if (tile.sampleOriginalIds.length < 8) {
-      tile.sampleOriginalIds.push(attributes.originalIds[index] ?? index);
+    const footprint = projectedFootprintFromAxes(projectedAxes, viewportMin, splatScale, minRadiusPx);
+    const centerTileX = clampInteger(Math.floor(center[0] / tileSizePx), 0, tileColumns - 1);
+    const centerTileY = clampInteger(Math.floor(center[1] / tileSizePx), 0, tileRows - 1);
+    const centerTileKey = centerTileY * tileColumns + centerTileX;
+
+    if (accountingMode === "center-tile") {
+      addAlphaDensityTileMass(
+        tiles,
+        centerTileKey,
+        opacity * footprint.areaPx,
+        index,
+        attributes
+      );
+      splatTileKeys[index].push(centerTileKey);
+      tileEntryCount += 1;
+      maxSplatCoveredTileCount = Math.max(maxSplatCoveredTileCount, 1);
+      continue;
     }
-    tiles.set(tileKey, tile);
-    tileKeyBySplat[index] = tileKey;
+
+    const covariance = projectedCovariancePx(projectedAxes, viewportMin, splatScale);
+    const bounds = projectedGaussianTileBounds(center, covariance, tileSizePx, tileColumns, tileRows);
+    const touchedTiles: number[] = [];
+    let totalCoverageWeight = 0;
+    let centerTileCoverageWeight = 0;
+
+    for (let tileY = bounds.minTileY; tileY <= bounds.maxTileY; tileY++) {
+      for (let tileX = bounds.minTileX; tileX <= bounds.maxTileX; tileX++) {
+        const tileKey = tileY * tileColumns + tileX;
+        const coverageWeight = approximateGaussianTileCoverage(
+          center,
+          covariance,
+          tileX * tileSizePx,
+          tileY * tileSizePx,
+          Math.min((tileX + 1) * tileSizePx, viewportWidth),
+          Math.min((tileY + 1) * tileSizePx, viewportHeight)
+        );
+        if (coverageWeight <= 0) continue;
+
+        addAlphaDensityTileMass(
+          tiles,
+          tileKey,
+          opacity * footprint.areaPx * coverageWeight,
+          index,
+          attributes
+        );
+        touchedTiles.push(tileKey);
+        totalCoverageWeight += coverageWeight;
+        if (tileKey === centerTileKey) {
+          centerTileCoverageWeight += coverageWeight;
+        }
+      }
+    }
+
+    if (touchedTiles.length === 0) {
+      addAlphaDensityTileMass(
+        tiles,
+        centerTileKey,
+        opacity * footprint.areaPx,
+        index,
+        attributes
+      );
+      touchedTiles.push(centerTileKey);
+      totalCoverageWeight = 1;
+      centerTileCoverageWeight = 1;
+    }
+
+    splatTileKeys[index].push(...touchedTiles);
+    tileEntryCount += touchedTiles.length;
+    maxSplatCoveredTileCount = Math.max(maxSplatCoveredTileCount, touchedTiles.length);
+    if (totalCoverageWeight > 0) {
+      maxCenterTileDroppedCoverageFraction = Math.max(
+        maxCenterTileDroppedCoverageFraction,
+        1 - centerTileCoverageWeight / totalCoverageWeight
+      );
+    }
   }
 
+  return {
+    summary: summarizeAlphaDensityTiles(
+      tiles,
+      tileSizePx,
+      alphaMassCap,
+      accountingMode,
+      tileEntryCount,
+      maxSplatCoveredTileCount,
+      maxCenterTileDroppedCoverageFraction
+    ),
+    tiles,
+    splatTileKeys,
+  };
+}
+
+function summarizeAlphaDensityTiles(
+  tiles: Map<number, AlphaDensityTile>,
+  tileSizePx: number,
+  alphaMassCap: number,
+  accountingMode: AlphaDensityAccountingMode,
+  tileEntryCount: number,
+  maxSplatCoveredTileCount: number,
+  maxCenterTileDroppedCoverageFraction: number
+): AlphaOverlapDensitySummary {
   let maxTileAlphaMass = 0;
   let maxTileSplatCount = 0;
   let hotTileCount = 0;
@@ -541,31 +659,111 @@ export function writeAlphaDensityCompensatedOpacities(
     }
   }
 
-  let compensatedSplatCount = 0;
-  let minCompensationExponent = 1;
-  for (let index = 0; index < attributes.count; index++) {
-    const tileKey = tileKeyBySplat[index];
-    if (tileKey < 0) continue;
-    const tile = tiles.get(tileKey);
-    if (!tile || tile.alphaMass <= alphaMassCap) continue;
-
-    const exponent = Math.max(0, Math.min(1, alphaMassCap / tile.alphaMass));
-    const opacityFloor = target[index] * MIN_ALPHA_DENSITY_OPACITY_FRACTION;
-    target[index] = Math.max(compensateAlphaOpticalDepth(target[index], exponent), opacityFloor);
-    compensatedSplatCount += 1;
-    minCompensationExponent = Math.min(minCompensationExponent, exponent);
-  }
-
   return {
+    accountingMode,
     tileSizePx,
     alphaMassCap,
     maxTileAlphaMass,
     maxTileSplatCount,
     hotTileCount,
+    tileEntryCount,
+    maxSplatCoveredTileCount,
+    maxCenterTileDroppedCoverageFraction,
     sampleOriginalIds,
-    compensatedSplatCount,
-    minCompensationExponent,
   };
+}
+
+function addAlphaDensityTileMass(
+  tiles: Map<number, AlphaDensityTile>,
+  tileKey: number,
+  alphaMass: number,
+  splatIndex: number,
+  attributes: SplatAttributes
+): void {
+  const tile = tiles.get(tileKey) ?? { alphaMass: 0, splatCount: 0, sampleOriginalIds: [] };
+  tile.alphaMass += alphaMass;
+  tile.splatCount += 1;
+  if (tile.sampleOriginalIds.length < 8) {
+    tile.sampleOriginalIds.push(attributes.originalIds[splatIndex] ?? splatIndex);
+  }
+  tiles.set(tileKey, tile);
+}
+
+function projectedCovariancePx(
+  projectedAxes: readonly [number, number][],
+  viewportMin: number,
+  splatScale: number
+): { readonly xx: number; readonly xy: number; readonly yy: number } {
+  const axisScale = (splatScale / 600) * viewportMin * 0.5;
+  let xx = 0;
+  let xy = 0;
+  let yy = 0;
+  for (const axis of projectedAxes) {
+    const axisX = axis[0] * axisScale;
+    const axisY = axis[1] * axisScale;
+    xx += axisX * axisX;
+    xy += axisX * axisY;
+    yy += axisY * axisY;
+  }
+  return { xx, xy, yy };
+}
+
+function projectedGaussianTileBounds(
+  center: readonly [number, number],
+  covariance: { readonly xx: number; readonly xy: number; readonly yy: number },
+  tileSizePx: number,
+  tileColumns: number,
+  tileRows: number
+): {
+  readonly minTileX: number;
+  readonly maxTileX: number;
+  readonly minTileY: number;
+  readonly maxTileY: number;
+} {
+  const supportX = ALPHA_DENSITY_GAUSSIAN_SUPPORT_SIGMA * Math.sqrt(Math.max(covariance.xx, 1e-6));
+  const supportY = ALPHA_DENSITY_GAUSSIAN_SUPPORT_SIGMA * Math.sqrt(Math.max(covariance.yy, 1e-6));
+  return {
+    minTileX: clampInteger(Math.floor((center[0] - supportX) / tileSizePx), 0, tileColumns - 1),
+    maxTileX: clampInteger(Math.floor((center[0] + supportX) / tileSizePx), 0, tileColumns - 1),
+    minTileY: clampInteger(Math.floor((center[1] - supportY) / tileSizePx), 0, tileRows - 1),
+    maxTileY: clampInteger(Math.floor((center[1] + supportY) / tileSizePx), 0, tileRows - 1),
+  };
+}
+
+function approximateGaussianTileCoverage(
+  center: readonly [number, number],
+  covariance: { readonly xx: number; readonly xy: number; readonly yy: number },
+  tileMinX: number,
+  tileMinY: number,
+  tileMaxX: number,
+  tileMaxY: number
+): number {
+  const det = covariance.xx * covariance.yy - covariance.xy * covariance.xy;
+  if (!Number.isFinite(det) || det <= 1e-12 || tileMaxX <= tileMinX || tileMaxY <= tileMinY) {
+    return 0;
+  }
+
+  const invXX = covariance.yy / det;
+  const invXY = -covariance.xy / det;
+  const invYY = covariance.xx / det;
+  const normalizer = 1 / (2 * Math.PI * Math.sqrt(det));
+  const samples = ALPHA_DENSITY_COVERAGE_SAMPLES_PER_AXIS;
+  const stepX = (tileMaxX - tileMinX) / samples;
+  const stepY = (tileMaxY - tileMinY) / samples;
+  let densitySum = 0;
+
+  for (let sampleY = 0; sampleY < samples; sampleY++) {
+    const y = tileMinY + (sampleY + 0.5) * stepY;
+    const dy = y - center[1];
+    for (let sampleX = 0; sampleX < samples; sampleX++) {
+      const x = tileMinX + (sampleX + 0.5) * stepX;
+      const dx = x - center[0];
+      const mahalanobis = dx * dx * invXX + 2 * dx * dy * invXY + dy * dy * invYY;
+      densitySum += normalizer * Math.exp(-0.5 * mahalanobis);
+    }
+  }
+
+  return Math.max(0, Math.min(1, densitySum * stepX * stepY));
 }
 
 function projectSplatCenterPx(
@@ -746,6 +944,10 @@ function positiveOrDefault(value: number | undefined, fallback: number): number 
 
 function clampUnit(value: number): number {
   return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
+}
+
+function clampInteger(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, Math.trunc(value)));
 }
 
 function compensateAlphaOpticalDepth(alpha: number, exponent: number): number {

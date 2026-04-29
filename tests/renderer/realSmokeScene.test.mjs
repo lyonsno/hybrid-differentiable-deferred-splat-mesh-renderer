@@ -195,10 +195,10 @@ test("alpha witness reports local overlap density for plausible-sized splats", (
       0, 0.01, 0.5,
     ]),
     scales: new Float32Array([
-      Math.log(0.005), Math.log(0.005), Math.log(0.005),
-      Math.log(0.005), Math.log(0.005), Math.log(0.005),
-      Math.log(0.005), Math.log(0.005), Math.log(0.005),
-      Math.log(0.005), Math.log(0.005), Math.log(0.005),
+      Math.log(0.006), Math.log(0.006), Math.log(0.006),
+      Math.log(0.006), Math.log(0.006), Math.log(0.006),
+      Math.log(0.006), Math.log(0.006), Math.log(0.006),
+      Math.log(0.006), Math.log(0.006), Math.log(0.006),
     ]),
     opacities: new Float32Array([0.9, 0.9, 0.9, 0.9]),
     rotations: new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]),
@@ -219,9 +219,11 @@ test("alpha witness reports local overlap density for plausible-sized splats", (
     { viewProj: identityViewProjection, viewportWidth: 1000, viewportHeight: 1000, splatScale: 3000 }
   );
 
+  assert.equal(witness.alpha.overlapDensity.accountingMode, "coverage-aware");
   assert.equal(witness.alpha.overlapDensity.maxTileSplatCount, 4);
   assert.ok(witness.alpha.overlapDensity.maxTileAlphaMass > witness.alpha.overlapDensity.alphaMassCap);
-  assert.equal(witness.alpha.overlapDensity.hotTileCount, 1);
+  assert.ok(witness.alpha.overlapDensity.hotTileCount > 0);
+  assert.ok(witness.alpha.overlapDensity.maxSplatCoveredTileCount > 1);
   assert.deepEqual(witness.alpha.overlapDensity.sampleOriginalIds, [20, 21, 22, 23]);
 });
 
@@ -237,10 +239,10 @@ test("alpha density compensation locally reduces only hot overlap tiles", () => 
       0.8, 0.8, 0.5,
     ]),
     scales: new Float32Array([
-      Math.log(0.005), Math.log(0.005), Math.log(0.005),
-      Math.log(0.005), Math.log(0.005), Math.log(0.005),
-      Math.log(0.005), Math.log(0.005), Math.log(0.005),
-      Math.log(0.005), Math.log(0.005), Math.log(0.005),
+      Math.log(0.006), Math.log(0.006), Math.log(0.006),
+      Math.log(0.006), Math.log(0.006), Math.log(0.006),
+      Math.log(0.006), Math.log(0.006), Math.log(0.006),
+      Math.log(0.006), Math.log(0.006), Math.log(0.006),
       Math.log(0.0001), Math.log(0.0001), Math.log(0.0001),
     ]),
     opacities: new Float32Array([0.9, 0.9, 0.9, 0.9, 0.4]),
@@ -270,8 +272,10 @@ test("alpha density compensation locally reduces only hot overlap tiles", () => 
     3000
   );
 
-  assert.equal(summary.hotTileCount, 1);
+  assert.equal(summary.accountingMode, "coverage-aware");
+  assert.ok(summary.hotTileCount > 0);
   assert.equal(summary.compensatedSplatCount, 4);
+  assert.ok(summary.maxSplatCoveredTileCount > 1);
   assert.ok(summary.minCompensationExponent > 0);
   assert.ok(summary.minCompensationExponent < 1);
   assert.ok(target[0] < 0.9);
@@ -321,9 +325,44 @@ test("alpha density compensation does not erase individual hot-tile splats", () 
     3000
   );
 
-  assert.equal(summary.hotTileCount, 1);
+  assert.ok(summary.hotTileCount > 0);
   assert.equal(summary.compensatedSplatCount, 4);
   assert.ok(target[0] >= 0.449, `expected bounded opacity, saw ${target[0]}`);
+});
+
+test("alpha density compensation accounts for coverage across every overlapped tile", () => {
+  const tileStraddlingSplat = {
+    ...attributes,
+    count: 1,
+    positions: new Float32Array([-0.265625, -0.46875, 0.5]),
+    scales: new Float32Array([
+      Math.log(0.1125), Math.log(0.1125), Math.log(0.1125),
+    ]),
+    opacities: new Float32Array([0.8]),
+    rotations: new Float32Array([1, 0, 0, 0]),
+    originalIds: new Uint32Array([77]),
+  };
+  const identityViewProjection = new Float32Array([
+    1, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 0, 1, 0,
+    0, 0, 0, 1,
+  ]);
+  const target = new Float32Array(tileStraddlingSplat.count);
+
+  const summary = writeAlphaDensityCompensatedOpacities(
+    target,
+    tileStraddlingSplat,
+    identityViewProjection,
+    128,
+    64,
+    3000
+  );
+
+  assert.equal(summary.accountingMode, "coverage-aware");
+  assert.ok(summary.maxSplatCoveredTileCount > 1);
+  assert.ok(summary.maxCenterTileDroppedCoverageFraction > 0.5);
+  assert.ok(summary.tileEntryCount > tileStraddlingSplat.count);
 });
 
 test("renderer updates the uploaded opacity buffer with alpha density compensation", () => {
@@ -331,5 +370,6 @@ test("renderer updates the uploaded opacity buffer with alpha density compensati
 
   assert.match(source, /writeAlphaDensityCompensatedOpacities/);
   assert.match(source, /queue\.writeBuffer\(scene\.buffers\.opacityBuffer/);
-  assert.match(source, /alpha: density/);
+  assert.match(source, /selectedAlphaDensityMode/);
+  assert.match(source, /alpha: \$\{alphaSummary\.accountingMode\} density/);
 });
