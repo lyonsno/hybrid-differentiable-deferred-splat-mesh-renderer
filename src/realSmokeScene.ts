@@ -37,8 +37,8 @@ export interface MeshSplatRendererWitness {
   };
   readonly projection: {
     readonly projectionMode: "jacobian-covariance";
-    readonly maxAnisotropyRatio: 0;
-    readonly suspiciousSplatCount: 0;
+    readonly maxAnisotropyRatio: number;
+    readonly suspiciousSplatCount: number;
     readonly sampleOriginalIds: readonly number[];
   };
   readonly slab: {
@@ -125,6 +125,7 @@ export function createMeshSplatRendererWitness(
   const sampleOriginalIds = typeof sortedIdsOrCount === "number"
     ? []
     : Array.from(sortedIdsOrCount.slice(0, 8));
+  const anisotropy = summarizeFieldAnisotropy(attributes);
   return {
     field: {
       scaleSpace: "log",
@@ -134,9 +135,9 @@ export function createMeshSplatRendererWitness(
     },
     projection: {
       projectionMode: "jacobian-covariance",
-      maxAnisotropyRatio: 0,
-      suspiciousSplatCount: 0,
-      sampleOriginalIds,
+      maxAnisotropyRatio: anisotropy.maxAnisotropyRatio,
+      suspiciousSplatCount: anisotropy.suspiciousSplatCount,
+      sampleOriginalIds: anisotropy.sampleOriginalIds,
     },
     slab: {
       statusCounts: {
@@ -163,6 +164,38 @@ export function createMeshSplatRendererWitness(
       sortedSampleOriginalIds: sampleOriginalIds,
     },
   };
+}
+
+function summarizeFieldAnisotropy(attributes: SplatAttributes): {
+  readonly maxAnisotropyRatio: number;
+  readonly suspiciousSplatCount: number;
+  readonly sampleOriginalIds: readonly number[];
+} {
+  const suspiciousRatio = 8;
+  let maxAnisotropyRatio = 0;
+  let suspiciousSplatCount = 0;
+  const sampleOriginalIds: number[] = [];
+
+  for (let index = 0; index < attributes.count; index++) {
+    const base = index * 3;
+    const scaleX = Math.exp(attributes.scales[base]);
+    const scaleY = Math.exp(attributes.scales[base + 1]);
+    const scaleZ = Math.exp(attributes.scales[base + 2]);
+    const minScale = Math.max(Math.min(scaleX, scaleY, scaleZ), 1e-12);
+    const maxScale = Math.max(scaleX, scaleY, scaleZ);
+    const ratio = maxScale / minScale;
+    if (!Number.isFinite(ratio)) continue;
+
+    maxAnisotropyRatio = Math.max(maxAnisotropyRatio, ratio);
+    if (ratio >= suspiciousRatio) {
+      suspiciousSplatCount += 1;
+      if (sampleOriginalIds.length < 8) {
+        sampleOriginalIds.push(attributes.originalIds[index] ?? index);
+      }
+    }
+  }
+
+  return { maxAnisotropyRatio, suspiciousSplatCount, sampleOriginalIds };
 }
 
 export function exposeMeshSplatSmokeEvidence(

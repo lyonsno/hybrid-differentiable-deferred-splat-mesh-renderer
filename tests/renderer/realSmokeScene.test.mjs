@@ -6,6 +6,7 @@ import {
   REAL_SCANIVERSE_SMOKE_ASSET_PATH,
   composeFirstSmokeViewProjection,
   configureCameraForSplatBounds,
+  createMeshSplatRendererWitness,
   createMeshSplatSmokeEvidence,
 } from "../../node_modules/.cache/renderer-tests/src/realSmokeScene.js";
 
@@ -98,4 +99,23 @@ test("real smoke scene exposes renderer fidelity witness data", () => {
   assert.match(source, /scaleSpace: "log"/);
   assert.match(source, /projectionMode: "jacobian-covariance"/);
   assert.match(source, /alphaEnergyPolicy: "bounded-footprint-energy-cap"/);
+});
+
+test("renderer witness reports anisotropic field risk instead of placeholder zeroes", () => {
+  const thinSplatAttributes = {
+    ...attributes,
+    count: 2,
+    scales: new Float32Array([
+      Math.log(0.01), Math.log(0.02), Math.log(1.2),
+      Math.log(0.08), Math.log(0.07), Math.log(0.09),
+    ]),
+    rotations: new Float32Array([1, 0, 0, 0, 1, 0, 0, 0]),
+    originalIds: new Uint32Array([42, 43]),
+  };
+
+  const witness = createMeshSplatRendererWitness(thinSplatAttributes, new Uint32Array([1, 0]));
+
+  assert.ok(witness.projection.maxAnisotropyRatio >= 60);
+  assert.equal(witness.projection.suspiciousSplatCount, 1);
+  assert.deepEqual(witness.projection.sampleOriginalIds, [42]);
 });
