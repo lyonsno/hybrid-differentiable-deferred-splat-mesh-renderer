@@ -1,8 +1,8 @@
 # Visual Smoke Report
 
 - Status: PASS
-- Generated: 2026-04-28T03:31:35.457Z
-- URL: http://127.0.0.1:51093/
+- Generated: 2026-04-29T08:29:40.196Z
+- URL: http://127.0.0.1:64191/
 - Screenshot: `canvas.png`
 - Analysis JSON: `analysis.json`
 
@@ -10,17 +10,72 @@
 
 - Canvas PNG: 1280x720
 - Nonblank: true
-- Changed pixels: 33158 / 921600 (3.598%)
+- Changed pixels: 33142 / 921600 (3.596%)
 - Average background delta: 2.39
-- Distinct colors: 17076
+- Distinct colors: 17087
 
 ## Splat Evidence
 
 - Real Scaniverse evidence: true
-- Source kind: real_scaniverse_ply
+- Source kind: scaniverse_ply
 - Splat count: 94406
 - Asset path: /smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json
-- Summary: PASS: nonblank real_scaniverse_ply capture with 94406 splats from /smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json.
+- Sort backend: gpu-bitonic-cpu-depth-keys
+- Summary: PASS: nonblank scaniverse_ply capture with 94406 splats from /smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json.
+
+## Renderer Fidelity Witness
+
+- Threshold policy: witness-only; does not alter visual smoke pass/fail thresholds
+- Findings: 1
+
+```json
+{
+  "consumedContracts": {
+    "fieldAutopsy": "66b4ea26e5d81ac614f4452b8d21308c4e432e1a",
+    "slabSentinel": "ca96409",
+    "conicReckoner": "f9e3498c00d44f2bb70eba1013f11c2f39b1aff1",
+    "alphaLedger": "0474666"
+  },
+  "thresholdPolicy": "witness-only; does not alter visual smoke pass/fail thresholds",
+  "smokeClassification": {
+    "nonblank": true,
+    "realSplatEvidence": true,
+    "closeable": true,
+    "harnessPassed": true,
+    "sourceKind": "scaniverse_ply",
+    "splatCount": 94406,
+    "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+    "summary": "PASS: nonblank scaniverse_ply capture with 94406 splats from /smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json.",
+    "reasons": []
+  },
+  "imageSummary": {
+    "nonblank": true,
+    "changedPixelRatio": 0.03596137152777778
+  },
+  "findings": [
+    {
+      "kind": "projection-anisotropy",
+      "owner": "conic-reckoner",
+      "severity": "suspect",
+      "summary": "Projection anisotropy witness found ratio 190.57 across 8398 splats; route to conic-reckoner after field metadata is canonical.",
+      "evidence": {
+        "maxAnisotropyRatio": 190.56626845863002,
+        "suspiciousSplatCount": 8398,
+        "sampleOriginalIds": [
+          16,
+          17,
+          66,
+          73,
+          74,
+          80,
+          81,
+          87
+        ]
+      }
+    }
+  ]
+}
+```
 
 ## Sibling Contract Notes
 
@@ -33,17 +88,65 @@
 ```json
 {
   "ready": true,
-  "sourceKind": "real_scaniverse_ply",
+  "sourceKind": "scaniverse_ply",
   "realScaniverse": true,
   "realSplatEvidence": true,
   "synthetic": false,
   "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
   "splatCount": 94406,
   "sortedIdCount": 94406,
+  "sortBackend": "gpu-bitonic-cpu-depth-keys",
   "boundsRadius": 0.22154541313648224,
-  "statsText": "1280×720 | 112 fps | 94,406 real Scaniverse splats | render: 1.93ms",
+  "witness": {
+    "field": {
+      "scaleSpace": "log",
+      "rotationOrder": "wxyz",
+      "opacitySpace": "unit",
+      "colorSpace": "sh_dc_rgb"
+    },
+    "projection": {
+      "projectionMode": "jacobian-covariance",
+      "maxAnisotropyRatio": 190.56626845863002,
+      "suspiciousSplatCount": 8398,
+      "sampleOriginalIds": [
+        16,
+        17,
+        66,
+        73,
+        74,
+        80,
+        81,
+        87
+      ]
+    },
+    "slab": {
+      "statusCounts": {
+        "axis-crosses-near-plane": 0,
+        "pathological-footprint": 0,
+        "accepted": 94406
+      },
+      "maxMajorRadiusPx": 0,
+      "footprintCapPx": 0.65,
+      "sampleOriginalIds": []
+    },
+    "alpha": {
+      "alphaEnergyPolicy": "bounded-footprint-energy-cap",
+      "compositing": "straight-source-over",
+      "ambiguousOverlapCount": 0
+    },
+    "sort": {
+      "backend": "gpu-bitonic-cpu-depth-keys",
+      "sortedIdCount": 94406
+    },
+    "source": {
+      "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+      "splatCount": 94406,
+      "sortedSampleOriginalIds": []
+    }
+  },
+  "statsText": "1280×720 | 123 fps | 94,406 real Scaniverse splats | sort: gpu-bitonic-cpu-depth-keys | render: 1.26ms",
   "title": "Deferred Splat+Mesh Renderer",
-  "bodyText": "1280×720 | 112 fps | 94,406 real Scaniverse splats | render: 1.93ms",
+  "bodyText": "1280×720 | 123 fps | 94,406 real Scaniverse splats | sort: gpu-bitonic-cpu-depth-keys | render: 1.26ms",
   "canvas": {
     "width": 1280,
     "height": 720,
