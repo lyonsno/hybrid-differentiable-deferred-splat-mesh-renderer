@@ -8,7 +8,9 @@ Status: probe-and-contract evidence only. No production shader, loader, alpha, S
 
 ## Scope
 
-This lane consumes the current conic projection baseline on `main`: log-scale Gaussian axes, `wxyz` quaternions, and Jacobian-projected covariance. It does not claim final production coordinate convention until `handedness-witness` settles the packet anchor.
+This lane consumes the current conic projection baseline on `main`: log-scale Gaussian axes, source `wxyz` quaternions, source xyz preservation, and Jacobian-projected covariance.
+
+It also consumes `handedness-witness` at `origin/cc/asymmetric-mirror-handedness-witness` `f4669b5`: the current renderer path preserves source xyz and source `wxyz` quaternions; the only intentional first-smoke reflection is the post-projection vertical Y presentation flip; default first-smoke framing does not introduce a horizontal mirror; positive source X remains screen-right. Therefore this lane does not blame thin/glancing coverage failures on loader position flips, unpaired quaternion changes, or a horizontal first-smoke presentation flip.
 
 The witness asks a narrower question: once the projected conic is mathematically trustworthy, can the current minimum-radius display floor still make thin or glancing surfaces look too thick?
 
@@ -57,10 +59,11 @@ Keep the Jacobian conic path as the geometric reference. The remaining coverage 
 1. A fixed per-axis floor is useful for visibility and small-splat anti-dropout.
 2. The same floor can over-thicken resolved anisotropic splats when only the minor axis is subpixel.
 3. Changing opacity to compensate would cross into `alpha-density` and can hide the geometry problem.
-4. A production fix should report or bound floor-hit cases separately from alpha policy, and should wait for `handedness-witness` before claiming final orientation-sensitive visual parity.
+4. A production fix should report or bound floor-hit cases separately from alpha policy, under the handedness contract from `f4669b5`.
+5. If a future explicit coordinate reflection is introduced, reflected positions must be paired with corresponding quaternion/axis repair. Naked quaternion component or sign tweaks are outside this lane and forbidden by the consumed handedness contract.
 
 ## Unresolved
 
 - Real Oakland/Scaniverse witness counts are still needed: how many splats hit exactly one axis floor, and which original IDs dominate thin/glancing surface regions.
 - Any floor-aware energy compensation belongs to `alpha-density`, not this lane.
-- Coordinate/quaternion production claims remain dependent on `handedness-witness`.
+- The coordinate/quaternion convention is settled by `handedness-witness` `f4669b5`; future conic visual smoke should label this convention beside coverage/min-radius counters so mirror suspicion does not get rerouted back to loader flips.
