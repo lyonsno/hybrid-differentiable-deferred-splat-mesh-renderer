@@ -1,4 +1,4 @@
-import type { Camera } from "./camera.js";
+import { positionCameraFromTarget, type Camera } from "./camera.js";
 import { mulMat4, type mat4 } from "./math.js";
 import { framingFromBounds, type SplatAttributes, type SplatBounds } from "./splats.js";
 
@@ -78,6 +78,7 @@ export function configureCameraForSplatBounds(camera: Camera, bounds: SplatBound
   camera.far = framing.far;
   camera.azimuth = 0;
   camera.elevation = 0.18;
+  positionCameraFromTarget(camera);
 }
 
 export function composeFirstSmokeViewProjection(projection: mat4, view: mat4): mat4 {

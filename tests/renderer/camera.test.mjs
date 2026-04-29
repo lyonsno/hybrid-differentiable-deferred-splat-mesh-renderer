@@ -6,7 +6,7 @@ import {
   computeWheelZoomDistance,
   createCamera,
   MAX_ORBIT_ELEVATION,
-  rotateCameraOrbit,
+  rotateCameraView,
   screenPlaneOffset,
   updateCamera,
   zoomCameraToCursorProjection,
@@ -65,27 +65,52 @@ test("keyboard move speed scales with both scene scale and camera distance", () 
   assert.equal(cameraMoveSpeed(cam), 6.5);
 });
 
-test("orbit rotation stays away from the vertical pole singularity", () => {
+test("view rotation stays away from the vertical pole singularity", () => {
   const cam = createCamera();
 
-  rotateCameraOrbit(cam, 0, 100000);
+  rotateCameraView(cam, 0, 100000);
   assert.equal(cam.elevation, MAX_ORBIT_ELEVATION);
 
-  rotateCameraOrbit(cam, 0, -200000);
+  rotateCameraView(cam, 0, -200000);
   assert.equal(cam.elevation, -MAX_ORBIT_ELEVATION);
   assert.ok(MAX_ORBIT_ELEVATION < Math.PI / 2 - 0.1);
 });
 
-test("keyboard movement follows the camera frame instead of a fixed ground plane", () => {
+test("drag rotation pivots the view around the camera position, not a scene target", () => {
+  const cam = createCamera();
+  cam.target = [10, 2, -4];
+  cam.azimuth = 0;
+  cam.elevation = 0.2;
+  cam.distance = 3;
+  updateCamera(cam, 0);
+  const beforePosition = [...cam.position];
+  const beforeTarget = [...cam.target];
+
+  rotateCameraView(cam, 120, -40);
+  updateCamera(cam, 0);
+
+  assert.deepEqual(
+    cam.position.map((value) => Number(value.toFixed(6))),
+    beforePosition.map((value) => Number(value.toFixed(6)))
+  );
+  assert.notDeepEqual(
+    cam.target.map((value) => Number(value.toFixed(6))),
+    beforeTarget.map((value) => Number(value.toFixed(6)))
+  );
+});
+
+test("keyboard movement moves the camera through its own frame", () => {
   const cam = createCamera();
   cam.azimuth = 0;
   cam.elevation = Math.PI / 4;
   cam.distance = 2;
   cam.navigationScale = 1;
+  updateCamera(cam, 0);
+  const beforePosition = [...cam.position];
   cam.keys.add("w");
 
   updateCamera(cam, 1);
 
-  assert.ok(cam.target[1] < -0.45);
-  assert.ok(cam.target[2] < -0.45);
+  assert.ok(cam.position[1] < beforePosition[1] - 0.45);
+  assert.ok(cam.position[2] < beforePosition[2] - 0.45);
 });
