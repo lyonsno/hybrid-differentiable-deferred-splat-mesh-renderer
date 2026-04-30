@@ -52,6 +52,8 @@ export function analyzePngBuffer(buffer, options = {}) {
     changedPixelRatio,
     averageDelta,
     pixelDeltaThreshold,
+    perceptualFingerprint: fingerprintImage({ width: image.width, height: image.height, rgba: image.rgba }, background),
+    bridgeBlockRatio: estimateBridgeBlockRatio({ width: image.width, height: image.height, rgba: image.rgba }, background),
     nonblank,
   };
 }
@@ -162,6 +164,52 @@ function colorDelta(pixel, background) {
     Math.abs(pixel[1] - background[1]) +
     Math.abs(pixel[2] - background[2])
   ) / 3;
+}
+
+function fingerprintImage(image, background) {
+  const columns = 8;
+  const rows = 8;
+  const cells = [];
+  for (let cellY = 0; cellY < rows; cellY += 1) {
+    for (let cellX = 0; cellX < columns; cellX += 1) {
+      const startX = Math.floor((cellX * image.width) / columns);
+      const endX = Math.floor(((cellX + 1) * image.width) / columns);
+      const startY = Math.floor((cellY * image.height) / rows);
+      const endY = Math.floor(((cellY + 1) * image.height) / rows);
+      let sum = 0;
+      let count = 0;
+      for (let y = startY; y < endY; y += 1) {
+        for (let x = startX; x < endX; x += 1) {
+          sum += colorDelta(readPixel(image, x, y), background);
+          count += 1;
+        }
+      }
+      cells.push(Math.round((sum / Math.max(1, count)) / 8).toString(16).padStart(2, "0"));
+    }
+  }
+  return cells.join("");
+}
+
+function estimateBridgeBlockRatio(image, background) {
+  const blockSize = 16;
+  let blockLike = 0;
+  let sampled = 0;
+  for (let y = 0; y + blockSize < image.height; y += blockSize) {
+    for (let x = 0; x + blockSize < image.width; x += blockSize) {
+      const center = readPixel(image, x + Math.floor(blockSize / 2), y + Math.floor(blockSize / 2));
+      if (colorDelta(center, background) < 12) continue;
+      sampled += 1;
+      const corners = [
+        readPixel(image, x, y),
+        readPixel(image, x + blockSize - 1, y),
+        readPixel(image, x, y + blockSize - 1),
+        readPixel(image, x + blockSize - 1, y + blockSize - 1),
+      ];
+      const averageCornerDelta = corners.reduce((sum, corner) => sum + colorDelta(corner, center), 0) / corners.length;
+      if (averageCornerDelta < 8) blockLike += 1;
+    }
+  }
+  return sampled === 0 ? 0 : blockLike / sampled;
 }
 
 function unfilterByte(filter, value, left, up, upLeft) {
