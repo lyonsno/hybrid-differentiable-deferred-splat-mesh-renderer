@@ -1,6 +1,10 @@
 const DEFAULT_FOCAL = 1;
 const DEFAULT_NEAR_PLANE_Z = 0.1;
+const DEFAULT_SPLAT_SCALE_DIVISOR = 600;
+const DEFAULT_MIN_RADIUS_PX = 1.5;
 const DEFAULT_TOLERANCE = 0.08;
+const MAX_ANISOTROPIC_MINOR_RADIUS_INFLATION = 4;
+const MIN_ANISOTROPIC_MINOR_RADIUS_FRACTION = 1 / 64;
 
 const add3 = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const scale3 = (v, s) => [v[0] * s, v[1] * s, v[2] * s];
@@ -9,6 +13,20 @@ const addCovariance2 = (a, b) => ({ xx: a.xx + b.xx, xy: a.xy + b.xy, yy: a.yy +
 const covarianceFrobenius = (c) => Math.hypot(c.xx, Math.SQRT2 * c.xy, c.yy);
 const covarianceDeltaFrobenius = (a, b) =>
   Math.hypot(a.xx - b.xx, Math.SQRT2 * (a.xy - b.xy), a.yy - b.yy);
+
+const readPositiveFinite = (value, name) => {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`${name} must be a positive finite number`);
+  }
+  return value;
+};
+
+const readNonNegativeFinite = (value, name) => {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`${name} must be a finite non-negative number`);
+  }
+  return value;
+};
 
 export function rotateAxisWxyz(rotation, axis) {
   const length = Math.hypot(rotation[0], rotation[1], rotation[2], rotation[3]);
@@ -115,11 +133,92 @@ export function nearPlaneSupport({ position, scaleLog, rotation, nearPlaneZ = DE
   };
 }
 
-export function compareProjectedConicCase(conicCase) {
+export function ellipseRadiiFromCovariance(covariance) {
+  const trace = 0.5 * (covariance.xx + covariance.yy);
+  const diff = 0.5 * (covariance.xx - covariance.yy);
+  const root = Math.sqrt(diff * diff + covariance.xy * covariance.xy);
+  const major = Math.sqrt(Math.max(trace + root, 0));
+  const minor = Math.sqrt(Math.max(trace - root, 0));
+  return { major, minor };
+}
+
+export function boundedMinorRadiusPx(rawMajorRadiusPx, rawMinorRadiusPx, minRadiusPx) {
+  if (rawMinorRadiusPx >= minRadiusPx) {
+    return rawMinorRadiusPx;
+  }
+  if (rawMajorRadiusPx < minRadiusPx) {
+    return minRadiusPx;
+  }
+  const inflatedMinor = Math.max(
+    rawMinorRadiusPx * MAX_ANISOTROPIC_MINOR_RADIUS_INFLATION,
+    minRadiusPx * MIN_ANISOTROPIC_MINOR_RADIUS_FRACTION
+  );
+  return Math.min(minRadiusPx, inflatedMinor);
+}
+
+export function measureProjectedFragmentCoverage(
+  conicCase,
+  {
+    viewportMinPx,
+    splatScale = 1,
+    splatScaleDivisor = DEFAULT_SPLAT_SCALE_DIVISOR,
+    minRadiusPx = DEFAULT_MIN_RADIUS_PX,
+  } = {}
+) {
+  readPositiveFinite(viewportMinPx, "viewportMinPx");
+  readNonNegativeFinite(splatScale, "splatScale");
+  readPositiveFinite(splatScaleDivisor, "splatScaleDivisor");
+  readNonNegativeFinite(minRadiusPx, "minRadiusPx");
+
+  const covariance = referenceJacobianCovariance(conicCase);
+  const radiiNdc = ellipseRadiiFromCovariance(covariance);
+  const pixelsPerNdcRadius = viewportMinPx * 0.5;
+  const scale = splatScale / splatScaleDivisor;
+  const rawRadiiPx = {
+    major: radiiNdc.major * scale * pixelsPerNdcRadius,
+    minor: radiiNdc.minor * scale * pixelsPerNdcRadius,
+  };
+  const calibratedRadiiPx = {
+    major: Math.max(rawRadiiPx.major, minRadiusPx),
+    minor: boundedMinorRadiusPx(rawRadiiPx.major, rawRadiiPx.minor, minRadiusPx),
+  };
+  const rawAreaPx = Math.PI * rawRadiiPx.major * rawRadiiPx.minor;
+  const calibratedAreaPx = Math.PI * calibratedRadiiPx.major * calibratedRadiiPx.minor;
+  const areaInflation = rawAreaPx > 0 ? calibratedAreaPx / rawAreaPx : Number.POSITIVE_INFINITY;
+  const flooredAxes = Number(rawRadiiPx.major < minRadiusPx) + Number(rawRadiiPx.minor < minRadiusPx);
+  const status =
+    rawRadiiPx.minor < minRadiusPx && rawRadiiPx.major >= minRadiusPx && calibratedRadiiPx.minor < minRadiusPx
+      ? "thin-glancing-anti-fuzz"
+      : "reference-coverage";
+
+  return {
+    name: conicCase.name,
+    status,
+    recommendation:
+      status === "thin-glancing-anti-fuzz"
+        ? "keep-anisotropic-min-radius"
+        : "keep-jacobian-conic-coverage",
+    rawRadiiPx,
+    calibratedRadiiPx,
+    rawAreaPx,
+    calibratedAreaPx,
+    areaInflation,
+    flooredAxes,
+    inputs: {
+      viewportMinPx,
+      splatScale,
+      splatScaleDivisor,
+      minRadiusPx,
+    },
+  };
+}
+
+export function compareProjectedConicCase(conicCase, options = undefined) {
   const referenceCovariance = referenceJacobianCovariance(conicCase);
   const endpointCovariance = currentEndpointCovariance(conicCase);
   const absoluteFrobeniusError = covarianceDeltaFrobenius(referenceCovariance, endpointCovariance);
   const relativeFrobeniusError = absoluteFrobeniusError / Math.max(covarianceFrobenius(referenceCovariance), 1e-12);
+  const fragmentFootprint = options && "viewportMinPx" in options ? measureProjectedFragmentCoverage(conicCase, options) : undefined;
 
   return {
     name: conicCase.name,
@@ -129,6 +228,7 @@ export function compareProjectedConicCase(conicCase) {
     relativeFrobeniusError,
     tolerance: conicCase.tolerance ?? DEFAULT_TOLERANCE,
     nearPlaneSupport: nearPlaneSupport(conicCase),
+    fragmentFootprint,
   };
 }
 
@@ -207,6 +307,13 @@ export function makeConicSyntheticCases() {
       scaleLog: logScales([0.04, 0.04, 1.2]),
       rotation: halfTurnAroundX,
       tolerance: 0.08,
+    },
+    glancingThinRibbon: {
+      name: "glancing-thin-ribbon",
+      position: [0.4, 0, 8],
+      scaleLog: logScales([0.55, 0.0005, 0.05]),
+      rotation: identity,
+      tolerance: 0.01,
     },
     nearPlaneAdjacent: {
       name: "near-plane-adjacent",
