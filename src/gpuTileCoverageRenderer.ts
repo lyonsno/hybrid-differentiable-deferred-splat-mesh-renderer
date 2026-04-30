@@ -9,6 +9,7 @@ import {
 export interface GpuTileCoverageBuffers {
   readonly frameUniformBuffer: GPUBuffer;
   readonly positionBuffer: GPUBuffer;
+  readonly colorBuffer: GPUBuffer;
   readonly projectedBoundsBuffer: GPUBuffer;
   readonly tileHeaderBuffer: GPUBuffer;
   readonly tileRefBuffer: GPUBuffer;
@@ -27,7 +28,7 @@ export interface GpuTileCoveragePipelineSkeleton {
   readonly compositeTilesPipeline: GPUComputePipeline;
   createBindGroup(buffers: GpuTileCoverageBuffers): GPUBindGroup;
   dispatch(pass: GPUComputePassEncoder, bindGroup: GPUBindGroup, plan: GpuTileCoveragePlan): GpuTileCoverageDispatchPlan;
-  dispatchBridgeDiagnosticComposite(pass: GPUComputePassEncoder, bindGroup: GPUBindGroup, plan: GpuTileCoveragePlan): void;
+  dispatchComposite(pass: GPUComputePassEncoder, bindGroup: GPUBindGroup, plan: GpuTileCoveragePlan): void;
 }
 
 export function createGpuTileCoveragePipelineSkeleton(
@@ -48,6 +49,7 @@ export function createGpuTileCoveragePipelineSkeleton(
         buffer: { type: "uniform" },
       },
       storageEntry(GPU_TILE_COVERAGE_BINDINGS.positions, "read-only-storage"),
+      storageEntry(GPU_TILE_COVERAGE_BINDINGS.colors, "read-only-storage"),
       storageEntry(GPU_TILE_COVERAGE_BINDINGS.projectedBounds, "storage"),
       storageEntry(GPU_TILE_COVERAGE_BINDINGS.tileHeaders, "storage"),
       storageEntry(GPU_TILE_COVERAGE_BINDINGS.tileRefs, "storage"),
@@ -88,6 +90,7 @@ export function createGpuTileCoveragePipelineSkeleton(
         entries: [
           { binding: GPU_TILE_COVERAGE_BINDINGS.frame, resource: { buffer: buffers.frameUniformBuffer } },
           { binding: GPU_TILE_COVERAGE_BINDINGS.positions, resource: { buffer: buffers.positionBuffer } },
+          { binding: GPU_TILE_COVERAGE_BINDINGS.colors, resource: { buffer: buffers.colorBuffer } },
           { binding: GPU_TILE_COVERAGE_BINDINGS.projectedBounds, resource: { buffer: buffers.projectedBoundsBuffer } },
           { binding: GPU_TILE_COVERAGE_BINDINGS.tileHeaders, resource: { buffer: buffers.tileHeaderBuffer } },
           { binding: GPU_TILE_COVERAGE_BINDINGS.tileRefs, resource: { buffer: buffers.tileRefBuffer } },
@@ -106,7 +109,7 @@ export function createGpuTileCoveragePipelineSkeleton(
       dispatchStage(pass, compositeTilesPipeline, bindGroup, dispatchPlan.compositeTiles);
       return dispatchPlan;
     },
-    dispatchBridgeDiagnosticComposite(pass: GPUComputePassEncoder, bindGroup: GPUBindGroup, plan: GpuTileCoveragePlan): void {
+    dispatchComposite(pass: GPUComputePassEncoder, bindGroup: GPUBindGroup, plan: GpuTileCoveragePlan): void {
       dispatchStage(pass, compositeTilesPipeline, bindGroup, {
         x: Math.ceil(plan.viewportWidth / 8),
         y: Math.ceil(plan.viewportHeight / 8),

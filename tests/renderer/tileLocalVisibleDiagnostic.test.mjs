@@ -2,27 +2,36 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-test("main exposes a visible tile-local diagnostic mode without replacing the prepass smoke mode", () => {
+test("main exposes a visible tile-local Gaussian compositor without replacing the prepass smoke mode", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
 
   assert.match(source, /"tile-local-visible"/);
-  assert.match(source, /tile-local-visible-bridge-diagnostic/);
+  assert.match(source, /tile-local-visible-gaussian-compositor/);
   assert.match(source, /createTileLocalTexturePresenter/);
-  assert.match(source, /dispatchBridgeDiagnosticComposite/);
+  assert.match(source, /dispatchComposite/);
+  assert.doesNotMatch(source, /dispatchBridgeDiagnosticComposite/);
   assert.match(source, /tileLocalPresenter\.draw/);
   assert.match(source, /params\.get\("renderer"\)\s*===\s*"tile-local-visible"/);
   assert.match(source, /params\.get\("renderer"\)\s*===\s*"tile-local"/);
 });
 
-test("tile-local diagnostic shader paints from tile headers, refs, coverage, and alpha", () => {
+test("tile-local visible shader composites ordered tile refs with coverage, alpha, and real colors", () => {
   const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
 
   assert.match(shader, /fn composite_tiles/);
   assert.match(shader, /textureDimensions\(outputColor\)/);
+  assert.match(shader, /var<storage, read> colors/);
   assert.match(shader, /tileHeaders\[tileId\]/);
   assert.match(shader, /tileRefs\[refIndex\]/);
-  assert.match(shader, /tileCoverageWeights\[refIndex\]/);
+  assert.match(shader, /tileCoverageWeights\[selectedRefIndex\]/);
   assert.match(shader, /alphaParams\[alphaParamIndex\]\.x/);
+  assert.match(shader, /1\.0\s*-\s*pow\(1\.0\s*-\s*sourceOpacity,\s*coverageWeight\)/);
+  assert.match(shader, /orderingKeys\[tileRef\.x\]/);
+  assert.match(shader, /gaussian_pixel_weight/);
+  assert.match(shader, /exp\(-0\.5 \* dot\(delta, delta\)\)/);
+  assert.match(shader, /remainingTransmission/);
+  assert.doesNotMatch(shader, /identityTint/);
+  assert.doesNotMatch(shader, /occupancyWitness/);
   assert.doesNotMatch(shader, /alphaScale \* 0\.0/);
 });
 
