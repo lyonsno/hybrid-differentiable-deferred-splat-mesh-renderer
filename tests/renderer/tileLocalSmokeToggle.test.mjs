@@ -8,7 +8,11 @@ test("main wires a smoke-toggleable tile-local prepass beside the plate fallback
   assert.match(source, /selectedRendererMode/);
   assert.match(source, /params\.get\("renderer"\)\s*===\s*"tile-local"/);
   assert.match(source, /createGpuTileCoveragePipelineSkeleton/);
+  assert.match(source, /buildGpuTileCoverageBridge/);
+  assert.match(source, /buildProjectedGaussianTileCoverage/);
   assert.match(source, /tileCoverageWeightBuffer/);
-  assert.match(source, /renderer: \$\{scene\.rendererMode\}/);
+  assert.match(source, /plate\+tile-local-prepass/);
   assert.match(source, /createSplatPlateRenderer/);
+  assert.doesNotMatch(source, /tileCoverageWeightData\[splatId\]\s*=\s*1/);
+  assert.doesNotMatch(source, /renderer: \$\{scene\.rendererMode\}/);
 });

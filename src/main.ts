@@ -24,6 +24,10 @@ import {
   type GpuTileCoveragePipelineSkeleton,
 } from "./gpuTileCoverageRenderer.js";
 import {
+  buildGpuTileCoverageBridge,
+  createGpuTileCoverageBridgeBuffers,
+} from "./gpuTileCoverageBridge.js";
+import {
   createGpuSortPrototype,
   encodeGpuSortPrototype,
   writeViewDepthSortInput,
@@ -53,6 +57,7 @@ import {
   type AlphaDensityAccountingMode,
   type AlphaDensityCompensationSummary,
 } from "./realSmokeScene.js";
+import { buildProjectedGaussianTileCoverage } from "./rendererFidelityProbes/tileCoverage.js";
 import {
   createSplatPlateRenderer,
   SPLAT_PLATE_FRAME_UNIFORM_BYTES,
@@ -74,6 +79,7 @@ const ALPHA_DENSITY_SETTLE_MS = 160;
 const ALPHA_DENSITY_MODE = selectedAlphaDensityMode();
 const RENDERER_MODE = selectedRendererMode();
 const TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX = 48;
+const TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES = 1;
 
 interface ActiveSplatScene {
   attributes: SplatAttributes;
@@ -106,6 +112,8 @@ interface TileLocalSceneState {
   alphaParamBuffer: GPUBuffer;
   outputTexture: GPUTexture;
   outputView: GPUTextureView;
+  tileEntryCount: number;
+  tileRefSplatIds: Uint32Array;
   needsDispatch: boolean;
 }
 
@@ -201,13 +209,13 @@ async function main() {
       RENDERER_MODE === "tile-local"
         ? createTileLocalSceneState(
             gpu.device,
+            attributes,
             buffers,
-            attributes.count,
             sortedIndexBuffer,
             effectiveOpacities,
+            initialViewProj,
             initialViewportWidth,
-            initialViewportHeight,
-            alphaDensitySummary.compensatedSplatCount
+            initialViewportHeight
           )
         : null;
     activeScene = {
@@ -363,6 +371,7 @@ async function main() {
         gpu.device,
         scene,
         scene.tileLocalState,
+        viewProj,
         width,
         height
       );
@@ -427,9 +436,10 @@ async function main() {
 
     // Stats overlay
     const alphaSummary = scene.alphaDensityState.summary;
-    let statsText = `${width}×${height} | ${displayFps} fps | ${scene.count.toLocaleString()} real Scaniverse splats | renderer: ${scene.rendererMode} | sort: ${SORT_BACKEND} | alpha: ${alphaSummary.accountingMode} density ${alphaSummary.compensatedSplatCount.toLocaleString()} splats/${alphaSummary.hotTileCount} tiles`;
+    const rendererLabel = scene.tileLocalState ? "plate+tile-local-prepass" : scene.rendererMode;
+    let statsText = `${width}×${height} | ${displayFps} fps | ${scene.count.toLocaleString()} real Scaniverse splats | renderer: ${rendererLabel} | sort: ${SORT_BACKEND} | alpha: ${alphaSummary.accountingMode} density ${alphaSummary.compensatedSplatCount.toLocaleString()} splats/${alphaSummary.hotTileCount} tiles`;
     if (scene.tileLocalState) {
-      statsText += ` | tile-local: ${scene.tileLocalState.plan.tileColumns}x${scene.tileLocalState.plan.tileRows} tiles/${scene.tileLocalState.plan.maxTileRefs} refs`;
+      statsText += ` | tile-local: ${scene.tileLocalState.plan.tileColumns}x${scene.tileLocalState.plan.tileRows} tiles/${scene.tileLocalState.tileEntryCount} refs`;
     }
     if (gpuTimings.size > 0) {
       for (const [label, ms] of gpuTimings) {
@@ -490,20 +500,26 @@ function gpuSortRefreshPending(state: SortSettleState, viewMatrix: Float32Array)
 
 function createTileLocalSceneState(
   device: GPUDevice,
+  attributes: SplatAttributes,
   buffers: SplatGpuBuffers,
-  splatCount: number,
   sortedIndexBuffer: GPUBuffer,
   effectiveOpacities: Float32Array,
+  viewProj: Float32Array,
   viewportWidth: number,
-  viewportHeight: number,
-  compensatedSplatCount: number
+  viewportHeight: number
 ): TileLocalSceneState {
+  const bridge = buildTileLocalBridge(
+    attributes,
+    viewProj,
+    viewportWidth,
+    viewportHeight
+  );
   const plan = createGpuTileCoveragePlan({
     viewportWidth,
     viewportHeight,
     tileSizePx: TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX,
-    splatCount,
-    maxTileRefs: Math.max(splatCount, 1),
+    splatCount: attributes.count,
+    maxTileRefs: Math.max(bridge.tileEntryCount, 1),
   });
   const pipeline = createGpuTileCoveragePipelineSkeleton(device, "rgba16float");
   const frameUniformBuffer = createUniformBuffer(
@@ -512,46 +528,15 @@ function createTileLocalSceneState(
     "tile_local_frame_uniforms"
   );
   const frameUniformData = new Float32Array(GPU_TILE_COVERAGE_FRAME_UNIFORM_BYTES / Float32Array.BYTES_PER_ELEMENT);
-  const projectedBoundsData = new Uint32Array(Math.max(plan.splatCount * 4, 4));
-  const tileHeaderData = new Uint32Array(Math.max(plan.tileCount * 4, 4));
-  const tileRefData = new Uint32Array(Math.max(plan.maxTileRefs * 4, 4));
-  const tileCoverageWeightData = new Float32Array(Math.max(plan.maxTileRefs, 4));
   const alphaParamData = new Float32Array(Math.max(plan.maxTileRefs * 4, 4));
-
-  for (let splatId = 0; splatId < plan.splatCount; splatId++) {
-    const base = splatId * 4;
-    projectedBoundsData[base] = 0;
-    projectedBoundsData[base + 1] = 0;
-    projectedBoundsData[base + 2] = Math.max(0, plan.tileColumns - 1);
-    projectedBoundsData[base + 3] = Math.max(0, plan.tileRows - 1);
-    tileRefData[base] = splatId;
-    tileRefData[base + 1] = splatId % Math.max(plan.tileCount, 1);
-    tileRefData[base + 2] = splatId;
-    tileRefData[base + 3] = splatId;
-    tileCoverageWeightData[splatId] = 1;
-    alphaParamData[base] = effectiveOpacities[splatId] ?? 0;
+  const tileRefSplatIds = new Uint32Array(plan.maxTileRefs);
+  for (let refIndex = 0; refIndex < plan.maxTileRefs; refIndex++) {
+    const splatId = bridge.tileRefs[refIndex * 4] ?? 0;
+    tileRefSplatIds[refIndex] = splatId;
+    alphaParamData[refIndex * 4] = effectiveOpacities[splatId] ?? 0;
   }
 
-  if (plan.tileCount > 0) {
-    tileHeaderData[0] = splatCount;
-    tileHeaderData[1] = plan.tileCount;
-    tileHeaderData[2] = plan.tileColumns;
-    tileHeaderData[3] = plan.tileRows;
-    tileCoverageWeightData[0] = Math.max(1, compensatedSplatCount);
-  }
-
-  const projectedBoundsBuffer = createStorageBuffer(
-    device,
-    projectedBoundsData.buffer,
-    "tile_local_projected_bounds"
-  );
-  const tileHeaderBuffer = createStorageBuffer(device, tileHeaderData.buffer, "tile_local_tile_headers");
-  const tileRefBuffer = createStorageBuffer(device, tileRefData.buffer, "tile_local_tile_refs");
-  const tileCoverageWeightBuffer = createStorageBuffer(
-    device,
-    tileCoverageWeightData.buffer,
-    "tile_local_tile_coverage_weights"
-  );
+  const bridgeBuffers = createGpuTileCoverageBridgeBuffers(device, bridge);
   const alphaParamBuffer = createStorageBuffer(device, alphaParamData.buffer, "tile_local_alpha_params");
   const outputTexture = createTexture2D(
     device,
@@ -566,10 +551,10 @@ function createTileLocalSceneState(
   const bindGroup = pipeline.createBindGroup({
     frameUniformBuffer,
     positionBuffer: buffers.positionBuffer,
-    projectedBoundsBuffer,
-    tileHeaderBuffer,
-    tileRefBuffer,
-    tileCoverageWeightBuffer,
+    projectedBoundsBuffer: bridgeBuffers.projectedBoundsBuffer,
+    tileHeaderBuffer: bridgeBuffers.tileHeaderBuffer,
+    tileRefBuffer: bridgeBuffers.tileRefBuffer,
+    tileCoverageWeightBuffer: bridgeBuffers.tileCoverageWeightBuffer,
     orderingKeyBuffer: sortedIndexBuffer,
     alphaParamBuffer,
     outputColorView: outputView,
@@ -583,14 +568,16 @@ function createTileLocalSceneState(
     bindGroup,
     frameUniformBuffer,
     frameUniformData,
-    projectedBoundsBuffer,
-    tileHeaderBuffer,
-    tileRefBuffer,
-    tileCoverageWeightBuffer,
+    projectedBoundsBuffer: bridgeBuffers.projectedBoundsBuffer,
+    tileHeaderBuffer: bridgeBuffers.tileHeaderBuffer,
+    tileRefBuffer: bridgeBuffers.tileRefBuffer,
+    tileCoverageWeightBuffer: bridgeBuffers.tileCoverageWeightBuffer,
     orderingKeyBuffer: sortedIndexBuffer,
     alphaParamBuffer,
     outputTexture,
     outputView,
+    tileEntryCount: bridge.tileEntryCount,
+    tileRefSplatIds,
     needsDispatch: true,
   };
 }
@@ -599,6 +586,7 @@ function ensureTileLocalSceneState(
   device: GPUDevice,
   scene: ActiveSplatScene,
   state: TileLocalSceneState,
+  viewProj: Float32Array,
   viewportWidth: number,
   viewportHeight: number
 ): TileLocalSceneState {
@@ -608,14 +596,82 @@ function ensureTileLocalSceneState(
   destroyTileLocalSceneState(state);
   return createTileLocalSceneState(
     device,
+    scene.attributes,
     scene.buffers,
-    scene.count,
     scene.sortedIndexBuffer,
     scene.effectiveOpacities,
+    viewProj,
+    viewportWidth,
+    viewportHeight
+  );
+}
+
+function buildTileLocalBridge(
+  attributes: SplatAttributes,
+  viewProj: Float32Array,
+  viewportWidth: number,
+  viewportHeight: number
+) {
+  const viewportMin = Math.max(Math.min(viewportWidth, viewportHeight), 1);
+  const minRadiusPx = REAL_SCANIVERSE_MIN_RADIUS_PX;
+  const splats = [];
+
+  for (let index = 0; index < attributes.count; index++) {
+    const centerPx = projectSplatCenterPx(attributes, viewProj, index, viewportWidth, viewportHeight);
+    if (!centerPx) {
+      continue;
+    }
+    const scaleBase = index * 3;
+    const sx = Math.exp(attributes.scales[scaleBase] ?? 0);
+    const sy = Math.exp(attributes.scales[scaleBase + 1] ?? 0);
+    const radiusX = Math.max(minRadiusPx, sx * REAL_SCANIVERSE_SPLAT_SCALE * viewportMin / 1200);
+    const radiusY = Math.max(minRadiusPx, sy * REAL_SCANIVERSE_SPLAT_SCALE * viewportMin / 1200);
+    splats.push({
+      splatIndex: index,
+      originalId: attributes.originalIds[index] ?? index,
+      centerPx,
+      covariancePx: {
+        xx: radiusX * radiusX,
+        xy: 0,
+        yy: radiusY * radiusY,
+      },
+    });
+  }
+
+  const coverage = buildProjectedGaussianTileCoverage({
     viewportWidth,
     viewportHeight,
-    scene.alphaDensityState.summary.compensatedSplatCount
-  );
+    tileSizePx: TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX,
+    samplesPerAxis: TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES,
+    splats,
+  });
+  return buildGpuTileCoverageBridge(coverage);
+}
+
+function projectSplatCenterPx(
+  attributes: SplatAttributes,
+  viewProj: Float32Array,
+  index: number,
+  viewportWidth: number,
+  viewportHeight: number
+): [number, number] | null {
+  const base = index * 3;
+  const x = attributes.positions[base];
+  const y = attributes.positions[base + 1];
+  const z = attributes.positions[base + 2];
+  const clipX = viewProj[0] * x + viewProj[4] * y + viewProj[8] * z + viewProj[12];
+  const clipY = viewProj[1] * x + viewProj[5] * y + viewProj[9] * z + viewProj[13];
+  const clipZ = viewProj[2] * x + viewProj[6] * y + viewProj[10] * z + viewProj[14];
+  const clipW = viewProj[3] * x + viewProj[7] * y + viewProj[11] * z + viewProj[15];
+  if (!Number.isFinite(clipW) || clipW <= 0 || clipZ < 0 || clipZ > clipW) {
+    return null;
+  }
+  const ndcX = clipX / clipW;
+  const ndcY = clipY / clipW;
+  if (ndcX < -1 || ndcX > 1 || ndcY < -1 || ndcY > 1) {
+    return null;
+  }
+  return [(ndcX * 0.5 + 0.5) * viewportWidth, (0.5 - ndcY * 0.5) * viewportHeight];
 }
 
 function syncTileLocalAlphaParams(
@@ -624,8 +680,9 @@ function syncTileLocalAlphaParams(
   effectiveOpacities: Float32Array
 ): void {
   const alphaParamData = new Float32Array(Math.max(state.plan.maxTileRefs * 4, 4));
-  for (let splatId = 0; splatId < state.plan.splatCount; splatId++) {
-    alphaParamData[splatId * 4] = effectiveOpacities[splatId] ?? 0;
+  for (let refIndex = 0; refIndex < state.plan.maxTileRefs; refIndex++) {
+    const splatId = state.tileRefSplatIds[refIndex] ?? 0;
+    alphaParamData[refIndex * 4] = effectiveOpacities[splatId] ?? 0;
   }
   queue.writeBuffer(state.alphaParamBuffer, 0, alphaParamData);
 }
