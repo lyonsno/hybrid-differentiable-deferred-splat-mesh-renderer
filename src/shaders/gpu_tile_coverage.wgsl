@@ -9,7 +9,8 @@ struct FrameUniforms {
 };
 
 @group(0) @binding(0) var<uniform> frame: FrameUniforms;
-@group(0) @binding(1) var<storage, read> positions: array<vec4f>;
+@group(0) @binding(1) var<storage, read> positions: array<f32>;
+@group(0) @binding(2) var<storage, read> colors: array<f32>;
 @group(0) @binding(4) var<storage, read_write> projectedBounds: array<vec4u>;
 @group(0) @binding(5) var<storage, read_write> tileHeaders: array<vec4u>;
 @group(0) @binding(6) var<storage, read_write> tileRefs: array<vec4u>;
@@ -18,13 +19,38 @@ struct FrameUniforms {
 @group(0) @binding(9) var<storage, read> alphaParams: array<vec4f>;
 @group(0) @binding(10) var outputColor: texture_storage_2d<rgba16float, write>;
 
+fn splat_center_px(splatId: u32) -> vec2f {
+  let positionBase = splatId * 3u;
+  let center = vec3f(positions[positionBase], positions[positionBase + 1u], positions[positionBase + 2u]);
+  let centerClip = frame.viewProj * vec4f(center, 1.0);
+  let ndc = centerClip.xy / max(centerClip.w, 0.0001);
+  return vec2f((ndc.x * 0.5 + 0.5) * frame.viewport.x, (0.5 - ndc.y * 0.5) * frame.viewport.y);
+}
+
+fn bridge_bound_radius_px(splatId: u32) -> vec2f {
+  let bounds = projectedBounds[splatId];
+  let tileSizePx = max(frame.tileSizePx, 1.0);
+  let tileSpan = vec2f(
+    f32(max(bounds.z + 1u, bounds.x + 1u) - bounds.x),
+    f32(max(bounds.w + 1u, bounds.y + 1u) - bounds.y),
+  );
+  return max(tileSpan * tileSizePx * 0.5, vec2f(tileSizePx * 0.35));
+}
+
+fn gaussian_pixel_weight(splatId: u32, pixelCenter: vec2f) -> f32 {
+  let delta = (pixelCenter - splat_center_px(splatId)) / bridge_bound_radius_px(splatId);
+  return exp(-0.5 * dot(delta, delta));
+}
+
 @compute @workgroup_size(64) fn project_bounds(@builtin(global_invocation_id) globalId: vec3u) {
   let splatId = globalId.x;
   if (splatId >= frame.splatCount) {
     return;
   }
 
-  let centerClip = frame.viewProj * vec4f(positions[splatId].xyz, 1.0);
+  let positionBase = splatId * 3u;
+  let center = vec3f(positions[positionBase], positions[positionBase + 1u], positions[positionBase + 2u]);
+  let centerClip = frame.viewProj * vec4f(center, 1.0);
   if (centerClip.w <= 0.0) {
     projectedBounds[splatId] = vec4u(1u, 1u, 0u, 0u);
     return;
@@ -70,26 +96,42 @@ struct FrameUniforms {
   let tileId = tileY * frame.tileGrid.x + tileX;
   let header = tileHeaders[tileId];
   let outputCoord = vec2i(globalId.xy);
-  var coverageAlpha = 0.0;
-  var identityTint = vec3f(0.0);
+  let pixelCenter = vec2f(f32(globalId.x) + 0.5, f32(globalId.y) + 0.5);
   let refLimit = min(header.y, 32u);
-  for (var i = 0u; i < refLimit; i = i + 1u) {
-    let refIndex = header.x + i;
-    if (refIndex >= frame.maxTileRefs) {
+  var composedColor = vec3f(0.02, 0.02, 0.04);
+  var remainingTransmission = 1.0;
+  var previousRank = 0xffffffffu;
+  for (var layer = 0u; layer < refLimit; layer = layer + 1u) {
+    var selectedRefIndex = 0xffffffffu;
+    var selectedRank = 0xffffffffu;
+    for (var candidate = 0u; candidate < refLimit; candidate = candidate + 1u) {
+      let refIndex = header.x + candidate;
+      if (refIndex >= frame.maxTileRefs) {
+        break;
+      }
+      let tileRef = tileRefs[refIndex];
+      if (tileRef.x >= frame.splatCount) {
+        continue;
+      }
+      let rank = orderingKeys[tileRef.x];
+      if ((previousRank == 0xffffffffu || rank > previousRank) && rank < selectedRank) {
+        selectedRank = rank;
+        selectedRefIndex = refIndex;
+      }
+    }
+    if (selectedRefIndex == 0xffffffffu) {
       break;
     }
-    let tileRef = tileRefs[refIndex];
+    previousRank = selectedRank;
+    let tileRef = tileRefs[selectedRefIndex];
     let alphaParamIndex = min(tileRef.w, frame.maxTileRefs - 1u);
-    let weight = tileCoverageWeights[refIndex];
-    let alpha = alphaParams[alphaParamIndex].x;
-    let contribution = clamp(weight * alpha, 0.0, 1.0);
-    coverageAlpha = coverageAlpha + contribution;
-    let id = f32((tileRef.x * 17u + tileId * 31u) % 255u) / 255.0;
-    identityTint = identityTint + vec3f(id, 1.0 - id, fract(id * 3.17)) * contribution;
+    let coverageWeight = max(tileCoverageWeights[selectedRefIndex], 0.0) * gaussian_pixel_weight(tileRef.x, pixelCenter);
+    let sourceOpacity = clamp(alphaParams[alphaParamIndex].x, 0.0, 1.0);
+    let coverageAlpha = clamp(1.0 - pow(1.0 - sourceOpacity, coverageWeight), 0.0, 1.0);
+    let colorBase = tileRef.x * 3u;
+    let sourceColor = vec3f(colors[colorBase], colors[colorBase + 1u], colors[colorBase + 2u]);
+    composedColor = sourceColor * coverageAlpha + composedColor * (1.0 - coverageAlpha);
+    remainingTransmission = remainingTransmission * (1.0 - coverageAlpha);
   }
-  let occupancyWitness = clamp(f32(header.y) / 24.0, 0.0, 1.0);
-  let intensity = max(clamp(coverageAlpha * 4.0, 0.0, 1.0), occupancyWitness * 0.35);
-  let tint = identityTint / max(coverageAlpha, 0.0001);
-  let color = mix(vec3f(0.015, 0.025, 0.045), tint, intensity);
-  textureStore(outputColor, outputCoord, vec4f(color, 1.0));
+  textureStore(outputColor, outputCoord, vec4f(composedColor, 1.0 - remainingTransmission));
 }

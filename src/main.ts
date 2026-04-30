@@ -61,7 +61,7 @@ import {
   SPLAT_PLATE_FRAME_UNIFORM_BYTES,
   writeSplatPlateFrameUniforms,
 } from "./splatPlateRenderer.js";
-import { captureViewDepthKey, viewDepthKeyChanged } from "./splatSort.js";
+import { captureViewDepthKey, sortSplatIdsBackToFront, viewDepthKeyChanged } from "./splatSort.js";
 import {
   fetchFirstSmokeSplatPayload,
   uploadSplatAttributeBuffers,
@@ -109,6 +109,7 @@ interface TileLocalSceneState {
   tileRefBuffer: GPUBuffer;
   tileCoverageWeightBuffer: GPUBuffer;
   orderingKeyBuffer: GPUBuffer;
+  orderingKeyData: Uint32Array;
   alphaParamBuffer: GPUBuffer;
   outputTexture: GPUTexture;
   outputView: GPUTextureView;
@@ -214,6 +215,7 @@ async function main() {
             buffers,
             sortedIndexBuffer,
             effectiveOpacities,
+            initialView,
             initialViewProj,
             initialViewportWidth,
             initialViewportHeight
@@ -362,6 +364,7 @@ async function main() {
     if (gpuSortRefreshed) {
       writeViewDepthSortInput(gpu.device.queue, scene.gpuSort, scene.attributes.positions, view);
       if (scene.tileLocalState) {
+        syncTileLocalOrderingKeys(gpu.device.queue, scene.tileLocalState, scene.attributes, view);
         scene.tileLocalState.needsDispatch = true;
       }
       encodeGpuSortPrototype(encoder, scene.gpuSort);
@@ -372,6 +375,7 @@ async function main() {
         gpu.device,
         scene,
         scene.tileLocalState,
+        view,
         viewProj,
         width,
         height
@@ -381,7 +385,7 @@ async function main() {
       gpu.device.queue.writeBuffer(tileLocalState.frameUniformBuffer, 0, tileLocalState.frameUniformData);
       const tileLocalComputePass = encoder.beginComputePass();
       if (scene.rendererMode === "tile-local-visible") {
-        tileLocalState.pipeline.dispatchBridgeDiagnosticComposite(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
+        tileLocalState.pipeline.dispatchComposite(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
       } else {
         tileLocalState.pipeline.dispatch(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
       }
@@ -513,6 +517,7 @@ function createTileLocalSceneState(
   buffers: SplatGpuBuffers,
   sortedIndexBuffer: GPUBuffer,
   effectiveOpacities: Float32Array,
+  viewMatrix: Float32Array,
   viewProj: Float32Array,
   viewportWidth: number,
   viewportHeight: number
@@ -542,6 +547,7 @@ function createTileLocalSceneState(
   );
   const frameUniformData = new Float32Array(GPU_TILE_COVERAGE_FRAME_UNIFORM_BYTES / Float32Array.BYTES_PER_ELEMENT);
   const alphaParamData = new Float32Array(Math.max(plan.maxTileRefs * 4, 4));
+  const orderingKeyData = buildTileLocalOrderingRanks(attributes, viewMatrix);
   const tileRefSplatIds = new Uint32Array(plan.maxTileRefs);
   for (let refIndex = 0; refIndex < plan.maxTileRefs; refIndex++) {
     const splatId = bridge.tileRefs[refIndex * 4] ?? 0;
@@ -551,6 +557,11 @@ function createTileLocalSceneState(
 
   const bridgeBuffers = createGpuTileCoverageBridgeBuffers(device, bridge);
   const alphaParamBuffer = createStorageBuffer(device, alphaParamData.buffer, "tile_local_alpha_params");
+  const orderingKeyBuffer = createStorageBuffer(
+    device,
+    orderingKeyData.buffer as ArrayBuffer,
+    "tile_local_ordering_ranks"
+  );
   const outputTexture = createTexture2D(
     device,
     viewportWidth,
@@ -564,11 +575,12 @@ function createTileLocalSceneState(
   const bindGroup = pipeline.createBindGroup({
     frameUniformBuffer,
     positionBuffer: buffers.positionBuffer,
+    colorBuffer: buffers.colorBuffer,
     projectedBoundsBuffer: bridgeBuffers.projectedBoundsBuffer,
     tileHeaderBuffer: bridgeBuffers.tileHeaderBuffer,
     tileRefBuffer: bridgeBuffers.tileRefBuffer,
     tileCoverageWeightBuffer: bridgeBuffers.tileCoverageWeightBuffer,
-    orderingKeyBuffer: sortedIndexBuffer,
+    orderingKeyBuffer,
     alphaParamBuffer,
     outputColorView: outputView,
   });
@@ -585,7 +597,8 @@ function createTileLocalSceneState(
     tileHeaderBuffer: bridgeBuffers.tileHeaderBuffer,
     tileRefBuffer: bridgeBuffers.tileRefBuffer,
     tileCoverageWeightBuffer: bridgeBuffers.tileCoverageWeightBuffer,
-    orderingKeyBuffer: sortedIndexBuffer,
+    orderingKeyBuffer,
+    orderingKeyData,
     alphaParamBuffer,
     outputTexture,
     outputView,
@@ -599,6 +612,7 @@ function ensureTileLocalSceneState(
   device: GPUDevice,
   scene: ActiveSplatScene,
   state: TileLocalSceneState,
+  viewMatrix: Float32Array,
   viewProj: Float32Array,
   viewportWidth: number,
   viewportHeight: number
@@ -613,6 +627,7 @@ function ensureTileLocalSceneState(
     scene.buffers,
     scene.sortedIndexBuffer,
     scene.effectiveOpacities,
+    viewMatrix,
     viewProj,
     viewportWidth,
     viewportHeight
@@ -630,6 +645,26 @@ function syncTileLocalAlphaParams(
     alphaParamData[refIndex * 4] = effectiveOpacities[splatId] ?? 0;
   }
   queue.writeBuffer(state.alphaParamBuffer, 0, alphaParamData);
+}
+
+function syncTileLocalOrderingKeys(
+  queue: GPUQueue,
+  state: TileLocalSceneState,
+  attributes: SplatAttributes,
+  viewMatrix: Float32Array
+): void {
+  state.orderingKeyData.set(buildTileLocalOrderingRanks(attributes, viewMatrix));
+  queue.writeBuffer(state.orderingKeyBuffer, 0, state.orderingKeyData);
+}
+
+function buildTileLocalOrderingRanks(attributes: SplatAttributes, viewMatrix: Float32Array): Uint32Array {
+  const sortedIds = sortSplatIdsBackToFront(attributes.positions, viewMatrix);
+  const ranks = new Uint32Array(Math.max(attributes.count, 4));
+  ranks.fill(0xffffffff);
+  for (let rank = 0; rank < sortedIds.length; rank++) {
+    ranks[sortedIds[rank]] = rank;
+  }
+  return ranks;
 }
 
 function destroyTileLocalSceneState(state: TileLocalSceneState): void {
@@ -666,7 +701,7 @@ function usesTileLocalPrepass(mode: RendererMode): boolean {
 
 function labelRendererMode(mode: RendererMode, tileLocalState: TileLocalSceneState | null): string {
   if (mode === "tile-local-visible" && tileLocalState) {
-    return "tile-local-visible-bridge-diagnostic";
+    return "tile-local-visible-gaussian-compositor";
   }
   if (mode === "tile-local" && tileLocalState) {
     return "plate+tile-local-prepass";

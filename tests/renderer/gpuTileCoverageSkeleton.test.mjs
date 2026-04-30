@@ -83,8 +83,7 @@ test("GPU tile coverage bindings consume provisional coverage, alpha, and orderi
   assert.deepEqual(GPU_TILE_COVERAGE_BINDINGS, {
     frame: 0,
     positions: 1,
-    scales: 2,
-    rotations: 3,
+    colors: 2,
     projectedBounds: 4,
     tileHeaders: 5,
     tileRefs: 6,
