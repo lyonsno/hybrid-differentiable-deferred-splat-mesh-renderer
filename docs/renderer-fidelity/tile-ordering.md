@@ -23,8 +23,8 @@ Tests: `tests/renderer/tileOrdering.test.mjs`
 The probe pins four ordering invariants:
 
 - `createGlobalRadixStagingOrder` sorts contribution records back-to-front for diagnostic/staging purposes, while preserving repeated splat contributions across tiles.
-- `buildPerTileOrdering` groups those records by `tileId` and emits one stable draw list per tile.
-- Equal-depth ties remain stable by splat id inside each tile, matching the existing first-smoke CPU and GPU sort witness contract.
+- `buildPerTileOrdering` groups those records by `tileId` and emits one stable ordered-ref list per tile.
+- Equal-depth ties remain stable by `stableTieId` inside each tile, matching the existing first-smoke CPU and GPU sort witness contract while allowing the compositor contract to stay backend-agnostic.
 - `classifyBucketApproximation` treats depth buckets as a bounded approximation only when the maximum bucket width stays below an alpha-visible crossing tolerance.
 
 ## Contract
@@ -42,6 +42,8 @@ Each orderable contribution must carry:
 - `splatId`: the stable original splat id or a stable payload index tied back to it.
 - `viewDepth`: the depth key in the active view convention.
 - `stableTieId`: the deterministic tie breaker, normally the original splat id.
+
+`buildPerTileOrdering` returns each tile's ordered refs as `orderedRefs`, and each ref carries the normalized contribution record plus an `orderKey` keyed by `quantizedDepth`, `stableTieId`, and `tileId`. The compositor consumes these ordered refs without needing to know whether the producer was a global bitonic bridge, a staging radix pass, or a future per-tile radix backend.
 
 Coverage weights may travel beside the ordering key, but this lane does not define how coverage weights are computed. Alpha/optical-depth policy may consume the ordered list, but this lane does not define the alpha transfer.
 
