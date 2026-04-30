@@ -69,6 +69,7 @@ import {
   type SplatGpuBuffers,
 } from "./splats.js";
 import { buildTileLocalPrepassBridge } from "./tileLocalPrepassBridge.js";
+import { createTileLocalTexturePresenter } from "./tileLocalTexturePresenter.js";
 
 const statsEl = document.getElementById("stats")!;
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
@@ -116,7 +117,7 @@ interface TileLocalSceneState {
   needsDispatch: boolean;
 }
 
-type RendererMode = "plate" | "tile-local";
+type RendererMode = "plate" | "tile-local" | "tile-local-visible";
 
 interface SortSettleState {
   lastSortedViewDepthKey: Float32Array;
@@ -164,6 +165,7 @@ async function main() {
   });
 
   const splatRenderer = createSplatPlateRenderer(gpu.device, gpu.format, bgl);
+  const tileLocalPresenter = createTileLocalTexturePresenter(gpu.device, gpu.format);
   statsEl.textContent = "Loading real Scaniverse splats...";
   const assetPath = selectedSplatAssetPath();
   let activeScene: ActiveSplatScene | null = null;
@@ -205,7 +207,7 @@ async function main() {
       sortedIndexBuffer,
     });
     const tileLocalState =
-      RENDERER_MODE === "tile-local"
+      usesTileLocalPrepass(RENDERER_MODE)
         ? createTileLocalSceneState(
             gpu.device,
             attributes,
@@ -378,7 +380,11 @@ async function main() {
       writeGpuTileCoverageFrameUniforms(tileLocalState.frameUniformData, viewProj, tileLocalState.plan);
       gpu.device.queue.writeBuffer(tileLocalState.frameUniformBuffer, 0, tileLocalState.frameUniformData);
       const tileLocalComputePass = encoder.beginComputePass();
-      tileLocalState.pipeline.dispatch(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
+      if (scene.rendererMode === "tile-local-visible") {
+        tileLocalState.pipeline.dispatchBridgeDiagnosticComposite(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
+      } else {
+        tileLocalState.pipeline.dispatch(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
+      }
       tileLocalComputePass.end();
       tileLocalState.needsDispatch = false;
     }
@@ -416,8 +422,12 @@ async function main() {
       ts.labels.push("render", "render_end");
     }
 
-    renderPass.setBindGroup(0, bindGroup);
-    splatRenderer.draw(renderPass, scene.splatBindGroup, scene.count);
+    if (scene.rendererMode === "tile-local-visible" && scene.tileLocalState) {
+      tileLocalPresenter.draw(renderPass, scene.tileLocalState.outputView);
+    } else {
+      renderPass.setBindGroup(0, bindGroup);
+      splatRenderer.draw(renderPass, scene.splatBindGroup, scene.count);
+    }
     renderPass.end();
 
     if (writeTimestamps) {
@@ -435,7 +445,7 @@ async function main() {
 
     // Stats overlay
     const alphaSummary = scene.alphaDensityState.summary;
-    const rendererLabel = scene.tileLocalState ? "plate+tile-local-prepass" : scene.rendererMode;
+    const rendererLabel = labelRendererMode(scene.rendererMode, scene.tileLocalState);
     let statsText = `${width}×${height} | ${displayFps} fps | ${scene.count.toLocaleString()} real Scaniverse splats | renderer: ${rendererLabel} | sort: ${SORT_BACKEND} | alpha: ${alphaSummary.accountingMode} density ${alphaSummary.compensatedSplatCount.toLocaleString()} splats/${alphaSummary.hotTileCount} tiles`;
     if (scene.tileLocalState) {
       statsText += ` | tile-local: ${scene.tileLocalState.plan.tileColumns}x${scene.tileLocalState.plan.tileRows} tiles/${scene.tileLocalState.tileEntryCount} refs`;
@@ -644,7 +654,24 @@ function selectedAlphaDensityMode(): AlphaDensityAccountingMode {
 
 function selectedRendererMode(): RendererMode {
   const params = new URLSearchParams(window.location.search);
+  if (params.get("renderer") === "tile-local-visible") {
+    return "tile-local-visible";
+  }
   return params.get("renderer") === "tile-local" ? "tile-local" : "plate";
+}
+
+function usesTileLocalPrepass(mode: RendererMode): boolean {
+  return mode === "tile-local" || mode === "tile-local-visible";
+}
+
+function labelRendererMode(mode: RendererMode, tileLocalState: TileLocalSceneState | null): string {
+  if (mode === "tile-local-visible" && tileLocalState) {
+    return "tile-local-visible-bridge-diagnostic";
+  }
+  if (mode === "tile-local" && tileLocalState) {
+    return "plate+tile-local-prepass";
+  }
+  return mode;
 }
 
 function bindDroppedSplatLoading(

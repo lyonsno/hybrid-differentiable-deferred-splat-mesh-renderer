@@ -47,6 +47,14 @@ http://127.0.0.1:5173/?renderer=tile-local
 
 This mode still presents the known-good splat plate renderer, but it also builds and dispatches the provisional tile-local coverage/compositor prepass. The overlay reports this honestly as `plate+tile-local-prepass` and includes live tile/ref counts; those counts should change with camera framing as splats enter and leave the viewport.
 
+To show the tile-local path directly, use the visible diagnostic renderer:
+
+```
+http://127.0.0.1:5173/?renderer=tile-local-visible
+```
+
+This presents the tile-local output texture instead of the plate renderer. It is intentionally blocky: it is a coverage/header/ref diagnostic over the CPU-bridge-populated tile buffers that proves those buffers can produce presented pixels, not the final GPU ref-builder or Gaussian compositor.
+
 The viewer also accepts local binary little-endian PLY splat files by drag-and-drop onto the canvas. Drag-and-drop SPZ loading is not wired yet.
 
 Requires WebGPU support (Chrome 113+, Edge 113+, Firefox Nightly).
@@ -99,6 +107,7 @@ src/                           — WebGPU deferred renderer (TypeScript)
   gpuTileCoverage.ts             tile grid, dispatch, and uniform contracts
   gpuTileCoverageBridge.js        CPU coverage bridge packing for GPU tile buffers
   gpuTileCoverageRenderer.js      provisional WebGPU tile-local prepass skeleton
+  tileLocalTexturePresenter.ts    fullscreen presenter for tile-local diagnostic output
   tileLocalPrepassBridge.js       browser smoke bridge from projected splats to tile lists
   splatPlateRenderer.ts          WebGPU baked-color splat plate pipeline
   realSmokeScene.ts              first-smoke framing and evidence surface
@@ -134,7 +143,7 @@ npm run smoke:visual:real
 
 ## Status
 
-The preprocessing oracle (Packet L) is feature-complete. Validated on real Scaniverse phone scans with SAM3 MLX running at 90ms/concept on M4 Max. First real-splat visual smoke is passing in the WebGPU viewer against the committed Scaniverse asset. Renderer main has the production-spine smoke baseline plus the first tile-local compositor plumbing: Jacobian covariance projection, bounded near-plane LOD policy, fidelity witness diagnostics, fly-camera framing, deferred CPU depth-key refresh, WebGPU bitonic sort, coverage-aware alpha, GPU tile coverage contracts, CPU tile-list bridge packing, and a smoke-toggleable `plate+tile-local-prepass` mode are integrated. This is still a first-smoke renderer-fidelity baseline, not the finished production renderer; the tile-local path is live as a diagnostic prepass, not yet the visible compositor. Remaining triage includes visible tile-local output, final conic/parity validation, clipping and culling policy, SH evaluation, and deferred G-buffer integration. See [FANOUT.md](FANOUT.md) for the original coordination plan.
+The preprocessing oracle (Packet L) is feature-complete. Validated on real Scaniverse phone scans with SAM3 MLX running at 90ms/concept on M4 Max. First real-splat visual smoke is passing in the WebGPU viewer against the committed Scaniverse asset. Renderer main has the production-spine smoke baseline plus the first tile-local compositor plumbing: Jacobian covariance projection, bounded near-plane LOD policy, fidelity witness diagnostics, fly-camera framing, deferred CPU depth-key refresh, WebGPU bitonic sort, coverage-aware alpha, GPU tile coverage contracts, CPU tile-list bridge packing, a smoke-toggleable `plate+tile-local-prepass` mode, and a deliberately blocky `tile-local-visible-bridge-diagnostic` presenter are integrated. This is still a first-smoke renderer-fidelity baseline, not the finished production renderer; the visible tile-local path proves the offscreen tile-local buffers can produce presented pixels, not final Gaussian image quality or the final GPU ref-builder. Remaining triage includes final tile-local Gaussian compositing, conic/parity validation, clipping and culling policy, SH evaluation, and deferred G-buffer integration. See [FANOUT.md](FANOUT.md) for the original coordination plan.
 
 ## License
 

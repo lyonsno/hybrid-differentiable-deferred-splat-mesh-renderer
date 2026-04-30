@@ -27,6 +27,7 @@ export interface GpuTileCoveragePipelineSkeleton {
   readonly compositeTilesPipeline: GPUComputePipeline;
   createBindGroup(buffers: GpuTileCoverageBuffers): GPUBindGroup;
   dispatch(pass: GPUComputePassEncoder, bindGroup: GPUBindGroup, plan: GpuTileCoveragePlan): GpuTileCoverageDispatchPlan;
+  dispatchBridgeDiagnosticComposite(pass: GPUComputePassEncoder, bindGroup: GPUBindGroup, plan: GpuTileCoveragePlan): void;
 }
 
 export function createGpuTileCoveragePipelineSkeleton(
@@ -104,6 +105,13 @@ export function createGpuTileCoveragePipelineSkeleton(
       dispatchStage(pass, buildTileRefsPipeline, bindGroup, dispatchPlan.buildTileRefs);
       dispatchStage(pass, compositeTilesPipeline, bindGroup, dispatchPlan.compositeTiles);
       return dispatchPlan;
+    },
+    dispatchBridgeDiagnosticComposite(pass: GPUComputePassEncoder, bindGroup: GPUBindGroup, plan: GpuTileCoveragePlan): void {
+      dispatchStage(pass, compositeTilesPipeline, bindGroup, {
+        x: Math.ceil(plan.viewportWidth / 8),
+        y: Math.ceil(plan.viewportHeight / 8),
+        z: 1,
+      });
     },
   };
 }

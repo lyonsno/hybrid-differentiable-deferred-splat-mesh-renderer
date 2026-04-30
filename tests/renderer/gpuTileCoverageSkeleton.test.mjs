@@ -48,15 +48,16 @@ test("GPU tile coverage frame uniforms expose viewport, tile grid, and counts at
 
   writeGpuTileCoverageFrameUniforms(target, viewProj, plan);
 
+  const targetU32 = new Uint32Array(target.buffer, target.byteOffset, target.length);
   assert.deepEqual([...target.slice(0, 16)], [...viewProj]);
   assert.equal(target[16], 640);
   assert.equal(target[17], 480);
   assert.equal(target[18], 20);
   assert.equal(target[19], 0);
-  assert.equal(target[20], 32);
-  assert.equal(target[21], 24);
-  assert.equal(target[22], 9);
-  assert.equal(target[23], 40);
+  assert.equal(targetU32[20], 32);
+  assert.equal(targetU32[21], 24);
+  assert.equal(targetU32[22], 9);
+  assert.equal(targetU32[23], 40);
   assert.throws(() => writeGpuTileCoverageFrameUniforms(new Float32Array(4), viewProj, plan), /too small/i);
 });
 

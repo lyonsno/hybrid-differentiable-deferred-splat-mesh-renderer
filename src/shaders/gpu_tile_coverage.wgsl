@@ -59,15 +59,37 @@ struct FrameUniforms {
 }
 
 @compute @workgroup_size(8, 8, 1) fn composite_tiles(@builtin(global_invocation_id) globalId: vec3u) {
-  if (globalId.x >= frame.tileGrid.x || globalId.y >= frame.tileGrid.y) {
+  let outputSize = textureDimensions(outputColor);
+  if (globalId.x >= outputSize.x || globalId.y >= outputSize.y) {
     return;
   }
 
-  let tileId = globalId.y * frame.tileGrid.x + globalId.x;
+  let tileSizePx = max(u32(frame.tileSizePx), 1u);
+  let tileX = min(globalId.x / tileSizePx, frame.tileGrid.x - 1u);
+  let tileY = min(globalId.y / tileSizePx, frame.tileGrid.y - 1u);
+  let tileId = tileY * frame.tileGrid.x + tileX;
   let header = tileHeaders[tileId];
   let outputCoord = vec2i(globalId.xy);
-  let alphaScale = select(0.0, alphaParams[0].x, frame.maxTileRefs > 0u);
-  let coverageWitness = select(0.0, tileCoverageWeights[0], frame.maxTileRefs > 0u);
-  let skeletonColor = vec4f(f32(header.y) * coverageWitness, 0.0, 0.0, alphaScale * 0.0);
-  textureStore(outputColor, outputCoord, skeletonColor);
+  var coverageAlpha = 0.0;
+  var identityTint = vec3f(0.0);
+  let refLimit = min(header.y, 32u);
+  for (var i = 0u; i < refLimit; i = i + 1u) {
+    let refIndex = header.x + i;
+    if (refIndex >= frame.maxTileRefs) {
+      break;
+    }
+    let tileRef = tileRefs[refIndex];
+    let alphaParamIndex = min(tileRef.w, frame.maxTileRefs - 1u);
+    let weight = tileCoverageWeights[refIndex];
+    let alpha = alphaParams[alphaParamIndex].x;
+    let contribution = clamp(weight * alpha, 0.0, 1.0);
+    coverageAlpha = coverageAlpha + contribution;
+    let id = f32((tileRef.x * 17u + tileId * 31u) % 255u) / 255.0;
+    identityTint = identityTint + vec3f(id, 1.0 - id, fract(id * 3.17)) * contribution;
+  }
+  let occupancyWitness = clamp(f32(header.y) / 24.0, 0.0, 1.0);
+  let intensity = max(clamp(coverageAlpha * 4.0, 0.0, 1.0), occupancyWitness * 0.35);
+  let tint = identityTint / max(coverageAlpha, 0.0001);
+  let color = mix(vec3f(0.015, 0.025, 0.045), tint, intensity);
+  textureStore(outputColor, outputCoord, vec4f(color, 1.0));
 }

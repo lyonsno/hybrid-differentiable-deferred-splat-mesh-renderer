@@ -116,10 +116,12 @@ export function writeGpuTileCoverageFrameUniforms(
   target[17] = plan.viewportHeight;
   target[18] = plan.tileSizePx;
   target[19] = 0;
-  target[20] = plan.tileColumns;
-  target[21] = plan.tileRows;
-  target[22] = plan.splatCount;
-  target[23] = plan.maxTileRefs;
+
+  const targetU32 = new Uint32Array(target.buffer, target.byteOffset, target.length);
+  targetU32[20] = plan.tileColumns;
+  targetU32[21] = plan.tileRows;
+  targetU32[22] = plan.splatCount;
+  targetU32[23] = plan.maxTileRefs;
 }
 
 function linearDispatch(count: number): GpuTileCoverageDispatch {
