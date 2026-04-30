@@ -47,6 +47,7 @@ test("tile-local comparison accepts distinguishable compositor evidence without 
         fps: 42,
         changedPixelRatio: 0.27,
         imageFingerprint: "compositor-b",
+        distinctColorCount: 2000,
         tileRefs: 22000,
         bridgeBlockRatio: 0.04,
       }),
@@ -71,6 +72,33 @@ test("tile-local comparison catches visible mode falling back to the plate rende
   assert.equal(result.closeable, false);
   assert.equal(result.findings[0].kind, "visible-fallback-to-plate");
   assert.match(result.findings[0].summary, /plate/i);
+});
+
+test("tile-local comparison catches low-color blocky visible compositor output", () => {
+  const result = classifyTileLocalComparison({
+    captures: [
+      capture("plate", { rendererLabel: "plate", fps: 60, imageFingerprint: "plate-a", distinctColorCount: 17000 }),
+      capture("tile-local-prepass", {
+        rendererLabel: "plate+tile-local-prepass",
+        fps: 54,
+        imageFingerprint: "plate-a",
+        tileRefs: 3274714,
+        distinctColorCount: 17000,
+      }),
+      capture("tile-local-visible", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        fps: 60,
+        imageFingerprint: "blocky-visible",
+        tileRefs: 3274714,
+        bridgeBlockRatio: 0.4918,
+        distinctColorCount: 44,
+      }),
+    ],
+  });
+
+  assert.equal(result.closeable, false);
+  assert.equal(result.findings[0].kind, "visible-low-color-blocks");
+  assert.match(result.findings[0].summary, /44 distinct colors/i);
 });
 
 test("tile-local comparison catches bridge-block diagnostics and frame-rate collapse", () => {
@@ -108,6 +136,7 @@ function capture(id, overrides = {}) {
       changedPixelRatio: overrides.changedPixelRatio ?? 0.2,
       perceptualFingerprint: overrides.imageFingerprint,
       bridgeBlockRatio: overrides.bridgeBlockRatio ?? 0,
+      distinctColorCount: overrides.distinctColorCount ?? 2000,
     },
     pageEvidence: {
       rendererLabel: overrides.rendererLabel,

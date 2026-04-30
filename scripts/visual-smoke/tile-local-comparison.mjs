@@ -31,6 +31,7 @@ export function classifyTileLocalComparison({
   captures = [],
   minVisibleToPlateFpsRatio = 0.35,
   maxBridgeBlockRatio = 0.5,
+  minVisibleDistinctColors = 256,
 } = {}) {
   const byId = new Map(captures.map((capture) => [capture.id, capture]));
   const plate = byId.get(TILE_LOCAL_COMPARISON_CAPTURE_IDS.plate);
@@ -75,6 +76,14 @@ export function classifyTileLocalComparison({
         finding(
           "visible-bridge-block-diagnostic",
           `Visible tile-local capture still looks like the bridge block diagnostic (label ${label || "missing"}, block ratio ${formatRatio(bridgeBlockRatio(visible))}).`
+        )
+      );
+    }
+    if (distinctColorCount(visible) < minVisibleDistinctColors) {
+      findings.push(
+        finding(
+          "visible-low-color-blocks",
+          `Visible tile-local capture has only ${distinctColorCount(visible)} distinct colors, below ${minVisibleDistinctColors}; this is still block-quantized rather than image-like.`
         )
       );
     }
@@ -190,6 +199,10 @@ function tileRefs(capture = {}) {
 
 function bridgeBlockRatio(capture = {}) {
   return finiteNumber(capture.imageAnalysis?.bridgeBlockRatio ?? capture.pageEvidence?.bridgeBlockRatio) ?? 0;
+}
+
+function distinctColorCount(capture = {}) {
+  return finiteNumber(capture.imageAnalysis?.distinctColorCount) ?? 0;
 }
 
 function sameFingerprint(left, right) {

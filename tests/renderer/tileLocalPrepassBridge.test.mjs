@@ -49,7 +49,7 @@ test("tile-local prepass bridge preserves sparse splat ids and real coverage wei
   assert.ok(Array.from(bridge.tileCoverageWeights).some((weight) => weight !== 1));
 });
 
-test("tile-local prepass bridge feeds each bounded tile list with nearest visible candidates first", () => {
+test("tile-local prepass bridge feeds each bounded tile list with strongest coverage candidates first", () => {
   const attributes = {
     count: 3,
     positions: new Float32Array([
@@ -58,9 +58,9 @@ test("tile-local prepass bridge feeds each bounded tile list with nearest visibl
       0, 0, 0.4,
     ]),
     scales: new Float32Array([
-      Math.log(0.2), Math.log(0.2), 0,
-      Math.log(0.2), Math.log(0.2), 0,
-      Math.log(0.2), Math.log(0.2), 0,
+      Math.log(0.12), Math.log(0.12), 0,
+      Math.log(0.32), Math.log(0.32), 0,
+      Math.log(0.22), Math.log(0.22), 0,
     ]),
     originalIds: new Uint32Array([30, 10, 20]),
   };
@@ -80,6 +80,8 @@ test("tile-local prepass bridge feeds each bounded tile list with nearest visibl
   assert.equal(bridge.tileHeaders[1], 3);
   assert.deepEqual(
     [bridge.tileRefs[0], bridge.tileRefs[4], bridge.tileRefs[8]],
-    [0, 2, 1]
+    [2, 0, 1]
   );
+  assert.ok(bridge.tileCoverageWeights[0] >= bridge.tileCoverageWeights[1]);
+  assert.ok(bridge.tileCoverageWeights[1] > bridge.tileCoverageWeights[2]);
 });

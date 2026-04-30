@@ -62,7 +62,8 @@ function orderCoverageEntriesForView(coverage, attributes, viewMatrix) {
   const tileEntries = [...coverage.tileEntries].sort((left, right) => {
     return (
       left.tileIndex - right.tileIndex ||
-      ranks[right.splatIndex] - ranks[left.splatIndex] ||
+      right.coverageWeight - left.coverageWeight ||
+      ranks[left.splatIndex] - ranks[right.splatIndex] ||
       left.splatIndex - right.splatIndex ||
       left.originalId - right.originalId
     );
