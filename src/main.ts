@@ -12,7 +12,17 @@ import {
   getViewMatrix,
   updateCamera,
 } from "./camera.js";
-import { createUniformBuffer } from "./buffers.js";
+import { createStorageBuffer, createTexture2D, createUniformBuffer } from "./buffers.js";
+import {
+  createGpuTileCoveragePlan,
+  GPU_TILE_COVERAGE_FRAME_UNIFORM_BYTES,
+  writeGpuTileCoverageFrameUniforms,
+  type GpuTileCoveragePlan,
+} from "./gpuTileCoverage.js";
+import {
+  createGpuTileCoveragePipelineSkeleton,
+  type GpuTileCoveragePipelineSkeleton,
+} from "./gpuTileCoverageRenderer.js";
 import {
   createGpuSortPrototype,
   encodeGpuSortPrototype,
@@ -62,6 +72,8 @@ const SORT_BACKEND = "gpu-bitonic-cpu-depth-keys";
 const GPU_SORT_SETTLE_MS = 160;
 const ALPHA_DENSITY_SETTLE_MS = 160;
 const ALPHA_DENSITY_MODE = selectedAlphaDensityMode();
+const RENDERER_MODE = selectedRendererMode();
+const TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX = 48;
 
 interface ActiveSplatScene {
   attributes: SplatAttributes;
@@ -72,9 +84,32 @@ interface ActiveSplatScene {
   sortState: SortSettleState;
   effectiveOpacities: Float32Array;
   alphaDensityState: AlphaDensityState;
+  tileLocalState: TileLocalSceneState | null;
+  rendererMode: RendererMode;
   count: number;
   assetPath: string;
 }
+
+interface TileLocalSceneState {
+  viewportWidth: number;
+  viewportHeight: number;
+  plan: GpuTileCoveragePlan;
+  pipeline: GpuTileCoveragePipelineSkeleton;
+  bindGroup: GPUBindGroup;
+  frameUniformBuffer: GPUBuffer;
+  frameUniformData: Float32Array;
+  projectedBoundsBuffer: GPUBuffer;
+  tileHeaderBuffer: GPUBuffer;
+  tileRefBuffer: GPUBuffer;
+  tileCoverageWeightBuffer: GPUBuffer;
+  orderingKeyBuffer: GPUBuffer;
+  alphaParamBuffer: GPUBuffer;
+  outputTexture: GPUTexture;
+  outputView: GPUTextureView;
+  needsDispatch: boolean;
+}
+
+type RendererMode = "plate" | "tile-local";
 
 interface SortSettleState {
   lastSortedViewDepthKey: Float32Array;
@@ -162,6 +197,19 @@ async function main() {
       rotationBuffer: buffers.rotationBuffer,
       sortedIndexBuffer,
     });
+    const tileLocalState =
+      RENDERER_MODE === "tile-local"
+        ? createTileLocalSceneState(
+            gpu.device,
+            buffers,
+            attributes.count,
+            sortedIndexBuffer,
+            effectiveOpacities,
+            initialViewportWidth,
+            initialViewportHeight,
+            alphaDensitySummary.compensatedSplatCount
+          )
+        : null;
     activeScene = {
       attributes,
       buffers,
@@ -178,6 +226,8 @@ async function main() {
         ),
         summary: alphaDensitySummary,
       },
+      tileLocalState,
+      rendererMode: RENDERER_MODE,
       count: attributes.count,
       assetPath: sceneAssetPath,
     };
@@ -281,6 +331,10 @@ async function main() {
         ALPHA_DENSITY_MODE
       );
       gpu.device.queue.writeBuffer(scene.buffers.opacityBuffer, 0, scene.effectiveOpacities);
+      if (scene.tileLocalState) {
+        syncTileLocalAlphaParams(gpu.device.queue, scene.tileLocalState, scene.effectiveOpacities);
+        scene.tileLocalState.needsDispatch = true;
+      }
     }
     writeSplatPlateFrameUniforms(
       uniformData,
@@ -298,7 +352,27 @@ async function main() {
     const gpuSortRefreshed = shouldRefreshGpuSort(scene.sortState, view, now);
     if (gpuSortRefreshed) {
       writeViewDepthSortInput(gpu.device.queue, scene.gpuSort, scene.attributes.positions, view);
+      if (scene.tileLocalState) {
+        scene.tileLocalState.needsDispatch = true;
+      }
       encodeGpuSortPrototype(encoder, scene.gpuSort);
+    }
+
+    if (scene.tileLocalState) {
+      const tileLocalState = ensureTileLocalSceneState(
+        gpu.device,
+        scene,
+        scene.tileLocalState,
+        width,
+        height
+      );
+      scene.tileLocalState = tileLocalState;
+      writeGpuTileCoverageFrameUniforms(tileLocalState.frameUniformData, viewProj, tileLocalState.plan);
+      gpu.device.queue.writeBuffer(tileLocalState.frameUniformBuffer, 0, tileLocalState.frameUniformData);
+      const tileLocalComputePass = encoder.beginComputePass();
+      tileLocalState.pipeline.dispatch(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
+      tileLocalComputePass.end();
+      tileLocalState.needsDispatch = false;
     }
 
     const textureView = gpu.context.getCurrentTexture().createView();
@@ -353,7 +427,10 @@ async function main() {
 
     // Stats overlay
     const alphaSummary = scene.alphaDensityState.summary;
-    let statsText = `${width}×${height} | ${displayFps} fps | ${scene.count.toLocaleString()} real Scaniverse splats | sort: ${SORT_BACKEND} | alpha: ${alphaSummary.accountingMode} density ${alphaSummary.compensatedSplatCount.toLocaleString()} splats/${alphaSummary.hotTileCount} tiles`;
+    let statsText = `${width}×${height} | ${displayFps} fps | ${scene.count.toLocaleString()} real Scaniverse splats | renderer: ${scene.rendererMode} | sort: ${SORT_BACKEND} | alpha: ${alphaSummary.accountingMode} density ${alphaSummary.compensatedSplatCount.toLocaleString()} splats/${alphaSummary.hotTileCount} tiles`;
+    if (scene.tileLocalState) {
+      statsText += ` | tile-local: ${scene.tileLocalState.plan.tileColumns}x${scene.tileLocalState.plan.tileRows} tiles/${scene.tileLocalState.plan.maxTileRefs} refs`;
+    }
     if (gpuTimings.size > 0) {
       for (const [label, ms] of gpuTimings) {
         statsText += ` | ${label}: ${ms.toFixed(2)}ms`;
@@ -365,6 +442,7 @@ async function main() {
       activeInput: cameraHasActiveInput(cam),
       pendingGpuSort: gpuSortRefreshPending(scene.sortState, view),
       pendingAlphaDensity: scene.alphaDensityState.refreshState.needsRefresh,
+      pendingTileLocalCompositor: scene.tileLocalState?.needsDispatch === true,
     })) {
       requestFrame();
     }
@@ -410,6 +488,158 @@ function gpuSortRefreshPending(state: SortSettleState, viewMatrix: Float32Array)
   return state.needsSort || viewDepthKeyChanged(state.lastSortedViewDepthKey, viewMatrix);
 }
 
+function createTileLocalSceneState(
+  device: GPUDevice,
+  buffers: SplatGpuBuffers,
+  splatCount: number,
+  sortedIndexBuffer: GPUBuffer,
+  effectiveOpacities: Float32Array,
+  viewportWidth: number,
+  viewportHeight: number,
+  compensatedSplatCount: number
+): TileLocalSceneState {
+  const plan = createGpuTileCoveragePlan({
+    viewportWidth,
+    viewportHeight,
+    tileSizePx: TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX,
+    splatCount,
+    maxTileRefs: Math.max(splatCount, 1),
+  });
+  const pipeline = createGpuTileCoveragePipelineSkeleton(device, "rgba16float");
+  const frameUniformBuffer = createUniformBuffer(
+    device,
+    GPU_TILE_COVERAGE_FRAME_UNIFORM_BYTES,
+    "tile_local_frame_uniforms"
+  );
+  const frameUniformData = new Float32Array(GPU_TILE_COVERAGE_FRAME_UNIFORM_BYTES / Float32Array.BYTES_PER_ELEMENT);
+  const projectedBoundsData = new Uint32Array(Math.max(plan.splatCount * 4, 4));
+  const tileHeaderData = new Uint32Array(Math.max(plan.tileCount * 4, 4));
+  const tileRefData = new Uint32Array(Math.max(plan.maxTileRefs * 4, 4));
+  const tileCoverageWeightData = new Float32Array(Math.max(plan.maxTileRefs, 4));
+  const alphaParamData = new Float32Array(Math.max(plan.maxTileRefs * 4, 4));
+
+  for (let splatId = 0; splatId < plan.splatCount; splatId++) {
+    const base = splatId * 4;
+    projectedBoundsData[base] = 0;
+    projectedBoundsData[base + 1] = 0;
+    projectedBoundsData[base + 2] = Math.max(0, plan.tileColumns - 1);
+    projectedBoundsData[base + 3] = Math.max(0, plan.tileRows - 1);
+    tileRefData[base] = splatId;
+    tileRefData[base + 1] = splatId % Math.max(plan.tileCount, 1);
+    tileRefData[base + 2] = splatId;
+    tileRefData[base + 3] = splatId;
+    tileCoverageWeightData[splatId] = 1;
+    alphaParamData[base] = effectiveOpacities[splatId] ?? 0;
+  }
+
+  if (plan.tileCount > 0) {
+    tileHeaderData[0] = splatCount;
+    tileHeaderData[1] = plan.tileCount;
+    tileHeaderData[2] = plan.tileColumns;
+    tileHeaderData[3] = plan.tileRows;
+    tileCoverageWeightData[0] = Math.max(1, compensatedSplatCount);
+  }
+
+  const projectedBoundsBuffer = createStorageBuffer(
+    device,
+    projectedBoundsData.buffer,
+    "tile_local_projected_bounds"
+  );
+  const tileHeaderBuffer = createStorageBuffer(device, tileHeaderData.buffer, "tile_local_tile_headers");
+  const tileRefBuffer = createStorageBuffer(device, tileRefData.buffer, "tile_local_tile_refs");
+  const tileCoverageWeightBuffer = createStorageBuffer(
+    device,
+    tileCoverageWeightData.buffer,
+    "tile_local_tile_coverage_weights"
+  );
+  const alphaParamBuffer = createStorageBuffer(device, alphaParamData.buffer, "tile_local_alpha_params");
+  const outputTexture = createTexture2D(
+    device,
+    viewportWidth,
+    viewportHeight,
+    "rgba16float",
+    GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.TEXTURE_BINDING,
+    "tile_local_output"
+  );
+  const outputView = outputTexture.createView();
+
+  const bindGroup = pipeline.createBindGroup({
+    frameUniformBuffer,
+    positionBuffer: buffers.positionBuffer,
+    projectedBoundsBuffer,
+    tileHeaderBuffer,
+    tileRefBuffer,
+    tileCoverageWeightBuffer,
+    orderingKeyBuffer: sortedIndexBuffer,
+    alphaParamBuffer,
+    outputColorView: outputView,
+  });
+
+  return {
+    viewportWidth,
+    viewportHeight,
+    plan,
+    pipeline,
+    bindGroup,
+    frameUniformBuffer,
+    frameUniformData,
+    projectedBoundsBuffer,
+    tileHeaderBuffer,
+    tileRefBuffer,
+    tileCoverageWeightBuffer,
+    orderingKeyBuffer: sortedIndexBuffer,
+    alphaParamBuffer,
+    outputTexture,
+    outputView,
+    needsDispatch: true,
+  };
+}
+
+function ensureTileLocalSceneState(
+  device: GPUDevice,
+  scene: ActiveSplatScene,
+  state: TileLocalSceneState,
+  viewportWidth: number,
+  viewportHeight: number
+): TileLocalSceneState {
+  if (state.viewportWidth === viewportWidth && state.viewportHeight === viewportHeight) {
+    return state;
+  }
+  destroyTileLocalSceneState(state);
+  return createTileLocalSceneState(
+    device,
+    scene.buffers,
+    scene.count,
+    scene.sortedIndexBuffer,
+    scene.effectiveOpacities,
+    viewportWidth,
+    viewportHeight,
+    scene.alphaDensityState.summary.compensatedSplatCount
+  );
+}
+
+function syncTileLocalAlphaParams(
+  queue: GPUQueue,
+  state: TileLocalSceneState,
+  effectiveOpacities: Float32Array
+): void {
+  const alphaParamData = new Float32Array(Math.max(state.plan.maxTileRefs * 4, 4));
+  for (let splatId = 0; splatId < state.plan.splatCount; splatId++) {
+    alphaParamData[splatId * 4] = effectiveOpacities[splatId] ?? 0;
+  }
+  queue.writeBuffer(state.alphaParamBuffer, 0, alphaParamData);
+}
+
+function destroyTileLocalSceneState(state: TileLocalSceneState): void {
+  state.frameUniformBuffer.destroy();
+  state.projectedBoundsBuffer.destroy();
+  state.tileHeaderBuffer.destroy();
+  state.tileRefBuffer.destroy();
+  state.tileCoverageWeightBuffer.destroy();
+  state.alphaParamBuffer.destroy();
+  state.outputTexture.destroy();
+}
+
 function selectedSplatAssetPath(): string {
   const params = new URLSearchParams(window.location.search);
   return params.get("asset") || REAL_SCANIVERSE_SMOKE_ASSET_PATH;
@@ -418,6 +648,11 @@ function selectedSplatAssetPath(): string {
 function selectedAlphaDensityMode(): AlphaDensityAccountingMode {
   const params = new URLSearchParams(window.location.search);
   return params.get("alpha") === "center-tile" ? "center-tile" : "coverage-aware";
+}
+
+function selectedRendererMode(): RendererMode {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("renderer") === "tile-local" ? "tile-local" : "plate";
 }
 
 function bindDroppedSplatLoading(
@@ -452,6 +687,9 @@ function bindDroppedSplatLoading(
 function destroySplatScene(scene: ActiveSplatScene | null): void {
   if (!scene) {
     return;
+  }
+  if (scene.tileLocalState) {
+    destroyTileLocalSceneState(scene.tileLocalState);
   }
   scene.buffers.positionBuffer.destroy();
   scene.buffers.colorBuffer.destroy();

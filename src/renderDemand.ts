@@ -6,6 +6,7 @@ export interface RenderDemandSignals {
   readonly activeInput: boolean;
   readonly pendingGpuSort: boolean;
   readonly pendingAlphaDensity: boolean;
+  readonly pendingTileLocalCompositor?: boolean;
   readonly pendingTimings?: boolean;
 }
 
@@ -30,6 +31,7 @@ export function shouldContinueRendering(signals: RenderDemandSignals): boolean {
     signals.activeInput ||
     signals.pendingGpuSort ||
     signals.pendingAlphaDensity ||
+    signals.pendingTileLocalCompositor === true ||
     signals.pendingTimings === true
   );
 }

@@ -13,6 +13,15 @@ test("demand renderer keeps frames alive only while live work remains", () => {
   assert.equal(shouldContinueRendering({ activeInput: true, pendingGpuSort: false, pendingAlphaDensity: false }), true);
   assert.equal(shouldContinueRendering({ activeInput: false, pendingGpuSort: true, pendingAlphaDensity: false }), true);
   assert.equal(shouldContinueRendering({ activeInput: false, pendingGpuSort: false, pendingAlphaDensity: true }), true);
+  assert.equal(
+    shouldContinueRendering({
+      activeInput: false,
+      pendingGpuSort: false,
+      pendingAlphaDensity: false,
+      pendingTileLocalCompositor: true,
+    }),
+    true
+  );
 });
 
 test("demand renderer coalesces wake requests until the current frame runs", () => {

@@ -10,8 +10,6 @@ struct FrameUniforms {
 
 @group(0) @binding(0) var<uniform> frame: FrameUniforms;
 @group(0) @binding(1) var<storage, read> positions: array<vec4f>;
-@group(0) @binding(2) var<storage, read> scales: array<vec4f>;
-@group(0) @binding(3) var<storage, read> rotations: array<vec4f>;
 @group(0) @binding(4) var<storage, read_write> projectedBounds: array<vec4u>;
 @group(0) @binding(5) var<storage, read_write> tileHeaders: array<vec4u>;
 @group(0) @binding(6) var<storage, read_write> tileRefs: array<vec4u>;
