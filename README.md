@@ -39,6 +39,14 @@ You can load another exported first-smoke manifest with the `asset` query parame
 http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json
 ```
 
+The smoke viewer also has a tile-local prepass diagnostic mode:
+
+```
+http://127.0.0.1:5173/?renderer=tile-local
+```
+
+This mode still presents the known-good splat plate renderer, but it also builds and dispatches the provisional tile-local coverage/compositor prepass. The overlay reports this honestly as `plate+tile-local-prepass` and includes live tile/ref counts; those counts should change with camera framing as splats enter and leave the viewport.
+
 The viewer also accepts local binary little-endian PLY splat files by drag-and-drop onto the canvas. Drag-and-drop SPZ loading is not wired yet.
 
 Requires WebGPU support (Chrome 113+, Edge 113+, Firefox Nightly).
@@ -88,6 +96,10 @@ src/                           — WebGPU deferred renderer (TypeScript)
   localPly.ts                    browser-side dropped PLY decoder
   splatSort.ts                   CPU depth-key generation and settle cadence
   gpuSortPrototype.ts            WebGPU bitonic index sort for smoke-viewer draw order
+  gpuTileCoverage.ts             tile grid, dispatch, and uniform contracts
+  gpuTileCoverageBridge.js        CPU coverage bridge packing for GPU tile buffers
+  gpuTileCoverageRenderer.js      provisional WebGPU tile-local prepass skeleton
+  tileLocalPrepassBridge.js       browser smoke bridge from projected splats to tile lists
   splatPlateRenderer.ts          WebGPU baked-color splat plate pipeline
   realSmokeScene.ts              first-smoke framing and evidence surface
   timestamps.ts                  GPU timestamp query profiling
@@ -122,7 +134,7 @@ npm run smoke:visual:real
 
 ## Status
 
-The preprocessing oracle (Packet L) is feature-complete. Validated on real Scaniverse phone scans with SAM3 MLX running at 90ms/concept on M4 Max. First real-splat visual smoke is passing in the WebGPU viewer against the committed Scaniverse asset. Renderer main has the production-spine baseline landed at `1e6034f`: Jacobian covariance projection, bounded near-plane LOD policy, fidelity witness diagnostics, fly-camera framing, deferred CPU depth-key refresh, and the WebGPU bitonic sort path are now integrated into the smoke viewer. This is still a first-smoke renderer-fidelity baseline, not the finished production renderer; remaining triage includes final conic/parity validation, clipping and culling policy, opacity compensation, SH evaluation, and deferred G-buffer integration. See [FANOUT.md](FANOUT.md) for the original coordination plan.
+The preprocessing oracle (Packet L) is feature-complete. Validated on real Scaniverse phone scans with SAM3 MLX running at 90ms/concept on M4 Max. First real-splat visual smoke is passing in the WebGPU viewer against the committed Scaniverse asset. Renderer main has the production-spine smoke baseline plus the first tile-local compositor plumbing: Jacobian covariance projection, bounded near-plane LOD policy, fidelity witness diagnostics, fly-camera framing, deferred CPU depth-key refresh, WebGPU bitonic sort, coverage-aware alpha, GPU tile coverage contracts, CPU tile-list bridge packing, and a smoke-toggleable `plate+tile-local-prepass` mode are integrated. This is still a first-smoke renderer-fidelity baseline, not the finished production renderer; the tile-local path is live as a diagnostic prepass, not yet the visible compositor. Remaining triage includes visible tile-local output, final conic/parity validation, clipping and culling policy, SH evaluation, and deferred G-buffer integration. See [FANOUT.md](FANOUT.md) for the original coordination plan.
 
 ## License
 
