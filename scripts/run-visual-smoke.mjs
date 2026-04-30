@@ -5,6 +5,11 @@ import path from "node:path";
 
 import { classifySmokeEvidence } from "./visual-smoke/evidence.mjs";
 import { analyzePngBuffer } from "./visual-smoke/png-analysis.mjs";
+import {
+  buildTileLocalComparisonPlan,
+  classifyTileLocalComparison,
+  extractTileLocalPageMetrics,
+} from "./visual-smoke/tile-local-comparison.mjs";
 import { classifyWitnessCapture } from "./visual-smoke/witness-diagnostics.mjs";
 
 async function main() {
@@ -32,6 +37,25 @@ async function main() {
       args: ["--enable-unsafe-webgpu"],
     });
 
+    if (options.tileLocalComparison) {
+      const comparison = await runTileLocalComparison({
+        browser,
+        options,
+        baseUrl: url,
+        reportDir,
+        analysisPath,
+        reportPath,
+        generatedAt,
+      });
+      await writeFile(analysisPath, `${JSON.stringify(comparison, null, 2)}\n`);
+      await writeFile(reportPath, renderTileLocalComparisonReport(comparison));
+      printTileLocalComparisonSummary(comparison);
+      if (!comparison.classification.closeable) {
+        process.exitCode = 3;
+      }
+      return;
+    }
+
     const page = await browser.newPage({
       viewport: options.viewport,
       deviceScaleFactor: options.deviceScaleFactor,
@@ -52,7 +76,11 @@ async function main() {
     );
     await page.waitForTimeout(options.settleMs);
 
-    const pageEvidence = await collectPageEvidence(page);
+    const rawPageEvidence = await collectPageEvidence(page);
+    const pageEvidence = {
+      ...rawPageEvidence,
+      ...extractTileLocalPageMetrics(rawPageEvidence),
+    };
     const clip = await canvasClip(canvas);
     await page.addStyleTag({
       content: "#stats,[data-visual-smoke-ignore]{visibility:hidden!important}",
@@ -128,6 +156,88 @@ async function loadPlaywright() {
       "playwright-core is required for visual smoke capture. Run `npm install` in the repo before `npm run smoke:visual`.",
       { cause: error }
     );
+  }
+}
+
+async function runTileLocalComparison({ browser, options, baseUrl, reportDir, analysisPath, reportPath, generatedAt }) {
+  const plan = buildTileLocalComparisonPlan(baseUrl);
+  const captures = [];
+  for (const capture of plan) {
+    captures.push(await captureVisualSmoke({ browser, options, capture, reportDir }));
+  }
+  const classification = classifyTileLocalComparison({ captures });
+
+  return {
+    generatedAt,
+    baseUrl,
+    analysisPath: path.relative(options.appRoot, analysisPath),
+    reportPath: path.relative(options.appRoot, reportPath),
+    options: publicOptions(options),
+    plan,
+    captures,
+    classification,
+  };
+}
+
+async function captureVisualSmoke({ browser, options, capture, reportDir }) {
+  const consoleMessages = [];
+  const pageErrors = [];
+  const page = await browser.newPage({
+    viewport: options.viewport,
+    deviceScaleFactor: options.deviceScaleFactor,
+  });
+  page.on("console", (message) => consoleMessages.push({ type: message.type(), text: message.text() }));
+  page.on("pageerror", (error) => pageErrors.push(error.stack || error.message));
+
+  try {
+    await page.goto(capture.url, { waitUntil: "domcontentloaded", timeout: options.timeoutMs });
+    const canvas = page.locator("canvas").first();
+    await canvas.waitFor({ state: "attached", timeout: options.timeoutMs });
+    await page.waitForFunction(
+      () => {
+        const target = document.querySelector("canvas");
+        return Boolean(target && target.width > 0 && target.height > 0);
+      },
+      null,
+      { timeout: options.timeoutMs }
+    );
+    await page.waitForTimeout(options.settleMs);
+
+    const rawPageEvidence = await collectPageEvidence(page);
+    const pageEvidence = {
+      ...rawPageEvidence,
+      ...extractTileLocalPageMetrics(rawPageEvidence),
+    };
+    const clip = await canvasClip(canvas);
+    await page.addStyleTag({
+      content: "#stats,[data-visual-smoke-ignore]{visibility:hidden!important}",
+    });
+    const screenshotPath = path.join(reportDir, `${capture.id}.png`);
+    const screenshot = await page.screenshot({ path: screenshotPath, clip });
+    const imageAnalysis = analyzePngBuffer(screenshot, options.imageThresholds);
+    const classification = classifySmokeEvidence({
+      pageEvidence,
+      imageAnalysis,
+      requireRealSplat: options.requireRealSplat,
+    });
+    const witnessDiagnostics = classifyWitnessCapture({
+      pageEvidence,
+      imageAnalysis,
+      smokeClassification: classification,
+    });
+
+    return {
+      ...capture,
+      screenshotPath: path.relative(options.appRoot, screenshotPath),
+      pageEvidence,
+      imageAnalysis,
+      classification,
+      witnessDiagnostics,
+      consoleMessages,
+      pageErrors,
+    };
+  } finally {
+    await page.close();
   }
 }
 
@@ -248,10 +358,69 @@ ${JSON.stringify({ consoleMessages: result.consoleMessages, pageErrors: result.p
 `;
 }
 
+function renderTileLocalComparisonReport(result) {
+  const classification = result.classification;
+  const metrics = classification.metrics;
+  return `# Tile-Local Visual/Perf Smoke Report
+
+- Status: ${classification.summary.status}
+- Generated: ${result.generatedAt}
+- Base URL: ${result.baseUrl}
+- Analysis JSON: \`${path.relative(path.dirname(result.reportPath), result.analysisPath)}\`
+
+## Captures
+
+${result.captures
+  .map(
+    (capture) => `### ${capture.title}
+
+- URL: ${capture.url}
+- Screenshot: \`${path.relative(path.dirname(result.reportPath), capture.screenshotPath)}\`
+- Renderer label: ${capture.pageEvidence.rendererLabel || "not reported"}
+- FPS: ${capture.pageEvidence.fps || 0}
+- Tile refs: ${capture.pageEvidence.tileLocal?.refs || 0}
+- Real splat evidence: ${capture.classification.realSplatEvidence}
+- Nonblank: ${capture.classification.nonblank}
+- Changed pixels: ${capture.imageAnalysis.changedPixels} / ${capture.imageAnalysis.totalPixels} (${formatPercent(capture.imageAnalysis.changedPixelRatio)})
+- Bridge block ratio: ${formatPercent(capture.imageAnalysis.bridgeBlockRatio)}
+`
+  )
+  .join("\n")}
+
+## Comparison
+
+- Plate FPS: ${metrics.fps.plate}
+- Silent prepass FPS: ${metrics.fps.prepass} (${formatMetricRatio(metrics.fps.prepassToPlateRatio)} x plate)
+- Visible tile-local FPS: ${metrics.fps.visible} (${formatMetricRatio(metrics.fps.visibleToPlateRatio)} x plate)
+- Prepass tile refs: ${metrics.tileRefs.prepass}
+- Visible tile refs: ${metrics.tileRefs.visible}
+
+## Findings
+
+${classification.findings.length === 0 ? "- None" : classification.findings.map((finding) => `- ${finding.kind}: ${finding.summary}`).join("\n")}
+
+## Summary
+
+${classification.summary.text}
+`;
+}
+
 function printSummary(result) {
   console.log(result.classification.summary);
   console.log(`report: ${result.reportPath}`);
   console.log(`screenshot: ${result.screenshotPath}`);
+}
+
+function formatMetricRatio(value) {
+  return Number.isFinite(value) ? String(value) : "n/a";
+}
+
+function printTileLocalComparisonSummary(result) {
+  console.log(result.classification.summary.text);
+  console.log(`report: ${result.reportPath}`);
+  for (const capture of result.captures) {
+    console.log(`${capture.id}: ${capture.screenshotPath}`);
+  }
 }
 
 function parseArgs(args) {
@@ -270,6 +439,7 @@ function parseArgs(args) {
     timeoutMs: 15000,
     settleMs: 1000,
     imageThresholds: {},
+    tileLocalComparison: false,
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -329,6 +499,11 @@ function parseArgs(args) {
       case "--min-average-delta":
         options.imageThresholds.minAverageDelta = Number(next());
         break;
+      case "--tile-local-comparison":
+      case "--compare-tile-local":
+        options.tileLocalComparison = true;
+        options.requireRealSplat = true;
+        break;
       case "--help":
       case "-h":
         printHelp();
@@ -358,6 +533,7 @@ function publicOptions(options) {
     timeoutMs: options.timeoutMs,
     settleMs: options.settleMs,
     imageThresholds: options.imageThresholds,
+    tileLocalComparison: options.tileLocalComparison,
   };
 }
 
@@ -400,6 +576,7 @@ Options:
   --browser-executable <path>     Browser executable path; overrides channel.
   --viewport <WIDTHxHEIGHT>       Browser viewport. Defaults to 1280x720.
   --settle-ms <ms>                Wait after canvas sizing before screenshot. Defaults to 1000.
+  --tile-local-comparison         Capture plate, renderer=tile-local, and renderer=tile-local-visible in one report.
 `);
 }
 

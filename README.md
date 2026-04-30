@@ -55,6 +55,14 @@ http://127.0.0.1:5173/?renderer=tile-local-visible
 
 This presents the tile-local output texture instead of the plate renderer. It is intentionally blocky: it is a coverage/header/ref diagnostic over the CPU-bridge-populated tile buffers that proves those buffers can produce presented pixels, not the final GPU ref-builder or Gaussian compositor.
 
+The visual smoke harness can compare all three tile-local surfaces in one run:
+
+```
+npm run smoke:visual:real -- --tile-local-comparison --out-dir /tmp/tile-local-visual-perf-comparison
+```
+
+That comparison captures the plate baseline, `plate+tile-local-prepass`, and `renderer=tile-local-visible`; it fails if the visible mode falls back to plate, still presents the bridge-block diagnostic, loses tile-local refs, lacks real Scaniverse evidence, or suffers a catastrophic FPS collapse. See `docs/smoke/tile-local-visual-perf-comparison.md`.
+
 The viewer also accepts local binary little-endian PLY splat files by drag-and-drop onto the canvas. Drag-and-drop SPZ loading is not wired yet.
 
 Requires WebGPU support (Chrome 113+, Edge 113+, Firefox Nightly).
@@ -139,6 +147,7 @@ scripts/
 npm test
 npm run build
 npm run smoke:visual:real
+npm run smoke:visual:real -- --tile-local-comparison --out-dir /tmp/tile-local-visual-perf-comparison
 ```
 
 ## Status
