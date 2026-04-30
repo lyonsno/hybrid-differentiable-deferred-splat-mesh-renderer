@@ -37,7 +37,7 @@ test("tile compositor consumes per-tile back-to-front lists, not one global draw
   assert.equal(ordering.consumedBy, "tile-local-compositor");
 });
 
-test("equal-depth contributions are stable inside each tile by splat id", () => {
+test("equal-depth contributions are stable inside each tile by stable tie id fallback", () => {
   const ordering = buildPerTileOrdering([
     { tileId: 3, splatId: 7, depth: -4, coverageWeight: 0.2 },
     { tileId: 3, splatId: 5, depth: -4, coverageWeight: 0.3 },
@@ -48,9 +48,35 @@ test("equal-depth contributions are stable inside each tile by splat id", () => 
   assert.deepEqual(
     ordering.tiles.get(3).entries.map((entry) => entry.orderKey),
     [
-      { quantizedDepth: -4, splatId: 5, tileId: 3 },
-      { quantizedDepth: -4, splatId: 6, tileId: 3 },
-      { quantizedDepth: -4, splatId: 7, tileId: 3 },
+      { quantizedDepth: -4, stableTieId: 5, tileId: 3 },
+      { quantizedDepth: -4, stableTieId: 6, tileId: 3 },
+      { quantizedDepth: -4, stableTieId: 7, tileId: 3 },
+    ],
+  );
+});
+
+test("per-tile ordered refs preserve explicit stable tie ids even when splat ids differ", () => {
+  const ordering = buildPerTileOrdering([
+    { tileId: 9, splatId: 21, stableTieId: 102, depth: -3.5, coverageWeight: 0.2 },
+    { tileId: 9, splatId: 18, stableTieId: 100, depth: -3.5, coverageWeight: 0.3 },
+    { tileId: 9, splatId: 24, stableTieId: 101, depth: -3.5, coverageWeight: 0.4 },
+  ]);
+
+  assert.deepEqual(ordering.tiles.get(9).drawSplatIds, [18, 24, 21]);
+  assert.deepEqual(
+    ordering.tiles.get(9).orderedRefs.map((entry) => [entry.splatId, entry.stableTieId, entry.viewDepth]),
+    [
+      [18, 100, -3.5],
+      [24, 101, -3.5],
+      [21, 102, -3.5],
+    ],
+  );
+  assert.deepEqual(
+    ordering.tiles.get(9).orderedRefs.map((entry) => entry.orderKey),
+    [
+      { quantizedDepth: -3.5, stableTieId: 100, tileId: 9 },
+      { quantizedDepth: -3.5, stableTieId: 101, tileId: 9 },
+      { quantizedDepth: -3.5, stableTieId: 102, tileId: 9 },
     ],
   );
 });
@@ -89,7 +115,7 @@ test("contract exposes the next ordering decision without claiming coverage or a
   assert.deepEqual(describeTileOrderingContract(), {
     nextShape: "per-tile-radix-lists",
     compositorConsumes: "tile-local-back-to-front-contributions",
-    globalRadixRole: "staging-or-diagnostic-only",
+    globalStagingRole: "staging-or-diagnostic-only",
     bucketRole: "bounded-approximation-only",
     mustCarry: ["tileId", "splatId", "viewDepth", "stableTieId"],
     consumedSiblingContracts: ["tile-coverage-builder:data-shape", "alpha-transfer:source-over-policy"],

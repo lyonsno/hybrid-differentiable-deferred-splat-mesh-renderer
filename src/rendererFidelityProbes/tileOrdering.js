@@ -5,7 +5,7 @@ export function describeTileOrderingContract() {
   return {
     nextShape: TILE_ORDERING_REQUIRED_SHAPE,
     compositorConsumes: "tile-local-back-to-front-contributions",
-    globalRadixRole: "staging-or-diagnostic-only",
+    globalStagingRole: "staging-or-diagnostic-only",
     bucketRole: "bounded-approximation-only",
     mustCarry: ["tileId", "splatId", "viewDepth", "stableTieId"],
     consumedSiblingContracts: ["tile-coverage-builder:data-shape", "alpha-transfer:source-over-policy"],
@@ -24,22 +24,24 @@ export function buildPerTileOrdering(contributions, options = {}) {
   const tiles = new Map();
 
   for (const tileId of tileIds) {
-    const entries = normalized
+    const orderedRefs = normalized
       .filter((entry) => entry.tileId === tileId)
       .sort(compareContributions)
       .map((entry) => ({
         ...entry,
+        viewDepth: entry.depth,
         orderKey: {
           quantizedDepth: entry.quantizedDepth,
-          splatId: entry.splatId,
+          stableTieId: entry.stableTieId,
           tileId: entry.tileId,
         },
       }));
 
     tiles.set(tileId, {
       tileId,
-      entries,
-      drawSplatIds: entries.map((entry) => entry.splatId),
+      orderedRefs,
+      entries: orderedRefs,
+      drawSplatIds: orderedRefs.map((entry) => entry.splatId),
     });
   }
 
@@ -90,6 +92,8 @@ function normalizeContribution(contribution, index, depthPrecision) {
   validateNonNegativeInteger(contribution.tileId, `contribution ${index} tileId`);
   validateNonNegativeInteger(contribution.splatId, `contribution ${index} splatId`);
   validateFinite(contribution.depth, `contribution ${index} depth`);
+  const stableTieId = "stableTieId" in contribution ? contribution.stableTieId : contribution.splatId;
+  validateNonNegativeInteger(stableTieId, `contribution ${index} stableTieId`);
   if ("coverageWeight" in contribution) {
     validateNonNegativeFinite(contribution.coverageWeight, `contribution ${index} coverageWeight`);
   }
@@ -98,7 +102,9 @@ function normalizeContribution(contribution, index, depthPrecision) {
   return {
     tileId: contribution.tileId,
     splatId: contribution.splatId,
+    stableTieId,
     depth: contribution.depth,
+    viewDepth: contribution.depth,
     quantizedDepth,
     coverageWeight: contribution.coverageWeight,
   };
@@ -107,6 +113,7 @@ function normalizeContribution(contribution, index, depthPrecision) {
 function compareContributions(left, right) {
   return (
     left.quantizedDepth - right.quantizedDepth ||
+    left.stableTieId - right.stableTieId ||
     left.splatId - right.splatId ||
     left.tileId - right.tileId
   );
