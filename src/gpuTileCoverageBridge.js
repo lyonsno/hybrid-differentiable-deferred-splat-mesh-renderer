@@ -1,6 +1,6 @@
 export function buildGpuTileCoverageBridge(coverage) {
   const tileCount = coverage.tileColumns * coverage.tileRows;
-  const splatCount = coverage.splats.length;
+  const splatCount = resolveSplatCount(coverage);
   const tileEntryCount = coverage.tileEntries.length;
   const projectedBounds = new Uint32Array(Math.max(0, splatCount * 4));
   const tileHeaders = new Uint32Array(Math.max(0, tileCount * 4));
@@ -59,6 +59,13 @@ export function buildGpuTileCoverageBridge(coverage) {
     tileRefs,
     tileCoverageWeights,
   };
+}
+
+function resolveSplatCount(coverage) {
+  if (Number.isInteger(coverage.sourceSplatCount) && coverage.sourceSplatCount >= 0) {
+    return coverage.sourceSplatCount;
+  }
+  return coverage.splats.length;
 }
 
 export function createGpuTileCoverageBridgeBuffers(device, bridge) {
