@@ -78,7 +78,7 @@ const GPU_SORT_SETTLE_MS = 160;
 const ALPHA_DENSITY_SETTLE_MS = 160;
 const ALPHA_DENSITY_MODE = selectedAlphaDensityMode();
 const RENDERER_MODE = selectedRendererMode();
-const TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX = 48;
+const TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX = 6;
 const TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES = 1;
 
 interface ActiveSplatScene {
@@ -111,6 +111,8 @@ interface TileLocalSceneState {
   orderingKeyBuffer: GPUBuffer;
   orderingKeyData: Uint32Array;
   alphaParamBuffer: GPUBuffer;
+  alphaParamData: Float32Array;
+  tileRefShapeParams: Float32Array;
   outputTexture: GPUTexture;
   outputView: GPUTextureView;
   tileEntryCount: number;
@@ -524,6 +526,7 @@ function createTileLocalSceneState(
 ): TileLocalSceneState {
   const bridge = buildTileLocalPrepassBridge({
     attributes,
+    viewMatrix,
     viewProj,
     viewportWidth,
     viewportHeight,
@@ -553,6 +556,9 @@ function createTileLocalSceneState(
     const splatId = bridge.tileRefs[refIndex * 4] ?? 0;
     tileRefSplatIds[refIndex] = splatId;
     alphaParamData[refIndex * 4] = effectiveOpacities[splatId] ?? 0;
+    alphaParamData[refIndex * 4 + 1] = bridge.tileRefShapeParams[refIndex * 4] ?? 0;
+    alphaParamData[refIndex * 4 + 2] = bridge.tileRefShapeParams[refIndex * 4 + 1] ?? 0;
+    alphaParamData[refIndex * 4 + 3] = bridge.tileRefShapeParams[refIndex * 4 + 2] ?? 1;
   }
 
   const bridgeBuffers = createGpuTileCoverageBridgeBuffers(device, bridge);
@@ -600,6 +606,8 @@ function createTileLocalSceneState(
     orderingKeyBuffer,
     orderingKeyData,
     alphaParamBuffer,
+    alphaParamData,
+    tileRefShapeParams: bridge.tileRefShapeParams,
     outputTexture,
     outputView,
     tileEntryCount: bridge.tileEntryCount,
@@ -643,7 +651,11 @@ function syncTileLocalAlphaParams(
   for (let refIndex = 0; refIndex < state.plan.maxTileRefs; refIndex++) {
     const splatId = state.tileRefSplatIds[refIndex] ?? 0;
     alphaParamData[refIndex * 4] = effectiveOpacities[splatId] ?? 0;
+    alphaParamData[refIndex * 4 + 1] = state.tileRefShapeParams[refIndex * 4] ?? 0;
+    alphaParamData[refIndex * 4 + 2] = state.tileRefShapeParams[refIndex * 4 + 1] ?? 0;
+    alphaParamData[refIndex * 4 + 3] = state.tileRefShapeParams[refIndex * 4 + 2] ?? 1;
   }
+  state.alphaParamData.set(alphaParamData);
   queue.writeBuffer(state.alphaParamBuffer, 0, alphaParamData);
 }
 

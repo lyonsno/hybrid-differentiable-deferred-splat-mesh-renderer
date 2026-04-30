@@ -24,7 +24,9 @@ test("tile-local visible shader composites ordered tile refs with coverage, alph
   assert.match(shader, /tileHeaders\[tileId\]/);
   assert.match(shader, /tileRefs\[refIndex\]/);
   assert.match(shader, /tileCoverageWeights\[selectedRefIndex\]/);
-  assert.match(shader, /alphaParams\[alphaParamIndex\]\.x/);
+  assert.match(shader, /let alphaParam = alphaParams\[alphaParamIndex\]/);
+  assert.match(shader, /alphaParam\.yz/);
+  assert.match(shader, /alphaParam\.w/);
   assert.match(shader, /1\.0\s*-\s*pow\(1\.0\s*-\s*sourceOpacity,\s*coverageWeight\)/);
   assert.match(shader, /orderingKeys\[tileRef\.x\]/);
   assert.match(shader, /gaussian_pixel_weight/);

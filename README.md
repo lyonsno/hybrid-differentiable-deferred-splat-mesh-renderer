@@ -47,13 +47,13 @@ http://127.0.0.1:5173/?renderer=tile-local
 
 This mode still presents the known-good splat plate renderer, but it also builds and dispatches the provisional tile-local coverage/compositor prepass. The overlay reports this honestly as `plate+tile-local-prepass` and includes live tile/ref counts; those counts should change with camera framing as splats enter and leave the viewport.
 
-To show the tile-local path directly, use the visible diagnostic renderer:
+To show the tile-local path directly, use the visible Gaussian compositor:
 
 ```
 http://127.0.0.1:5173/?renderer=tile-local-visible
 ```
 
-This presents the tile-local output texture instead of the plate renderer. It is intentionally blocky: it is a coverage/header/ref diagnostic over the CPU-bridge-populated tile buffers that proves those buffers can produce presented pixels, not the final GPU ref-builder or Gaussian compositor.
+This presents the tile-local output texture instead of the plate renderer. It consumes CPU-bridge-populated tile refs, coverage weights, opacity, source colors, and ordered contributions to produce a first real tile-local Gaussian compositor output. It is still deliberately scoped: this does not claim the final GPU ref-builder, SH shading, PBR relighting, mesh integration, or deferred G-buffer path.
 
 The visual smoke harness can compare all three tile-local surfaces in one run:
 
@@ -152,7 +152,7 @@ npm run smoke:visual:real -- --tile-local-comparison --out-dir /tmp/tile-local-v
 
 ## Status
 
-The preprocessing oracle (Packet L) is feature-complete. Validated on real Scaniverse phone scans with SAM3 MLX running at 90ms/concept on M4 Max. First real-splat visual smoke is passing in the WebGPU viewer against the committed Scaniverse asset. Renderer main has the production-spine smoke baseline plus the first tile-local compositor plumbing: Jacobian covariance projection, bounded near-plane LOD policy, fidelity witness diagnostics, fly-camera framing, deferred CPU depth-key refresh, WebGPU bitonic sort, coverage-aware alpha, GPU tile coverage contracts, CPU tile-list bridge packing, a smoke-toggleable `plate+tile-local-prepass` mode, and a deliberately blocky `tile-local-visible-bridge-diagnostic` presenter are integrated. This is still a first-smoke renderer-fidelity baseline, not the finished production renderer; the visible tile-local path proves the offscreen tile-local buffers can produce presented pixels, not final Gaussian image quality or the final GPU ref-builder. Remaining triage includes final tile-local Gaussian compositing, conic/parity validation, clipping and culling policy, SH evaluation, and deferred G-buffer integration. See [FANOUT.md](FANOUT.md) for the original coordination plan.
+The preprocessing oracle (Packet L) is feature-complete. Validated on real Scaniverse phone scans with SAM3 MLX running at 90ms/concept on M4 Max. First real-splat visual smoke is passing in the WebGPU viewer against the committed Scaniverse asset. Renderer main has the production-spine smoke baseline plus the first tile-local compositor plumbing: Jacobian covariance projection, bounded near-plane LOD policy, fidelity witness diagnostics, fly-camera framing, deferred CPU depth-key refresh, WebGPU bitonic sort, coverage-aware alpha, GPU tile coverage contracts, CPU tile-list bridge packing, a smoke-toggleable `plate+tile-local-prepass` mode, and a visible `tile-local-visible-gaussian-compositor` mode over CPU-bridge tile buffers. This is still a first-smoke renderer-fidelity baseline, not the finished production renderer; the visible tile-local path now produces a coarse tile-local Gaussian compositor image, but it does not claim final GPU ref-builder, SH shading, PBR relighting, mesh integration, or deferred G-buffer quality. Remaining triage includes final GPU tile-list construction, conic/parity validation, clipping and culling policy, SH evaluation, and deferred G-buffer integration. See [FANOUT.md](FANOUT.md) for the original coordination plan.
 
 ## License
 

@@ -31,4 +31,5 @@ test("tile-list bridge packs stable headers, refs, coverage weights, and project
   assert.deepEqual(Array.from(bridge.tileRefs), [0, 4, 0, 0]);
   assert.equal(bridge.tileCoverageWeights.length, 1);
   assert.ok(Math.abs(bridge.tileCoverageWeights[0] - coverage.tileEntries[0].coverageWeight) < 1e-6);
+  assert.deepEqual(Array.from(bridge.tileRefShapeParams), [4, 4, 7, 0]);
 });

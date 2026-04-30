@@ -503,6 +503,9 @@ function parseArgs(args) {
       case "--compare-tile-local":
         options.tileLocalComparison = true;
         options.requireRealSplat = true;
+        if (options.settleMs === 1000) {
+          options.settleMs = 5000;
+        }
         break;
       case "--help":
       case "-h":
@@ -575,7 +578,7 @@ Options:
   --browser-channel <name>        Playwright channel. Defaults to VISUAL_SMOKE_BROWSER_CHANNEL or chrome.
   --browser-executable <path>     Browser executable path; overrides channel.
   --viewport <WIDTHxHEIGHT>       Browser viewport. Defaults to 1280x720.
-  --settle-ms <ms>                Wait after canvas sizing before screenshot. Defaults to 1000.
+  --settle-ms <ms>                Wait after canvas sizing before screenshot. Defaults to 1000, or 5000 for tile-local comparison.
   --tile-local-comparison         Capture plate, renderer=tile-local, and renderer=tile-local-visible in one report.
 `);
 }

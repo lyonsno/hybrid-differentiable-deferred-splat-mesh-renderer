@@ -6,8 +6,11 @@ export function buildGpuTileCoverageBridge(coverage) {
   const tileHeaders = new Uint32Array(Math.max(0, tileCount * 4));
   const tileRefs = new Uint32Array(Math.max(0, tileEntryCount * 4));
   const tileCoverageWeights = new Float32Array(Math.max(0, tileEntryCount));
+  const tileRefShapeParams = new Float32Array(Math.max(0, tileEntryCount * 4));
+  const splatsByIndex = new Map();
 
   for (const splat of coverage.splats) {
+    splatsByIndex.set(splat.splatIndex, splat);
     const base = splat.splatIndex * 4;
     if (base + 3 >= projectedBounds.length) {
       throw new Error("splat coverage index exceeds projected bounds storage");
@@ -38,6 +41,7 @@ export function buildGpuTileCoverageBridge(coverage) {
     tileRefs[refIndex * 4 + 2] = entry.tileIndex;
     tileRefs[refIndex * 4 + 3] = refIndex;
     tileCoverageWeights[refIndex] = entry.coverageWeight;
+    writeTileRefShapeParams(tileRefShapeParams, refIndex, splatsByIndex.get(entry.splatIndex));
     refCount += 1;
   }
 
@@ -58,7 +62,23 @@ export function buildGpuTileCoverageBridge(coverage) {
     tileHeaders,
     tileRefs,
     tileCoverageWeights,
+    tileRefShapeParams,
   };
+}
+
+function writeTileRefShapeParams(target, refIndex, splat) {
+  const base = refIndex * 4;
+  if (!splat) {
+    target[base] = 0;
+    target[base + 1] = 0;
+    target[base + 2] = 1;
+    target[base + 3] = 0;
+    return;
+  }
+  target[base] = splat.centerPx[0];
+  target[base + 1] = splat.centerPx[1];
+  target[base + 2] = Math.max(1, Math.sqrt(Math.max(splat.covariancePx.xx, splat.covariancePx.yy, 1)));
+  target[base + 3] = 0;
 }
 
 function resolveSplatCount(coverage) {

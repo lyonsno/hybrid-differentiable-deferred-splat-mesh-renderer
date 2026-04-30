@@ -26,6 +26,7 @@ test("tile-local prepass bridge preserves sparse splat ids and real coverage wei
 
   const bridge = buildTileLocalPrepassBridge({
     attributes,
+    viewMatrix: identityViewProj,
     viewProj: identityViewProj,
     viewportWidth: 64,
     viewportHeight: 64,
@@ -46,4 +47,39 @@ test("tile-local prepass bridge preserves sparse splat ids and real coverage wei
   assert.equal(bridge.tileRefs[1], 42);
   assert.ok(Array.from(bridge.tileCoverageWeights).some((weight) => weight > 0 && weight < 1));
   assert.ok(Array.from(bridge.tileCoverageWeights).some((weight) => weight !== 1));
+});
+
+test("tile-local prepass bridge feeds each bounded tile list with nearest visible candidates first", () => {
+  const attributes = {
+    count: 3,
+    positions: new Float32Array([
+      0, 0, 0.6,
+      0, 0, 0.2,
+      0, 0, 0.4,
+    ]),
+    scales: new Float32Array([
+      Math.log(0.2), Math.log(0.2), 0,
+      Math.log(0.2), Math.log(0.2), 0,
+      Math.log(0.2), Math.log(0.2), 0,
+    ]),
+    originalIds: new Uint32Array([30, 10, 20]),
+  };
+
+  const bridge = buildTileLocalPrepassBridge({
+    attributes,
+    viewMatrix: identityViewProj,
+    viewProj: identityViewProj,
+    viewportWidth: 64,
+    viewportHeight: 64,
+    tileSizePx: 64,
+    samplesPerAxis: 1,
+    splatScale: 80,
+    minRadiusPx: 1,
+  });
+
+  assert.equal(bridge.tileHeaders[1], 3);
+  assert.deepEqual(
+    [bridge.tileRefs[0], bridge.tileRefs[4], bridge.tileRefs[8]],
+    [0, 2, 1]
+  );
 });

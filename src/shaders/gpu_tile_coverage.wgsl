@@ -19,26 +19,9 @@ struct FrameUniforms {
 @group(0) @binding(9) var<storage, read> alphaParams: array<vec4f>;
 @group(0) @binding(10) var outputColor: texture_storage_2d<rgba16float, write>;
 
-fn splat_center_px(splatId: u32) -> vec2f {
-  let positionBase = splatId * 3u;
-  let center = vec3f(positions[positionBase], positions[positionBase + 1u], positions[positionBase + 2u]);
-  let centerClip = frame.viewProj * vec4f(center, 1.0);
-  let ndc = centerClip.xy / max(centerClip.w, 0.0001);
-  return vec2f((ndc.x * 0.5 + 0.5) * frame.viewport.x, (0.5 - ndc.y * 0.5) * frame.viewport.y);
-}
-
-fn bridge_bound_radius_px(splatId: u32) -> vec2f {
-  let bounds = projectedBounds[splatId];
-  let tileSizePx = max(frame.tileSizePx, 1.0);
-  let tileSpan = vec2f(
-    f32(max(bounds.z + 1u, bounds.x + 1u) - bounds.x),
-    f32(max(bounds.w + 1u, bounds.y + 1u) - bounds.y),
-  );
-  return max(tileSpan * tileSizePx * 0.5, vec2f(tileSizePx * 0.35));
-}
-
-fn gaussian_pixel_weight(splatId: u32, pixelCenter: vec2f) -> f32 {
-  let delta = (pixelCenter - splat_center_px(splatId)) / bridge_bound_radius_px(splatId);
+fn gaussian_pixel_weight(alphaParam: vec4f, pixelCenter: vec2f) -> f32 {
+  let radiusPx = max(alphaParam.w, 1.0);
+  let delta = (pixelCenter - alphaParam.yz) / radiusPx;
   return exp(-0.5 * dot(delta, delta));
 }
 
@@ -125,8 +108,9 @@ fn gaussian_pixel_weight(splatId: u32, pixelCenter: vec2f) -> f32 {
     previousRank = selectedRank;
     let tileRef = tileRefs[selectedRefIndex];
     let alphaParamIndex = min(tileRef.w, frame.maxTileRefs - 1u);
-    let coverageWeight = max(tileCoverageWeights[selectedRefIndex], 0.0) * gaussian_pixel_weight(tileRef.x, pixelCenter);
-    let sourceOpacity = clamp(alphaParams[alphaParamIndex].x, 0.0, 1.0);
+    let alphaParam = alphaParams[alphaParamIndex];
+    let coverageWeight = max(tileCoverageWeights[selectedRefIndex], 0.0) * gaussian_pixel_weight(alphaParam, pixelCenter);
+    let sourceOpacity = clamp(alphaParam.x, 0.0, 1.0);
     let coverageAlpha = clamp(1.0 - pow(1.0 - sourceOpacity, coverageWeight), 0.0, 1.0);
     let colorBase = tileRef.x * 3u;
     let sourceColor = vec3f(colors[colorBase], colors[colorBase + 1u], colors[colorBase + 2u]);

@@ -11,6 +11,7 @@ export interface GpuTileCoverageBridge {
   readonly tileHeaders: Uint32Array;
   readonly tileRefs: Uint32Array;
   readonly tileCoverageWeights: Float32Array;
+  readonly tileRefShapeParams: Float32Array;
 }
 
 export function buildGpuTileCoverageBridge(coverage: unknown): GpuTileCoverageBridge;
