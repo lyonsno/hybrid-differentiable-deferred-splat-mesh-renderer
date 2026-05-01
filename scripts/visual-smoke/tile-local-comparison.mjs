@@ -125,11 +125,14 @@ export function classifyTileLocalComparison({
 export function extractTileLocalPageMetrics(pageEvidence = {}) {
   const statsText = pageEvidence.statsText ?? "";
   const parsedGrid = parseTileGrid(statsText);
-  const skipReason = pageEvidence.tileLocalLastSkipReason ?? parseTileLocalSkipReason(statsText);
+  const skipReason = pageEvidence.tileLocalLastSkipReason
+    ?? parseTileLocalSkipReason(statsText)
+    ?? parseTileLocalBudgetGuardrailReason(pageEvidence.tileLocalDisabledReason)
+    ?? parseTileLocalBudgetGuardrailReason(statsText);
   const parsedBudget = parseTileLocalBudget(statsText);
   const tileLocal = pageEvidence.tileLocal && typeof pageEvidence.tileLocal === "object" ? pageEvidence.tileLocal : {};
   const freshness = tileLocal.freshness
-    ?? (/stale-cache/i.test(statsText) || skipReason ? { status: "stale-cache" } : undefined);
+    ?? (/stale-cache/i.test(statsText) ? { status: "stale-cache" } : undefined);
   return {
     rendererLabel: pageEvidence.rendererLabel ?? parseRendererLabel(statsText),
     fps: finiteNumber(pageEvidence.fps) ?? parseFps(statsText),
@@ -294,6 +297,11 @@ function parseTileLocalSkipReason(statsText) {
   return match ? match[1].trim() : undefined;
 }
 
+function parseTileLocalBudgetGuardrailReason(text) {
+  const match = /projected tile refs exceed budget:\s*[\d,]+\s*>\s*[\d,]+/i.exec(text ?? "");
+  return match ? match[0].trim() : undefined;
+}
+
 function parseTileLocalBudget(statsText) {
   const match = /projected tile refs exceed budget:\s*([\d,]+)\s*>\s*([\d,]+)/i.exec(statsText);
   if (!match) return undefined;
@@ -311,6 +319,9 @@ function tileLocalPresentationIsStale(metrics) {
 }
 
 function finiteNumber(value) {
+  if (value === null || value === undefined || value === "") {
+    return undefined;
+  }
   const number = Number(value);
   return Number.isFinite(number) ? number : undefined;
 }
