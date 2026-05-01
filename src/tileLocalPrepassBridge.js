@@ -216,14 +216,37 @@ function projectedSplatCovariancePx({
     yy += ay * ay;
   }
 
+  return floorCovariancePrincipalRadii({ xx, xy, yy }, minRadiusPx);
+}
+
+function floorCovariancePrincipalRadii(covariance, minRadiusPx) {
   const minVariance = minRadiusPx * minRadiusPx;
-  xx = Math.max(xx, minVariance);
-  yy = Math.max(yy, minVariance);
-  const determinant = xx * yy - xy * xy;
-  if (determinant <= 0) {
+  const determinant = covariance.xx * covariance.yy - covariance.xy * covariance.xy;
+  if (covariance.xx <= 0 || covariance.yy <= 0 || determinant <= 0) {
     return { xx: minVariance, xy: 0, yy: minVariance };
   }
-  return { xx, xy, yy };
+
+  const trace = covariance.xx + covariance.yy;
+  const discriminant = Math.sqrt(Math.max((covariance.xx - covariance.yy) ** 2 + 4 * covariance.xy * covariance.xy, 0));
+  const majorVariance = 0.5 * (trace + discriminant);
+  const minorVariance = 0.5 * (trace - discriminant);
+  const flooredMajorVariance = Math.max(majorVariance, minVariance);
+  const flooredMinorVariance = Math.max(minorVariance, minVariance);
+  if (flooredMajorVariance === majorVariance && flooredMinorVariance === minorVariance) {
+    return covariance;
+  }
+
+  const theta = 0.5 * Math.atan2(2 * covariance.xy, covariance.xx - covariance.yy);
+  const cosTheta = Math.cos(theta);
+  const sinTheta = Math.sin(theta);
+  const cos2 = cosTheta * cosTheta;
+  const sin2 = sinTheta * sinTheta;
+  const xy = (flooredMajorVariance - flooredMinorVariance) * cosTheta * sinTheta;
+  return {
+    xx: flooredMajorVariance * cos2 + flooredMinorVariance * sin2,
+    xy,
+    yy: flooredMajorVariance * sin2 + flooredMinorVariance * cos2,
+  };
 }
 
 function nearPlaneSupportCrossesClip({ viewProj, center, centerClip, axes, nearFadeEndNdc }) {
