@@ -135,6 +135,55 @@ test("tile-local comparison refuses stale cached tile-local output after a skipp
   );
 });
 
+test("tile-local comparison preserves initial high-viewport budget skip evidence without stale-cache labeling", () => {
+  const pageEvidence = {
+    ready: true,
+    sourceKind: "real_scaniverse_ply",
+    splatCount: 94406,
+    rendererLabel: "tile-local-visible-budget-disabled-plate",
+    statsText:
+      "3456x1916 | 60 fps | renderer: tile-local-visible-budget-disabled-plate | tile-local disabled: projected tile refs exceed budget: 20000001 > 20000000",
+    canvas: { width: 3456, height: 1916, clientWidth: 3456, clientHeight: 1916 },
+    tileLocalDisabledReason: "projected tile refs exceed budget: 20000001 > 20000000",
+  };
+
+  const metrics = extractTileLocalPageMetrics(pageEvidence);
+  assert.equal(metrics.tileLocalLastSkipReason, "projected tile refs exceed budget: 20000001 > 20000000");
+  assert.equal(metrics.tileLocal.budget.skippedProjectedRefs, 20000001);
+  assert.equal(metrics.tileLocal.budget.maxProjectedRefs, 20000000);
+  assert.equal(metrics.tileLocal.budget.skipReason, "projected tile refs exceed budget: 20000001 > 20000000");
+  assert.equal(metrics.tileLocal.freshness, undefined);
+  assert.equal(
+    isVisualSmokeCaptureReady(pageEvidence, { expectedRendererLabel: "tile-local-visible" }),
+    false
+  );
+});
+
+test("tile-local comparison does not coerce absent skipped-ref evidence to zero", () => {
+  const metrics = extractTileLocalPageMetrics({
+    ready: true,
+    rendererLabel: "tile-local-visible-gaussian-compositor",
+    statsText:
+      "3456x1916 | 60 fps | renderer: tile-local-visible-gaussian-compositor | tile-local: 576x320 tiles/531136 refs",
+    tileLocal: {
+      refs: 531136,
+      tileColumns: 576,
+      tileRows: 320,
+      freshness: { status: "current" },
+      budget: {
+        maxProjectedRefs: 20000000,
+        skippedProjectedRefs: null,
+        skipReason: null,
+      },
+    },
+  });
+
+  assert.equal(metrics.tileLocal.freshness.status, "current");
+  assert.equal(metrics.tileLocal.budget.maxProjectedRefs, 20000000);
+  assert.equal(metrics.tileLocal.budget.skippedProjectedRefs, undefined);
+  assert.equal(metrics.tileLocal.budget.skipReason, undefined);
+});
+
 test("tile-local comparison catches visible mode falling back to the plate renderer", () => {
   const result = classifyTileLocalComparison({
     captures: [
