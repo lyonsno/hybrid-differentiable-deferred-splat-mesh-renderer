@@ -8,6 +8,23 @@ export const GPU_TILE_COVERAGE_TILE_HEADER_BYTES = 16;
 export const GPU_TILE_COVERAGE_TILE_REF_BYTES = 16;
 export const GPU_TILE_COVERAGE_ALPHA_PARAM_FLOATS_PER_REF = 8;
 
+export type GpuTileCoverageDebugMode =
+  | "final-color"
+  | "coverage-weight"
+  | "accumulated-alpha"
+  | "transmittance"
+  | "tile-ref-count"
+  | "conic-shape";
+
+export const GPU_TILE_COVERAGE_DEBUG_MODE_CODES: Record<GpuTileCoverageDebugMode, number> = {
+  "final-color": 0,
+  "coverage-weight": 1,
+  "accumulated-alpha": 2,
+  transmittance: 3,
+  "tile-ref-count": 4,
+  "conic-shape": 5,
+};
+
 export const GPU_TILE_COVERAGE_BINDINGS = {
   frame: 0,
   positions: 1,
@@ -103,6 +120,7 @@ export function writeGpuTileCoverageFrameUniforms(
   target: Float32Array,
   viewProj: Float32Array,
   plan: GpuTileCoveragePlan,
+  debugMode: GpuTileCoverageDebugMode = "final-color",
 ): void {
   if (target.length < GPU_TILE_COVERAGE_FRAME_UNIFORM_BYTES / Float32Array.BYTES_PER_ELEMENT) {
     throw new Error("GPU tile coverage frame uniform target is too small");
@@ -115,9 +133,9 @@ export function writeGpuTileCoverageFrameUniforms(
   target[16] = plan.viewportWidth;
   target[17] = plan.viewportHeight;
   target[18] = plan.tileSizePx;
-  target[19] = 0;
 
   const targetU32 = new Uint32Array(target.buffer, target.byteOffset, target.length);
+  targetU32[19] = GPU_TILE_COVERAGE_DEBUG_MODE_CODES[debugMode];
   targetU32[20] = plan.tileColumns;
   targetU32[21] = plan.tileRows;
   targetU32[22] = plan.splatCount;

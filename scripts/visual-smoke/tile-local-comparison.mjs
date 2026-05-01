@@ -128,6 +128,7 @@ export function extractTileLocalPageMetrics(pageEvidence = {}) {
     rendererLabel: pageEvidence.rendererLabel ?? parseRendererLabel(statsText),
     fps: finiteNumber(pageEvidence.fps) ?? parseFps(statsText),
     tileLocal: {
+      ...(pageEvidence.tileLocal && typeof pageEvidence.tileLocal === "object" ? pageEvidence.tileLocal : {}),
       refs: finiteNumber(pageEvidence.tileLocal?.refs) ?? parseTileRefs(statsText),
     },
   };

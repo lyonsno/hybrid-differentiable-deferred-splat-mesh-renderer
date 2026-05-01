@@ -2,11 +2,18 @@ struct FrameUniforms {
   viewProj: mat4x4f,
   viewport: vec2f,
   tileSizePx: f32,
-  framePad0: f32,
+  debugMode: u32,
   tileGrid: vec2u,
   splatCount: u32,
   maxTileRefs: u32,
 };
+
+const DEBUG_MODE_FINAL_COLOR = 0u;
+const DEBUG_MODE_COVERAGE_WEIGHT = 1u;
+const DEBUG_MODE_ACCUMULATED_ALPHA = 2u;
+const DEBUG_MODE_TRANSMITTANCE = 3u;
+const DEBUG_MODE_TILE_REF_COUNT = 4u;
+const DEBUG_MODE_CONIC_SHAPE = 5u;
 
 @group(0) @binding(0) var<uniform> frame: FrameUniforms;
 @group(0) @binding(1) var<storage, read> positions: array<f32>;
@@ -25,6 +32,51 @@ fn conic_pixel_weight(alphaParam: vec4f, conicParam: vec4f, pixelCenter: vec2f) 
     + 2.0 * conicParam.y * delta.x * delta.y
     + conicParam.z * delta.y * delta.y;
   return exp(-0.5 * mahalanobis2);
+}
+
+fn inverse_conic_radii(conicParam: vec4f) -> vec2f {
+  let xx = conicParam.x;
+  let xy = conicParam.y;
+  let yy = conicParam.z;
+  let trace = xx + yy;
+  let discriminant = sqrt(max((xx - yy) * (xx - yy) + 4.0 * xy * xy, 0.0));
+  let lambdaSmall = max(0.5 * (trace - discriminant), 0.000001);
+  let lambdaLarge = max(0.5 * (trace + discriminant), 0.000001);
+  return vec2f(inverseSqrt(lambdaSmall), inverseSqrt(lambdaLarge));
+}
+
+fn debug_heatmap_color(
+  debugMode: u32,
+  coverageWeightSum: f32,
+  accumulatedAlpha: f32,
+  remainingTransmission: f32,
+  tileRefCount: u32,
+  maxMajorRadiusPx: f32,
+  minMinorRadiusPx: f32,
+) -> vec4f {
+  if (debugMode == DEBUG_MODE_COVERAGE_WEIGHT) {
+    let heat = clamp(1.0 - exp(-coverageWeightSum), 0.0, 1.0);
+    return vec4f(heat, heat * 0.55, 1.0 - heat, 1.0);
+  }
+  if (debugMode == DEBUG_MODE_ACCUMULATED_ALPHA) {
+    let heat = clamp(accumulatedAlpha, 0.0, 1.0);
+    return vec4f(heat, heat, heat, 1.0);
+  }
+  if (debugMode == DEBUG_MODE_TRANSMITTANCE) {
+    let heat = clamp(remainingTransmission, 0.0, 1.0);
+    return vec4f(heat, heat, 1.0 - heat, 1.0);
+  }
+  if (debugMode == DEBUG_MODE_TILE_REF_COUNT) {
+    let heat = clamp(f32(tileRefCount) / 32.0, 0.0, 1.0);
+    return vec4f(heat, 1.0 - heat, 0.15, 1.0);
+  }
+  if (debugMode == DEBUG_MODE_CONIC_SHAPE) {
+    let major = clamp(maxMajorRadiusPx / 32.0, 0.0, 1.0);
+    let minor = clamp(minMinorRadiusPx / 8.0, 0.0, 1.0);
+    let anisotropy = clamp(maxMajorRadiusPx / max(minMinorRadiusPx, 0.000001) / 32.0, 0.0, 1.0);
+    return vec4f(major, minor, anisotropy, 1.0);
+  }
+  return vec4f(0.0, 0.0, 0.0, 1.0);
 }
 
 @compute @workgroup_size(64) fn project_bounds(@builtin(global_invocation_id) globalId: vec3u) {
@@ -86,6 +138,9 @@ fn conic_pixel_weight(alphaParam: vec4f, conicParam: vec4f, pixelCenter: vec2f) 
   var composedColor = vec3f(0.02, 0.02, 0.04);
   var remainingTransmission = 1.0;
   var previousRank = 0xffffffffu;
+  var coverageWeightSum = 0.0;
+  var maxMajorRadiusPx = 0.0;
+  var minMinorRadiusPx = 1000000.0;
   for (var layer = 0u; layer < refLimit; layer = layer + 1u) {
     var selectedRefIndex = 0xffffffffu;
     var selectedRank = 0xffffffffu;
@@ -117,6 +172,10 @@ fn conic_pixel_weight(alphaParam: vec4f, conicParam: vec4f, pixelCenter: vec2f) 
       continue;
     }
     let pixelCoverageWeight = conic_pixel_weight(alphaParam, conicParam, pixelCenter);
+    coverageWeightSum = coverageWeightSum + pixelCoverageWeight;
+    let conicRadii = inverse_conic_radii(conicParam);
+    maxMajorRadiusPx = max(maxMajorRadiusPx, conicRadii.x);
+    minMinorRadiusPx = min(minMinorRadiusPx, conicRadii.y);
     let sourceOpacity = min(clamp(alphaParam.x, 0.0, 1.0), 0.999);
     let coverageAlpha = clamp(1.0 - pow(1.0 - sourceOpacity, pixelCoverageWeight), 0.0, 1.0);
     let colorBase = tileRef.x * 3u;
@@ -124,5 +183,22 @@ fn conic_pixel_weight(alphaParam: vec4f, conicParam: vec4f, pixelCenter: vec2f) 
     composedColor = sourceColor * coverageAlpha + composedColor * (1.0 - coverageAlpha);
     remainingTransmission = remainingTransmission * (1.0 - coverageAlpha);
   }
-  textureStore(outputColor, outputCoord, vec4f(composedColor, 1.0 - remainingTransmission));
+  let accumulatedAlpha = 1.0 - remainingTransmission;
+  if (frame.debugMode == DEBUG_MODE_FINAL_COLOR) {
+    textureStore(outputColor, outputCoord, vec4f(composedColor, accumulatedAlpha));
+    return;
+  }
+  textureStore(
+    outputColor,
+    outputCoord,
+    debug_heatmap_color(
+      frame.debugMode,
+      coverageWeightSum,
+      accumulatedAlpha,
+      remainingTransmission,
+      header.y,
+      maxMajorRadiusPx,
+      minMinorRadiusPx
+    )
+  );
 }

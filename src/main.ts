@@ -17,6 +17,7 @@ import {
   createGpuTileCoveragePlan,
   GPU_TILE_COVERAGE_FRAME_UNIFORM_BYTES,
   writeGpuTileCoverageFrameUniforms,
+  type GpuTileCoverageDebugMode,
   type GpuTileCoveragePlan,
 } from "./gpuTileCoverage.js";
 import {
@@ -58,6 +59,10 @@ import {
   type AlphaDensityCompensationSummary,
 } from "./realSmokeScene.js";
 import {
+  summarizeTileLocalDiagnostics,
+  type TileLocalDiagnosticSummary,
+} from "./rendererFidelityProbes/tileLocalDiagnostics.js";
+import {
   createSplatPlateRenderer,
   SPLAT_PLATE_FRAME_UNIFORM_BYTES,
   writeSplatPlateFrameUniforms,
@@ -83,6 +88,7 @@ const GPU_SORT_SETTLE_MS = 160;
 const ALPHA_DENSITY_SETTLE_MS = 160;
 const ALPHA_DENSITY_MODE = selectedAlphaDensityMode();
 const RENDERER_MODE = selectedRendererMode();
+const TILE_LOCAL_DEBUG_MODE = selectedTileLocalDebugMode();
 const TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX = 6;
 const TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES = 1;
 
@@ -111,8 +117,10 @@ interface TileLocalSceneState {
   frameUniformData: Float32Array;
   projectedBoundsBuffer: GPUBuffer;
   tileHeaderBuffer: GPUBuffer;
+  tileHeaderData: Uint32Array;
   tileRefBuffer: GPUBuffer;
   tileCoverageWeightBuffer: GPUBuffer;
+  tileCoverageWeightData: Float32Array;
   orderingKeyBuffer: GPUBuffer;
   orderingKeyData: Uint32Array;
   alphaParamBuffer: GPUBuffer;
@@ -123,6 +131,8 @@ interface TileLocalSceneState {
   tileEntryCount: number;
   tileRefSplatIds: Uint32Array;
   prepassSignature: string;
+  debugMode: GpuTileCoverageDebugMode;
+  diagnostics: TileLocalDiagnosticSummary;
   needsDispatch: boolean;
 }
 
@@ -390,7 +400,12 @@ async function main() {
         gpuSortRefreshed
       );
       scene.tileLocalState = tileLocalState;
-      writeGpuTileCoverageFrameUniforms(tileLocalState.frameUniformData, viewProj, tileLocalState.plan);
+      writeGpuTileCoverageFrameUniforms(
+        tileLocalState.frameUniformData,
+        viewProj,
+        tileLocalState.plan,
+        tileLocalState.debugMode
+      );
       gpu.device.queue.writeBuffer(tileLocalState.frameUniformBuffer, 0, tileLocalState.frameUniformData);
       const tileLocalComputePass = encoder.beginComputePass();
       if (scene.rendererMode === "tile-local-visible") {
@@ -462,6 +477,9 @@ async function main() {
     let statsText = `${width}×${height} | ${displayFps} fps | ${scene.count.toLocaleString()} real Scaniverse splats | renderer: ${rendererLabel} | sort: ${SORT_BACKEND} | alpha: ${alphaSummary.accountingMode} density ${alphaSummary.compensatedSplatCount.toLocaleString()} splats/${alphaSummary.hotTileCount} tiles`;
     if (scene.tileLocalState) {
       statsText += ` | tile-local: ${scene.tileLocalState.plan.tileColumns}x${scene.tileLocalState.plan.tileRows} tiles/${scene.tileLocalState.tileEntryCount} refs`;
+      if (scene.tileLocalState.debugMode !== "final-color") {
+        statsText += ` | tile-debug: ${scene.tileLocalState.debugMode}`;
+      }
     }
     if (gpuTimings.size > 0) {
       for (const [label, ms] of gpuTimings) {
@@ -469,6 +487,7 @@ async function main() {
       }
     }
     statsEl.textContent = statsText;
+    exposeTileLocalRuntimeEvidence(rendererLabel, displayFps, scene.tileLocalState);
 
     if (shouldContinueRendering({
       activeInput: cameraHasActiveInput(cam),
@@ -607,8 +626,10 @@ function createTileLocalSceneState(
     frameUniformData,
     projectedBoundsBuffer: bridgeBuffers.projectedBoundsBuffer,
     tileHeaderBuffer: bridgeBuffers.tileHeaderBuffer,
+    tileHeaderData: bridge.tileHeaders,
     tileRefBuffer: bridgeBuffers.tileRefBuffer,
     tileCoverageWeightBuffer: bridgeBuffers.tileCoverageWeightBuffer,
+    tileCoverageWeightData: bridge.tileCoverageWeights,
     orderingKeyBuffer,
     orderingKeyData,
     alphaParamBuffer,
@@ -619,6 +640,15 @@ function createTileLocalSceneState(
     tileEntryCount: bridge.tileEntryCount,
     tileRefSplatIds,
     prepassSignature,
+    debugMode: TILE_LOCAL_DEBUG_MODE,
+    diagnostics: summarizeTileLocalDiagnostics({
+      debugMode: TILE_LOCAL_DEBUG_MODE,
+      plan,
+      tileEntryCount: bridge.tileEntryCount,
+      tileHeaders: bridge.tileHeaders,
+      tileCoverageWeights: bridge.tileCoverageWeights,
+      alphaParamData,
+    }),
     needsDispatch: true,
   };
 }
@@ -671,6 +701,7 @@ function syncTileLocalAlphaParams(
   writeGpuTileCoverageAlphaParams(alphaParamData, state, effectiveOpacities, state.plan.maxTileRefs);
   state.alphaParamData.set(alphaParamData);
   queue.writeBuffer(state.alphaParamBuffer, 0, alphaParamData);
+  refreshTileLocalDiagnostics(state);
 }
 
 function syncTileLocalOrderingKeys(
@@ -713,6 +744,30 @@ function selectedAlphaDensityMode(): AlphaDensityAccountingMode {
   return params.get("alpha") === "center-tile" ? "center-tile" : "coverage-aware";
 }
 
+function selectedTileLocalDebugMode(): GpuTileCoverageDebugMode {
+  const params = new URLSearchParams(window.location.search);
+  switch (params.get("tileDebug") ?? params.get("debug")) {
+    case "coverage":
+    case "coverage-weight":
+      return "coverage-weight";
+    case "alpha":
+    case "accumulated-alpha":
+      return "accumulated-alpha";
+    case "transmission":
+    case "transmittance":
+      return "transmittance";
+    case "refs":
+    case "tile-refs":
+    case "tile-ref-count":
+      return "tile-ref-count";
+    case "conic":
+    case "conic-shape":
+      return "conic-shape";
+    default:
+      return "final-color";
+  }
+}
+
 function selectedRendererMode(): RendererMode {
   const params = new URLSearchParams(window.location.search);
   if (params.get("renderer") === "tile-local-visible") {
@@ -727,12 +782,59 @@ function usesTileLocalPrepass(mode: RendererMode): boolean {
 
 function labelRendererMode(mode: RendererMode, tileLocalState: TileLocalSceneState | null): string {
   if (mode === "tile-local-visible" && tileLocalState) {
+    if (tileLocalState.debugMode !== "final-color") {
+      return `tile-local-visible-debug-${tileLocalState.debugMode}`;
+    }
     return "tile-local-visible-gaussian-compositor";
   }
   if (mode === "tile-local" && tileLocalState) {
     return "plate+tile-local-prepass";
   }
   return mode;
+}
+
+function refreshTileLocalDiagnostics(state: TileLocalSceneState): TileLocalDiagnosticSummary {
+  state.diagnostics = summarizeTileLocalDiagnostics({
+    debugMode: state.debugMode,
+    plan: state.plan,
+    tileEntryCount: state.tileEntryCount,
+    tileHeaders: state.tileHeaderData,
+    tileCoverageWeights: state.tileCoverageWeightData,
+    alphaParamData: state.alphaParamData,
+  });
+  return state.diagnostics;
+}
+
+function exposeTileLocalRuntimeEvidence(
+  rendererLabel: string,
+  fps: number,
+  tileLocalState: TileLocalSceneState | null
+): void {
+  const runtimeWindow = window as unknown as {
+    __MESH_SPLAT_SMOKE__?: Record<string, unknown>;
+    __MESH_SPLAT_TILE_LOCAL_DIAGNOSTICS__?: TileLocalDiagnosticSummary;
+  };
+  const diagnostics = tileLocalState ? refreshTileLocalDiagnostics(tileLocalState) : undefined;
+  runtimeWindow.__MESH_SPLAT_SMOKE__ = {
+    ...(runtimeWindow.__MESH_SPLAT_SMOKE__ ?? {}),
+    rendererLabel,
+    fps,
+    tileLocal: tileLocalState && diagnostics
+      ? {
+          refs: diagnostics.tileRefs.total,
+          allocatedRefs: tileLocalState.tileEntryCount,
+          tileColumns: tileLocalState.plan.tileColumns,
+          tileRows: tileLocalState.plan.tileRows,
+          debugMode: tileLocalState.debugMode,
+          diagnostics,
+        }
+      : undefined,
+  };
+  if (diagnostics) {
+    runtimeWindow.__MESH_SPLAT_TILE_LOCAL_DIAGNOSTICS__ = diagnostics;
+  } else {
+    delete runtimeWindow.__MESH_SPLAT_TILE_LOCAL_DIAGNOSTICS__;
+  }
 }
 
 function bindDroppedSplatLoading(
