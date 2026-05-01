@@ -20,3 +20,19 @@ test("main wires a smoke-toggleable tile-local prepass beside the plate fallback
   assert.doesNotMatch(source, /tileCoverageWeightData\[splatId\]\s*=\s*1/);
   assert.doesNotMatch(source, /renderer: \$\{scene\.rendererMode\}/);
 });
+
+test("main labels skipped tile-local rebuilds as stale cached presentations", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+
+  assert.match(source, /tileLocalPresentationFreshness/);
+  assert.match(source, /stale-cache/);
+  assert.match(source, /cachedFrameAgeMs/);
+  assert.match(source, /currentFrameSignature/);
+  assert.match(source, /cachedFrameSignature/);
+  assert.match(source, /skippedProjectedRefs/);
+  assert.match(source, /maxProjectedRefs/);
+  assert.match(
+    source,
+    /tileLocalCurrentSignature !== scene\.tileLocalState\.lastCompositedSignature[\s\S]*scene\.tileLocalState\.needsDispatch = true/
+  );
+});

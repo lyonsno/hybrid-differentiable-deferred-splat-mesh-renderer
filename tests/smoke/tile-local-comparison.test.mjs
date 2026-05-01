@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   buildTileLocalComparisonPlan,
   classifyTileLocalComparison,
+  extractTileLocalPageMetrics,
   isVisualSmokeCaptureReady,
 } from "../../scripts/visual-smoke/tile-local-comparison.mjs";
 
@@ -93,6 +94,44 @@ test("tile-local comparison waits for first rendered evidence instead of initial
       { expectedRendererLabel: "tile-local-visible" }
     ),
     true
+  );
+});
+
+test("tile-local comparison refuses stale cached tile-local output after a skipped rebuild", () => {
+  const pageEvidence = {
+    ready: true,
+    sourceKind: "real_scaniverse_ply",
+    splatCount: 94406,
+    rendererLabel: "tile-local-visible-gaussian-compositor-stale-cache",
+    statsText:
+      "3456x1916 | 60 fps | renderer: tile-local-visible-gaussian-compositor-stale-cache | tile-local: 576x320 tiles/120000 refs | tile-local stale-cache: 842ms old | tile-local skipped: projected tile refs exceed budget: 20000001 > 20000000",
+    canvas: { width: 3456, height: 1916, clientWidth: 3456, clientHeight: 1916 },
+    tileLocalLastSkipReason: "projected tile refs exceed budget: 20000001 > 20000000",
+    tileLocal: {
+      refs: 120000,
+      tileColumns: 576,
+      tileRows: 320,
+      freshness: {
+        status: "stale-cache",
+        cachedFrameAgeMs: 842,
+        currentFrameSignature: "tile-local@3456x1916",
+        cachedFrameSignature: "tile-local@1280x720",
+      },
+      budget: {
+        skippedProjectedRefs: 20000001,
+        maxProjectedRefs: 20000000,
+      },
+    },
+  };
+
+  const metrics = extractTileLocalPageMetrics(pageEvidence);
+  assert.equal(metrics.tileLocal.tileColumns, 576);
+  assert.equal(metrics.tileLocal.tileRows, 320);
+  assert.equal(metrics.tileLocal.freshness.status, "stale-cache");
+  assert.equal(metrics.tileLocal.budget.skippedProjectedRefs, 20000001);
+  assert.equal(
+    isVisualSmokeCaptureReady(pageEvidence, { expectedRendererLabel: "tile-local-visible" }),
+    false
   );
 });
 

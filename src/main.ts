@@ -114,6 +114,7 @@ interface ActiveSplatScene {
   tileLocalState: TileLocalSceneState | null;
   tileLocalDisabledReason: string | null;
   tileLocalLastSkipReason: string | null;
+  tileLocalLastSkipSignature: string | null;
   rendererMode: RendererMode;
   count: number;
   assetPath: string;
@@ -148,6 +149,9 @@ interface TileLocalSceneState {
   debugMode: GpuTileCoverageDebugMode;
   diagnostics: TileLocalDiagnosticSummary;
   needsDispatch: boolean;
+  lastCompositedAtMs: number;
+  lastCompositedFrame: number;
+  lastCompositedSignature: string;
 }
 
 type RendererMode = "plate" | "tile-local" | "tile-local-visible";
@@ -281,6 +285,7 @@ async function main() {
       tileLocalState,
       tileLocalDisabledReason,
       tileLocalLastSkipReason: null,
+      tileLocalLastSkipSignature: null,
       rendererMode: RENDERER_MODE,
       count: attributes.count,
       assetPath: sceneAssetPath,
@@ -324,6 +329,7 @@ async function main() {
 
   let lastTime = performance.now();
   let frameCount = 0;
+  let frameSerial = 0;
   let fpsAccum = 0;
   let displayFps = 0;
   let gpuTimings: Map<string, number> = new Map();
@@ -339,6 +345,7 @@ async function main() {
     }
 
     frameCount++;
+    frameSerial++;
     fpsAccum += dt;
     if (fpsAccum >= 0.5) {
       displayFps = Math.round(frameCount / fpsAccum);
@@ -416,6 +423,15 @@ async function main() {
     }
     const pendingGpuSort = gpuSortRefreshPending(scene.sortState, view);
     const pendingAlphaDensity = scene.alphaDensityState.refreshState.needsRefresh;
+    const tileLocalCurrentSignature = scene.tileLocalState
+      ? captureCurrentTileLocalSignature(view, viewProj, width, height)
+      : null;
+    if (
+      scene.tileLocalState &&
+      tileLocalCurrentSignature !== scene.tileLocalState.lastCompositedSignature
+    ) {
+      scene.tileLocalState.needsDispatch = true;
+    }
 
     if (scene.tileLocalState && shouldDispatchTileLocalCompositor({
       needsDispatch: scene.tileLocalState.needsDispatch,
@@ -436,6 +452,7 @@ async function main() {
         );
         scene.tileLocalState = tileLocalState;
         scene.tileLocalLastSkipReason = null;
+        scene.tileLocalLastSkipSignature = null;
         if (tileLocalState.orderingRanksNeedDispatch) {
           encodeGpuOrderingRanks(encoder, tileLocalState.orderingRanker);
           tileLocalState.orderingRanksNeedDispatch = false;
@@ -455,11 +472,15 @@ async function main() {
         }
         tileLocalComputePass.end();
         tileLocalState.needsDispatch = false;
+        tileLocalState.lastCompositedAtMs = now;
+        tileLocalState.lastCompositedFrame = frameSerial;
+        tileLocalState.lastCompositedSignature = tileLocalCurrentSignature ?? tileLocalState.prepassSignature;
       } catch (err) {
         if (!isTileLocalBudgetError(err)) {
           throw err;
         }
         scene.tileLocalLastSkipReason = errorMessage(err);
+        scene.tileLocalLastSkipSignature = tileLocalCurrentSignature;
         scene.tileLocalState.needsDispatch = false;
       }
     }
@@ -520,11 +541,26 @@ async function main() {
 
     // Stats overlay
     const alphaSummary = scene.alphaDensityState.summary;
-    const rendererLabel = labelRendererMode(scene.rendererMode, scene.tileLocalState, scene.tileLocalDisabledReason);
+    const rendererLabel = labelRendererMode(
+      scene.rendererMode,
+      scene.tileLocalState,
+      scene.tileLocalDisabledReason,
+      scene.tileLocalLastSkipReason
+    );
     let statsText = `${width}×${height} | ${displayFps} fps | ${scene.count.toLocaleString()} real Scaniverse splats | renderer: ${rendererLabel} | sort: ${SORT_BACKEND} | alpha: ${alphaSummary.accountingMode} density ${alphaSummary.compensatedSplatCount.toLocaleString()} splats/${alphaSummary.hotTileCount} tiles`;
     if (scene.tileLocalState) {
       statsText += ` | tile-local: ${scene.tileLocalState.plan.tileColumns}x${scene.tileLocalState.plan.tileRows} tiles/${scene.tileLocalState.tileEntryCount} refs`;
       statsText += ` | tile-order: ${TILE_LOCAL_ORDERING_BACKEND}`;
+      const freshness = tileLocalPresentationFreshness(
+        scene.tileLocalState,
+        scene.tileLocalLastSkipReason,
+        scene.tileLocalLastSkipSignature,
+        now
+      );
+      if (freshness.status === "stale-cache") {
+        statsText += ` | tile-local stale-cache: ${Math.round(freshness.cachedFrameAgeMs ?? 0)}ms old`;
+        statsText += ` | tile-local current-grid: ${tileColumnsForViewport(width)}x${tileRowsForViewport(height)} tiles`;
+      }
       if (scene.tileLocalState.debugMode !== "final-color") {
         statsText += ` | tile-debug: ${scene.tileLocalState.debugMode}`;
       }
@@ -546,7 +582,11 @@ async function main() {
       displayFps,
       scene.tileLocalState,
       scene.tileLocalDisabledReason,
-      scene.tileLocalLastSkipReason
+      scene.tileLocalLastSkipReason,
+      scene.tileLocalLastSkipSignature,
+      now,
+      width,
+      height
     );
 
     if (shouldContinueRendering({
@@ -730,6 +770,9 @@ function createTileLocalSceneState(
       alphaParamData,
     }),
     needsDispatch: true,
+    lastCompositedAtMs: 0,
+    lastCompositedFrame: -1,
+    lastCompositedSignature: prepassSignature,
   };
 }
 
@@ -773,6 +816,26 @@ function ensureTileLocalSceneState(
   );
   destroyTileLocalSceneState(state);
   return nextState;
+}
+
+function captureCurrentTileLocalSignature(
+  viewMatrix: Float32Array,
+  viewProj: Float32Array,
+  viewportWidth: number,
+  viewportHeight: number
+): string {
+  return captureTileLocalPrepassBridgeSignature({
+    viewMatrix,
+    viewProj,
+    viewportWidth,
+    viewportHeight,
+    tileSizePx: TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX,
+    samplesPerAxis: TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES,
+    splatScale: REAL_SCANIVERSE_SPLAT_SCALE,
+    minRadiusPx: REAL_SCANIVERSE_MIN_RADIUS_PX,
+    maxTileEntries: TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES,
+    nearFadeEndNdc: REAL_SCANIVERSE_NEAR_FADE_END_NDC,
+  });
 }
 
 function syncTileLocalAlphaParams(
@@ -871,19 +934,21 @@ function errorMessage(err: unknown): string {
 function labelRendererMode(
   mode: RendererMode,
   tileLocalState: TileLocalSceneState | null,
-  tileLocalDisabledReason: string | null = null
+  tileLocalDisabledReason: string | null = null,
+  tileLocalLastSkipReason: string | null = null
 ): string {
   if (mode === "tile-local-visible" && tileLocalState) {
+    const staleSuffix = tileLocalLastSkipReason ? "-stale-cache" : "";
     if (tileLocalState.debugMode !== "final-color") {
-      return `tile-local-visible-debug-${tileLocalState.debugMode}`;
+      return `tile-local-visible-debug-${tileLocalState.debugMode}${staleSuffix}`;
     }
-    return "tile-local-visible-gaussian-compositor";
+    return `tile-local-visible-gaussian-compositor${staleSuffix}`;
   }
   if (mode === "tile-local-visible" && tileLocalDisabledReason) {
     return "tile-local-visible-budget-disabled-plate";
   }
   if (mode === "tile-local" && tileLocalState) {
-    return "plate+tile-local-prepass";
+    return tileLocalLastSkipReason ? "plate+tile-local-prepass-stale-cache" : "plate+tile-local-prepass";
   }
   if (mode === "tile-local" && tileLocalDisabledReason) {
     return "plate+tile-local-prepass-budget-disabled";
@@ -908,13 +973,21 @@ function exposeTileLocalRuntimeEvidence(
   fps: number,
   tileLocalState: TileLocalSceneState | null,
   tileLocalDisabledReason: string | null,
-  tileLocalLastSkipReason: string | null
+  tileLocalLastSkipReason: string | null,
+  tileLocalLastSkipSignature: string | null,
+  nowMs: number,
+  viewportWidth: number,
+  viewportHeight: number
 ): void {
   const runtimeWindow = window as unknown as {
     __MESH_SPLAT_SMOKE__?: Record<string, unknown>;
     __MESH_SPLAT_TILE_LOCAL_DIAGNOSTICS__?: TileLocalDiagnosticSummary;
   };
   const diagnostics = tileLocalState ? refreshTileLocalDiagnostics(tileLocalState) : undefined;
+  const freshness = tileLocalState
+    ? tileLocalPresentationFreshness(tileLocalState, tileLocalLastSkipReason, tileLocalLastSkipSignature, nowMs)
+    : undefined;
+  const budget = tileLocalBudgetEvidence(tileLocalLastSkipReason, viewportWidth, viewportHeight);
   runtimeWindow.__MESH_SPLAT_SMOKE__ = {
     ...(runtimeWindow.__MESH_SPLAT_SMOKE__ ?? {}),
     rendererLabel,
@@ -929,6 +1002,8 @@ function exposeTileLocalRuntimeEvidence(
           tileRows: tileLocalState.plan.tileRows,
           orderingBackend: TILE_LOCAL_ORDERING_BACKEND,
           debugMode: tileLocalState.debugMode,
+          freshness,
+          budget,
           diagnostics,
         }
       : undefined,
@@ -938,6 +1013,78 @@ function exposeTileLocalRuntimeEvidence(
   } else {
     delete runtimeWindow.__MESH_SPLAT_TILE_LOCAL_DIAGNOSTICS__;
   }
+}
+
+function tileLocalPresentationFreshness(
+  state: TileLocalSceneState,
+  tileLocalLastSkipReason: string | null,
+  tileLocalLastSkipSignature: string | null,
+  nowMs: number
+) {
+  const currentFrameSignature = shortTileLocalSignature(tileLocalLastSkipSignature ?? state.lastCompositedSignature);
+  const cachedFrameSignature = shortTileLocalSignature(state.lastCompositedSignature);
+  if (tileLocalLastSkipReason) {
+    return {
+      status: "stale-cache",
+      cachedFrameAgeMs: Math.max(0, Math.round(nowMs - state.lastCompositedAtMs)),
+      cachedFrame: state.lastCompositedFrame,
+      currentFrameSignature,
+      cachedFrameSignature,
+    };
+  }
+  return {
+    status: "current",
+    cachedFrameAgeMs: 0,
+    cachedFrame: state.lastCompositedFrame,
+    currentFrameSignature: cachedFrameSignature,
+    cachedFrameSignature,
+  };
+}
+
+function tileLocalBudgetEvidence(
+  tileLocalLastSkipReason: string | null,
+  viewportWidth: number,
+  viewportHeight: number
+) {
+  const parsed = parseTileLocalBudgetSkipReason(tileLocalLastSkipReason);
+  return {
+    tileSizePx: TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX,
+    currentViewportWidth: viewportWidth,
+    currentViewportHeight: viewportHeight,
+    currentTileColumns: tileColumnsForViewport(viewportWidth),
+    currentTileRows: tileRowsForViewport(viewportHeight),
+    maxProjectedRefs: parsed?.maxProjectedRefs ?? TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES,
+    skippedProjectedRefs: parsed?.skippedProjectedRefs ?? null,
+    skipReason: tileLocalLastSkipReason,
+  };
+}
+
+function parseTileLocalBudgetSkipReason(reason: string | null): { skippedProjectedRefs: number; maxProjectedRefs: number } | null {
+  const match = /projected tile refs exceed budget:\s*([\d,]+)\s*>\s*([\d,]+)/i.exec(reason ?? "");
+  if (!match) {
+    return null;
+  }
+  return {
+    skippedProjectedRefs: Number(match[1].replaceAll(",", "")),
+    maxProjectedRefs: Number(match[2].replaceAll(",", "")),
+  };
+}
+
+function tileColumnsForViewport(viewportWidth: number): number {
+  return Math.ceil(Math.max(viewportWidth, 1) / TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX);
+}
+
+function tileRowsForViewport(viewportHeight: number): number {
+  return Math.ceil(Math.max(viewportHeight, 1) / TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX);
+}
+
+function shortTileLocalSignature(signature: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < signature.length; index++) {
+    hash ^= signature.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `tile-local@${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
 
 function bindDroppedSplatLoading(
