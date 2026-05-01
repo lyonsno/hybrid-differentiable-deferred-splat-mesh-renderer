@@ -15,7 +15,7 @@ test("main exposes a visible tile-local Gaussian compositor without replacing th
   assert.match(source, /params\.get\("renderer"\)\s*===\s*"tile-local"/);
 });
 
-test("tile-local visible shader composites ordered tile refs with coverage, alpha, and real colors", () => {
+test("tile-local visible shader composites ordered tile refs with sample-local conic coverage, alpha, and real colors", () => {
   const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
 
   assert.match(shader, /fn composite_tiles/);
@@ -23,18 +23,19 @@ test("tile-local visible shader composites ordered tile refs with coverage, alph
   assert.match(shader, /var<storage, read> colors/);
   assert.match(shader, /tileHeaders\[tileId\]/);
   assert.match(shader, /tileRefs\[refIndex\]/);
-  assert.match(shader, /tileCoverageWeights\[selectedRefIndex\]/);
   assert.match(shader, /let alphaParam = alphaParams\[alphaParamIndex\]/);
   assert.match(shader, /let conicParam = alphaParams\[alphaParamIndex \+ frame\.maxTileRefs\]/);
   assert.match(shader, /alphaParam\.yz/);
   assert.match(shader, /conicParam\.x/);
   assert.match(shader, /conicParam\.y/);
   assert.match(shader, /conicParam\.z/);
-  assert.match(shader, /1\.0\s*-\s*pow\(1\.0\s*-\s*sourceOpacity,\s*coverageWeight\)/);
+  assert.match(shader, /let pixelCoverageWeight = conic_pixel_weight\(alphaParam, conicParam, pixelCenter\)/);
+  assert.match(shader, /1\.0\s*-\s*pow\(1\.0\s*-\s*sourceOpacity,\s*pixelCoverageWeight\)/);
   assert.match(shader, /orderingKeys\[tileRef\.x\]/);
   assert.match(shader, /conic_pixel_weight/);
   assert.match(shader, /mahalanobis2/);
   assert.match(shader, /exp\(-0\.5 \* mahalanobis2\)/);
+  assert.doesNotMatch(shader, /tileCoverageWeights\[selectedRefIndex\][^;]*\*\s*conic_pixel_weight/);
   assert.doesNotMatch(shader, /radiusPx/);
   assert.doesNotMatch(shader, /\balphaParam\.w\b/);
   assert.match(shader, /remainingTransmission/);
