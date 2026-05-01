@@ -58,6 +58,34 @@ export function buildTileLocalPrepassBridge({
   });
 }
 
+export function captureTileLocalPrepassBridgeSignature({
+  viewMatrix,
+  viewProj,
+  viewportWidth,
+  viewportHeight,
+  tileSizePx,
+  samplesPerAxis,
+  splatScale,
+  minRadiusPx,
+  maxRefsPerTile,
+}) {
+  return JSON.stringify({
+    viewMatrix: Array.from(viewMatrix ?? []),
+    viewProj: Array.from(viewProj ?? []),
+    viewportWidth,
+    viewportHeight,
+    tileSizePx,
+    samplesPerAxis,
+    splatScale,
+    minRadiusPx,
+    maxRefsPerTile: maxRefsPerTile ?? null,
+  });
+}
+
+export function tileLocalPrepassBridgeSignatureChanged(previousSignature, input) {
+  return previousSignature !== captureTileLocalPrepassBridgeSignature(input);
+}
+
 function orderCoverageEntriesForView(coverage, attributes, viewMatrix) {
   const ranks = buildBackToFrontRanks(attributes, viewMatrix);
 

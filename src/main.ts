@@ -69,7 +69,11 @@ import {
   type SplatAttributes,
   type SplatGpuBuffers,
 } from "./splats.js";
-import { buildTileLocalPrepassBridge } from "./tileLocalPrepassBridge.js";
+import {
+  buildTileLocalPrepassBridge,
+  captureTileLocalPrepassBridgeSignature,
+  tileLocalPrepassBridgeSignatureChanged,
+} from "./tileLocalPrepassBridge.js";
 import { createTileLocalTexturePresenter } from "./tileLocalTexturePresenter.js";
 
 const statsEl = document.getElementById("stats")!;
@@ -118,6 +122,7 @@ interface TileLocalSceneState {
   outputView: GPUTextureView;
   tileEntryCount: number;
   tileRefSplatIds: Uint32Array;
+  prepassSignature: string;
   needsDispatch: boolean;
 }
 
@@ -381,7 +386,8 @@ async function main() {
         view,
         viewProj,
         width,
-        height
+        height,
+        gpuSortRefreshed
       );
       scene.tileLocalState = tileLocalState;
       writeGpuTileCoverageFrameUniforms(tileLocalState.frameUniformData, viewProj, tileLocalState.plan);
@@ -525,7 +531,7 @@ function createTileLocalSceneState(
   viewportWidth: number,
   viewportHeight: number
 ): TileLocalSceneState {
-  const bridge = buildTileLocalPrepassBridge({
+  const bridgeInput = {
     attributes,
     viewMatrix,
     viewProj,
@@ -535,7 +541,9 @@ function createTileLocalSceneState(
     samplesPerAxis: TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES,
     splatScale: REAL_SCANIVERSE_SPLAT_SCALE,
     minRadiusPx: REAL_SCANIVERSE_MIN_RADIUS_PX,
-  });
+  };
+  const bridge = buildTileLocalPrepassBridge(bridgeInput);
+  const prepassSignature = captureTileLocalPrepassBridgeSignature(bridgeInput);
   const plan = createGpuTileCoveragePlan({
     viewportWidth,
     viewportHeight,
@@ -610,6 +618,7 @@ function createTileLocalSceneState(
     outputView,
     tileEntryCount: bridge.tileEntryCount,
     tileRefSplatIds,
+    prepassSignature,
     needsDispatch: true,
   };
 }
@@ -621,9 +630,22 @@ function ensureTileLocalSceneState(
   viewMatrix: Float32Array,
   viewProj: Float32Array,
   viewportWidth: number,
-  viewportHeight: number
+  viewportHeight: number,
+  allowViewRebuild: boolean
 ): TileLocalSceneState {
-  if (state.viewportWidth === viewportWidth && state.viewportHeight === viewportHeight) {
+  const bridgeInput = {
+    viewMatrix,
+    viewProj,
+    viewportWidth,
+    viewportHeight,
+    tileSizePx: TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX,
+    samplesPerAxis: TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES,
+    splatScale: REAL_SCANIVERSE_SPLAT_SCALE,
+    minRadiusPx: REAL_SCANIVERSE_MIN_RADIUS_PX,
+  };
+  const viewportMatches = state.viewportWidth === viewportWidth && state.viewportHeight === viewportHeight;
+  const bridgeStillFresh = !tileLocalPrepassBridgeSignatureChanged(state.prepassSignature, bridgeInput);
+  if (viewportMatches && (bridgeStillFresh || !allowViewRebuild)) {
     return state;
   }
   destroyTileLocalSceneState(state);
