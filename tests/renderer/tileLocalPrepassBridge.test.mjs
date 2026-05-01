@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildTileLocalPrepassBridge } from "../../src/tileLocalPrepassBridge.js";
+import {
+  buildTileLocalPrepassBridge,
+  captureTileLocalPrepassBridgeSignature,
+  tileLocalPrepassBridgeSignatureChanged,
+} from "../../src/tileLocalPrepassBridge.js";
 
 const identityViewProj = new Float32Array([
   1, 0, 0, 0,
@@ -148,4 +152,38 @@ test("tile-local prepass bridge keeps a bright behind-surface contributor inside
   assert.notEqual(brightRefIndex, -1);
   assert.ok(bridge.tileCoverageWeights[brightRefIndex] > 0);
   assert.ok(bridge.tileCoverageWeights[brightRefIndex] < bridge.tileCoverageWeights[0]);
+});
+
+test("tile-local prepass bridge signatures mark view-dependent tile refs as stale", () => {
+  const baseInput = {
+    viewMatrix: identityViewProj,
+    viewProj: identityViewProj,
+    viewportWidth: 64,
+    viewportHeight: 64,
+    tileSizePx: 16,
+    samplesPerAxis: 1,
+    splatScale: 80,
+    minRadiusPx: 1,
+    maxRefsPerTile: 32,
+  };
+  const copiedInput = {
+    ...baseInput,
+    viewMatrix: new Float32Array(identityViewProj),
+    viewProj: new Float32Array(identityViewProj),
+  };
+  const shiftedViewProj = new Float32Array(identityViewProj);
+  shiftedViewProj[12] = 0.25;
+
+  const baseSignature = captureTileLocalPrepassBridgeSignature(baseInput);
+
+  assert.equal(tileLocalPrepassBridgeSignatureChanged(null, baseInput), true);
+  assert.equal(tileLocalPrepassBridgeSignatureChanged(baseSignature, copiedInput), false);
+  assert.equal(
+    tileLocalPrepassBridgeSignatureChanged(baseSignature, {
+      ...baseInput,
+      viewProj: shiftedViewProj,
+    }),
+    true,
+    "screen-space tile/ref buffers must be rebuilt when the view-projection changes"
+  );
 });

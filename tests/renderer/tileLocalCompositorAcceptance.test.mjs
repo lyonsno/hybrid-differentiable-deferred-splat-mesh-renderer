@@ -100,6 +100,24 @@ test("sparse empty tile stays clear and is not a bridge-block diagnostic witness
   assert.equal(result.bridgeDiagnosticBoundary.blockWitnessColorsAllowed, false);
 });
 
+test("near-zero coverage from an opaque tail does not resolve as a flat block island", () => {
+  const result = composeTileLocalGaussianTile({
+    tileId: 14,
+    clearColor: [0.02, 0.02, 0.04],
+    tileRefs: [
+      { splatId: 8677, viewDepth: -2, stableTieId: 8677, coverageWeight: 0.000006 },
+    ],
+    splats: [
+      { splatId: 8677, color: [0.49, 0.44, 0.39], opacity: 1 },
+    ],
+  });
+
+  assert.equal(result.status, "tile-local-gaussian-composited");
+  assert.ok(result.alpha < 0.001, `expected a clear-ish tail, got alpha ${result.alpha}`);
+  assert.ok(result.remainingTransmission > 0.999, `expected clear transmission, got ${result.remainingTransmission}`);
+  assertColor(result.color, [0.020019479466205803, 0.02001740718256689, 0.04001450598547241]);
+});
+
 test("acceptance contract names the bridge diagnostic boundary without claiming final renderer scope", () => {
   assert.deepEqual(describeTileLocalCompositorAcceptanceContract(), {
     consumes: [

@@ -4,6 +4,7 @@ import {
 } from "./alphaTransfer.js";
 
 const DEFAULT_DEPTH_PRECISION = 1e-6;
+export const TILE_LOCAL_MAX_SOURCE_OPACITY = 0.999;
 
 export function describeTileLocalCompositorAcceptanceContract() {
   return {
@@ -85,7 +86,7 @@ export function composeTileLocalGaussianTile({
       id: String(tileRef.splatId),
       depth: tileRef.viewDepth,
       color: splat.color,
-      opacity: splat.opacity,
+      opacity: resolveTileLocalSourceOpacity(splat.opacity),
       coverageWeight: tileRef.coverageWeight,
     };
   });
@@ -113,6 +114,10 @@ export function describeBridgeDiagnosticBoundary() {
     blockWitnessColorsAllowed: false,
     finalRendererClaimsAllowed: false,
   };
+}
+
+export function resolveTileLocalSourceOpacity(opacity) {
+  return Math.min(opacity, TILE_LOCAL_MAX_SOURCE_OPACITY);
 }
 
 function normalizeSplats(splats) {

@@ -13,3 +13,30 @@ export function buildTileLocalPrepassBridge(input: {
   readonly minRadiusPx: number;
   readonly maxRefsPerTile?: number;
 }): GpuTileCoverageBridge;
+
+export function captureTileLocalPrepassBridgeSignature(input: {
+  readonly viewMatrix: Float32Array;
+  readonly viewProj: Float32Array;
+  readonly viewportWidth: number;
+  readonly viewportHeight: number;
+  readonly tileSizePx: number;
+  readonly samplesPerAxis: number;
+  readonly splatScale: number;
+  readonly minRadiusPx: number;
+  readonly maxRefsPerTile?: number;
+}): string;
+
+export function tileLocalPrepassBridgeSignatureChanged(
+  previousSignature: string | null | undefined,
+  input: {
+    readonly viewMatrix: Float32Array;
+    readonly viewProj: Float32Array;
+    readonly viewportWidth: number;
+    readonly viewportHeight: number;
+    readonly tileSizePx: number;
+    readonly samplesPerAxis: number;
+    readonly splatScale: number;
+    readonly minRadiusPx: number;
+    readonly maxRefsPerTile?: number;
+  }
+): boolean;
