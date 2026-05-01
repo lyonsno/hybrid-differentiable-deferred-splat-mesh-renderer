@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   buildTileLocalComparisonPlan,
   classifyTileLocalComparison,
+  isVisualSmokeCaptureReady,
 } from "../../scripts/visual-smoke/tile-local-comparison.mjs";
 
 test("tile-local comparison plan captures plate, silent prepass, and visible compositor modes", () => {
@@ -58,6 +59,41 @@ test("tile-local comparison accepts distinguishable compositor evidence without 
   assert.equal(result.summary.status, "PASS");
   assert.deepEqual(result.findings, []);
   assert.equal(result.metrics.fps.visibleToPlateRatio, 0.7);
+});
+
+test("tile-local comparison waits for first rendered evidence instead of initial smoke metadata", () => {
+  assert.equal(
+    isVisualSmokeCaptureReady(
+      {
+        ready: true,
+        sourceKind: "real_scaniverse_ply",
+        splatCount: 94406,
+        rendererLabel: "",
+        statsText: "Loading real Scaniverse splats...",
+        canvas: { width: 300, height: 150, clientWidth: 1280, clientHeight: 720 },
+        tileLocal: { refs: 0 },
+      },
+      { expectedRendererLabel: "tile-local-visible" }
+    ),
+    false
+  );
+
+  assert.equal(
+    isVisualSmokeCaptureReady(
+      {
+        ready: true,
+        sourceKind: "real_scaniverse_ply",
+        splatCount: 94406,
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        statsText:
+          "1280x720 | 60 fps | renderer: tile-local-visible-gaussian-compositor | tile-local: 27x15 tiles/22000 refs",
+        canvas: { width: 1280, height: 720, clientWidth: 1280, clientHeight: 720 },
+        tileLocal: { refs: 22000 },
+      },
+      { expectedRendererLabel: "tile-local-visible" }
+    ),
+    true
+  );
 });
 
 test("tile-local comparison catches visible mode falling back to the plate renderer", () => {

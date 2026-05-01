@@ -133,6 +133,25 @@ export function extractTileLocalPageMetrics(pageEvidence = {}) {
   };
 }
 
+export function isVisualSmokeCaptureReady(pageEvidence = {}, { expectedRendererLabel = "" } = {}) {
+  const metrics = extractTileLocalPageMetrics(pageEvidence);
+  const statsText = String(pageEvidence.statsText ?? "");
+  const canvas = pageEvidence.canvas ?? {};
+  const canvasWidth = finiteNumber(canvas.width) ?? 0;
+  const canvasHeight = finiteNumber(canvas.height) ?? 0;
+  const clientWidth = finiteNumber(canvas.clientWidth) ?? 0;
+  const clientHeight = finiteNumber(canvas.clientHeight) ?? 0;
+
+  if (pageEvidence.ready !== true) return false;
+  if (/loading/i.test(statsText)) return false;
+  if (canvasWidth <= 0 || canvasHeight <= 0) return false;
+  if (clientWidth > 0 && canvasWidth < clientWidth) return false;
+  if (clientHeight > 0 && canvasHeight < clientHeight) return false;
+  if (expectedRendererLabel && !rendererLabelMatches(metrics.rendererLabel, expectedRendererLabel)) return false;
+  if (expectedRendererLabel.includes("tile-local") && metrics.tileLocal.refs <= 0) return false;
+  return true;
+}
+
 function rendererUrl(baseUrl, renderer) {
   const url = new URL(baseUrl);
   if (renderer) {
@@ -183,6 +202,11 @@ function finding(kind, summary) {
 
 function hasRendererLabel(capture, expected) {
   return rendererLabel(capture) === expected;
+}
+
+function rendererLabelMatches(actual, expected) {
+  const label = String(actual ?? "").trim();
+  return expected === "tile-local-visible" ? label.includes(expected) : label === expected;
 }
 
 function rendererLabel(capture = {}) {

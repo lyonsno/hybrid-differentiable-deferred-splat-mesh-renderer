@@ -9,6 +9,7 @@ import {
   buildTileLocalComparisonPlan,
   classifyTileLocalComparison,
   extractTileLocalPageMetrics,
+  isVisualSmokeCaptureReady,
 } from "./visual-smoke/tile-local-comparison.mjs";
 import { classifyWitnessCapture } from "./visual-smoke/witness-diagnostics.mjs";
 
@@ -66,14 +67,7 @@ async function main() {
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: options.timeoutMs });
     const canvas = page.locator("canvas").first();
     await canvas.waitFor({ state: "attached", timeout: options.timeoutMs });
-    await page.waitForFunction(
-      () => {
-        const target = document.querySelector("canvas");
-        return Boolean(target && target.width > 0 && target.height > 0);
-      },
-      null,
-      { timeout: options.timeoutMs }
-    );
+    await waitForVisualSmokeCaptureReady(page, "", options.timeoutMs);
     await page.waitForTimeout(options.settleMs);
 
     const rawPageEvidence = await collectPageEvidence(page);
@@ -193,14 +187,7 @@ async function captureVisualSmoke({ browser, options, capture, reportDir }) {
     await page.goto(capture.url, { waitUntil: "domcontentloaded", timeout: options.timeoutMs });
     const canvas = page.locator("canvas").first();
     await canvas.waitFor({ state: "attached", timeout: options.timeoutMs });
-    await page.waitForFunction(
-      () => {
-        const target = document.querySelector("canvas");
-        return Boolean(target && target.width > 0 && target.height > 0);
-      },
-      null,
-      { timeout: options.timeoutMs }
-    );
+    await waitForVisualSmokeCaptureReady(page, capture.expectedRendererLabel, options.timeoutMs);
     await page.waitForTimeout(options.settleMs);
 
     const rawPageEvidence = await collectPageEvidence(page);
@@ -239,6 +226,28 @@ async function captureVisualSmoke({ browser, options, capture, reportDir }) {
   } finally {
     await page.close();
   }
+}
+
+async function waitForVisualSmokeCaptureReady(page, expectedRendererLabel, timeoutMs) {
+  const startedAt = Date.now();
+  let lastEvidence = {};
+  while (Date.now() - startedAt < timeoutMs) {
+    const rawEvidence = await collectPageEvidence(page);
+    lastEvidence = {
+      ...rawEvidence,
+      ...extractTileLocalPageMetrics(rawEvidence),
+    };
+    if (isVisualSmokeCaptureReady(lastEvidence, { expectedRendererLabel })) {
+      return lastEvidence;
+    }
+    await page.waitForTimeout(100);
+  }
+
+  throw new Error(
+    `Timed out waiting for rendered visual smoke evidence${
+      expectedRendererLabel ? ` (${expectedRendererLabel})` : ""
+    }; last stats: ${JSON.stringify(lastEvidence.statsText ?? "")}`
+  );
 }
 
 async function collectPageEvidence(page) {
