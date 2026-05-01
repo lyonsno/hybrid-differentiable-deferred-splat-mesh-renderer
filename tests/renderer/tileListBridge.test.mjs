@@ -152,3 +152,68 @@ test("tile-list bridge caps each tile while retaining visually important low-cov
     headerAccountingMatches: true,
   });
 });
+
+test("tile-list bridge reserves both bright behind refs and alpha-occluding foreground refs under cap pressure", () => {
+  const surfaceEntries = Array.from({ length: 10 }, (_, index) => ({
+    tileIndex: 0,
+    tileX: 0,
+    tileY: 0,
+    splatIndex: index,
+    originalId: 100 + index,
+    coverageWeight: 10 - index * 0.01,
+    retentionWeight: 0.35,
+    occlusionWeight: 0.35,
+  }));
+  const darkForeground = {
+    tileIndex: 0,
+    tileX: 0,
+    tileY: 0,
+    splatIndex: 10,
+    originalId: 800,
+    coverageWeight: 0.2,
+    retentionWeight: 0.004,
+    occlusionWeight: 0.19,
+  };
+  const brightBehind = {
+    tileIndex: 0,
+    tileX: 0,
+    tileY: 0,
+    splatIndex: 11,
+    originalId: 900,
+    coverageWeight: 0.25,
+    retentionWeight: 1.05,
+    occlusionWeight: 0.15,
+  };
+
+  const bridge = buildGpuTileCoverageBridge({
+    viewportWidth: 64,
+    viewportHeight: 64,
+    tileSizePx: 64,
+    tileColumns: 1,
+    tileRows: 1,
+    sourceSplatCount: 12,
+    splats: Array.from({ length: 12 }, (_, index) => ({
+      splatIndex: index,
+      originalId: index === 10 ? 800 : index === 11 ? 900 : 100 + index,
+      centerPx: [32, 32],
+      covariancePx: { xx: 16, xy: 0, yy: 16 },
+      tileBounds: { minTileX: 0, minTileY: 0, maxTileX: 0, maxTileY: 0 },
+    })),
+    tileEntries: [...surfaceEntries, darkForeground, brightBehind],
+    maxRefsPerTile: 8,
+  });
+
+  const retainedRefCount = bridge.tileHeaders[1];
+  const retainedSplatIds = [];
+  for (let index = 0; index < retainedRefCount; index += 1) {
+    retainedSplatIds.push(bridge.tileRefs[index * 4]);
+  }
+
+  assert.equal(retainedRefCount, 8);
+  assert.equal(bridge.maxRefsPerTile, 8);
+  assert.equal(bridge.retainedTileEntryCount, 8);
+  assert.equal(retainedSplatIds.includes(10), true, "dark alpha-occluding foreground ref should survive the cap");
+  assert.equal(retainedSplatIds.includes(11), true, "bright behind-surface ref should survive the cap");
+  assert.equal(bridge.tileRefCustody.evictedTileEntryCount, 4);
+  assert.equal(bridge.tileRefCustody.maxRetainedRefsPerTile, 8);
+});
