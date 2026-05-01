@@ -53,6 +53,13 @@ export function buildGpuTileCoverageBridge(coverage, options = {}) {
   if (currentTileIndex >= 0) {
     writeTileHeader(tileHeaders, currentTileIndex, firstRefIndex, refCount);
   }
+  const tileRefCustody = summarizeTileRefCustody({
+    tileEntries: coverage.tileEntries,
+    retainedTileEntryCount,
+    tileHeaders,
+    tileCount,
+    maxRefsPerTile,
+  });
 
   return {
     viewportWidth: coverage.viewportWidth,
@@ -70,6 +77,55 @@ export function buildGpuTileCoverageBridge(coverage, options = {}) {
     tileRefShapeParams,
     maxRefsPerTile,
     retainedTileEntryCount,
+    tileRefCustody,
+  };
+}
+
+function summarizeTileRefCustody({
+  tileEntries,
+  retainedTileEntryCount,
+  tileHeaders,
+  tileCount,
+  maxRefsPerTile,
+}) {
+  const projectedCounts = new Uint32Array(Math.max(0, tileCount));
+  for (const entry of tileEntries) {
+    if (Number.isInteger(entry.tileIndex) && entry.tileIndex >= 0 && entry.tileIndex < tileCount) {
+      projectedCounts[entry.tileIndex] += 1;
+    }
+  }
+
+  let projectedTileEntryCount = 0;
+  let cappedTileCount = 0;
+  let saturatedRetainedTileCount = 0;
+  let maxProjectedRefsPerTile = 0;
+  let maxRetainedRefsPerTile = 0;
+  let headerRefCount = 0;
+  for (let tileIndex = 0; tileIndex < tileCount; tileIndex += 1) {
+    const projectedCount = projectedCounts[tileIndex];
+    const retainedCount = tileHeaders[tileIndex * 4 + 1] ?? 0;
+    projectedTileEntryCount += projectedCount;
+    headerRefCount += retainedCount;
+    maxProjectedRefsPerTile = Math.max(maxProjectedRefsPerTile, projectedCount);
+    maxRetainedRefsPerTile = Math.max(maxRetainedRefsPerTile, retainedCount);
+    if (projectedCount > maxRefsPerTile) {
+      cappedTileCount += 1;
+    }
+    if (retainedCount >= maxRefsPerTile) {
+      saturatedRetainedTileCount += 1;
+    }
+  }
+
+  return {
+    projectedTileEntryCount,
+    retainedTileEntryCount,
+    evictedTileEntryCount: Math.max(0, projectedTileEntryCount - retainedTileEntryCount),
+    cappedTileCount,
+    saturatedRetainedTileCount,
+    maxProjectedRefsPerTile,
+    maxRetainedRefsPerTile,
+    headerRefCount,
+    headerAccountingMatches: headerRefCount === retainedTileEntryCount,
   };
 }
 

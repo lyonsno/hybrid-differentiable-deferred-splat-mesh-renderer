@@ -3,6 +3,7 @@ export function summarizeTileLocalDiagnostics({
   plan,
   tileEntryCount = 0,
   tileHeaders,
+  tileRefCustody,
   tileCoverageWeights,
   alphaParamData,
 } = {}) {
@@ -24,9 +25,37 @@ export function summarizeTileLocalDiagnostics({
       tileSizePx: plan.tileSizePx,
     },
     tileRefs,
+    tileRefCustody: normalizeTileRefCustody(tileRefCustody, tileRefs),
     coverageWeight,
     alpha,
     conicShape,
+  };
+}
+
+function normalizeTileRefCustody(tileRefCustody, tileRefs) {
+  if (tileRefCustody && typeof tileRefCustody === "object") {
+    return {
+      projectedTileEntryCount: nonNegativeFiniteInteger(tileRefCustody.projectedTileEntryCount),
+      retainedTileEntryCount: nonNegativeFiniteInteger(tileRefCustody.retainedTileEntryCount),
+      evictedTileEntryCount: nonNegativeFiniteInteger(tileRefCustody.evictedTileEntryCount),
+      cappedTileCount: nonNegativeFiniteInteger(tileRefCustody.cappedTileCount),
+      saturatedRetainedTileCount: nonNegativeFiniteInteger(tileRefCustody.saturatedRetainedTileCount),
+      maxProjectedRefsPerTile: nonNegativeFiniteInteger(tileRefCustody.maxProjectedRefsPerTile),
+      maxRetainedRefsPerTile: nonNegativeFiniteInteger(tileRefCustody.maxRetainedRefsPerTile),
+      headerRefCount: nonNegativeFiniteInteger(tileRefCustody.headerRefCount),
+      headerAccountingMatches: tileRefCustody.headerAccountingMatches === true,
+    };
+  }
+  return {
+    projectedTileEntryCount: tileRefs.total,
+    retainedTileEntryCount: tileRefs.total,
+    evictedTileEntryCount: 0,
+    cappedTileCount: 0,
+    saturatedRetainedTileCount: 0,
+    maxProjectedRefsPerTile: tileRefs.maxPerTile,
+    maxRetainedRefsPerTile: tileRefs.maxPerTile,
+    headerRefCount: tileRefs.total,
+    headerAccountingMatches: true,
   };
 }
 
@@ -162,6 +191,10 @@ function nonNegativeInteger(value, label) {
     throw new Error(`${label} must be a non-negative integer`);
   }
   return value;
+}
+
+function nonNegativeFiniteInteger(value) {
+  return Number.isInteger(value) && value >= 0 ? value : 0;
 }
 
 function clamp01(value) {

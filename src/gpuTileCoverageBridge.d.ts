@@ -1,3 +1,15 @@
+export interface TileRefCustodySummary {
+  readonly projectedTileEntryCount: number;
+  readonly retainedTileEntryCount: number;
+  readonly evictedTileEntryCount: number;
+  readonly cappedTileCount: number;
+  readonly saturatedRetainedTileCount: number;
+  readonly maxProjectedRefsPerTile: number;
+  readonly maxRetainedRefsPerTile: number;
+  readonly headerRefCount: number;
+  readonly headerAccountingMatches: boolean;
+}
+
 export interface GpuTileCoverageBridge {
   readonly viewportWidth: number;
   readonly viewportHeight: number;
@@ -14,6 +26,7 @@ export interface GpuTileCoverageBridge {
   readonly tileRefShapeParams: Float32Array;
   readonly maxRefsPerTile: number;
   readonly retainedTileEntryCount: number;
+  readonly tileRefCustody: TileRefCustodySummary;
 }
 
 export function buildGpuTileCoverageBridge(

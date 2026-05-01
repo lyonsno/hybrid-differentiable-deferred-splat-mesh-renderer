@@ -575,6 +575,13 @@ function renderStaticDessertWitnessReport(result) {
 - Tile grid: ${metrics.fixedView.tileGrid || "not reported"}
 - Total tile refs: ${metrics.tileRefs.total}
 - Max tile refs per tile: ${metrics.tileRefs.maxPerTile}
+- Projected tile refs before cap: ${metrics.tileRefCustody.projectedTileEntryCount}
+- Retained tile refs after cap: ${metrics.tileRefCustody.retainedTileEntryCount}
+- Evicted tile refs by cap: ${metrics.tileRefCustody.evictedTileEntryCount}
+- Capped tiles: ${metrics.tileRefCustody.cappedTileCount}
+- Saturated retained tiles: ${metrics.tileRefCustody.saturatedRetainedTileCount}
+- Max projected refs per tile: ${metrics.tileRefCustody.maxProjectedRefsPerTile}
+- Header accounting matches retained refs: ${metrics.tileRefCustody.headerAccountingMatches}
 - Estimated max accumulated alpha: ${metrics.alpha.estimatedMaxAccumulatedAlpha}
 - Estimated min transmittance: ${metrics.alpha.estimatedMinTransmittance}
 - Max conic major radius px: ${metrics.conicShape.maxMajorRadiusPx}

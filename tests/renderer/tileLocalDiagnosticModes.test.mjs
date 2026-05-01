@@ -43,6 +43,17 @@ test("tile-local diagnostic summary exports coverage, alpha/transmittance, ref d
       0, 2, 0, 0,
       2, 1, 0, 0,
     ]),
+    tileRefCustody: {
+      projectedTileEntryCount: 5,
+      retainedTileEntryCount: 3,
+      evictedTileEntryCount: 2,
+      cappedTileCount: 1,
+      saturatedRetainedTileCount: 1,
+      maxProjectedRefsPerTile: 4,
+      maxRetainedRefsPerTile: 2,
+      headerRefCount: 3,
+      headerAccountingMatches: true,
+    },
     tileCoverageWeights: Float32Array.from([0.25, 0.75, 1.5, 0]),
     alphaParamData: Float32Array.from([
       0.5, 4, 4, 0,
@@ -61,6 +72,17 @@ test("tile-local diagnostic summary exports coverage, alpha/transmittance, ref d
   assert.equal(summary.tileRefs.total, 3);
   assert.equal(summary.tileRefs.nonEmptyTiles, 2);
   assert.equal(summary.tileRefs.maxPerTile, 2);
+  assert.deepEqual(summary.tileRefCustody, {
+    projectedTileEntryCount: 5,
+    retainedTileEntryCount: 3,
+    evictedTileEntryCount: 2,
+    cappedTileCount: 1,
+    saturatedRetainedTileCount: 1,
+    maxProjectedRefsPerTile: 4,
+    maxRetainedRefsPerTile: 2,
+    headerRefCount: 3,
+    headerAccountingMatches: true,
+  });
   assert.equal(summary.coverageWeight.max, 1.5);
   assert(summary.alpha.estimatedMaxAccumulatedAlpha > 0.5);
   assert(summary.alpha.estimatedMinTransmittance < 0.5);

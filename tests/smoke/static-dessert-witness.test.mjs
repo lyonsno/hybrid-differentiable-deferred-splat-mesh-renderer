@@ -65,6 +65,17 @@ test("static dessert witness classifier requires one asset, one viewport, final 
       witnessCapture("tile-ref-count", {
         diagnostics: {
           tileRefs: { total: 24000, maxPerTile: 32, nonEmptyTiles: 400 },
+          tileRefCustody: {
+            projectedTileEntryCount: 64000,
+            retainedTileEntryCount: 24000,
+            evictedTileEntryCount: 40000,
+            cappedTileCount: 120,
+            saturatedRetainedTileCount: 128,
+            maxProjectedRefsPerTile: 700,
+            maxRetainedRefsPerTile: 32,
+            headerRefCount: 24000,
+            headerAccountingMatches: true,
+          },
         },
       }),
       witnessCapture("conic-shape", {
@@ -79,6 +90,9 @@ test("static dessert witness classifier requires one asset, one viewport, final 
   assert.equal(result.summary.status, "PASS");
   assert.equal(result.metrics.fixedView.viewport, "1280x720");
   assert.equal(result.metrics.tileRefs.total, 24000);
+  assert.equal(result.metrics.tileRefCustody.projectedTileEntryCount, 64000);
+  assert.equal(result.metrics.tileRefCustody.evictedTileEntryCount, 40000);
+  assert.equal(result.metrics.tileRefCustody.headerAccountingMatches, true);
   assert.equal(result.metrics.conicShape.maxAnisotropy, 5);
   assert.equal(result.observations.visibleHoles.evidenceIds.includes("coverage-weight"), true);
   assert.equal(result.observations.plateSeepage.evidenceIds.includes("transmittance"), true);
@@ -91,6 +105,7 @@ test("visual smoke CLI exposes a static dessert witness batch mode", () => {
   assert.match(source, /--static-dessert-witness/);
   assert.match(source, /runStaticDessertWitness/);
   assert.match(source, /renderStaticDessertWitnessReport/);
+  assert.match(source, /Projected tile refs before cap/);
 });
 
 function witnessCapture(id, overrides = {}) {

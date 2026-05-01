@@ -140,4 +140,15 @@ test("tile-list bridge caps each tile while retaining visually important low-cov
   assert.equal(retainedSplatIds.includes(36), true);
   assert.notEqual(brightRefIndex, -1);
   assert.equal(bridge.tileCoverageWeights[brightRefIndex], 0.25);
+  assert.deepEqual(bridge.tileRefCustody, {
+    projectedTileEntryCount: 37,
+    retainedTileEntryCount: 32,
+    evictedTileEntryCount: 5,
+    cappedTileCount: 1,
+    saturatedRetainedTileCount: 1,
+    maxProjectedRefsPerTile: 37,
+    maxRetainedRefsPerTile: 32,
+    headerRefCount: 32,
+    headerAccountingMatches: true,
+  });
 });

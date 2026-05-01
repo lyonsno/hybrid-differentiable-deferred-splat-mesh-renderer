@@ -128,6 +128,7 @@ export function classifyStaticDessertWitness({ captures = [] } = {}) {
         maxPerTile: finiteNumber(refDiagnostics?.tileRefs?.maxPerTile) ?? 0,
         nonEmptyTiles: finiteNumber(refDiagnostics?.tileRefs?.nonEmptyTiles) ?? 0,
       },
+      tileRefCustody: normalizeTileRefCustody(refDiagnostics?.tileRefCustody, refDiagnostics?.tileRefs),
       alpha: {
         estimatedMaxAccumulatedAlpha: finiteNumber(alphaDiagnostics?.alpha?.estimatedMaxAccumulatedAlpha) ?? 0,
         estimatedMinTransmittance: finiteNumber(transmittanceDiagnostics?.alpha?.estimatedMinTransmittance) ?? 0,
@@ -210,6 +211,35 @@ function rendererLabel(capture = {}) {
 
 function tileRefs(capture = {}) {
   return finiteNumber(capture.pageEvidence?.tileLocal?.refs) ?? 0;
+}
+
+function normalizeTileRefCustody(tileRefCustody, tileRefs = {}) {
+  if (tileRefCustody && typeof tileRefCustody === "object") {
+    return {
+      projectedTileEntryCount: finiteNumber(tileRefCustody.projectedTileEntryCount) ?? 0,
+      retainedTileEntryCount: finiteNumber(tileRefCustody.retainedTileEntryCount) ?? 0,
+      evictedTileEntryCount: finiteNumber(tileRefCustody.evictedTileEntryCount) ?? 0,
+      cappedTileCount: finiteNumber(tileRefCustody.cappedTileCount) ?? 0,
+      saturatedRetainedTileCount: finiteNumber(tileRefCustody.saturatedRetainedTileCount) ?? 0,
+      maxProjectedRefsPerTile: finiteNumber(tileRefCustody.maxProjectedRefsPerTile) ?? 0,
+      maxRetainedRefsPerTile: finiteNumber(tileRefCustody.maxRetainedRefsPerTile) ?? 0,
+      headerRefCount: finiteNumber(tileRefCustody.headerRefCount) ?? 0,
+      headerAccountingMatches: tileRefCustody.headerAccountingMatches === true,
+    };
+  }
+  const total = finiteNumber(tileRefs.total) ?? 0;
+  const maxPerTile = finiteNumber(tileRefs.maxPerTile) ?? 0;
+  return {
+    projectedTileEntryCount: total,
+    retainedTileEntryCount: total,
+    evictedTileEntryCount: 0,
+    cappedTileCount: 0,
+    saturatedRetainedTileCount: 0,
+    maxProjectedRefsPerTile: maxPerTile,
+    maxRetainedRefsPerTile: maxPerTile,
+    headerRefCount: total,
+    headerAccountingMatches: true,
+  };
 }
 
 function viewportKey(capture = {}) {
