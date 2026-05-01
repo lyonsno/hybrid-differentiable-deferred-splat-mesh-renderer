@@ -99,6 +99,7 @@ export function buildProjectedGaussianTileCoverage({
   tileSizePx = DEFAULT_TILE_SIZE_PX,
   sigmaRadius = DEFAULT_SIGMA_RADIUS,
   samplesPerAxis = DEFAULT_SAMPLES_PER_AXIS,
+  maxTileEntries = Number.POSITIVE_INFINITY,
   splats,
 }) {
   readPositiveFinite(viewportWidth, "viewportWidth");
@@ -106,6 +107,12 @@ export function buildProjectedGaussianTileCoverage({
   readPositiveFinite(tileSizePx, "tileSizePx");
   readPositiveFinite(sigmaRadius, "sigmaRadius");
   readPositiveFinite(samplesPerAxis, "samplesPerAxis");
+  if (!Number.isFinite(maxTileEntries) && maxTileEntries !== Number.POSITIVE_INFINITY) {
+    throw new Error("maxTileEntries must be a positive finite number or Infinity");
+  }
+  if (maxTileEntries !== Number.POSITIVE_INFINITY) {
+    readPositiveFinite(maxTileEntries, "maxTileEntries");
+  }
   if (!Array.isArray(splats)) {
     throw new Error("splats must be an array");
   }
@@ -158,6 +165,9 @@ export function buildProjectedGaussianTileCoverage({
         const entry = { tileIndex, tileX, tileY, splatIndex, originalId, coverageWeight };
         splatTiles.push(entry);
         tileEntries.push(entry);
+        if (tileEntries.length > maxTileEntries) {
+          throw new Error(`projected tile refs exceed budget: ${tileEntries.length} > ${maxTileEntries}`);
+        }
         if (tileIndex === centerTile.tileIndex) {
           centerTile.coverageWeight = coverageWeight;
         }

@@ -187,3 +187,31 @@ test("tile-local prepass bridge signatures mark view-dependent tile refs as stal
     "screen-space tile/ref buffers must be rebuilt when the view-projection changes"
   );
 });
+
+test("tile-local prepass bridge stops before pathological projected ref growth", () => {
+  const count = 12;
+  const positions = new Float32Array(count * 3);
+  const scales = new Float32Array(count * 3);
+  const originalIds = new Uint32Array(count);
+  for (let index = 0; index < count; index += 1) {
+    positions.set([0, 0, 0.5], index * 3);
+    scales.set([Math.log(4), Math.log(4), 0], index * 3);
+    originalIds[index] = index;
+  }
+
+  assert.throws(
+    () => buildTileLocalPrepassBridge({
+      attributes: { count, positions, scales, originalIds },
+      viewMatrix: identityViewProj,
+      viewProj: identityViewProj,
+      viewportWidth: 256,
+      viewportHeight: 256,
+      tileSizePx: 8,
+      samplesPerAxis: 1,
+      splatScale: 80,
+      minRadiusPx: 1,
+      maxTileEntries: 128,
+    }),
+    /projected tile refs exceed budget/
+  );
+});

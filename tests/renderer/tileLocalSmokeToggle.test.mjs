@@ -10,6 +10,11 @@ test("main wires a smoke-toggleable tile-local prepass beside the plate fallback
   assert.match(source, /createGpuTileCoveragePipelineSkeleton/);
   assert.match(source, /buildTileLocalPrepassBridge/);
   assert.match(source, /tileCoverageWeightBuffer/);
+  assert.match(source, /TILE_LOCAL_PROVISIONAL_MAX_SPLATS/);
+  assert.match(source, /TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES/);
+  assert.match(source, /tileLocalUnsafe/);
+  assert.match(source, /tileLocalDisabledReason/);
+  assert.match(source, /maxTileEntries/);
   assert.match(source, /plate\+tile-local-prepass/);
   assert.match(source, /createSplatPlateRenderer/);
   assert.doesNotMatch(source, /tileCoverageWeightData\[splatId\]\s*=\s*1/);

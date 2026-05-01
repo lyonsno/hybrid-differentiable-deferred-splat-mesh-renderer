@@ -12,6 +12,7 @@ export function buildTileLocalPrepassBridge({
   splatScale,
   minRadiusPx,
   maxRefsPerTile,
+  maxTileEntries,
 }) {
   if (!viewMatrix || viewMatrix.length !== 16) {
     throw new Error("viewMatrix must contain 16 values");
@@ -48,6 +49,7 @@ export function buildTileLocalPrepassBridge({
     viewportHeight,
     tileSizePx,
     samplesPerAxis,
+    maxTileEntries,
     splats,
   });
   const orderedCoverage = orderCoverageEntriesForView(coverage, attributes, viewMatrix);
@@ -68,6 +70,7 @@ export function captureTileLocalPrepassBridgeSignature({
   splatScale,
   minRadiusPx,
   maxRefsPerTile,
+  maxTileEntries,
 }) {
   return JSON.stringify({
     viewMatrix: Array.from(viewMatrix ?? []),
@@ -79,6 +82,7 @@ export function captureTileLocalPrepassBridgeSignature({
     splatScale,
     minRadiusPx,
     maxRefsPerTile: maxRefsPerTile ?? null,
+    maxTileEntries: maxTileEntries ?? null,
   });
 }
 

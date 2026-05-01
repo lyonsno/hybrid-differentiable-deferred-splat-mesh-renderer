@@ -92,6 +92,9 @@ const RENDERER_MODE = selectedRendererMode();
 const TILE_LOCAL_DEBUG_MODE = selectedTileLocalDebugMode();
 const TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX = 6;
 const TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES = 1;
+const TILE_LOCAL_PROVISIONAL_MAX_SPLATS = 150_000;
+const TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES = 20_000_000;
+const TILE_LOCAL_UNSAFE = selectedTileLocalUnsafeMode();
 
 interface ActiveSplatScene {
   attributes: SplatAttributes;
@@ -103,6 +106,8 @@ interface ActiveSplatScene {
   effectiveOpacities: Float32Array;
   alphaDensityState: AlphaDensityState;
   tileLocalState: TileLocalSceneState | null;
+  tileLocalDisabledReason: string | null;
+  tileLocalLastSkipReason: string | null;
   rendererMode: RendererMode;
   count: number;
   assetPath: string;
@@ -226,20 +231,29 @@ async function main() {
       rotationBuffer: buffers.rotationBuffer,
       sortedIndexBuffer,
     });
-    const tileLocalState =
-      usesTileLocalPrepass(RENDERER_MODE)
-        ? createTileLocalSceneState(
-            gpu.device,
-            attributes,
-            buffers,
-            sortedIndexBuffer,
-            effectiveOpacities,
-            initialView,
-            initialViewProj,
-            initialViewportWidth,
-            initialViewportHeight
-          )
-        : null;
+    const provisionalTileLocalDisabledReason = tileLocalDisabledReasonForAttributes(attributes);
+    let tileLocalDisabledReason = provisionalTileLocalDisabledReason;
+    let tileLocalState: TileLocalSceneState | null = null;
+    if (usesTileLocalPrepass(RENDERER_MODE) && !tileLocalDisabledReason) {
+      try {
+        tileLocalState = createTileLocalSceneState(
+          gpu.device,
+          attributes,
+          buffers,
+          sortedIndexBuffer,
+          effectiveOpacities,
+          initialView,
+          initialViewProj,
+          initialViewportWidth,
+          initialViewportHeight
+        );
+      } catch (err) {
+        if (!isTileLocalBudgetError(err)) {
+          throw err;
+        }
+        tileLocalDisabledReason = errorMessage(err);
+      }
+    }
     activeScene = {
       attributes,
       buffers,
@@ -257,6 +271,8 @@ async function main() {
         summary: alphaDensitySummary,
       },
       tileLocalState,
+      tileLocalDisabledReason,
+      tileLocalLastSkipReason: null,
       rendererMode: RENDERER_MODE,
       count: attributes.count,
       assetPath: sceneAssetPath,
@@ -398,32 +414,41 @@ async function main() {
       pendingGpuSort,
       pendingAlphaDensity,
     })) {
-      const tileLocalState = ensureTileLocalSceneState(
-        gpu.device,
-        scene,
-        scene.tileLocalState,
-        view,
-        viewProj,
-        width,
-        height,
-        true
-      );
-      scene.tileLocalState = tileLocalState;
-      writeGpuTileCoverageFrameUniforms(
-        tileLocalState.frameUniformData,
-        viewProj,
-        tileLocalState.plan,
-        tileLocalState.debugMode
-      );
-      gpu.device.queue.writeBuffer(tileLocalState.frameUniformBuffer, 0, tileLocalState.frameUniformData);
-      const tileLocalComputePass = encoder.beginComputePass();
-      if (scene.rendererMode === "tile-local-visible") {
-        tileLocalState.pipeline.dispatchComposite(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
-      } else {
-        tileLocalState.pipeline.dispatch(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
+      try {
+        const tileLocalState = ensureTileLocalSceneState(
+          gpu.device,
+          scene,
+          scene.tileLocalState,
+          view,
+          viewProj,
+          width,
+          height,
+          true
+        );
+        scene.tileLocalState = tileLocalState;
+        scene.tileLocalLastSkipReason = null;
+        writeGpuTileCoverageFrameUniforms(
+          tileLocalState.frameUniformData,
+          viewProj,
+          tileLocalState.plan,
+          tileLocalState.debugMode
+        );
+        gpu.device.queue.writeBuffer(tileLocalState.frameUniformBuffer, 0, tileLocalState.frameUniformData);
+        const tileLocalComputePass = encoder.beginComputePass();
+        if (scene.rendererMode === "tile-local-visible") {
+          tileLocalState.pipeline.dispatchComposite(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
+        } else {
+          tileLocalState.pipeline.dispatch(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
+        }
+        tileLocalComputePass.end();
+        tileLocalState.needsDispatch = false;
+      } catch (err) {
+        if (!isTileLocalBudgetError(err)) {
+          throw err;
+        }
+        scene.tileLocalLastSkipReason = errorMessage(err);
+        scene.tileLocalState.needsDispatch = false;
       }
-      tileLocalComputePass.end();
-      tileLocalState.needsDispatch = false;
     }
 
     const textureView = gpu.context.getCurrentTexture().createView();
@@ -482,7 +507,7 @@ async function main() {
 
     // Stats overlay
     const alphaSummary = scene.alphaDensityState.summary;
-    const rendererLabel = labelRendererMode(scene.rendererMode, scene.tileLocalState);
+    const rendererLabel = labelRendererMode(scene.rendererMode, scene.tileLocalState, scene.tileLocalDisabledReason);
     let statsText = `${width}×${height} | ${displayFps} fps | ${scene.count.toLocaleString()} real Scaniverse splats | renderer: ${rendererLabel} | sort: ${SORT_BACKEND} | alpha: ${alphaSummary.accountingMode} density ${alphaSummary.compensatedSplatCount.toLocaleString()} splats/${alphaSummary.hotTileCount} tiles`;
     if (scene.tileLocalState) {
       statsText += ` | tile-local: ${scene.tileLocalState.plan.tileColumns}x${scene.tileLocalState.plan.tileRows} tiles/${scene.tileLocalState.tileEntryCount} refs`;
@@ -490,13 +515,25 @@ async function main() {
         statsText += ` | tile-debug: ${scene.tileLocalState.debugMode}`;
       }
     }
+    if (scene.tileLocalDisabledReason) {
+      statsText += ` | ${scene.tileLocalDisabledReason}`;
+    }
+    if (scene.tileLocalLastSkipReason) {
+      statsText += ` | tile-local skipped: ${scene.tileLocalLastSkipReason}`;
+    }
     if (gpuTimings.size > 0) {
       for (const [label, ms] of gpuTimings) {
         statsText += ` | ${label}: ${ms.toFixed(2)}ms`;
       }
     }
     statsEl.textContent = statsText;
-    exposeTileLocalRuntimeEvidence(rendererLabel, displayFps, scene.tileLocalState);
+    exposeTileLocalRuntimeEvidence(
+      rendererLabel,
+      displayFps,
+      scene.tileLocalState,
+      scene.tileLocalDisabledReason,
+      scene.tileLocalLastSkipReason
+    );
 
     if (shouldContinueRendering({
       activeInput,
@@ -574,6 +611,7 @@ function createTileLocalSceneState(
     samplesPerAxis: TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES,
     splatScale: REAL_SCANIVERSE_SPLAT_SCALE,
     minRadiusPx: REAL_SCANIVERSE_MIN_RADIUS_PX,
+    maxTileEntries: TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES,
   };
   const bridge = buildTileLocalPrepassBridge(bridgeInput);
   const prepassSignature = captureTileLocalPrepassBridgeSignature(bridgeInput);
@@ -686,14 +724,14 @@ function ensureTileLocalSceneState(
     samplesPerAxis: TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES,
     splatScale: REAL_SCANIVERSE_SPLAT_SCALE,
     minRadiusPx: REAL_SCANIVERSE_MIN_RADIUS_PX,
+    maxTileEntries: TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES,
   };
   const viewportMatches = state.viewportWidth === viewportWidth && state.viewportHeight === viewportHeight;
   const bridgeStillFresh = !tileLocalPrepassBridgeSignatureChanged(state.prepassSignature, bridgeInput);
   if (viewportMatches && (bridgeStillFresh || !allowViewRebuild)) {
     return state;
   }
-  destroyTileLocalSceneState(state);
-  return createTileLocalSceneState(
+  const nextState = createTileLocalSceneState(
     device,
     scene.attributes,
     scene.buffers,
@@ -704,6 +742,8 @@ function ensureTileLocalSceneState(
     viewportWidth,
     viewportHeight
   );
+  destroyTileLocalSceneState(state);
+  return nextState;
 }
 
 function syncTileLocalAlphaParams(
@@ -782,6 +822,11 @@ function selectedTileLocalDebugMode(): GpuTileCoverageDebugMode {
   }
 }
 
+function selectedTileLocalUnsafeMode(): boolean {
+  const params = new URLSearchParams(window.location.search);
+  return params.has("tileLocalUnsafe") || params.get("tileLocalBudget") === "unsafe";
+}
+
 function selectedRendererMode(): RendererMode {
   const params = new URLSearchParams(window.location.search);
   if (params.get("renderer") === "tile-local-visible") {
@@ -794,15 +839,43 @@ function usesTileLocalPrepass(mode: RendererMode): boolean {
   return mode === "tile-local" || mode === "tile-local-visible";
 }
 
-function labelRendererMode(mode: RendererMode, tileLocalState: TileLocalSceneState | null): string {
+function tileLocalDisabledReasonForAttributes(attributes: SplatAttributes): string | null {
+  if (!usesTileLocalPrepass(RENDERER_MODE) || TILE_LOCAL_UNSAFE) {
+    return null;
+  }
+  if (attributes.count > TILE_LOCAL_PROVISIONAL_MAX_SPLATS) {
+    return `tile-local disabled: ${attributes.count.toLocaleString()} splats exceeds provisional budget ${TILE_LOCAL_PROVISIONAL_MAX_SPLATS.toLocaleString()}`;
+  }
+  return null;
+}
+
+function isTileLocalBudgetError(err: unknown): boolean {
+  return err instanceof Error && /projected tile refs exceed budget/.test(err.message);
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function labelRendererMode(
+  mode: RendererMode,
+  tileLocalState: TileLocalSceneState | null,
+  tileLocalDisabledReason: string | null = null
+): string {
   if (mode === "tile-local-visible" && tileLocalState) {
     if (tileLocalState.debugMode !== "final-color") {
       return `tile-local-visible-debug-${tileLocalState.debugMode}`;
     }
     return "tile-local-visible-gaussian-compositor";
   }
+  if (mode === "tile-local-visible" && tileLocalDisabledReason) {
+    return "tile-local-visible-budget-disabled-plate";
+  }
   if (mode === "tile-local" && tileLocalState) {
     return "plate+tile-local-prepass";
+  }
+  if (mode === "tile-local" && tileLocalDisabledReason) {
+    return "plate+tile-local-prepass-budget-disabled";
   }
   return mode;
 }
@@ -822,7 +895,9 @@ function refreshTileLocalDiagnostics(state: TileLocalSceneState): TileLocalDiagn
 function exposeTileLocalRuntimeEvidence(
   rendererLabel: string,
   fps: number,
-  tileLocalState: TileLocalSceneState | null
+  tileLocalState: TileLocalSceneState | null,
+  tileLocalDisabledReason: string | null,
+  tileLocalLastSkipReason: string | null
 ): void {
   const runtimeWindow = window as unknown as {
     __MESH_SPLAT_SMOKE__?: Record<string, unknown>;
@@ -833,6 +908,8 @@ function exposeTileLocalRuntimeEvidence(
     ...(runtimeWindow.__MESH_SPLAT_SMOKE__ ?? {}),
     rendererLabel,
     fps,
+    tileLocalDisabledReason,
+    tileLocalLastSkipReason,
     tileLocal: tileLocalState && diagnostics
       ? {
           refs: diagnostics.tileRefs.total,
