@@ -100,7 +100,7 @@ function orderCoverageEntriesForView(coverage, attributes, viewMatrix) {
   const tileEntries = coverage.tileEntries.map((entry) => ({
     ...entry,
     viewRank: ranks[entry.splatIndex],
-    retentionWeight: computeRetentionWeight(entry, attributes),
+    ...computeRetentionWeights(entry, attributes),
   })).sort((left, right) => {
     return (
       left.tileIndex - right.tileIndex ||
@@ -117,7 +117,7 @@ function orderCoverageEntriesForView(coverage, attributes, viewMatrix) {
   };
 }
 
-function computeRetentionWeight(entry, attributes) {
+function computeRetentionWeights(entry, attributes) {
   const coverageWeight = Number.isFinite(entry.coverageWeight) && entry.coverageWeight > 0
     ? entry.coverageWeight
     : 0;
@@ -127,7 +127,11 @@ function computeRetentionWeight(entry, attributes) {
   const green = readNonNegativeFinite(attributes.colors?.[colorBase + 1], 1);
   const blue = readNonNegativeFinite(attributes.colors?.[colorBase + 2], 1);
   const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
-  return coverageWeight * opacity * luminance;
+  return {
+    retentionWeight: coverageWeight * opacity * luminance,
+    occlusionWeight: coverageWeight * opacity,
+    occlusionDensity: opacity,
+  };
 }
 
 function readUnitInterval(value, fallback) {

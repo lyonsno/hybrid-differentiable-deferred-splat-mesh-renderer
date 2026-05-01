@@ -150,17 +150,20 @@ function selectTileEntries(tileEntries, maxRefsPerTile) {
     return tileEntries;
   }
   const selected = tileEntries.slice(0, maxRefsPerTile);
-  const reserveCount = Math.min(4, Math.max(1, Math.floor(maxRefsPerTile / 8)));
-  const retentionCandidates = [...tileEntries].sort(compareRetentionPriority).slice(0, reserveCount);
-  const reservedKeys = new Set(retentionCandidates.map(tileEntryKey));
+  const reserveCount = Math.min(maxRefsPerTile, Math.min(4, Math.max(2, Math.floor(maxRefsPerTile / 8))));
   const selectedKeys = new Set(selected.map(tileEntryKey));
+  const retentionCandidates = selectRetentionCandidates(tileEntries, selectedKeys, reserveCount);
+  const reservedKeys = new Set(retentionCandidates.map(({ entry }) => tileEntryKey(entry)));
 
-  for (const candidate of retentionCandidates) {
+  for (const { entry: candidate, comparePriority } of retentionCandidates) {
     const candidateKey = tileEntryKey(candidate);
     if (selectedKeys.has(candidateKey)) {
       continue;
     }
-    const replacementIndex = findReplacementIndex(selected, reservedKeys);
+    const replacementIndex = findReplacementIndex(selected, reservedKeys, comparePriority);
+    if (comparePriority(candidate, selected[replacementIndex]) > 0) {
+      continue;
+    }
     const removedKey = tileEntryKey(selected[replacementIndex]);
     selected[replacementIndex] = candidate;
     selectedKeys.delete(removedKey);
@@ -170,7 +173,41 @@ function selectTileEntries(tileEntries, maxRefsPerTile) {
   return selected.sort(compareTileEntryOrder);
 }
 
-function findReplacementIndex(selected, reservedKeys) {
+function selectRetentionCandidates(tileEntries, selectedKeys, reserveCount) {
+  const pools = [
+    { entries: [...tileEntries].sort(compareRetentionPriority), comparePriority: compareRetentionPriority },
+    { entries: [...tileEntries].sort(compareOcclusionPriority), comparePriority: compareOcclusionPriority },
+  ];
+  const candidates = [];
+  const candidateKeys = new Set();
+  const cursors = new Array(pools.length).fill(0);
+
+  while (candidates.length < reserveCount) {
+    let added = false;
+    for (let poolIndex = 0; poolIndex < pools.length && candidates.length < reserveCount; poolIndex += 1) {
+      const pool = pools[poolIndex].entries;
+      while (cursors[poolIndex] < pool.length) {
+        const entry = pool[cursors[poolIndex]];
+        cursors[poolIndex] += 1;
+        const key = tileEntryKey(entry);
+        if (selectedKeys.has(key) || candidateKeys.has(key)) {
+          continue;
+        }
+        candidates.push({ entry, comparePriority: pools[poolIndex].comparePriority });
+        candidateKeys.add(key);
+        added = true;
+        break;
+      }
+    }
+    if (!added) {
+      break;
+    }
+  }
+
+  return candidates;
+}
+
+function findReplacementIndex(selected, reservedKeys, comparePriority) {
   let replacementIndex = -1;
   for (let index = 0; index < selected.length; index += 1) {
     if (reservedKeys.has(tileEntryKey(selected[index]))) {
@@ -178,7 +215,7 @@ function findReplacementIndex(selected, reservedKeys) {
     }
     if (
       replacementIndex === -1 ||
-      compareRetentionPriority(selected[index], selected[replacementIndex]) > 0
+      comparePriority(selected[index], selected[replacementIndex]) > 0
     ) {
       replacementIndex = index;
     }
@@ -208,6 +245,21 @@ function compareRetentionPriority(left, right) {
   );
 }
 
+function compareOcclusionPriority(left, right) {
+  const leftDensity = readOcclusionDensity(left);
+  const rightDensity = readOcclusionDensity(right);
+  const leftWeight = readOcclusionWeight(left);
+  const rightWeight = readOcclusionWeight(right);
+  return (
+    rightDensity - leftDensity ||
+    rightWeight - leftWeight ||
+    right.coverageWeight - left.coverageWeight ||
+    compareOptionalInteger(left.viewRank, right.viewRank) ||
+    left.splatIndex - right.splatIndex ||
+    left.originalId - right.originalId
+  );
+}
+
 function compareOptionalInteger(left, right) {
   const leftRank = Number.isInteger(left) ? left : 0xffffffff;
   const rightRank = Number.isInteger(right) ? right : 0xffffffff;
@@ -218,6 +270,22 @@ function readRetentionWeight(entry) {
   return Number.isFinite(entry.retentionWeight) && entry.retentionWeight >= 0
     ? entry.retentionWeight
     : entry.coverageWeight;
+}
+
+function readOcclusionWeight(entry) {
+  return Number.isFinite(entry.occlusionWeight) && entry.occlusionWeight >= 0
+    ? entry.occlusionWeight
+    : readRetentionWeight(entry);
+}
+
+function readOcclusionDensity(entry) {
+  if (Number.isFinite(entry.occlusionDensity) && entry.occlusionDensity >= 0) {
+    return entry.occlusionDensity;
+  }
+  const coverageWeight = Number.isFinite(entry.coverageWeight) && entry.coverageWeight > 0
+    ? entry.coverageWeight
+    : 1;
+  return readOcclusionWeight(entry) / coverageWeight;
 }
 
 function tileEntryKey(entry) {
