@@ -85,3 +85,67 @@ test("tile-local prepass bridge feeds each bounded tile list with strongest cove
   assert.ok(bridge.tileCoverageWeights[0] >= bridge.tileCoverageWeights[1]);
   assert.ok(bridge.tileCoverageWeights[1] > bridge.tileCoverageWeights[2]);
 });
+
+test("tile-local prepass bridge keeps a bright behind-surface contributor inside the capped tile list", () => {
+  const surfaceCount = 36;
+  const brightIndex = surfaceCount;
+  const count = surfaceCount + 1;
+  const positions = new Float32Array(count * 3);
+  const scales = new Float32Array(count * 3);
+  const colors = new Float32Array(count * 3);
+  const opacities = new Float32Array(count);
+  const originalIds = new Uint32Array(count);
+
+  for (let index = 0; index < surfaceCount; index += 1) {
+    positions.set([0, 0, 0.45 + index * 0.001], index * 3);
+    scales.set([Math.log(0.2), Math.log(0.2), 0], index * 3);
+    colors.set([0.42, 0.43, 0.44], index * 3);
+    opacities[index] = 0.08;
+    originalIds[index] = 100 + index;
+  }
+  positions.set([0, 0, 0.1], brightIndex * 3);
+  scales.set([Math.log(0.8), Math.log(0.8), 0], brightIndex * 3);
+  colors.set([8, 7, 5], brightIndex * 3);
+  opacities[brightIndex] = 0.6;
+  originalIds[brightIndex] = 900;
+
+  const bridge = buildTileLocalPrepassBridge({
+    attributes: {
+      count,
+      positions,
+      scales,
+      colors,
+      opacities,
+      originalIds,
+    },
+    viewMatrix: identityViewProj,
+    viewProj: identityViewProj,
+    viewportWidth: 64,
+    viewportHeight: 64,
+    tileSizePx: 64,
+    samplesPerAxis: 1,
+    splatScale: 80,
+    minRadiusPx: 1,
+    maxRefsPerTile: 32,
+  });
+
+  const retainedRefCount = bridge.tileHeaders[1];
+  const retainedSplatIds = [];
+  let brightRefIndex = -1;
+  for (let index = 0; index < retainedRefCount; index += 1) {
+    const splatIndex = bridge.tileRefs[index * 4];
+    retainedSplatIds.push(splatIndex);
+    if (splatIndex === brightIndex) {
+      brightRefIndex = index;
+    }
+  }
+
+  assert.equal(retainedRefCount, 32);
+  assert.equal(bridge.maxRefsPerTile, 32);
+  assert.equal(bridge.retainedTileEntryCount, 32);
+  assert.ok(bridge.tileEntryCount <= count);
+  assert.equal(retainedSplatIds.includes(brightIndex), true);
+  assert.notEqual(brightRefIndex, -1);
+  assert.ok(bridge.tileCoverageWeights[brightRefIndex] > 0);
+  assert.ok(bridge.tileCoverageWeights[brightRefIndex] < bridge.tileCoverageWeights[0]);
+});

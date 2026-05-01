@@ -11,6 +11,7 @@ export function buildTileLocalPrepassBridge({
   samplesPerAxis,
   splatScale,
   minRadiusPx,
+  maxRefsPerTile,
 }) {
   if (!viewMatrix || viewMatrix.length !== 16) {
     throw new Error("viewMatrix must contain 16 values");
@@ -53,13 +54,18 @@ export function buildTileLocalPrepassBridge({
   return buildGpuTileCoverageBridge({
     ...orderedCoverage,
     sourceSplatCount: attributes.count,
+    maxRefsPerTile,
   });
 }
 
 function orderCoverageEntriesForView(coverage, attributes, viewMatrix) {
   const ranks = buildBackToFrontRanks(attributes, viewMatrix);
 
-  const tileEntries = [...coverage.tileEntries].sort((left, right) => {
+  const tileEntries = coverage.tileEntries.map((entry) => ({
+    ...entry,
+    viewRank: ranks[entry.splatIndex],
+    retentionWeight: computeRetentionWeight(entry, attributes),
+  })).sort((left, right) => {
     return (
       left.tileIndex - right.tileIndex ||
       right.coverageWeight - left.coverageWeight ||
@@ -73,6 +79,33 @@ function orderCoverageEntriesForView(coverage, attributes, viewMatrix) {
     ...coverage,
     tileEntries,
   };
+}
+
+function computeRetentionWeight(entry, attributes) {
+  const coverageWeight = Number.isFinite(entry.coverageWeight) && entry.coverageWeight > 0
+    ? entry.coverageWeight
+    : 0;
+  const opacity = readUnitInterval(attributes.opacities?.[entry.splatIndex], 1);
+  const colorBase = entry.splatIndex * 3;
+  const red = readNonNegativeFinite(attributes.colors?.[colorBase], 1);
+  const green = readNonNegativeFinite(attributes.colors?.[colorBase + 1], 1);
+  const blue = readNonNegativeFinite(attributes.colors?.[colorBase + 2], 1);
+  const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+  return coverageWeight * opacity * luminance;
+}
+
+function readUnitInterval(value, fallback) {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.min(1, Math.max(0, value));
+}
+
+function readNonNegativeFinite(value, fallback) {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(0, value);
 }
 
 function buildBackToFrontRanks(attributes, viewMatrix) {

@@ -12,9 +12,14 @@ export interface GpuTileCoverageBridge {
   readonly tileRefs: Uint32Array;
   readonly tileCoverageWeights: Float32Array;
   readonly tileRefShapeParams: Float32Array;
+  readonly maxRefsPerTile: number;
+  readonly retainedTileEntryCount: number;
 }
 
-export function buildGpuTileCoverageBridge(coverage: unknown): GpuTileCoverageBridge;
+export function buildGpuTileCoverageBridge(
+  coverage: unknown,
+  options?: { readonly maxRefsPerTile?: number },
+): GpuTileCoverageBridge;
 
 export function createGpuTileCoverageBridgeBuffers(device: GPUDevice, bridge: GpuTileCoverageBridge): {
   readonly projectedBoundsBuffer: GPUBuffer;

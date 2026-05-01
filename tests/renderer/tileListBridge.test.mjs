@@ -33,3 +33,61 @@ test("tile-list bridge packs stable headers, refs, coverage weights, and project
   assert.ok(Math.abs(bridge.tileCoverageWeights[0] - coverage.tileEntries[0].coverageWeight) < 1e-6);
   assert.deepEqual(Array.from(bridge.tileRefShapeParams), [4, 4, 7, 0]);
 });
+
+test("tile-list bridge caps each tile while retaining visually important low-coverage refs", () => {
+  const surfaceEntries = Array.from({ length: 36 }, (_, index) => ({
+    tileIndex: 0,
+    tileX: 0,
+    tileY: 0,
+    splatIndex: index,
+    originalId: 100 + index,
+    coverageWeight: 10,
+    retentionWeight: 0.35,
+  }));
+  const brightBehind = {
+    tileIndex: 0,
+    tileX: 0,
+    tileY: 0,
+    splatIndex: 36,
+    originalId: 900,
+    coverageWeight: 0.25,
+    retentionWeight: 1.05,
+  };
+
+  const bridge = buildGpuTileCoverageBridge({
+    viewportWidth: 64,
+    viewportHeight: 64,
+    tileSizePx: 64,
+    tileColumns: 1,
+    tileRows: 1,
+    sourceSplatCount: 37,
+    splats: Array.from({ length: 37 }, (_, index) => ({
+      splatIndex: index,
+      originalId: index === 36 ? 900 : 100 + index,
+      centerPx: [32, 32],
+      covariancePx: { xx: 16, xy: 0, yy: 16 },
+      tileBounds: { minTileX: 0, minTileY: 0, maxTileX: 0, maxTileY: 0 },
+    })),
+    tileEntries: [...surfaceEntries, brightBehind],
+    maxRefsPerTile: 32,
+  });
+
+  const retainedRefCount = bridge.tileHeaders[1];
+  const retainedSplatIds = [];
+  let brightRefIndex = -1;
+  for (let index = 0; index < retainedRefCount; index += 1) {
+    const splatIndex = bridge.tileRefs[index * 4];
+    retainedSplatIds.push(splatIndex);
+    if (splatIndex === 36) {
+      brightRefIndex = index;
+    }
+  }
+
+  assert.equal(retainedRefCount, 32);
+  assert.equal(bridge.maxRefsPerTile, 32);
+  assert.equal(bridge.retainedTileEntryCount, 32);
+  assert.ok(bridge.tileEntryCount <= 37);
+  assert.equal(retainedSplatIds.includes(36), true);
+  assert.notEqual(brightRefIndex, -1);
+  assert.equal(bridge.tileCoverageWeights[brightRefIndex], 0.25);
+});

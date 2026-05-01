@@ -11,4 +11,5 @@ export function buildTileLocalPrepassBridge(input: {
   readonly samplesPerAxis: number;
   readonly splatScale: number;
   readonly minRadiusPx: number;
+  readonly maxRefsPerTile?: number;
 }): GpuTileCoverageBridge;
