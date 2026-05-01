@@ -612,6 +612,7 @@ function createTileLocalSceneState(
     splatScale: REAL_SCANIVERSE_SPLAT_SCALE,
     minRadiusPx: REAL_SCANIVERSE_MIN_RADIUS_PX,
     maxTileEntries: TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES,
+    nearFadeEndNdc: REAL_SCANIVERSE_NEAR_FADE_END_NDC,
   };
   const bridge = buildTileLocalPrepassBridge(bridgeInput);
   const prepassSignature = captureTileLocalPrepassBridgeSignature(bridgeInput);
@@ -725,6 +726,7 @@ function ensureTileLocalSceneState(
     splatScale: REAL_SCANIVERSE_SPLAT_SCALE,
     minRadiusPx: REAL_SCANIVERSE_MIN_RADIUS_PX,
     maxTileEntries: TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES,
+    nearFadeEndNdc: REAL_SCANIVERSE_NEAR_FADE_END_NDC,
   };
   const viewportMatches = state.viewportWidth === viewportWidth && state.viewportHeight === viewportHeight;
   const bridgeStillFresh = !tileLocalPrepassBridgeSignatureChanged(state.prepassSignature, bridgeInput);

@@ -13,6 +13,7 @@ export function buildTileLocalPrepassBridge({
   minRadiusPx,
   maxRefsPerTile,
   maxTileEntries,
+  nearFadeEndNdc,
 }) {
   if (!viewMatrix || viewMatrix.length !== 16) {
     throw new Error("viewMatrix must contain 16 values");
@@ -32,6 +33,7 @@ export function buildTileLocalPrepassBridge({
       viewportHeight,
       splatScale,
       minRadiusPx,
+      nearFadeEndNdc,
     });
     if (!covariancePx) {
       continue;
@@ -71,6 +73,7 @@ export function captureTileLocalPrepassBridgeSignature({
   minRadiusPx,
   maxRefsPerTile,
   maxTileEntries,
+  nearFadeEndNdc,
 }) {
   return JSON.stringify({
     viewMatrix: Array.from(viewMatrix ?? []),
@@ -83,6 +86,7 @@ export function captureTileLocalPrepassBridgeSignature({
     minRadiusPx,
     maxRefsPerTile: maxRefsPerTile ?? null,
     maxTileEntries: maxTileEntries ?? null,
+    nearFadeEndNdc: nearFadeEndNdc ?? null,
   });
 }
 
@@ -166,6 +170,7 @@ function projectedSplatCovariancePx({
   viewportHeight,
   splatScale,
   minRadiusPx,
+  nearFadeEndNdc,
 }) {
   const positionBase = index * 3;
   const center = [
@@ -195,6 +200,9 @@ function projectedSplatCovariancePx({
     scaleVector(rotateAxis(rotation, [0, 1, 0]), scale[1]),
     scaleVector(rotateAxis(rotation, [0, 0, 1]), scale[2]),
   ];
+  if (nearPlaneSupportCrossesClip({ viewProj, center, centerClip, axes, nearFadeEndNdc })) {
+    return null;
+  }
   const axisScale = splatScale / 600;
   let xx = 0;
   let xy = 0;
@@ -216,6 +224,29 @@ function projectedSplatCovariancePx({
     return { xx: minVariance, xy: 0, yy: minVariance };
   }
   return { xx, xy, yy };
+}
+
+function nearPlaneSupportCrossesClip({ viewProj, center, centerClip, axes, nearFadeEndNdc }) {
+  if (!Number.isFinite(nearFadeEndNdc) || nearFadeEndNdc <= 0) {
+    return false;
+  }
+  const safeW = Math.max(centerClip[3], 0.0001);
+  const centerNdcDepth = centerClip[2] / safeW;
+  if (centerNdcDepth > nearFadeEndNdc) {
+    return false;
+  }
+  for (const axis of axes) {
+    const positiveClip = multiplyMat4Vec4(viewProj, [center[0] + axis[0], center[1] + axis[1], center[2] + axis[2], 1]);
+    const negativeClip = multiplyMat4Vec4(viewProj, [center[0] - axis[0], center[1] - axis[1], center[2] - axis[2], 1]);
+    if (!clipInside(positiveClip) || !clipInside(negativeClip)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function clipInside(clip) {
+  return Number.isFinite(clip[3]) && clip[3] > 0.0001 && clip[2] >= 0 && clip[2] <= clip[3];
 }
 
 function multiplyMat4Vec4(matrix, vector) {

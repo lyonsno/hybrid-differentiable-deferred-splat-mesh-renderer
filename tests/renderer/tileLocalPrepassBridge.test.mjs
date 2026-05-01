@@ -215,3 +215,35 @@ test("tile-local prepass bridge stops before pathological projected ref growth",
     /projected tile refs exceed budget/
   );
 });
+
+test("tile-local prepass bridge skips near-plane support crossings before tile ref growth", () => {
+  const attributes = {
+    count: 2,
+    positions: new Float32Array([
+      0, 0, 0.5,
+      0, 0, 0.04,
+    ]),
+    scales: new Float32Array([
+      Math.log(0.12), Math.log(0.12), Math.log(0.12),
+      Math.log(0.12), Math.log(0.12), Math.log(0.2),
+    ]),
+    originalIds: new Uint32Array([7, 99]),
+  };
+
+  const bridge = buildTileLocalPrepassBridge({
+    attributes,
+    viewMatrix: identityViewProj,
+    viewProj: identityViewProj,
+    viewportWidth: 128,
+    viewportHeight: 128,
+    tileSizePx: 16,
+    samplesPerAxis: 1,
+    splatScale: 80,
+    minRadiusPx: 1,
+    nearFadeEndNdc: 0.08,
+  });
+
+  assert.equal(bridge.retainedTileEntryCount > 0, true);
+  assert.equal(Array.from(bridge.tileRefs).includes(99), false);
+  assert.equal(Array.from(bridge.tileRefs).includes(7), true);
+});
