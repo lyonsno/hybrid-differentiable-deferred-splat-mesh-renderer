@@ -6,7 +6,7 @@ export function buildGpuTileCoverageBridge(coverage) {
   const tileHeaders = new Uint32Array(Math.max(0, tileCount * 4));
   const tileRefs = new Uint32Array(Math.max(0, tileEntryCount * 4));
   const tileCoverageWeights = new Float32Array(Math.max(0, tileEntryCount));
-  const tileRefShapeParams = new Float32Array(Math.max(0, tileEntryCount * 4));
+  const tileRefShapeParams = new Float32Array(Math.max(0, tileEntryCount * 8));
   const splatsByIndex = new Map();
 
   for (const splat of coverage.splats) {
@@ -67,18 +67,67 @@ export function buildGpuTileCoverageBridge(coverage) {
 }
 
 function writeTileRefShapeParams(target, refIndex, splat) {
-  const base = refIndex * 4;
+  const base = refIndex * 8;
   if (!splat) {
     target[base] = 0;
     target[base + 1] = 0;
     target[base + 2] = 1;
     target[base + 3] = 0;
+    target[base + 4] = 1;
+    target[base + 5] = 0;
+    target[base + 6] = 0;
+    target[base + 7] = 0;
     return;
   }
+  const inverseConic = invertCovariancePx(splat.covariancePx);
   target[base] = splat.centerPx[0];
   target[base + 1] = splat.centerPx[1];
-  target[base + 2] = Math.max(1, Math.sqrt(Math.max(splat.covariancePx.xx, splat.covariancePx.yy, 1)));
-  target[base + 3] = 0;
+  target[base + 2] = inverseConic.xx;
+  target[base + 3] = inverseConic.xy;
+  target[base + 4] = inverseConic.yy;
+  target[base + 5] = 0;
+  target[base + 6] = 0;
+  target[base + 7] = 0;
+}
+
+export function writeGpuTileCoverageAlphaParams(target, bridge, effectiveOpacities, maxTileRefs = bridge.tileEntryCount) {
+  const requiredLength = Math.max(1, maxTileRefs) * 8;
+  if (target.length < requiredLength) {
+    throw new Error("GPU tile coverage alpha-param target is too small for conic packing");
+  }
+  for (let refIndex = 0; refIndex < maxTileRefs; refIndex++) {
+    const refBase = refIndex * 4;
+    const splatId = bridge.tileRefs?.[refBase] ?? bridge.tileRefSplatIds?.[refIndex] ?? 0;
+    const shapeBase = refIndex * 8;
+    const primaryBase = refIndex * 4;
+    const conicBase = (maxTileRefs + refIndex) * 4;
+    target[primaryBase] = effectiveOpacities[splatId] ?? 0;
+    target[primaryBase + 1] = bridge.tileRefShapeParams[shapeBase] ?? 0;
+    target[primaryBase + 2] = bridge.tileRefShapeParams[shapeBase + 1] ?? 0;
+    target[primaryBase + 3] = 0;
+    target[conicBase] = bridge.tileRefShapeParams[shapeBase + 2] ?? 1;
+    target[conicBase + 1] = bridge.tileRefShapeParams[shapeBase + 3] ?? 0;
+    target[conicBase + 2] = bridge.tileRefShapeParams[shapeBase + 4] ?? 1;
+    target[conicBase + 3] = 0;
+  }
+}
+
+function invertCovariancePx(covariancePx) {
+  const xx = covariancePx?.xx;
+  const xy = covariancePx?.xy ?? 0;
+  const yy = covariancePx?.yy;
+  if (![xx, xy, yy].every(Number.isFinite)) {
+    throw new TypeError("splat covariancePx must contain finite xx, xy, and yy components");
+  }
+  const determinant = xx * yy - xy * xy;
+  if (xx <= 0 || yy <= 0 || determinant <= 0) {
+    throw new RangeError("splat covariancePx must be positive definite for inverse-conic packing");
+  }
+  return {
+    xx: yy / determinant,
+    xy: -xy / determinant,
+    yy: xx / determinant,
+  };
 }
 
 function resolveSplatCount(coverage) {

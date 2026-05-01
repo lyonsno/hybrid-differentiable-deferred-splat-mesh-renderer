@@ -25,6 +25,7 @@ import {
 } from "./gpuTileCoverageRenderer.js";
 import {
   createGpuTileCoverageBridgeBuffers,
+  writeGpuTileCoverageAlphaParams,
 } from "./gpuTileCoverageBridge.js";
 import {
   createGpuSortPrototype,
@@ -549,17 +550,14 @@ function createTileLocalSceneState(
     "tile_local_frame_uniforms"
   );
   const frameUniformData = new Float32Array(GPU_TILE_COVERAGE_FRAME_UNIFORM_BYTES / Float32Array.BYTES_PER_ELEMENT);
-  const alphaParamData = new Float32Array(Math.max(plan.maxTileRefs * 4, 4));
+  const alphaParamData = new Float32Array(Math.max(plan.alphaParamBytes / Float32Array.BYTES_PER_ELEMENT, 8));
   const orderingKeyData = buildTileLocalOrderingRanks(attributes, viewMatrix);
   const tileRefSplatIds = new Uint32Array(plan.maxTileRefs);
   for (let refIndex = 0; refIndex < plan.maxTileRefs; refIndex++) {
     const splatId = bridge.tileRefs[refIndex * 4] ?? 0;
     tileRefSplatIds[refIndex] = splatId;
-    alphaParamData[refIndex * 4] = effectiveOpacities[splatId] ?? 0;
-    alphaParamData[refIndex * 4 + 1] = bridge.tileRefShapeParams[refIndex * 4] ?? 0;
-    alphaParamData[refIndex * 4 + 2] = bridge.tileRefShapeParams[refIndex * 4 + 1] ?? 0;
-    alphaParamData[refIndex * 4 + 3] = bridge.tileRefShapeParams[refIndex * 4 + 2] ?? 1;
   }
+  writeGpuTileCoverageAlphaParams(alphaParamData, bridge, effectiveOpacities, plan.maxTileRefs);
 
   const bridgeBuffers = createGpuTileCoverageBridgeBuffers(device, bridge);
   const alphaParamBuffer = createStorageBuffer(device, alphaParamData.buffer, "tile_local_alpha_params");
@@ -647,14 +645,8 @@ function syncTileLocalAlphaParams(
   state: TileLocalSceneState,
   effectiveOpacities: Float32Array
 ): void {
-  const alphaParamData = new Float32Array(Math.max(state.plan.maxTileRefs * 4, 4));
-  for (let refIndex = 0; refIndex < state.plan.maxTileRefs; refIndex++) {
-    const splatId = state.tileRefSplatIds[refIndex] ?? 0;
-    alphaParamData[refIndex * 4] = effectiveOpacities[splatId] ?? 0;
-    alphaParamData[refIndex * 4 + 1] = state.tileRefShapeParams[refIndex * 4] ?? 0;
-    alphaParamData[refIndex * 4 + 2] = state.tileRefShapeParams[refIndex * 4 + 1] ?? 0;
-    alphaParamData[refIndex * 4 + 3] = state.tileRefShapeParams[refIndex * 4 + 2] ?? 1;
-  }
+  const alphaParamData = new Float32Array(Math.max(state.plan.alphaParamBytes / Float32Array.BYTES_PER_ELEMENT, 8));
+  writeGpuTileCoverageAlphaParams(alphaParamData, state, effectiveOpacities, state.plan.maxTileRefs);
   state.alphaParamData.set(alphaParamData);
   queue.writeBuffer(state.alphaParamBuffer, 0, alphaParamData);
 }
