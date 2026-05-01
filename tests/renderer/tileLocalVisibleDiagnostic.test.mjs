@@ -30,7 +30,10 @@ test("tile-local visible shader composites ordered tile refs with coverage, alph
   assert.match(shader, /conicParam\.x/);
   assert.match(shader, /conicParam\.y/);
   assert.match(shader, /conicParam\.z/);
-  assert.match(shader, /1\.0\s*-\s*pow\(1\.0\s*-\s*sourceOpacity,\s*coverageWeight\)/);
+  assert.match(shader, /let tileCoverageWeight = max\(tileCoverageWeights\[selectedRefIndex\], 0\.0\)/);
+  assert.match(shader, /if\s*\(tileCoverageWeight <= 0\.0\)\s*\{\s*continue;\s*\}/);
+  assert.match(shader, /let pixelCoverageWeight = conic_pixel_weight\(alphaParam, conicParam, pixelCenter\)/);
+  assert.match(shader, /1\.0\s*-\s*pow\(1\.0\s*-\s*sourceOpacity,\s*pixelCoverageWeight\)/);
   assert.match(shader, /orderingKeys\[tileRef\.x\]/);
   assert.match(shader, /conic_pixel_weight/);
   assert.match(shader, /mahalanobis2/);
