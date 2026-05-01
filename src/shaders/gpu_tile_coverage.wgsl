@@ -112,9 +112,9 @@ fn conic_pixel_weight(alphaParam: vec4f, conicParam: vec4f, pixelCenter: vec2f) 
     let alphaParamIndex = min(tileRef.w, frame.maxTileRefs - 1u);
     let alphaParam = alphaParams[alphaParamIndex];
     let conicParam = alphaParams[alphaParamIndex + frame.maxTileRefs];
-    let coverageWeight = max(tileCoverageWeights[selectedRefIndex], 0.0) * conic_pixel_weight(alphaParam, conicParam, pixelCenter);
+    let pixelCoverageWeight = conic_pixel_weight(alphaParam, conicParam, pixelCenter);
     let sourceOpacity = clamp(alphaParam.x, 0.0, 1.0);
-    let coverageAlpha = clamp(1.0 - pow(1.0 - sourceOpacity, coverageWeight), 0.0, 1.0);
+    let coverageAlpha = clamp(1.0 - pow(1.0 - sourceOpacity, pixelCoverageWeight), 0.0, 1.0);
     let colorBase = tileRef.x * 3u;
     let sourceColor = vec3f(colors[colorBase], colors[colorBase + 1u], colors[colorBase + 2u]);
     composedColor = sourceColor * coverageAlpha + composedColor * (1.0 - coverageAlpha);
