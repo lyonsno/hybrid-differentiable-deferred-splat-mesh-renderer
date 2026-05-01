@@ -112,6 +112,10 @@ fn conic_pixel_weight(alphaParam: vec4f, conicParam: vec4f, pixelCenter: vec2f) 
     let alphaParamIndex = min(tileRef.w, frame.maxTileRefs - 1u);
     let alphaParam = alphaParams[alphaParamIndex];
     let conicParam = alphaParams[alphaParamIndex + frame.maxTileRefs];
+    let tileCoverageWeight = max(tileCoverageWeights[selectedRefIndex], 0.0);
+    if (tileCoverageWeight <= 0.0) {
+      continue;
+    }
     let pixelCoverageWeight = conic_pixel_weight(alphaParam, conicParam, pixelCenter);
     let sourceOpacity = clamp(alphaParam.x, 0.0, 1.0);
     let coverageAlpha = clamp(1.0 - pow(1.0 - sourceOpacity, pixelCoverageWeight), 0.0, 1.0);

@@ -29,6 +29,8 @@ test("tile-local visible shader composites ordered tile refs with sample-local c
   assert.match(shader, /conicParam\.x/);
   assert.match(shader, /conicParam\.y/);
   assert.match(shader, /conicParam\.z/);
+  assert.match(shader, /let tileCoverageWeight = max\(tileCoverageWeights\[selectedRefIndex\], 0\.0\)/);
+  assert.match(shader, /if\s*\(tileCoverageWeight <= 0\.0\)\s*\{\s*continue;\s*\}/);
   assert.match(shader, /let pixelCoverageWeight = conic_pixel_weight\(alphaParam, conicParam, pixelCenter\)/);
   assert.match(shader, /1\.0\s*-\s*pow\(1\.0\s*-\s*sourceOpacity,\s*pixelCoverageWeight\)/);
   assert.match(shader, /orderingKeys\[tileRef\.x\]/);
