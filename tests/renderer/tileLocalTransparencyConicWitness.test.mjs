@@ -81,6 +81,9 @@ test("docs state the transparency and conic witness without promoting a renderer
 
   assert.match(docs, /scalar-radius-overcoverage/);
   assert.match(docs, /candidate-cap-drops-required-role/);
-  assert.match(docs, /does not implement/);
+  assert.match(docs, /at most `32` visible refs/);
+  assert.match(docs, /coverageWeight \* opacity \* luminance/);
+  assert.match(docs, /does not redefine alpha-transfer math/);
+  assert.match(docs, /do not implement the final conic shader/);
   assert.match(docs, /transparency is fixed/i);
 });

@@ -1,7 +1,12 @@
-export function buildGpuTileCoverageBridge(coverage) {
+const DEFAULT_MAX_REFS_PER_TILE = 32;
+
+export function buildGpuTileCoverageBridge(coverage, options = {}) {
   const tileCount = coverage.tileColumns * coverage.tileRows;
   const splatCount = resolveSplatCount(coverage);
-  const tileEntryCount = coverage.tileEntries.length;
+  const maxRefsPerTile = resolveMaxRefsPerTile(options.maxRefsPerTile ?? coverage.maxRefsPerTile);
+  const retainedTileEntries = retainTileEntries(coverage.tileEntries, maxRefsPerTile);
+  const retainedTileEntryCount = retainedTileEntries.length;
+  const tileEntryCount = Math.max(retainedTileEntryCount, splatCount);
   const projectedBounds = new Uint32Array(Math.max(0, splatCount * 4));
   const tileHeaders = new Uint32Array(Math.max(0, tileCount * 4));
   const tileRefs = new Uint32Array(Math.max(0, tileEntryCount * 4));
@@ -25,8 +30,8 @@ export function buildGpuTileCoverageBridge(coverage) {
   let firstRefIndex = 0;
   let refCount = 0;
 
-  for (let refIndex = 0; refIndex < tileEntryCount; refIndex++) {
-    const entry = coverage.tileEntries[refIndex];
+  for (let refIndex = 0; refIndex < retainedTileEntryCount; refIndex++) {
+    const entry = retainedTileEntries[refIndex];
     if (entry.tileIndex !== currentTileIndex) {
       if (currentTileIndex >= 0) {
         writeTileHeader(tileHeaders, currentTileIndex, firstRefIndex, refCount);
@@ -63,7 +68,112 @@ export function buildGpuTileCoverageBridge(coverage) {
     tileRefs,
     tileCoverageWeights,
     tileRefShapeParams,
+    maxRefsPerTile,
+    retainedTileEntryCount,
   };
+}
+
+function retainTileEntries(tileEntries, maxRefsPerTile) {
+  const entries = [...tileEntries].sort(compareTileEntryOrder);
+  const retained = [];
+  let cursor = 0;
+  while (cursor < entries.length) {
+    const tileIndex = entries[cursor].tileIndex;
+    let end = cursor + 1;
+    while (end < entries.length && entries[end].tileIndex === tileIndex) {
+      end += 1;
+    }
+    retained.push(...selectTileEntries(entries.slice(cursor, end), maxRefsPerTile));
+    cursor = end;
+  }
+  return retained.sort(compareTileEntryOrder);
+}
+
+function selectTileEntries(tileEntries, maxRefsPerTile) {
+  if (tileEntries.length <= maxRefsPerTile) {
+    return tileEntries;
+  }
+  const selected = tileEntries.slice(0, maxRefsPerTile);
+  const reserveCount = Math.min(4, Math.max(1, Math.floor(maxRefsPerTile / 8)));
+  const retentionCandidates = [...tileEntries].sort(compareRetentionPriority).slice(0, reserveCount);
+  const reservedKeys = new Set(retentionCandidates.map(tileEntryKey));
+  const selectedKeys = new Set(selected.map(tileEntryKey));
+
+  for (const candidate of retentionCandidates) {
+    const candidateKey = tileEntryKey(candidate);
+    if (selectedKeys.has(candidateKey)) {
+      continue;
+    }
+    const replacementIndex = findReplacementIndex(selected, reservedKeys);
+    const removedKey = tileEntryKey(selected[replacementIndex]);
+    selected[replacementIndex] = candidate;
+    selectedKeys.delete(removedKey);
+    selectedKeys.add(candidateKey);
+  }
+
+  return selected.sort(compareTileEntryOrder);
+}
+
+function findReplacementIndex(selected, reservedKeys) {
+  let replacementIndex = -1;
+  for (let index = 0; index < selected.length; index += 1) {
+    if (reservedKeys.has(tileEntryKey(selected[index]))) {
+      continue;
+    }
+    if (
+      replacementIndex === -1 ||
+      compareRetentionPriority(selected[index], selected[replacementIndex]) > 0
+    ) {
+      replacementIndex = index;
+    }
+  }
+  return replacementIndex === -1 ? selected.length - 1 : replacementIndex;
+}
+
+function compareTileEntryOrder(left, right) {
+  return (
+    left.tileIndex - right.tileIndex ||
+    right.coverageWeight - left.coverageWeight ||
+    compareOptionalInteger(left.viewRank, right.viewRank) ||
+    left.splatIndex - right.splatIndex ||
+    left.originalId - right.originalId
+  );
+}
+
+function compareRetentionPriority(left, right) {
+  const leftWeight = readRetentionWeight(left);
+  const rightWeight = readRetentionWeight(right);
+  return (
+    rightWeight - leftWeight ||
+    right.coverageWeight - left.coverageWeight ||
+    compareOptionalInteger(left.viewRank, right.viewRank) ||
+    left.splatIndex - right.splatIndex ||
+    left.originalId - right.originalId
+  );
+}
+
+function compareOptionalInteger(left, right) {
+  const leftRank = Number.isInteger(left) ? left : 0xffffffff;
+  const rightRank = Number.isInteger(right) ? right : 0xffffffff;
+  return leftRank - rightRank;
+}
+
+function readRetentionWeight(entry) {
+  return Number.isFinite(entry.retentionWeight) && entry.retentionWeight >= 0
+    ? entry.retentionWeight
+    : entry.coverageWeight;
+}
+
+function tileEntryKey(entry) {
+  return `${entry.tileIndex}:${entry.splatIndex}:${entry.originalId}`;
+}
+
+function resolveMaxRefsPerTile(value) {
+  const maxRefsPerTile = value ?? DEFAULT_MAX_REFS_PER_TILE;
+  if (!Number.isInteger(maxRefsPerTile) || maxRefsPerTile <= 0) {
+    throw new Error("maxRefsPerTile must be a positive integer");
+  }
+  return maxRefsPerTile;
 }
 
 function writeTileRefShapeParams(target, refIndex, splat) {
