@@ -11,6 +11,10 @@ import {
   extractTileLocalPageMetrics,
   isVisualSmokeCaptureReady,
 } from "./visual-smoke/tile-local-comparison.mjs";
+import {
+  buildTileLocalDiagnosticPlan,
+  classifyTileLocalDiagnostics,
+} from "./visual-smoke/tile-local-diagnostics.mjs";
 import { classifyWitnessCapture } from "./visual-smoke/witness-diagnostics.mjs";
 
 async function main() {
@@ -53,6 +57,25 @@ async function main() {
       printTileLocalComparisonSummary(comparison);
       if (!comparison.classification.closeable) {
         process.exitCode = 3;
+      }
+      return;
+    }
+
+    if (options.tileLocalDiagnostics) {
+      const diagnostics = await runTileLocalDiagnostics({
+        browser,
+        options,
+        baseUrl: url,
+        reportDir,
+        analysisPath,
+        reportPath,
+        generatedAt,
+      });
+      await writeFile(analysisPath, `${JSON.stringify(diagnostics, null, 2)}\n`);
+      await writeFile(reportPath, renderTileLocalDiagnosticsReport(diagnostics));
+      printTileLocalDiagnosticsSummary(diagnostics);
+      if (!diagnostics.classification.closeable) {
+        process.exitCode = 4;
       }
       return;
     }
@@ -173,6 +196,26 @@ async function runTileLocalComparison({ browser, options, baseUrl, reportDir, an
   };
 }
 
+async function runTileLocalDiagnostics({ browser, options, baseUrl, reportDir, analysisPath, reportPath, generatedAt }) {
+  const plan = buildTileLocalDiagnosticPlan(baseUrl);
+  const captures = [];
+  for (const capture of plan) {
+    captures.push(await captureVisualSmoke({ browser, options, capture, reportDir }));
+  }
+  const classification = classifyTileLocalDiagnostics({ captures });
+
+  return {
+    generatedAt,
+    baseUrl,
+    analysisPath: path.relative(options.appRoot, analysisPath),
+    reportPath: path.relative(options.appRoot, reportPath),
+    options: publicOptions(options),
+    plan,
+    captures,
+    classification,
+  };
+}
+
 async function captureVisualSmoke({ browser, options, capture, reportDir }) {
   const consoleMessages = [];
   const pageErrors = [];
@@ -260,6 +303,11 @@ async function collectPageEvidence(page) {
     const witness = globalThis.__MESH_SPLAT_WITNESS__ && typeof globalThis.__MESH_SPLAT_WITNESS__ === "object"
       ? globalThis.__MESH_SPLAT_WITNESS__
       : undefined;
+    const tileLocalDiagnostics =
+      globalThis.__MESH_SPLAT_TILE_LOCAL_DIAGNOSTICS__ &&
+      typeof globalThis.__MESH_SPLAT_TILE_LOCAL_DIAGNOSTICS__ === "object"
+        ? globalThis.__MESH_SPLAT_TILE_LOCAL_DIAGNOSTICS__
+        : undefined;
     const datasets = [document.documentElement.dataset, document.body.dataset, canvas?.dataset].filter(Boolean);
     const firstDatasetValue = (...keys) => {
       for (const dataset of datasets) {
@@ -277,6 +325,13 @@ async function collectPageEvidence(page) {
       assetPath: smoke.assetPath ?? firstDatasetValue("assetPath", "smokeAssetPath"),
       sortBackend: smoke.sortBackend ?? firstDatasetValue("sortBackend", "smokeSortBackend"),
       ready: smoke.ready ?? firstDatasetValue("smokeReady", "ready"),
+      tileLocalDiagnostics,
+      tileLocal: {
+        ...(smoke.tileLocal && typeof smoke.tileLocal === "object" ? smoke.tileLocal : {}),
+        diagnostics:
+          tileLocalDiagnostics ??
+          (smoke.tileLocal && typeof smoke.tileLocal === "object" ? smoke.tileLocal.diagnostics : undefined),
+      },
       witness,
       statsText: stats?.textContent ?? "",
       title: document.title,
@@ -414,6 +469,51 @@ ${classification.summary.text}
 `;
 }
 
+function renderTileLocalDiagnosticsReport(result) {
+  const classification = result.classification;
+  const metrics = classification.metrics;
+  return `# Tile-Local Diagnostic Heatmap Report
+
+- Status: ${classification.summary.status}
+- Generated: ${result.generatedAt}
+- Base URL: ${result.baseUrl}
+- Analysis JSON: \`${path.relative(path.dirname(result.reportPath), result.analysisPath)}\`
+
+## Captures
+
+${result.captures
+  .map(
+    (capture) => `### ${capture.title}
+
+- URL: ${capture.url}
+- Screenshot: \`${path.relative(path.dirname(result.reportPath), capture.screenshotPath)}\`
+- Renderer label: ${capture.pageEvidence.rendererLabel || "not reported"}
+- Tile refs: ${capture.pageEvidence.tileLocal?.refs || 0}
+- Debug mode: ${capture.pageEvidence.tileLocal?.diagnostics?.debugMode || "not reported"}
+- Nonblank: ${capture.classification.nonblank}
+- Changed pixels: ${capture.imageAnalysis.changedPixels} / ${capture.imageAnalysis.totalPixels} (${formatPercent(capture.imageAnalysis.changedPixelRatio)})
+`
+  )
+  .join("\n")}
+
+## Compact Diagnostics
+
+- Required modes present: ${metrics.requiredModesPresent}
+- Total tile refs: ${metrics.totalTileRefs}
+- Max tile refs per tile: ${metrics.maxTileRefsPerTile}
+- Estimated max accumulated alpha: ${metrics.estimatedMaxAccumulatedAlpha}
+- Estimated min transmittance: ${metrics.estimatedMinTransmittance}
+
+## Findings
+
+${classification.findings.length === 0 ? "- None" : classification.findings.map((finding) => `- ${finding.kind}: ${finding.summary}`).join("\n")}
+
+## Summary
+
+${classification.summary.text}
+`;
+}
+
 function printSummary(result) {
   console.log(result.classification.summary);
   console.log(`report: ${result.reportPath}`);
@@ -425,6 +525,14 @@ function formatMetricRatio(value) {
 }
 
 function printTileLocalComparisonSummary(result) {
+  console.log(result.classification.summary.text);
+  console.log(`report: ${result.reportPath}`);
+  for (const capture of result.captures) {
+    console.log(`${capture.id}: ${capture.screenshotPath}`);
+  }
+}
+
+function printTileLocalDiagnosticsSummary(result) {
   console.log(result.classification.summary.text);
   console.log(`report: ${result.reportPath}`);
   for (const capture of result.captures) {
@@ -449,6 +557,7 @@ function parseArgs(args) {
     settleMs: 1000,
     imageThresholds: {},
     tileLocalComparison: false,
+    tileLocalDiagnostics: false,
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -516,6 +625,14 @@ function parseArgs(args) {
           options.settleMs = 5000;
         }
         break;
+      case "--tile-local-diagnostics":
+      case "--tile-local-debug-captures":
+        options.tileLocalDiagnostics = true;
+        options.requireRealSplat = true;
+        if (options.settleMs === 1000) {
+          options.settleMs = 5000;
+        }
+        break;
       case "--help":
       case "-h":
         printHelp();
@@ -546,6 +663,7 @@ function publicOptions(options) {
     settleMs: options.settleMs,
     imageThresholds: options.imageThresholds,
     tileLocalComparison: options.tileLocalComparison,
+    tileLocalDiagnostics: options.tileLocalDiagnostics,
   };
 }
 
@@ -589,6 +707,7 @@ Options:
   --viewport <WIDTHxHEIGHT>       Browser viewport. Defaults to 1280x720.
   --settle-ms <ms>                Wait after canvas sizing before screenshot. Defaults to 1000, or 5000 for tile-local comparison.
   --tile-local-comparison         Capture plate, renderer=tile-local, and renderer=tile-local-visible in one report.
+  --tile-local-diagnostics        Capture tile-local-visible diagnostic heatmaps and compact evidence in one report.
 `);
 }
 
