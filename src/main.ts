@@ -34,6 +34,11 @@ import {
   writeViewDepthSortInput,
   type GpuSortPrototype,
 } from "./gpuSortPrototype.js";
+import {
+  createGpuOrderingRanker,
+  encodeGpuOrderingRanks,
+  type GpuOrderingRanker,
+} from "./gpuOrderingRanks.js";
 import { loadDroppedSplatFile } from "./localPly.js";
 import {
   createRenderDemandState,
@@ -68,7 +73,7 @@ import {
   SPLAT_PLATE_FRAME_UNIFORM_BYTES,
   writeSplatPlateFrameUniforms,
 } from "./splatPlateRenderer.js";
-import { captureViewDepthKey, sortSplatIdsBackToFront, viewDepthKeyChanged } from "./splatSort.js";
+import { captureViewDepthKey, viewDepthKeyChanged } from "./splatSort.js";
 import {
   fetchFirstSmokeSplatPayload,
   uploadSplatAttributeBuffers,
@@ -85,6 +90,7 @@ import { createTileLocalTexturePresenter } from "./tileLocalTexturePresenter.js"
 const statsEl = document.getElementById("stats")!;
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 const SORT_BACKEND = "gpu-bitonic-cpu-depth-keys";
+const TILE_LOCAL_ORDERING_BACKEND = "gpu-sorted-index-rank-inversion";
 const GPU_SORT_SETTLE_MS = 160;
 const ALPHA_DENSITY_SETTLE_MS = 160;
 const ALPHA_DENSITY_MODE = selectedAlphaDensityMode();
@@ -129,6 +135,8 @@ interface TileLocalSceneState {
   tileCoverageWeightData: Float32Array;
   orderingKeyBuffer: GPUBuffer;
   orderingKeyData: Uint32Array;
+  orderingRanker: GpuOrderingRanker;
+  orderingRanksNeedDispatch: boolean;
   alphaParamBuffer: GPUBuffer;
   alphaParamData: Float32Array;
   tileRefShapeParams: Float32Array;
@@ -399,11 +407,12 @@ async function main() {
     const gpuSortRefreshed = shouldRefreshGpuSort(scene.sortState, view, now);
     if (gpuSortRefreshed) {
       writeViewDepthSortInput(gpu.device.queue, scene.gpuSort, scene.attributes.positions, view);
+      encodeGpuSortPrototype(encoder, scene.gpuSort);
       if (scene.tileLocalState) {
-        syncTileLocalOrderingKeys(gpu.device.queue, scene.tileLocalState, scene.attributes, view);
+        encodeGpuOrderingRanks(encoder, scene.tileLocalState.orderingRanker);
+        scene.tileLocalState.orderingRanksNeedDispatch = false;
         scene.tileLocalState.needsDispatch = true;
       }
-      encodeGpuSortPrototype(encoder, scene.gpuSort);
     }
     const pendingGpuSort = gpuSortRefreshPending(scene.sortState, view);
     const pendingAlphaDensity = scene.alphaDensityState.refreshState.needsRefresh;
@@ -427,6 +436,10 @@ async function main() {
         );
         scene.tileLocalState = tileLocalState;
         scene.tileLocalLastSkipReason = null;
+        if (tileLocalState.orderingRanksNeedDispatch) {
+          encodeGpuOrderingRanks(encoder, tileLocalState.orderingRanker);
+          tileLocalState.orderingRanksNeedDispatch = false;
+        }
         writeGpuTileCoverageFrameUniforms(
           tileLocalState.frameUniformData,
           viewProj,
@@ -511,6 +524,7 @@ async function main() {
     let statsText = `${width}×${height} | ${displayFps} fps | ${scene.count.toLocaleString()} real Scaniverse splats | renderer: ${rendererLabel} | sort: ${SORT_BACKEND} | alpha: ${alphaSummary.accountingMode} density ${alphaSummary.compensatedSplatCount.toLocaleString()} splats/${alphaSummary.hotTileCount} tiles`;
     if (scene.tileLocalState) {
       statsText += ` | tile-local: ${scene.tileLocalState.plan.tileColumns}x${scene.tileLocalState.plan.tileRows} tiles/${scene.tileLocalState.tileEntryCount} refs`;
+      statsText += ` | tile-order: ${TILE_LOCAL_ORDERING_BACKEND}`;
       if (scene.tileLocalState.debugMode !== "final-color") {
         statsText += ` | tile-debug: ${scene.tileLocalState.debugMode}`;
       }
@@ -631,7 +645,8 @@ function createTileLocalSceneState(
   );
   const frameUniformData = new Float32Array(GPU_TILE_COVERAGE_FRAME_UNIFORM_BYTES / Float32Array.BYTES_PER_ELEMENT);
   const alphaParamData = new Float32Array(Math.max(plan.alphaParamBytes / Float32Array.BYTES_PER_ELEMENT, 8));
-  const orderingKeyData = buildTileLocalOrderingRanks(attributes, viewMatrix);
+  const orderingKeyData = new Uint32Array(Math.max(plan.orderingKeyBytes / Uint32Array.BYTES_PER_ELEMENT, 4));
+  orderingKeyData.fill(0xffffffff);
   const tileRefSplatIds = new Uint32Array(plan.maxTileRefs);
   for (let refIndex = 0; refIndex < plan.maxTileRefs; refIndex++) {
     const splatId = bridge.tileRefs[refIndex * 4] ?? 0;
@@ -644,6 +659,16 @@ function createTileLocalSceneState(
   const orderingKeyBuffer = createStorageBuffer(
     device,
     orderingKeyData.buffer as ArrayBuffer,
+    "tile_local_ordering_ranks"
+  );
+  const orderingRanker = createGpuOrderingRanker(
+    device,
+    {
+      splatCount: attributes.count,
+      sortedIndexCount: Math.max(attributes.count, 1),
+    },
+    sortedIndexBuffer,
+    orderingKeyBuffer,
     "tile_local_ordering_ranks"
   );
   const outputTexture = createTexture2D(
@@ -685,6 +710,8 @@ function createTileLocalSceneState(
     tileCoverageWeightData: bridge.tileCoverageWeights,
     orderingKeyBuffer,
     orderingKeyData,
+    orderingRanker,
+    orderingRanksNeedDispatch: true,
     alphaParamBuffer,
     alphaParamData,
     tileRefShapeParams: bridge.tileRefShapeParams,
@@ -760,32 +787,14 @@ function syncTileLocalAlphaParams(
   refreshTileLocalDiagnostics(state);
 }
 
-function syncTileLocalOrderingKeys(
-  queue: GPUQueue,
-  state: TileLocalSceneState,
-  attributes: SplatAttributes,
-  viewMatrix: Float32Array
-): void {
-  state.orderingKeyData.set(buildTileLocalOrderingRanks(attributes, viewMatrix));
-  queue.writeBuffer(state.orderingKeyBuffer, 0, state.orderingKeyData);
-}
-
-function buildTileLocalOrderingRanks(attributes: SplatAttributes, viewMatrix: Float32Array): Uint32Array {
-  const sortedIds = sortSplatIdsBackToFront(attributes.positions, viewMatrix);
-  const ranks = new Uint32Array(Math.max(attributes.count, 4));
-  ranks.fill(0xffffffff);
-  for (let rank = 0; rank < sortedIds.length; rank++) {
-    ranks[sortedIds[rank]] = rank;
-  }
-  return ranks;
-}
-
 function destroyTileLocalSceneState(state: TileLocalSceneState): void {
   state.frameUniformBuffer.destroy();
   state.projectedBoundsBuffer.destroy();
   state.tileHeaderBuffer.destroy();
   state.tileRefBuffer.destroy();
   state.tileCoverageWeightBuffer.destroy();
+  state.orderingKeyBuffer.destroy();
+  state.orderingRanker.paramsBuffer.destroy();
   state.alphaParamBuffer.destroy();
   state.outputTexture.destroy();
 }
@@ -918,6 +927,7 @@ function exposeTileLocalRuntimeEvidence(
           allocatedRefs: tileLocalState.tileEntryCount,
           tileColumns: tileLocalState.plan.tileColumns,
           tileRows: tileLocalState.plan.tileRows,
+          orderingBackend: TILE_LOCAL_ORDERING_BACKEND,
           debugMode: tileLocalState.debugMode,
           diagnostics,
         }

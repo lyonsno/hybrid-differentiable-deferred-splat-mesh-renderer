@@ -11,6 +11,10 @@ test("main exposes a visible tile-local Gaussian compositor without replacing th
   assert.match(source, /dispatchComposite/);
   assert.doesNotMatch(source, /dispatchBridgeDiagnosticComposite/);
   assert.match(source, /tileLocalPresenter\.draw/);
+  assert.match(source, /gpu-sorted-index-rank-inversion/);
+  assert.match(source, /orderingBackend:\s*TILE_LOCAL_ORDERING_BACKEND/);
+  assert.doesNotMatch(source, /buildTileLocalOrderingRanks/);
+  assert.doesNotMatch(source, /syncTileLocalOrderingKeys/);
   assert.match(source, /params\.get\("renderer"\)\s*===\s*"tile-local-visible"/);
   assert.match(source, /params\.get\("renderer"\)\s*===\s*"tile-local"/);
 });
