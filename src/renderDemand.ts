@@ -10,6 +10,13 @@ export interface RenderDemandSignals {
   readonly pendingTimings?: boolean;
 }
 
+export interface TileLocalCompositorDispatchSignals {
+  readonly needsDispatch: boolean;
+  readonly activeInput: boolean;
+  readonly pendingGpuSort: boolean;
+  readonly pendingAlphaDensity: boolean;
+}
+
 export function createRenderDemandState(): RenderDemandState {
   return { framePending: false };
 }
@@ -33,5 +40,14 @@ export function shouldContinueRendering(signals: RenderDemandSignals): boolean {
     signals.pendingAlphaDensity ||
     signals.pendingTileLocalCompositor === true ||
     signals.pendingTimings === true
+  );
+}
+
+export function shouldDispatchTileLocalCompositor(signals: TileLocalCompositorDispatchSignals): boolean {
+  return (
+    signals.needsDispatch &&
+    !signals.activeInput &&
+    !signals.pendingGpuSort &&
+    !signals.pendingAlphaDensity
   );
 }

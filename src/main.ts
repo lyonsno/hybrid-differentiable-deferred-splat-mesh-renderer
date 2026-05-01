@@ -39,6 +39,7 @@ import {
   createRenderDemandState,
   markRenderFrameFinished,
   requestRenderFrame,
+  shouldDispatchTileLocalCompositor,
   shouldContinueRendering,
 } from "./renderDemand.js";
 import { createTimestamps, resolveTimestamps, readTimestamps, TimestampHelper } from "./timestamps.js";
@@ -323,6 +324,7 @@ async function main() {
 
     updateCamera(cam, dt);
 
+    const activeInput = cameraHasActiveInput(cam);
     const { width, height } = resizeCanvas(gpu);
     const aspect = width / height;
 
@@ -387,8 +389,15 @@ async function main() {
       }
       encodeGpuSortPrototype(encoder, scene.gpuSort);
     }
+    const pendingGpuSort = gpuSortRefreshPending(scene.sortState, view);
+    const pendingAlphaDensity = scene.alphaDensityState.refreshState.needsRefresh;
 
-    if (scene.tileLocalState) {
+    if (scene.tileLocalState && shouldDispatchTileLocalCompositor({
+      needsDispatch: scene.tileLocalState.needsDispatch,
+      activeInput,
+      pendingGpuSort,
+      pendingAlphaDensity,
+    })) {
       const tileLocalState = ensureTileLocalSceneState(
         gpu.device,
         scene,
@@ -397,7 +406,7 @@ async function main() {
         viewProj,
         width,
         height,
-        gpuSortRefreshed
+        true
       );
       scene.tileLocalState = tileLocalState;
       writeGpuTileCoverageFrameUniforms(
@@ -490,10 +499,15 @@ async function main() {
     exposeTileLocalRuntimeEvidence(rendererLabel, displayFps, scene.tileLocalState);
 
     if (shouldContinueRendering({
-      activeInput: cameraHasActiveInput(cam),
-      pendingGpuSort: gpuSortRefreshPending(scene.sortState, view),
-      pendingAlphaDensity: scene.alphaDensityState.refreshState.needsRefresh,
-      pendingTileLocalCompositor: scene.tileLocalState?.needsDispatch === true,
+      activeInput,
+      pendingGpuSort,
+      pendingAlphaDensity,
+      pendingTileLocalCompositor: shouldDispatchTileLocalCompositor({
+        needsDispatch: scene.tileLocalState?.needsDispatch === true,
+        activeInput,
+        pendingGpuSort,
+        pendingAlphaDensity,
+      }),
     })) {
       requestFrame();
     }

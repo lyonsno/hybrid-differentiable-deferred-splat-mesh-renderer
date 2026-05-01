@@ -5,6 +5,7 @@ import {
   createRenderDemandState,
   markRenderFrameFinished,
   requestRenderFrame,
+  shouldDispatchTileLocalCompositor,
   shouldContinueRendering,
 } from "../src/renderDemand.ts";
 
@@ -31,4 +32,19 @@ test("demand renderer coalesces wake requests until the current frame runs", () 
   assert.equal(requestRenderFrame(state), false);
   markRenderFrameFinished(state);
   assert.equal(requestRenderFrame(state), true);
+});
+
+test("tile-local compositor dispatch waits until camera-dependent work has settled", () => {
+  const settled = {
+    needsDispatch: true,
+    activeInput: false,
+    pendingGpuSort: false,
+    pendingAlphaDensity: false,
+  };
+
+  assert.equal(shouldDispatchTileLocalCompositor(settled), true);
+  assert.equal(shouldDispatchTileLocalCompositor({ ...settled, needsDispatch: false }), false);
+  assert.equal(shouldDispatchTileLocalCompositor({ ...settled, activeInput: true }), false);
+  assert.equal(shouldDispatchTileLocalCompositor({ ...settled, pendingGpuSort: true }), false);
+  assert.equal(shouldDispatchTileLocalCompositor({ ...settled, pendingAlphaDensity: true }), false);
 });
