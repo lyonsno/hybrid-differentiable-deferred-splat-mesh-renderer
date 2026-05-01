@@ -6,6 +6,7 @@ export const GPU_TILE_COVERAGE_FRAME_UNIFORM_BYTES = 96;
 export const GPU_TILE_COVERAGE_PROJECTED_BOUNDS_BYTES = 16;
 export const GPU_TILE_COVERAGE_TILE_HEADER_BYTES = 16;
 export const GPU_TILE_COVERAGE_TILE_REF_BYTES = 16;
+export const GPU_TILE_COVERAGE_ALPHA_PARAM_FLOATS_PER_REF = 8;
 
 export const GPU_TILE_COVERAGE_BINDINGS = {
   frame: 0,
@@ -81,7 +82,7 @@ export function createGpuTileCoveragePlan(input: GpuTileCoveragePlanInput): GpuT
     tileRefBytes: Math.max(16, maxTileRefs * GPU_TILE_COVERAGE_TILE_REF_BYTES),
     tileCoverageWeightBytes: Math.max(16, maxTileRefs * Float32Array.BYTES_PER_ELEMENT),
     orderingKeyBytes: Math.max(16, maxTileRefs * Uint32Array.BYTES_PER_ELEMENT),
-    alphaParamBytes: Math.max(16, maxTileRefs * 4 * Float32Array.BYTES_PER_ELEMENT),
+    alphaParamBytes: Math.max(16, maxTileRefs * GPU_TILE_COVERAGE_ALPHA_PARAM_FLOATS_PER_REF * Float32Array.BYTES_PER_ELEMENT),
   };
 }
 

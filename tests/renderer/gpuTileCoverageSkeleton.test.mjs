@@ -8,6 +8,7 @@ import {
   GPU_TILE_COVERAGE_PROJECTED_BOUNDS_BYTES,
   GPU_TILE_COVERAGE_TILE_HEADER_BYTES,
   GPU_TILE_COVERAGE_TILE_REF_BYTES,
+  GPU_TILE_COVERAGE_ALPHA_PARAM_FLOATS_PER_REF,
   GPU_TILE_COVERAGE_WORKGROUP_SIZE,
   createGpuTileCoveragePlan,
   getGpuTileCoverageDispatchPlan,
@@ -33,6 +34,19 @@ test("GPU tile coverage plan derives a parameterized tile grid without hard-codi
   assert.equal(plan.tileHeaderBytes, 15 * GPU_TILE_COVERAGE_TILE_HEADER_BYTES);
   assert.equal(plan.tileRefBytes, 96 * GPU_TILE_COVERAGE_TILE_REF_BYTES);
   assert.throws(() => createGpuTileCoveragePlan({ viewportWidth: 1, viewportHeight: 1, tileSizePx: 48, splatCount: 1, maxTileRefs: 0 }), /max tile refs/i);
+});
+
+test("GPU tile coverage plan reserves primary and inverse-conic alpha params per tile ref", () => {
+  const plan = createGpuTileCoveragePlan({
+    viewportWidth: 64,
+    viewportHeight: 64,
+    tileSizePx: 16,
+    splatCount: 2,
+    maxTileRefs: 5,
+  });
+
+  assert.equal(GPU_TILE_COVERAGE_ALPHA_PARAM_FLOATS_PER_REF, 8);
+  assert.equal(plan.alphaParamBytes, 5 * GPU_TILE_COVERAGE_ALPHA_PARAM_FLOATS_PER_REF * Float32Array.BYTES_PER_ELEMENT);
 });
 
 test("GPU tile coverage frame uniforms expose viewport, tile grid, and counts at stable WGSL offsets", () => {
@@ -104,6 +118,8 @@ test("GPU tile coverage WGSL is a separate skeleton and does not mutate the live
   assert.match(shader, /var<storage, read_write> tileCoverageWeights/);
   assert.match(shader, /var<storage, read> orderingKeys/);
   assert.match(shader, /var<storage, read> alphaParams/);
+  assert.match(shader, /fn conic_pixel_weight/);
+  assert.match(shader, /alphaParams\[alphaParamIndex \+ frame\.maxTileRefs\]/);
   assert.doesNotMatch(shader, /var<storage, read> scales/);
   assert.doesNotMatch(shader, /var<storage, read> rotations/);
   assert.doesNotMatch(shader, /splat_plate/);

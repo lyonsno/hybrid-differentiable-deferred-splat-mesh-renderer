@@ -19,10 +19,12 @@ struct FrameUniforms {
 @group(0) @binding(9) var<storage, read> alphaParams: array<vec4f>;
 @group(0) @binding(10) var outputColor: texture_storage_2d<rgba16float, write>;
 
-fn gaussian_pixel_weight(alphaParam: vec4f, pixelCenter: vec2f) -> f32 {
-  let radiusPx = max(alphaParam.w, 1.0);
-  let delta = (pixelCenter - alphaParam.yz) / radiusPx;
-  return exp(-0.5 * dot(delta, delta));
+fn conic_pixel_weight(alphaParam: vec4f, conicParam: vec4f, pixelCenter: vec2f) -> f32 {
+  let delta = pixelCenter - alphaParam.yz;
+  let mahalanobis2 = conicParam.x * delta.x * delta.x
+    + 2.0 * conicParam.y * delta.x * delta.y
+    + conicParam.z * delta.y * delta.y;
+  return exp(-0.5 * mahalanobis2);
 }
 
 @compute @workgroup_size(64) fn project_bounds(@builtin(global_invocation_id) globalId: vec3u) {
@@ -109,7 +111,8 @@ fn gaussian_pixel_weight(alphaParam: vec4f, pixelCenter: vec2f) -> f32 {
     let tileRef = tileRefs[selectedRefIndex];
     let alphaParamIndex = min(tileRef.w, frame.maxTileRefs - 1u);
     let alphaParam = alphaParams[alphaParamIndex];
-    let coverageWeight = max(tileCoverageWeights[selectedRefIndex], 0.0) * gaussian_pixel_weight(alphaParam, pixelCenter);
+    let conicParam = alphaParams[alphaParamIndex + frame.maxTileRefs];
+    let coverageWeight = max(tileCoverageWeights[selectedRefIndex], 0.0) * conic_pixel_weight(alphaParam, conicParam, pixelCenter);
     let sourceOpacity = clamp(alphaParam.x, 0.0, 1.0);
     let coverageAlpha = clamp(1.0 - pow(1.0 - sourceOpacity, coverageWeight), 0.0, 1.0);
     let colorBase = tileRef.x * 3u;
