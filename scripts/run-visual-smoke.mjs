@@ -15,6 +15,10 @@ import {
   buildTileLocalDiagnosticPlan,
   classifyTileLocalDiagnostics,
 } from "./visual-smoke/tile-local-diagnostics.mjs";
+import {
+  buildStaticDessertWitnessPlan,
+  classifyStaticDessertWitness,
+} from "./visual-smoke/static-dessert-witness.mjs";
 import { classifyWitnessCapture } from "./visual-smoke/witness-diagnostics.mjs";
 
 async function main() {
@@ -76,6 +80,25 @@ async function main() {
       printTileLocalDiagnosticsSummary(diagnostics);
       if (!diagnostics.classification.closeable) {
         process.exitCode = 4;
+      }
+      return;
+    }
+
+    if (options.staticDessertWitness) {
+      const witness = await runStaticDessertWitness({
+        browser,
+        options,
+        baseUrl: url,
+        reportDir,
+        analysisPath,
+        reportPath,
+        generatedAt,
+      });
+      await writeFile(analysisPath, `${JSON.stringify(witness, null, 2)}\n`);
+      await writeFile(reportPath, renderStaticDessertWitnessReport(witness));
+      printStaticDessertWitnessSummary(witness);
+      if (!witness.classification.closeable) {
+        process.exitCode = 5;
       }
       return;
     }
@@ -203,6 +226,26 @@ async function runTileLocalDiagnostics({ browser, options, baseUrl, reportDir, a
     captures.push(await captureVisualSmoke({ browser, options, capture, reportDir }));
   }
   const classification = classifyTileLocalDiagnostics({ captures });
+
+  return {
+    generatedAt,
+    baseUrl,
+    analysisPath: path.relative(options.appRoot, analysisPath),
+    reportPath: path.relative(options.appRoot, reportPath),
+    options: publicOptions(options),
+    plan,
+    captures,
+    classification,
+  };
+}
+
+async function runStaticDessertWitness({ browser, options, baseUrl, reportDir, analysisPath, reportPath, generatedAt }) {
+  const plan = buildStaticDessertWitnessPlan(baseUrl);
+  const captures = [];
+  for (const capture of plan) {
+    captures.push(await captureVisualSmoke({ browser, options, capture, reportDir }));
+  }
+  const classification = classifyStaticDessertWitness({ captures });
 
   return {
     generatedAt,
@@ -514,6 +557,77 @@ ${classification.summary.text}
 `;
 }
 
+function renderStaticDessertWitnessReport(result) {
+  const classification = result.classification;
+  const metrics = classification.metrics;
+  const observations = classification.observations;
+  return `# Static Dessert Witness Report
+
+- Status: ${classification.summary.status}
+- Generated: ${result.generatedAt}
+- Base URL: ${result.baseUrl}
+- Analysis JSON: \`${path.relative(path.dirname(result.reportPath), result.analysisPath)}\`
+
+## Fixed View
+
+- Asset path: ${metrics.fixedView.assetPath || "not reported"}
+- Viewport: ${metrics.fixedView.viewport || "not reported"}
+- Tile grid: ${metrics.fixedView.tileGrid || "not reported"}
+- Total tile refs: ${metrics.tileRefs.total}
+- Max tile refs per tile: ${metrics.tileRefs.maxPerTile}
+- Estimated max accumulated alpha: ${metrics.alpha.estimatedMaxAccumulatedAlpha}
+- Estimated min transmittance: ${metrics.alpha.estimatedMinTransmittance}
+- Max conic major radius px: ${metrics.conicShape.maxMajorRadiusPx}
+- Min conic minor radius px: ${metrics.conicShape.minMinorRadiusPx}
+- Max conic anisotropy: ${metrics.conicShape.maxAnisotropy}
+
+## Captures
+
+${result.captures
+  .map(
+    (capture) => `### ${capture.title}
+
+- URL: ${capture.url}
+- Screenshot: \`${path.relative(path.dirname(result.reportPath), capture.screenshotPath)}\`
+- Renderer label: ${capture.pageEvidence.rendererLabel || "not reported"}
+- Tile refs: ${capture.pageEvidence.tileLocal?.refs || 0}
+- Debug mode: ${capture.pageEvidence.tileLocal?.diagnostics?.debugMode || "final-color"}
+- Nonblank: ${capture.classification.nonblank}
+- Changed pixels: ${capture.imageAnalysis.changedPixels} / ${capture.imageAnalysis.totalPixels} (${formatPercent(capture.imageAnalysis.changedPixelRatio)})
+`
+  )
+  .join("\n")}
+
+## Observation Boundaries
+
+### Visible holes
+
+- Status: ${observations.visibleHoles.status}
+- Evidence IDs: ${observations.visibleHoles.evidenceIds.join(", ")}
+- Boundary: ${observations.visibleHoles.boundary}
+
+### Plate seepage
+
+- Status: ${observations.plateSeepage.status}
+- Evidence IDs: ${observations.plateSeepage.evidenceIds.join(", ")}
+- Boundary: ${observations.plateSeepage.boundary}
+
+### High-viewport budget skip
+
+- Status: ${observations.budgetSkip.status}
+- Boundary: ${observations.budgetSkip.boundary}
+- Repro: ${observations.budgetSkip.repro}
+
+## Findings
+
+${classification.findings.length === 0 ? "- None" : classification.findings.map((finding) => `- ${finding.kind}: ${finding.summary}`).join("\n")}
+
+## Summary
+
+${classification.summary.text}
+`;
+}
+
 function printSummary(result) {
   console.log(result.classification.summary);
   console.log(`report: ${result.reportPath}`);
@@ -540,6 +654,14 @@ function printTileLocalDiagnosticsSummary(result) {
   }
 }
 
+function printStaticDessertWitnessSummary(result) {
+  console.log(result.classification.summary.text);
+  console.log(`report: ${result.reportPath}`);
+  for (const capture of result.captures) {
+    console.log(`${capture.id}: ${capture.screenshotPath}`);
+  }
+}
+
 function parseArgs(args) {
   const options = {
     appRoot: process.cwd(),
@@ -558,6 +680,7 @@ function parseArgs(args) {
     imageThresholds: {},
     tileLocalComparison: false,
     tileLocalDiagnostics: false,
+    staticDessertWitness: false,
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -633,6 +756,14 @@ function parseArgs(args) {
           options.settleMs = 5000;
         }
         break;
+      case "--static-dessert-witness":
+      case "--dessert-witness":
+        options.staticDessertWitness = true;
+        options.requireRealSplat = true;
+        if (options.settleMs === 1000) {
+          options.settleMs = 5000;
+        }
+        break;
       case "--help":
       case "-h":
         printHelp();
@@ -664,6 +795,7 @@ function publicOptions(options) {
     imageThresholds: options.imageThresholds,
     tileLocalComparison: options.tileLocalComparison,
     tileLocalDiagnostics: options.tileLocalDiagnostics,
+    staticDessertWitness: options.staticDessertWitness,
   };
 }
 
@@ -708,6 +840,7 @@ Options:
   --settle-ms <ms>                Wait after canvas sizing before screenshot. Defaults to 1000, or 5000 for tile-local comparison.
   --tile-local-comparison         Capture plate, renderer=tile-local, and renderer=tile-local-visible in one report.
   --tile-local-diagnostics        Capture tile-local-visible diagnostic heatmaps and compact evidence in one report.
+  --static-dessert-witness        Capture fixed dessert final color plus tile-local debug evidence in one report.
 `);
 }
 
