@@ -124,12 +124,32 @@ export function classifyTileLocalComparison({
 
 export function extractTileLocalPageMetrics(pageEvidence = {}) {
   const statsText = pageEvidence.statsText ?? "";
+  const parsedGrid = parseTileGrid(statsText);
+  const skipReason = pageEvidence.tileLocalLastSkipReason ?? parseTileLocalSkipReason(statsText);
+  const parsedBudget = parseTileLocalBudget(statsText);
+  const tileLocal = pageEvidence.tileLocal && typeof pageEvidence.tileLocal === "object" ? pageEvidence.tileLocal : {};
+  const freshness = tileLocal.freshness
+    ?? (/stale-cache/i.test(statsText) || skipReason ? { status: "stale-cache" } : undefined);
   return {
     rendererLabel: pageEvidence.rendererLabel ?? parseRendererLabel(statsText),
     fps: finiteNumber(pageEvidence.fps) ?? parseFps(statsText),
+    tileLocalLastSkipReason: skipReason,
     tileLocal: {
-      ...(pageEvidence.tileLocal && typeof pageEvidence.tileLocal === "object" ? pageEvidence.tileLocal : {}),
-      refs: finiteNumber(pageEvidence.tileLocal?.refs) ?? parseTileRefs(statsText),
+      ...tileLocal,
+      refs: finiteNumber(tileLocal.refs) ?? parsedGrid.refs,
+      tileColumns: finiteNumber(tileLocal.tileColumns) ?? parsedGrid.tileColumns,
+      tileRows: finiteNumber(tileLocal.tileRows) ?? parsedGrid.tileRows,
+      freshness,
+      budget: {
+        ...(tileLocal.budget && typeof tileLocal.budget === "object" ? tileLocal.budget : {}),
+        skippedProjectedRefs:
+          finiteNumber(tileLocal.budget?.skippedProjectedRefs) ?? parsedBudget?.skippedProjectedRefs,
+        maxProjectedRefs:
+          finiteNumber(tileLocal.budget?.maxProjectedRefs) ?? parsedBudget?.maxProjectedRefs,
+        skipReason:
+          (tileLocal.budget && typeof tileLocal.budget === "object" ? tileLocal.budget.skipReason : undefined)
+          ?? skipReason,
+      },
     },
   };
 }
@@ -149,6 +169,7 @@ export function isVisualSmokeCaptureReady(pageEvidence = {}, { expectedRendererL
   if (clientWidth > 0 && canvasWidth < clientWidth) return false;
   if (clientHeight > 0 && canvasHeight < clientHeight) return false;
   if (expectedRendererLabel && !rendererLabelMatches(metrics.rendererLabel, expectedRendererLabel)) return false;
+  if (expectedRendererLabel.includes("tile-local") && tileLocalPresentationIsStale(metrics)) return false;
   if (expectedRendererLabel.includes("tile-local") && metrics.tileLocal.refs <= 0) return false;
   return true;
 }
@@ -256,8 +277,37 @@ function parseFps(statsText) {
 }
 
 function parseTileRefs(statsText) {
-  const match = /\btile-local:\s*\d+x\d+\s*tiles\/([\d,]+)\s*refs\b/i.exec(statsText);
-  return match ? Number(match[1].replaceAll(",", "")) : 0;
+  return parseTileGrid(statsText).refs;
+}
+
+function parseTileGrid(statsText) {
+  const match = /\btile-local:\s*([\d,]+)x([\d,]+)\s*tiles\/([\d,]+)\s*refs\b/i.exec(statsText);
+  return {
+    tileColumns: match ? Number(match[1].replaceAll(",", "")) : undefined,
+    tileRows: match ? Number(match[2].replaceAll(",", "")) : undefined,
+    refs: match ? Number(match[3].replaceAll(",", "")) : 0,
+  };
+}
+
+function parseTileLocalSkipReason(statsText) {
+  const match = /\btile-local skipped:\s*([^|]+)/i.exec(statsText);
+  return match ? match[1].trim() : undefined;
+}
+
+function parseTileLocalBudget(statsText) {
+  const match = /projected tile refs exceed budget:\s*([\d,]+)\s*>\s*([\d,]+)/i.exec(statsText);
+  if (!match) return undefined;
+  return {
+    skippedProjectedRefs: Number(match[1].replaceAll(",", "")),
+    maxProjectedRefs: Number(match[2].replaceAll(",", "")),
+  };
+}
+
+function tileLocalPresentationIsStale(metrics) {
+  const status = String(metrics.tileLocal?.freshness?.status ?? "").trim();
+  if (status && status !== "current") return true;
+  if (metrics.tileLocalLastSkipReason) return true;
+  return /stale-cache/i.test(metrics.rendererLabel ?? "");
 }
 
 function finiteNumber(value) {
