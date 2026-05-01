@@ -582,6 +582,8 @@ function renderStaticDessertWitnessReport(result) {
 - Saturated retained tiles: ${metrics.tileRefCustody.saturatedRetainedTileCount}
 - Max projected refs per tile: ${metrics.tileRefCustody.maxProjectedRefsPerTile}
 - Header accounting matches retained refs: ${metrics.tileRefCustody.headerAccountingMatches}
+- Retention audit full frame: current ${metrics.retentionAudit.fullFrame.currentRetainedEntryCount} refs vs legacy ${metrics.retentionAudit.fullFrame.legacyRetainedEntryCount}; policy added ${metrics.retentionAudit.fullFrame.addedByPolicyCount}, dropped ${metrics.retentionAudit.fullFrame.droppedByPolicyCount}
+- Center leak band retention audit: projected ${metrics.retentionAudit.regions.centerLeakBand.projectedTileEntryCount}, current ${metrics.retentionAudit.regions.centerLeakBand.currentRetainedEntryCount}, legacy ${metrics.retentionAudit.regions.centerLeakBand.legacyRetainedEntryCount}; policy added ${metrics.retentionAudit.regions.centerLeakBand.addedByPolicyCount}, dropped ${metrics.retentionAudit.regions.centerLeakBand.droppedByPolicyCount}
 - Estimated max accumulated alpha: ${metrics.alpha.estimatedMaxAccumulatedAlpha}
 - Estimated min transmittance: ${metrics.alpha.estimatedMinTransmittance}
 - Max conic major radius px: ${metrics.conicShape.maxMajorRadiusPx}

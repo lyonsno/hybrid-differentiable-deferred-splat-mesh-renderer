@@ -1,5 +1,5 @@
 import type { GpuTileCoverageDebugMode, GpuTileCoveragePlan } from "../gpuTileCoverage.js";
-import type { TileRefCustodySummary } from "../gpuTileCoverageBridge.js";
+import type { TileRefCustodySummary, TileRetentionAudit } from "../gpuTileCoverageBridge.js";
 
 export interface TileLocalDiagnosticSummaryInput {
   readonly debugMode?: GpuTileCoverageDebugMode;
@@ -7,6 +7,7 @@ export interface TileLocalDiagnosticSummaryInput {
   readonly tileEntryCount: number;
   readonly tileHeaders: Uint32Array;
   readonly tileRefCustody?: TileRefCustodySummary;
+  readonly retentionAudit?: TileRetentionAudit;
   readonly tileCoverageWeights: Float32Array;
   readonly alphaParamData: Float32Array;
 }
@@ -27,6 +28,7 @@ export interface TileLocalDiagnosticSummary {
     readonly density: number;
   };
   readonly tileRefCustody: TileRefCustodySummary;
+  readonly retentionAudit: TileRetentionAudit | null;
   readonly coverageWeight: {
     readonly min: number;
     readonly max: number;

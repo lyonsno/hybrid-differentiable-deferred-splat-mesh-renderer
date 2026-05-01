@@ -60,6 +60,12 @@ export function buildGpuTileCoverageBridge(coverage, options = {}) {
     tileCount,
     maxRefsPerTile,
   });
+  const retentionAudit = summarizeRetentionAudit({
+    tileEntries: coverage.tileEntries,
+    tileColumns: coverage.tileColumns,
+    tileRows: coverage.tileRows,
+    maxRefsPerTile,
+  });
 
   return {
     viewportWidth: coverage.viewportWidth,
@@ -78,6 +84,7 @@ export function buildGpuTileCoverageBridge(coverage, options = {}) {
     maxRefsPerTile,
     retainedTileEntryCount,
     tileRefCustody,
+    retentionAudit,
   };
 }
 
@@ -143,6 +150,140 @@ function retainTileEntries(tileEntries, maxRefsPerTile) {
     cursor = end;
   }
   return retained.sort(compareTileEntryOrder);
+}
+
+function summarizeRetentionAudit({ tileEntries, tileColumns, tileRows, maxRefsPerTile }) {
+  const regions = {
+    centerLeakBand: createTileRegion({
+      name: "center-leak-band",
+      tileColumns,
+      tileRows,
+      minX: 0.34,
+      maxX: 0.68,
+      minY: 0.42,
+      maxY: 0.60,
+    }),
+  };
+  const summaries = {
+    fullFrame: createRetentionAuditSummary("full-frame"),
+    regions: {
+      centerLeakBand: createRetentionAuditSummary(regions.centerLeakBand.name),
+    },
+  };
+
+  const entries = [...tileEntries].sort(compareTileEntryOrder);
+  let cursor = 0;
+  while (cursor < entries.length) {
+    const tileIndex = entries[cursor].tileIndex;
+    let end = cursor + 1;
+    while (end < entries.length && entries[end].tileIndex === tileIndex) {
+      end += 1;
+    }
+    const tileGroup = entries.slice(cursor, end);
+    accumulateRetentionAudit(summaries.fullFrame, tileGroup, maxRefsPerTile);
+    if (tileInRegion(tileIndex, tileColumns, regions.centerLeakBand)) {
+      accumulateRetentionAudit(summaries.regions.centerLeakBand, tileGroup, maxRefsPerTile);
+    }
+    cursor = end;
+  }
+
+  return summaries;
+}
+
+function createTileRegion({ name, tileColumns, tileRows, minX, maxX, minY, maxY }) {
+  return {
+    name,
+    minTileX: Math.max(0, Math.floor(tileColumns * minX)),
+    maxTileX: Math.min(tileColumns - 1, Math.ceil(tileColumns * maxX) - 1),
+    minTileY: Math.max(0, Math.floor(tileRows * minY)),
+    maxTileY: Math.min(tileRows - 1, Math.ceil(tileRows * maxY) - 1),
+  };
+}
+
+function tileInRegion(tileIndex, tileColumns, region) {
+  const tileX = tileIndex % tileColumns;
+  const tileY = Math.floor(tileIndex / tileColumns);
+  return (
+    tileX >= region.minTileX &&
+    tileX <= region.maxTileX &&
+    tileY >= region.minTileY &&
+    tileY <= region.maxTileY
+  );
+}
+
+function createRetentionAuditSummary(region) {
+  return {
+    region,
+    tileCount: 0,
+    cappedTileCount: 0,
+    projectedTileEntryCount: 0,
+    currentRetainedEntryCount: 0,
+    legacyRetainedEntryCount: 0,
+    addedByPolicyCount: 0,
+    droppedByPolicyCount: 0,
+    addedRetentionWeightSum: 0,
+    droppedRetentionWeightSum: 0,
+    addedOcclusionWeightSum: 0,
+    droppedOcclusionWeightSum: 0,
+    addedByPolicySamples: [],
+    droppedByPolicySamples: [],
+  };
+}
+
+function accumulateRetentionAudit(summary, tileEntries, maxRefsPerTile) {
+  if (tileEntries.length === 0) {
+    return;
+  }
+  summary.tileCount += 1;
+  summary.projectedTileEntryCount += tileEntries.length;
+  if (tileEntries.length > maxRefsPerTile) {
+    summary.cappedTileCount += 1;
+  }
+  const legacyRetained = tileEntries.slice(0, maxRefsPerTile);
+  const currentRetained = selectTileEntries(tileEntries, maxRefsPerTile);
+  const legacyKeys = new Set(legacyRetained.map(tileEntryKey));
+  const currentKeys = new Set(currentRetained.map(tileEntryKey));
+  summary.currentRetainedEntryCount += currentRetained.length;
+  summary.legacyRetainedEntryCount += legacyRetained.length;
+
+  for (const entry of currentRetained) {
+    if (!legacyKeys.has(tileEntryKey(entry))) {
+      summary.addedByPolicyCount += 1;
+      summary.addedRetentionWeightSum += readRetentionWeight(entry);
+      summary.addedOcclusionWeightSum += readOcclusionWeight(entry);
+      pushRetentionAuditSample(summary.addedByPolicySamples, entry);
+    }
+  }
+  for (const entry of legacyRetained) {
+    if (!currentKeys.has(tileEntryKey(entry))) {
+      summary.droppedByPolicyCount += 1;
+      summary.droppedRetentionWeightSum += readRetentionWeight(entry);
+      summary.droppedOcclusionWeightSum += readOcclusionWeight(entry);
+      pushRetentionAuditSample(summary.droppedByPolicySamples, entry);
+    }
+  }
+}
+
+function pushRetentionAuditSample(samples, entry, maxSamples = 12) {
+  if (samples.length >= maxSamples) {
+    return;
+  }
+  samples.push({
+    tileIndex: entry.tileIndex,
+    tileX: entry.tileX,
+    tileY: entry.tileY,
+    splatIndex: entry.splatIndex,
+    originalId: entry.originalId,
+    coverageWeight: roundAuditNumber(entry.coverageWeight),
+    retentionWeight: roundAuditNumber(readRetentionWeight(entry)),
+    occlusionWeight: roundAuditNumber(readOcclusionWeight(entry)),
+    occlusionDensity: roundAuditNumber(readOcclusionDensity(entry)),
+    viewRank: Number.isInteger(entry.viewRank) ? entry.viewRank : null,
+  });
+}
+
+function roundAuditNumber(value) {
+  return Number.isFinite(value) ? Number(value.toFixed(6)) : 0;
 }
 
 function selectTileEntries(tileEntries, maxRefsPerTile) {

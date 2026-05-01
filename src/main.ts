@@ -28,6 +28,7 @@ import {
   createGpuTileCoverageBridgeBuffers,
   writeGpuTileCoverageAlphaParams,
   type TileRefCustodySummary,
+  type TileRetentionAudit,
 } from "./gpuTileCoverageBridge.js";
 import {
   createGpuSortPrototype,
@@ -146,6 +147,7 @@ interface TileLocalSceneState {
   outputView: GPUTextureView;
   tileEntryCount: number;
   tileRefCustody: TileRefCustodySummary;
+  retentionAudit: TileRetentionAudit;
   tileRefSplatIds: Uint32Array;
   prepassSignature: string;
   debugMode: GpuTileCoverageDebugMode;
@@ -761,6 +763,7 @@ function createTileLocalSceneState(
     outputView,
     tileEntryCount: bridge.tileEntryCount,
     tileRefCustody: bridge.tileRefCustody,
+    retentionAudit: bridge.retentionAudit,
     tileRefSplatIds,
     prepassSignature,
     debugMode: TILE_LOCAL_DEBUG_MODE,
@@ -770,6 +773,7 @@ function createTileLocalSceneState(
       tileEntryCount: bridge.tileEntryCount,
       tileHeaders: bridge.tileHeaders,
       tileRefCustody: bridge.tileRefCustody,
+      retentionAudit: bridge.retentionAudit,
       tileCoverageWeights: bridge.tileCoverageWeights,
       alphaParamData,
     }),
@@ -967,6 +971,7 @@ function refreshTileLocalDiagnostics(state: TileLocalSceneState): TileLocalDiagn
     tileEntryCount: state.tileEntryCount,
     tileHeaders: state.tileHeaderData,
     tileRefCustody: state.tileRefCustody,
+    retentionAudit: state.retentionAudit,
     tileCoverageWeights: state.tileCoverageWeightData,
     alphaParamData: state.alphaParamData,
   });

@@ -129,6 +129,7 @@ export function classifyStaticDessertWitness({ captures = [] } = {}) {
         nonEmptyTiles: finiteNumber(refDiagnostics?.tileRefs?.nonEmptyTiles) ?? 0,
       },
       tileRefCustody: normalizeTileRefCustody(refDiagnostics?.tileRefCustody, refDiagnostics?.tileRefs),
+      retentionAudit: normalizeRetentionAudit(refDiagnostics?.retentionAudit),
       alpha: {
         estimatedMaxAccumulatedAlpha: finiteNumber(alphaDiagnostics?.alpha?.estimatedMaxAccumulatedAlpha) ?? 0,
         estimatedMinTransmittance: finiteNumber(transmittanceDiagnostics?.alpha?.estimatedMinTransmittance) ?? 0,
@@ -239,6 +240,40 @@ function normalizeTileRefCustody(tileRefCustody, tileRefs = {}) {
     maxRetainedRefsPerTile: maxPerTile,
     headerRefCount: total,
     headerAccountingMatches: true,
+  };
+}
+
+function normalizeRetentionAudit(retentionAudit) {
+  if (!retentionAudit || typeof retentionAudit !== "object") {
+    return {
+      fullFrame: normalizeRetentionAuditSummary(),
+      regions: { centerLeakBand: normalizeRetentionAuditSummary() },
+    };
+  }
+  return {
+    fullFrame: normalizeRetentionAuditSummary(retentionAudit.fullFrame),
+    regions: {
+      centerLeakBand: normalizeRetentionAuditSummary(retentionAudit.regions?.centerLeakBand),
+    },
+  };
+}
+
+function normalizeRetentionAuditSummary(summary = {}) {
+  return {
+    region: stringValue(summary.region),
+    tileCount: finiteNumber(summary.tileCount) ?? 0,
+    cappedTileCount: finiteNumber(summary.cappedTileCount) ?? 0,
+    projectedTileEntryCount: finiteNumber(summary.projectedTileEntryCount) ?? 0,
+    currentRetainedEntryCount: finiteNumber(summary.currentRetainedEntryCount) ?? 0,
+    legacyRetainedEntryCount: finiteNumber(summary.legacyRetainedEntryCount) ?? 0,
+    addedByPolicyCount: finiteNumber(summary.addedByPolicyCount) ?? 0,
+    droppedByPolicyCount: finiteNumber(summary.droppedByPolicyCount) ?? 0,
+    addedRetentionWeightSum: finiteNumber(summary.addedRetentionWeightSum) ?? 0,
+    droppedRetentionWeightSum: finiteNumber(summary.droppedRetentionWeightSum) ?? 0,
+    addedOcclusionWeightSum: finiteNumber(summary.addedOcclusionWeightSum) ?? 0,
+    droppedOcclusionWeightSum: finiteNumber(summary.droppedOcclusionWeightSum) ?? 0,
+    addedByPolicySamples: Array.isArray(summary.addedByPolicySamples) ? summary.addedByPolicySamples.slice(0, 12) : [],
+    droppedByPolicySamples: Array.isArray(summary.droppedByPolicySamples) ? summary.droppedByPolicySamples.slice(0, 12) : [],
   };
 }
 

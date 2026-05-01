@@ -217,3 +217,71 @@ test("tile-list bridge reserves both bright behind refs and alpha-occluding fore
   assert.equal(bridge.tileRefCustody.evictedTileEntryCount, 4);
   assert.equal(bridge.tileRefCustody.maxRetainedRefsPerTile, 8);
 });
+
+test("tile-list bridge audits current retention against legacy coverage-first cap selection", () => {
+  const surfaceEntries = Array.from({ length: 10 }, (_, index) => ({
+    tileIndex: 0,
+    tileX: 0,
+    tileY: 0,
+    splatIndex: index,
+    originalId: 100 + index,
+    coverageWeight: 10 - index * 0.01,
+    retentionWeight: 0.35,
+    occlusionWeight: 0.35,
+  }));
+  const darkForeground = {
+    tileIndex: 0,
+    tileX: 0,
+    tileY: 0,
+    splatIndex: 10,
+    originalId: 800,
+    coverageWeight: 0.2,
+    retentionWeight: 0.004,
+    occlusionWeight: 0.19,
+    occlusionDensity: 0.95,
+  };
+  const brightBehind = {
+    tileIndex: 0,
+    tileX: 0,
+    tileY: 0,
+    splatIndex: 11,
+    originalId: 900,
+    coverageWeight: 0.25,
+    retentionWeight: 1.05,
+    occlusionWeight: 0.15,
+    occlusionDensity: 0.6,
+  };
+
+  const bridge = buildGpuTileCoverageBridge({
+    viewportWidth: 64,
+    viewportHeight: 64,
+    tileSizePx: 64,
+    tileColumns: 1,
+    tileRows: 1,
+    sourceSplatCount: 12,
+    splats: Array.from({ length: 12 }, (_, index) => ({
+      splatIndex: index,
+      originalId: index === 10 ? 800 : index === 11 ? 900 : 100 + index,
+      centerPx: [32, 32],
+      covariancePx: { xx: 16, xy: 0, yy: 16 },
+      tileBounds: { minTileX: 0, minTileY: 0, maxTileX: 0, maxTileY: 0 },
+    })),
+    tileEntries: [...surfaceEntries, darkForeground, brightBehind],
+    maxRefsPerTile: 8,
+  });
+
+  assert.equal(bridge.retentionAudit.fullFrame.projectedTileEntryCount, 12);
+  assert.equal(bridge.retentionAudit.fullFrame.currentRetainedEntryCount, 8);
+  assert.equal(bridge.retentionAudit.fullFrame.legacyRetainedEntryCount, 8);
+  assert.equal(bridge.retentionAudit.fullFrame.addedByPolicyCount, 2);
+  assert.equal(bridge.retentionAudit.fullFrame.droppedByPolicyCount, 2);
+  assert.deepEqual(
+    bridge.retentionAudit.fullFrame.addedByPolicySamples.map((entry) => entry.originalId),
+    [900, 800]
+  );
+  assert.deepEqual(
+    bridge.retentionAudit.fullFrame.droppedByPolicySamples.map((entry) => entry.originalId),
+    [100, 107]
+  );
+  assert.equal(bridge.retentionAudit.regions.centerLeakBand.addedByPolicyCount, 2);
+});

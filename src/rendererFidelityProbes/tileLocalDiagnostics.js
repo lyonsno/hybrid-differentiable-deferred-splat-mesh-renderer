@@ -4,6 +4,7 @@ export function summarizeTileLocalDiagnostics({
   tileEntryCount = 0,
   tileHeaders,
   tileRefCustody,
+  retentionAudit,
   tileCoverageWeights,
   alphaParamData,
 } = {}) {
@@ -26,10 +27,60 @@ export function summarizeTileLocalDiagnostics({
     },
     tileRefs,
     tileRefCustody: normalizeTileRefCustody(tileRefCustody, tileRefs),
+    retentionAudit: normalizeRetentionAudit(retentionAudit),
     coverageWeight,
     alpha,
     conicShape,
   };
+}
+
+function normalizeRetentionAudit(retentionAudit) {
+  if (!retentionAudit || typeof retentionAudit !== "object") {
+    return null;
+  }
+  return {
+    fullFrame: normalizeRetentionAuditSummary(retentionAudit.fullFrame),
+    regions: {
+      centerLeakBand: normalizeRetentionAuditSummary(retentionAudit.regions?.centerLeakBand),
+    },
+  };
+}
+
+function normalizeRetentionAuditSummary(summary = {}) {
+  return {
+    region: typeof summary.region === "string" ? summary.region : "",
+    tileCount: nonNegativeFiniteInteger(summary.tileCount),
+    cappedTileCount: nonNegativeFiniteInteger(summary.cappedTileCount),
+    projectedTileEntryCount: nonNegativeFiniteInteger(summary.projectedTileEntryCount),
+    currentRetainedEntryCount: nonNegativeFiniteInteger(summary.currentRetainedEntryCount),
+    legacyRetainedEntryCount: nonNegativeFiniteInteger(summary.legacyRetainedEntryCount),
+    addedByPolicyCount: nonNegativeFiniteInteger(summary.addedByPolicyCount),
+    droppedByPolicyCount: nonNegativeFiniteInteger(summary.droppedByPolicyCount),
+    addedRetentionWeightSum: nonNegativeFiniteNumber(summary.addedRetentionWeightSum),
+    droppedRetentionWeightSum: nonNegativeFiniteNumber(summary.droppedRetentionWeightSum),
+    addedOcclusionWeightSum: nonNegativeFiniteNumber(summary.addedOcclusionWeightSum),
+    droppedOcclusionWeightSum: nonNegativeFiniteNumber(summary.droppedOcclusionWeightSum),
+    addedByPolicySamples: normalizeRetentionAuditSamples(summary.addedByPolicySamples),
+    droppedByPolicySamples: normalizeRetentionAuditSamples(summary.droppedByPolicySamples),
+  };
+}
+
+function normalizeRetentionAuditSamples(samples) {
+  if (!Array.isArray(samples)) {
+    return [];
+  }
+  return samples.slice(0, 12).map((sample) => ({
+    tileIndex: nonNegativeFiniteInteger(sample.tileIndex),
+    tileX: nonNegativeFiniteInteger(sample.tileX),
+    tileY: nonNegativeFiniteInteger(sample.tileY),
+    splatIndex: nonNegativeFiniteInteger(sample.splatIndex),
+    originalId: nonNegativeFiniteInteger(sample.originalId),
+    coverageWeight: nonNegativeFiniteNumber(sample.coverageWeight),
+    retentionWeight: nonNegativeFiniteNumber(sample.retentionWeight),
+    occlusionWeight: nonNegativeFiniteNumber(sample.occlusionWeight),
+    occlusionDensity: nonNegativeFiniteNumber(sample.occlusionDensity),
+    viewRank: Number.isInteger(sample.viewRank) && sample.viewRank >= 0 ? sample.viewRank : null,
+  }));
 }
 
 function normalizeTileRefCustody(tileRefCustody, tileRefs) {
@@ -100,6 +151,10 @@ function summarizeFloatRange(values, count) {
     max: observed > 0 ? round(max) : 0,
     mean: observed > 0 ? round(sum / observed) : 0,
   };
+}
+
+function nonNegativeFiniteNumber(value) {
+  return Number.isFinite(value) && value >= 0 ? round(value) : 0;
 }
 
 function summarizeAlpha(alphaParamData, tileHeaders, tileCount, refLimit, maxTileRefs, tileCoverageWeights) {

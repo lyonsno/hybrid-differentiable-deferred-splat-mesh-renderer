@@ -76,6 +76,24 @@ test("static dessert witness classifier requires one asset, one viewport, final 
             headerRefCount: 24000,
             headerAccountingMatches: true,
           },
+          retentionAudit: {
+            fullFrame: {
+              projectedTileEntryCount: 64000,
+              currentRetainedEntryCount: 24000,
+              legacyRetainedEntryCount: 24000,
+              addedByPolicyCount: 120,
+              droppedByPolicyCount: 120,
+            },
+            regions: {
+              centerLeakBand: {
+                projectedTileEntryCount: 9000,
+                currentRetainedEntryCount: 1024,
+                legacyRetainedEntryCount: 1024,
+                addedByPolicyCount: 17,
+                droppedByPolicyCount: 17,
+              },
+            },
+          },
         },
       }),
       witnessCapture("conic-shape", {
@@ -93,6 +111,8 @@ test("static dessert witness classifier requires one asset, one viewport, final 
   assert.equal(result.metrics.tileRefCustody.projectedTileEntryCount, 64000);
   assert.equal(result.metrics.tileRefCustody.evictedTileEntryCount, 40000);
   assert.equal(result.metrics.tileRefCustody.headerAccountingMatches, true);
+  assert.equal(result.metrics.retentionAudit.fullFrame.addedByPolicyCount, 120);
+  assert.equal(result.metrics.retentionAudit.regions.centerLeakBand.addedByPolicyCount, 17);
   assert.equal(result.metrics.conicShape.maxAnisotropy, 5);
   assert.equal(result.observations.visibleHoles.evidenceIds.includes("coverage-weight"), true);
   assert.equal(result.observations.plateSeepage.evidenceIds.includes("transmittance"), true);
@@ -106,6 +126,8 @@ test("visual smoke CLI exposes a static dessert witness batch mode", () => {
   assert.match(source, /runStaticDessertWitness/);
   assert.match(source, /renderStaticDessertWitnessReport/);
   assert.match(source, /Projected tile refs before cap/);
+  assert.match(source, /Retention audit full frame/);
+  assert.match(source, /Center leak band retention audit/);
 });
 
 function witnessCapture(id, overrides = {}) {
