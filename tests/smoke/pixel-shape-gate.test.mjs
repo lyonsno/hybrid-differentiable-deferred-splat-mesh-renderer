@@ -12,11 +12,11 @@
  *   - Shape-gate invariant checker functions work correctly on synthetic PNGs.
  *   - All 5 fixture IDs round-trip through URL builder → fixture lookup.
  *
- * Browser smoke layer (opt-in via BROWSER_SMOKE=1 env var):
+ * Browser smoke layer (always runs, starts its own Vite server):
  *   - Launches a real browser, renders each fixture through the real WebGPU renderer,
  *     captures the canvas, and asserts geometric invariants from the fixture's
  *     expectedInvariants against the analyzeShape() output.
- *   - Requires a live renderer at RENDERER_URL (default: http://localhost:5173).
+ *   - Starts a Vite dev server automatically (or uses RENDERER_URL if provided).
  *
  * Fail-first: the unit tests below will fail until the fixture loader
  * (`src/syntheticShapeLoader.ts`) is wired into `src/main.ts`.
@@ -27,7 +27,10 @@
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import { deflateSync } from "node:zlib";
-import { test } from "node:test";
+import path from "node:path";
+import net from "node:net";
+import { fileURLToPath } from "node:url";
+import { after, before, describe, test } from "node:test";
 
 import {
   SHAPE_FIXTURES,
@@ -372,23 +375,55 @@ test("FIXTURE_IDS constants match SHAPE_WITNESS_FIXTURE_IDS suffixes", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Browser smoke layer (BROWSER_SMOKE=1 only)
+// Browser smoke layer — starts its own Vite server, renders through real WebGPU
 // ---------------------------------------------------------------------------
 
-const BROWSER_SMOKE = process.env.BROWSER_SMOKE === "1";
-const RENDERER_URL = process.env.RENDERER_URL || "http://localhost:5173";
+const __filename = fileURLToPath(import.meta.url);
+const APP_ROOT = path.resolve(path.dirname(__filename), "../..");
 
-// Only run browser smoke tests if explicitly opted-in.
-// These require a running Vite dev server and a real WebGPU-capable browser.
-if (BROWSER_SMOKE) {
+async function findFreePort() {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.listen(0, "127.0.0.1", () => {
+      const port = srv.address().port;
+      srv.close(() => resolve(port));
+    });
+    srv.on("error", reject);
+  });
+}
+
+describe("browser shape-gate smoke", { timeout: 120_000 }, () => {
+  let viteServer;
+  let baseUrl;
+
+  before(async () => {
+    // Use RENDERER_URL if provided (e.g. someone already has vite running)
+    if (process.env.RENDERER_URL) {
+      baseUrl = process.env.RENDERER_URL;
+      return;
+    }
+    const { createServer } = await import("vite");
+    const port = await findFreePort();
+    viteServer = await createServer({
+      root: APP_ROOT,
+      server: { host: "127.0.0.1", port, strictPort: true, open: false },
+    });
+    await viteServer.listen();
+    baseUrl = viteServer.resolvedUrls?.local?.[0] ?? `http://127.0.0.1:${port}/`;
+  });
+
+  after(async () => {
+    if (viteServer) await viteServer.close();
+  });
+
   for (const fixture of SHAPE_FIXTURES) {
     const fixtureId = fixture.id.replace("shape-witness-", "");
 
-    test(`browser smoke: fixture ${fixtureId} renders and passes geometric invariants`, async (t) => {
-      t.timeout = 60_000; // 60s per fixture for browser launch + render
+    test(`fixture ${fixtureId} renders and passes geometric invariants`, async (t) => {
+      t.timeout = 60_000;
 
       const { png, metadata } = await captureShapeWitness(fixtureId, {
-        baseUrl: RENDERER_URL,
+        baseUrl,
         settleMs: 3000,
         timeoutMs: 30_000,
       });
@@ -505,12 +540,7 @@ if (BROWSER_SMOKE) {
       }
     });
   }
-} else {
-  test("browser smoke tests skipped: set BROWSER_SMOKE=1 and RENDERER_URL to run", () => {
-    // This test always passes — it is a documentation placeholder.
-    // To run the browser smoke: BROWSER_SMOKE=1 RENDERER_URL=http://localhost:5173 npm run test:shape-gate
-  });
-}
+});
 
 // ---------------------------------------------------------------------------
 // Helper used by browser layer
