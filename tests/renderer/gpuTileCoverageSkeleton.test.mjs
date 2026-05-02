@@ -11,6 +11,9 @@ import {
   GPU_TILE_COVERAGE_ALPHA_PARAM_FLOATS_PER_REF,
   GPU_TILE_COVERAGE_WORKGROUP_SIZE,
   createGpuTileCoveragePlan,
+  createGpuTileContributorArenaLayout,
+  getGpuTileContributorArenaDispatchPlan,
+  assertGpuTileContributorArenaCompatibility,
   getGpuTileCoverageDispatchPlan,
   writeGpuTileCoverageFrameUniforms,
 } from "../../node_modules/.cache/renderer-tests/src/gpuTileCoverage.js";
@@ -108,6 +111,67 @@ test("GPU tile coverage bindings consume provisional coverage, alpha, and orderi
   });
 });
 
+test("GPU contributor arena layout extends the legacy flat tile-ref buffers without replacing them", () => {
+  const plan = createGpuTileCoveragePlan({
+    viewportWidth: 320,
+    viewportHeight: 96,
+    tileSizePx: 32,
+    splatCount: 12,
+    maxTileRefs: 128,
+  });
+  const arena = createGpuTileContributorArenaLayout(plan);
+
+  assert.equal(arena.tileCount, plan.tileCount);
+  assert.equal(arena.maxContributors, plan.maxTileRefs);
+  assert.equal(arena.headerBytes, plan.tileHeaderBytes);
+  assert.equal(arena.legacyTileRefBytes, plan.tileRefBytes);
+  assert.equal(arena.prefixCountBytes, Math.max(16, plan.tileCount * Uint32Array.BYTES_PER_ELEMENT));
+  assert.equal(arena.contributorRecordBytes, Math.max(16, plan.maxTileRefs * 64));
+  assert.equal(arena.recordStrideBytes, 64);
+  assert.equal(arena.forcesFirstSmokeGpuArena, false);
+});
+
+test("GPU contributor arena dispatch skeleton separates count, prefix, and scatter stages", () => {
+  const plan = createGpuTileCoveragePlan({
+    viewportWidth: 512,
+    viewportHeight: 384,
+    tileSizePx: 24,
+    splatCount: GPU_TILE_COVERAGE_WORKGROUP_SIZE * 2 + 3,
+    maxTileRefs: 1024,
+  });
+
+  assert.deepEqual(getGpuTileContributorArenaDispatchPlan(plan), {
+    clearArena: { x: Math.ceil(plan.tileCount / GPU_TILE_COVERAGE_WORKGROUP_SIZE), y: 1, z: 1 },
+    countContributors: { x: 3, y: 1, z: 1 },
+    prefixCounts: { x: Math.ceil(plan.tileCount / GPU_TILE_COVERAGE_WORKGROUP_SIZE), y: 1, z: 1 },
+    scatterContributors: { x: 3, y: 1, z: 1 },
+  });
+});
+
+test("GPU contributor arena compatibility check keeps CPU/reference ownership explicit", () => {
+  const plan = createGpuTileCoveragePlan({
+    viewportWidth: 128,
+    viewportHeight: 128,
+    tileSizePx: 16,
+    splatCount: 8,
+    maxTileRefs: 32,
+  });
+  const arena = createGpuTileContributorArenaLayout(plan);
+
+  assert.deepEqual(assertGpuTileContributorArenaCompatibility(plan, arena), {
+    compatible: true,
+    consumesAnchorContract: true,
+    ownsCpuReferenceSemantics: false,
+    routesFirstSmokeThroughGpuArena: false,
+    legacyTileHeaderBytes: plan.tileHeaderBytes,
+    legacyTileRefBytes: plan.tileRefBytes,
+  });
+  assert.throws(
+    () => assertGpuTileContributorArenaCompatibility(plan, { ...arena, legacyTileRefBytes: plan.tileRefBytes - 16 }),
+    /legacy tile-ref/i,
+  );
+});
+
 test("GPU tile coverage WGSL is a separate skeleton and does not mutate the live plate bridge", () => {
   const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
 
@@ -124,4 +188,16 @@ test("GPU tile coverage WGSL is a separate skeleton and does not mutate the live
   assert.doesNotMatch(shader, /var<storage, read> rotations/);
   assert.doesNotMatch(shader, /splat_plate/);
   assert.doesNotMatch(shader, /alphaDensity|centerTile|48px/);
+});
+
+test("GPU contributor arena WGSL is a nonblocking count-prefix-scatter skeleton", () => {
+  const shader = readFileSync(new URL("../../src/shaders/gpu_tile_contributor_arena.wgsl", import.meta.url), "utf8");
+
+  assert.match(shader, /@compute @workgroup_size\(64\)\s+fn clear_contributor_arena/);
+  assert.match(shader, /@compute @workgroup_size\(64\)\s+fn count_tile_contributors/);
+  assert.match(shader, /@compute @workgroup_size\(64\)\s+fn prefix_tile_contributor_counts/);
+  assert.match(shader, /@compute @workgroup_size\(64\)\s+fn scatter_tile_contributors/);
+  assert.match(shader, /TODO\(contributor-arena-contract\)/);
+  assert.match(shader, /does not route first smoke through this GPU arena/);
+  assert.doesNotMatch(shader, /@fragment|textureStore|globalOpacity|brightness/);
 });

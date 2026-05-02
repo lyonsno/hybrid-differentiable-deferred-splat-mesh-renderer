@@ -7,6 +7,7 @@ export const GPU_TILE_COVERAGE_PROJECTED_BOUNDS_BYTES = 16;
 export const GPU_TILE_COVERAGE_TILE_HEADER_BYTES = 16;
 export const GPU_TILE_COVERAGE_TILE_REF_BYTES = 16;
 export const GPU_TILE_COVERAGE_ALPHA_PARAM_FLOATS_PER_REF = 8;
+export const GPU_TILE_CONTRIBUTOR_ARENA_RECORD_BYTES = 64;
 
 export type GpuTileCoverageDebugMode =
   | "final-color"
@@ -71,6 +72,33 @@ export interface GpuTileCoverageDispatchPlan {
   readonly compositeTiles: GpuTileCoverageDispatch;
 }
 
+export interface GpuTileContributorArenaLayout {
+  readonly tileCount: number;
+  readonly maxContributors: number;
+  readonly headerBytes: number;
+  readonly legacyTileRefBytes: number;
+  readonly prefixCountBytes: number;
+  readonly contributorRecordBytes: number;
+  readonly recordStrideBytes: number;
+  readonly forcesFirstSmokeGpuArena: false;
+}
+
+export interface GpuTileContributorArenaDispatchPlan {
+  readonly clearArena: GpuTileCoverageDispatch;
+  readonly countContributors: GpuTileCoverageDispatch;
+  readonly prefixCounts: GpuTileCoverageDispatch;
+  readonly scatterContributors: GpuTileCoverageDispatch;
+}
+
+export interface GpuTileContributorArenaCompatibility {
+  readonly compatible: true;
+  readonly consumesAnchorContract: true;
+  readonly ownsCpuReferenceSemantics: false;
+  readonly routesFirstSmokeThroughGpuArena: false;
+  readonly legacyTileHeaderBytes: number;
+  readonly legacyTileRefBytes: number;
+}
+
 export function createGpuTileCoveragePlan(input: GpuTileCoveragePlanInput): GpuTileCoveragePlan {
   const viewportWidth = assertPositiveInteger(input.viewportWidth, "viewport width");
   const viewportHeight = assertPositiveInteger(input.viewportHeight, "viewport height");
@@ -103,6 +131,23 @@ export function createGpuTileCoveragePlan(input: GpuTileCoveragePlanInput): GpuT
   };
 }
 
+export function createGpuTileContributorArenaLayout(
+  plan: Pick<GpuTileCoveragePlan, "tileCount" | "maxTileRefs" | "tileHeaderBytes" | "tileRefBytes">,
+): GpuTileContributorArenaLayout {
+  const tileCount = assertNonNegativeInteger(plan.tileCount, "arena tile count");
+  const maxContributors = assertNonNegativeInteger(plan.maxTileRefs, "arena max contributors");
+  return {
+    tileCount,
+    maxContributors,
+    headerBytes: assertStorageBytes(plan.tileHeaderBytes, "arena header bytes"),
+    legacyTileRefBytes: assertStorageBytes(plan.tileRefBytes, "legacy tile-ref bytes"),
+    prefixCountBytes: Math.max(16, tileCount * Uint32Array.BYTES_PER_ELEMENT),
+    contributorRecordBytes: Math.max(16, maxContributors * GPU_TILE_CONTRIBUTOR_ARENA_RECORD_BYTES),
+    recordStrideBytes: GPU_TILE_CONTRIBUTOR_ARENA_RECORD_BYTES,
+    forcesFirstSmokeGpuArena: false,
+  };
+}
+
 export function getGpuTileCoverageDispatchPlan(plan: GpuTileCoveragePlan): GpuTileCoverageDispatchPlan {
   return {
     projectBounds: linearDispatch(plan.splatCount),
@@ -113,6 +158,42 @@ export function getGpuTileCoverageDispatchPlan(plan: GpuTileCoveragePlan): GpuTi
       y: plan.tileRows,
       z: 1,
     },
+  };
+}
+
+export function getGpuTileContributorArenaDispatchPlan(plan: GpuTileCoveragePlan): GpuTileContributorArenaDispatchPlan {
+  return {
+    clearArena: linearDispatch(plan.tileCount),
+    countContributors: linearDispatch(plan.splatCount),
+    prefixCounts: linearDispatch(plan.tileCount),
+    scatterContributors: linearDispatch(plan.splatCount),
+  };
+}
+
+export function assertGpuTileContributorArenaCompatibility(
+  plan: Pick<GpuTileCoveragePlan, "tileHeaderBytes" | "tileRefBytes">,
+  arena: Partial<GpuTileContributorArenaLayout>,
+): GpuTileContributorArenaCompatibility {
+  if (typeof arena.headerBytes !== "number" || !Number.isInteger(arena.headerBytes) || arena.headerBytes < plan.tileHeaderBytes) {
+    throw new Error("GPU contributor arena header storage must preserve the legacy tile-header capacity");
+  }
+  if (
+    typeof arena.legacyTileRefBytes !== "number" ||
+    !Number.isInteger(arena.legacyTileRefBytes) ||
+    arena.legacyTileRefBytes < plan.tileRefBytes
+  ) {
+    throw new Error("GPU contributor arena legacy tile-ref storage must preserve the flat-list compatibility path");
+  }
+  if (arena.forcesFirstSmokeGpuArena !== false) {
+    throw new Error("GPU contributor arena skeleton must not route first smoke through the incomplete GPU path");
+  }
+  return {
+    compatible: true,
+    consumesAnchorContract: true,
+    ownsCpuReferenceSemantics: false,
+    routesFirstSmokeThroughGpuArena: false,
+    legacyTileHeaderBytes: plan.tileHeaderBytes,
+    legacyTileRefBytes: plan.tileRefBytes,
   };
 }
 
@@ -160,6 +241,13 @@ function assertPositiveInteger(value: number, label: string): number {
 function assertNonNegativeInteger(value: number, label: string): number {
   if (!Number.isInteger(value) || value < 0) {
     throw new Error(`GPU tile coverage ${label} must be a non-negative integer`);
+  }
+  return value;
+}
+
+function assertStorageBytes(value: number, label: string): number {
+  if (!Number.isInteger(value) || value < 16) {
+    throw new Error(`GPU tile coverage ${label} must reserve at least one storage slot`);
   }
   return value;
 }
