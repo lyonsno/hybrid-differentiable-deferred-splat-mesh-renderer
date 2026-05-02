@@ -66,10 +66,10 @@ export function buildGpuTileCoverageBridge(coverage, options = {}) {
     tileRefs[refIndex * 4 + 2] = entry.tileIndex;
     tileRefs[refIndex * 4 + 3] = refIndex;
     tileCoverageWeights[refIndex] = entry.coverageWeight;
-    if (Number.isInteger(entry.viewRank)) {
+    if (entry.hasSourceViewRank !== false && Number.isInteger(entry.viewRank)) {
       tileRefOrderingKeys[refIndex] = entry.viewRank >>> 0;
     }
-    if (Number.isFinite(entry.opacity)) {
+    if (entry.hasSourceOpacity !== false && Number.isFinite(entry.opacity)) {
       tileRefSourceOpacities[refIndex] = entry.opacity;
     }
     writeTileRefShapeParams(tileRefShapeParams, refIndex, splatsByIndex.get(entry.splatIndex), entry);
@@ -168,11 +168,13 @@ export function buildTileLocalContributorArena(coverage, options = {}) {
       const contributorIndex = selectedByKey.get(key) ?? -1;
       const retained = contributorIndex >= 0;
       const opacity = readOpacity(entry);
+      const hasSourceOpacity = Number.isFinite(entry.opacity);
       const depth = readViewDepth(entry);
       const depthBand = assignDepthBand(depth, depthRange, depthBandCount);
       const transmittanceBefore = transmittance;
       const shape = contributorShapeEvidence(entry, splatsByIndex);
       const viewRank = readOrderRank(entry, orderIndex);
+      const hasSourceViewRank = Number.isInteger(entry.viewRank);
       const coverageWeight = readCoverageWeight(entry);
       const record = {
         splatIndex: entry.splatIndex,
@@ -186,6 +188,8 @@ export function buildTileLocalContributorArena(coverage, options = {}) {
         centerPx: shape.centerPx,
         inverseConic: shape.inverseConic,
         opacity,
+        hasSourceOpacity,
+        hasSourceViewRank,
         coverageAlpha: transferCoverageAlpha(opacity, coverageWeight),
         transmittanceBefore,
         retentionWeight: readRetentionWeight(entry),
