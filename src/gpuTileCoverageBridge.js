@@ -1,5 +1,13 @@
 const DEFAULT_MAX_REFS_PER_TILE = 32;
 const DEFAULT_DEPTH_BAND_COUNT = 4;
+const CONTRIBUTOR_OVERFLOW_FLAGS = Object.freeze({
+  none: 0,
+  perTileRetainedCap: 1,
+  globalProjectedBudget: 2,
+  invalidProjection: 4,
+  nearPlaneSupport: 8,
+  nonFiniteCoverage: 16,
+});
 
 export function buildGpuTileCoverageBridge(coverage, options = {}) {
   const tileCount = coverage.tileColumns * coverage.tileRows;
@@ -101,10 +109,13 @@ export function buildTileLocalContributorArena(coverage, options = {}) {
   const entries = [...coverage.tileEntries].sort(compareTileEntryOrder);
   const tileHeaders = [];
   const contributors = [];
-  let retainedContributorCount = 0;
-  let overflowContributorCount = 0;
+  const projectedContributors = [];
+  const splatsByIndex = new Map();
+  for (const splat of coverage.splats ?? []) {
+    splatsByIndex.set(splat.splatIndex, splat);
+  }
   let cursor = 0;
-  let nextFlatRefIndex = 0;
+  let nextContributorIndex = 0;
 
   for (let tileIndex = 0; tileIndex < tileCount; tileIndex += 1) {
     while (cursor < entries.length && entries[cursor].tileIndex < tileIndex) {
@@ -121,86 +132,106 @@ export function buildTileLocalContributorArena(coverage, options = {}) {
     const selected = selectTileEntries(tileEntries, maxRefsPerTile);
     const selectedByKey = new Map();
     for (const entry of selected.sort(compareTileEntryOrder)) {
-      selectedByKey.set(tileEntryKey(entry), nextFlatRefIndex);
-      nextFlatRefIndex += 1;
+      selectedByKey.set(tileEntryKey(entry), nextContributorIndex + selectedByKey.size);
     }
 
-    const firstContributorIndex = contributors.length;
+    const contributorOffset = nextContributorIndex;
+    const recordByKey = new Map();
     const depthRange = summarizeDepthRange(tileEntries);
-    let retainedCount = 0;
-    let overflowCount = 0;
-    let minDepthBand = depthBandCount;
-    let maxDepthBand = -1;
+    let maxRetainedViewRank = 0;
+    let minRetainedDepth = Number.POSITIVE_INFINITY;
+    let maxRetainedDepth = Number.NEGATIVE_INFINITY;
     let transmittance = 1;
     const orderedContributors = [...tileEntries].sort(compareContributorArenaOrder);
 
     for (let orderIndex = 0; orderIndex < orderedContributors.length; orderIndex += 1) {
       const entry = orderedContributors[orderIndex];
       const key = tileEntryKey(entry);
-      const flatRefIndex = selectedByKey.get(key) ?? -1;
-      const retained = flatRefIndex >= 0;
+      const contributorIndex = selectedByKey.get(key) ?? -1;
+      const retained = contributorIndex >= 0;
       const opacity = readOpacity(entry);
       const depth = readViewDepth(entry);
       const depthBand = assignDepthBand(depth, depthRange, depthBandCount);
       const transmittanceBefore = transmittance;
-      transmittance *= 1 - opacity;
-      if (retained) {
-        retainedCount += 1;
-        retainedContributorCount += 1;
-      } else {
-        overflowCount += 1;
-        overflowContributorCount += 1;
-      }
-      minDepthBand = Math.min(minDepthBand, depthBand);
-      maxDepthBand = Math.max(maxDepthBand, depthBand);
-      contributors.push({
-        tileIndex,
-        tileX: entry.tileX,
-        tileY: entry.tileY,
+      const shape = contributorShapeEvidence(entry, splatsByIndex);
+      const viewRank = readOrderRank(entry, orderIndex);
+      const coverageWeight = readCoverageWeight(entry);
+      const record = {
         splatIndex: entry.splatIndex,
         originalId: entry.originalId,
-        projectedIndex: projectedIndexByKey.get(key) ?? start + orderIndex,
-        flatRefIndex,
-        orderRank: readOrderRank(entry, orderIndex),
+        tileIndex,
+        contributorIndex,
+        viewRank,
         viewDepth: depth,
         depthBand,
-        coverageWeight: readCoverageWeight(entry),
+        coverageWeight,
+        centerPx: shape.centerPx,
+        inverseConic: shape.inverseConic,
+        opacity,
+        coverageAlpha: transferCoverageAlpha(opacity, coverageWeight),
+        transmittanceBefore,
         retentionWeight: readRetentionWeight(entry),
         occlusionWeight: readOcclusionWeight(entry),
+        deferredSurface: null,
+      };
+      transmittance *= 1 - opacity;
+      if (retained) {
+        maxRetainedViewRank = Math.max(maxRetainedViewRank, viewRank);
+        minRetainedDepth = Math.min(minRetainedDepth, depth);
+        maxRetainedDepth = Math.max(maxRetainedDepth, depth);
+      } else {
+        // Dropped records remain in this CPU-only reference list so diagnostics
+        // can prove what the flat retained projection lost under cap pressure.
+      }
+      recordByKey.set(key, record);
+      projectedContributors.push({
+        ...record,
+        tileX: entry.tileX,
+        tileY: entry.tileY,
+        projectedIndex: projectedIndexByKey.get(key) ?? start + orderIndex,
         occlusionDensity: readOcclusionDensity(entry),
-        opacity,
-        transmittanceBefore,
         transmittanceAfter: transmittance,
         retained,
-        overflowReason: retained ? null : "tile-cap",
+        overflowReason: retained ? "none" : "perTileRetainedCap",
       });
     }
 
+    for (const entry of selected.sort(compareTileEntryOrder)) {
+      contributors.push(recordByKey.get(tileEntryKey(entry)));
+    }
+    nextContributorIndex += selected.length;
+    const droppedContributorCount = Math.max(0, tileEntries.length - selected.length);
     tileHeaders.push({
-      tileIndex,
-      firstContributorIndex,
-      contributorCount: tileEntries.length,
-      retainedCount,
-      overflowCount,
-      minDepthBand: tileEntries.length === 0 ? -1 : minDepthBand,
-      maxDepthBand: tileEntries.length === 0 ? -1 : maxDepthBand,
+      contributorOffset,
+      retainedContributorCount: selected.length,
+      projectedContributorCount: tileEntries.length,
+      droppedContributorCount,
+      overflowFlags: droppedContributorCount > 0 ? CONTRIBUTOR_OVERFLOW_FLAGS.perTileRetainedCap : CONTRIBUTOR_OVERFLOW_FLAGS.none,
+      maxRetainedViewRank: selected.length === 0 ? 0xffffffff : maxRetainedViewRank,
+      minRetainedDepth: selected.length === 0 ? Number.POSITIVE_INFINITY : minRetainedDepth,
+      maxRetainedDepth: selected.length === 0 ? Number.NEGATIVE_INFINITY : maxRetainedDepth,
     });
   }
 
   return {
-    viewportWidth: coverage.viewportWidth,
-    viewportHeight: coverage.viewportHeight,
-    tileSizePx: coverage.tileSizePx,
-    tileColumns: coverage.tileColumns,
-    tileRows: coverage.tileRows,
-    tileCount,
-    maxRefsPerTile,
-    depthBandCount,
-    contributorCount: contributors.length,
-    retainedContributorCount,
-    overflowContributorCount,
+    version: 1,
     tileHeaders,
     contributors,
+    overflowReasons: CONTRIBUTOR_OVERFLOW_FLAGS,
+    projectedContributors,
+    metadata: {
+      viewportWidth: coverage.viewportWidth,
+      viewportHeight: coverage.viewportHeight,
+      tileSizePx: coverage.tileSizePx,
+      tileColumns: coverage.tileColumns,
+      tileRows: coverage.tileRows,
+      tileCount,
+      maxRefsPerTile,
+      depthBandCount,
+      projectedContributorCount: projectedContributors.length,
+      retainedContributorCount: contributors.length,
+      droppedContributorCount: Math.max(0, projectedContributors.length - contributors.length),
+    },
   };
 }
 
@@ -602,6 +633,28 @@ function assignDepthBand(depth, range, depthBandCount) {
   }
   const scaled = ((depth - range.min) / (range.max - range.min)) * depthBandCount;
   return Math.min(depthBandCount - 1, Math.max(0, Math.floor(scaled)));
+}
+
+function transferCoverageAlpha(opacity, coverageWeight) {
+  if (opacity <= 0 || coverageWeight <= 0) {
+    return 0;
+  }
+  return 1 - Math.pow(1 - opacity, coverageWeight);
+}
+
+function contributorShapeEvidence(entry, splatsByIndex) {
+  const splat = splatsByIndex.get(entry.splatIndex);
+  if (!splat) {
+    return {
+      centerPx: [0, 0],
+      inverseConic: [1, 0, 1],
+    };
+  }
+  const inverseConic = invertCovariancePx(splat.covariancePx);
+  return {
+    centerPx: [splat.centerPx[0], splat.centerPx[1]],
+    inverseConic: [inverseConic.xx, inverseConic.xy, inverseConic.yy],
+  };
 }
 
 function tileEntryKey(entry) {

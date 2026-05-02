@@ -47,52 +47,59 @@ export interface TileRetentionAudit {
   };
 }
 
-export interface TileLocalContributorArenaHeader {
-  readonly tileIndex: number;
-  readonly firstContributorIndex: number;
-  readonly contributorCount: number;
-  readonly retainedCount: number;
-  readonly overflowCount: number;
-  readonly minDepthBand: number;
-  readonly maxDepthBand: number;
+export type TileLocalContributorOverflowReason =
+  | "none"
+  | "perTileRetainedCap"
+  | "globalProjectedBudget"
+  | "invalidProjection"
+  | "nearPlaneSupport"
+  | "nonFiniteCoverage";
+
+export interface TileLocalContributorDeferredSurfaceEvidence {
+  readonly surfaceKind: "splat" | "mesh" | "unknown";
+  readonly surfaceId: number | null;
+  readonly meshPrimitiveId: number | null;
+  readonly gbufferVoteWeight: number;
+  readonly normalConfidence: number;
+  readonly albedoConfidence: number;
+  readonly materialConfidence: number;
 }
 
-export interface TileLocalContributorArenaRecord {
-  readonly tileIndex: number;
-  readonly tileX: number;
-  readonly tileY: number;
+export interface TileLocalContributorTileHeader {
+  readonly contributorOffset: number;
+  readonly retainedContributorCount: number;
+  readonly projectedContributorCount: number;
+  readonly droppedContributorCount: number;
+  readonly overflowFlags: number;
+  readonly maxRetainedViewRank: number;
+  readonly minRetainedDepth: number;
+  readonly maxRetainedDepth: number;
+}
+
+export interface TileLocalContributorRecord {
   readonly splatIndex: number;
   readonly originalId: number;
-  readonly projectedIndex: number;
-  readonly flatRefIndex: number;
-  readonly orderRank: number;
+  readonly tileIndex: number;
+  readonly contributorIndex: number;
+  readonly viewRank: number;
   readonly viewDepth: number;
   readonly depthBand: number;
   readonly coverageWeight: number;
+  readonly centerPx: readonly [number, number];
+  readonly inverseConic: readonly [number, number, number];
+  readonly opacity: number;
+  readonly coverageAlpha: number;
+  readonly transmittanceBefore: number;
   readonly retentionWeight: number;
   readonly occlusionWeight: number;
-  readonly occlusionDensity: number;
-  readonly opacity: number;
-  readonly transmittanceBefore: number;
-  readonly transmittanceAfter: number;
-  readonly retained: boolean;
-  readonly overflowReason: "tile-cap" | null;
+  readonly deferredSurface: TileLocalContributorDeferredSurfaceEvidence | null;
 }
 
 export interface TileLocalContributorArena {
-  readonly viewportWidth: number;
-  readonly viewportHeight: number;
-  readonly tileSizePx: number;
-  readonly tileColumns: number;
-  readonly tileRows: number;
-  readonly tileCount: number;
-  readonly maxRefsPerTile: number;
-  readonly depthBandCount: number;
-  readonly contributorCount: number;
-  readonly retainedContributorCount: number;
-  readonly overflowContributorCount: number;
-  readonly tileHeaders: readonly TileLocalContributorArenaHeader[];
-  readonly contributors: readonly TileLocalContributorArenaRecord[];
+  readonly version: 1;
+  readonly tileHeaders: readonly TileLocalContributorTileHeader[];
+  readonly contributors: readonly TileLocalContributorRecord[];
+  readonly overflowReasons: Readonly<Record<TileLocalContributorOverflowReason, number>>;
 }
 
 export interface GpuTileCoverageBridge {
@@ -113,7 +120,7 @@ export interface GpuTileCoverageBridge {
   readonly retainedTileEntryCount: number;
   readonly tileRefCustody: TileRefCustodySummary;
   readonly retentionAudit: TileRetentionAudit;
-  readonly contributorArena: TileLocalContributorArena;
+  readonly contributorArena?: TileLocalContributorArena;
 }
 
 export function buildTileLocalContributorArena(

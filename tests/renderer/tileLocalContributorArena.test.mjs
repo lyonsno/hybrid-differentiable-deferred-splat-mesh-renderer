@@ -79,8 +79,7 @@ function retainedIdsFromBridge(bridge) {
 
 function retainedIdsFromArena(arena) {
   return arena.contributors
-    .filter((contributor) => contributor.retained)
-    .sort((left, right) => left.flatRefIndex - right.flatRefIndex)
+    .sort((left, right) => left.contributorIndex - right.contributorIndex)
     .map((contributor) => contributor.originalId);
 }
 
@@ -92,36 +91,41 @@ test("CPU contributor arena preserves dense tile facts before legacy flat-list t
     depthBandCount: 4,
   });
 
-  assert.equal(arena.tileCount, 1);
-  assert.equal(arena.contributorCount, 8);
-  assert.equal(arena.retainedContributorCount, 4);
-  assert.equal(arena.overflowContributorCount, 4);
+  assert.equal(arena.version, 1);
+  assert.equal(arena.metadata.tileCount, 1);
+  assert.equal(arena.metadata.projectedContributorCount, 8);
+  assert.equal(arena.metadata.retainedContributorCount, 4);
+  assert.equal(arena.metadata.droppedContributorCount, 4);
+  assert.equal(arena.overflowReasons.perTileRetainedCap, 1);
   assert.deepEqual(arena.tileHeaders[0], {
-    tileIndex: 0,
-    firstContributorIndex: 0,
-    contributorCount: 8,
-    retainedCount: 4,
-    overflowCount: 4,
-    minDepthBand: 0,
-    maxDepthBand: 3,
+    contributorOffset: 0,
+    retainedContributorCount: 4,
+    projectedContributorCount: 8,
+    droppedContributorCount: 4,
+    overflowFlags: 1,
+    maxRetainedViewRank: 7,
+    minRetainedDepth: 0.18,
+    maxRetainedDepth: 0.62,
   });
 
-  const byId = new Map(arena.contributors.map((contributor) => [contributor.originalId, contributor]));
+  const byId = new Map(arena.projectedContributors.map((contributor) => [contributor.originalId, contributor]));
   assert.equal(byId.get(800).retained, true, "dark high-opacity foreground contributor should survive the cap");
   assert.equal(byId.get(900).retained, true, "bright behind-surface contributor should survive the cap");
-  assert.equal(byId.get(105).overflowReason, "tile-cap");
+  assert.equal(byId.get(105).overflowReason, "perTileRetainedCap");
   assert.equal(byId.get(105).retained, false);
 
-  assert.equal(byId.get(800).orderRank, 0);
-  assert.equal(byId.get(900).orderRank, 7);
+  assert.equal(byId.get(800).viewRank, 0);
+  assert.equal(byId.get(900).viewRank, 7);
   assert.equal(byId.get(800).depthBand, 0);
   assert.equal(byId.get(900).depthBand, 3);
   assert.ok(byId.get(900).coverageWeight > 0);
   assert.ok(byId.get(900).opacity > 0);
+  assert.deepEqual(byId.get(900).centerPx, [32, 32]);
+  assert.deepEqual(byId.get(900).inverseConic, [0.0625, -0, 0.0625]);
   assert.ok(byId.get(900).transmittanceBefore >= 0);
   assert.ok(byId.get(900).transmittanceBefore < byId.get(800).transmittanceBefore);
 
   assert.deepEqual(retainedIdsFromArena(arena), retainedIdsFromBridge(bridge));
   assert.deepEqual(retainedIdsFromBridge(bridge), retainedIdsFromArena(bridge.contributorArena));
-  assert.equal(bridge.contributorArena.overflowContributorCount, 4);
+  assert.equal(bridge.contributorArena.tileHeaders[0].droppedContributorCount, 4);
 });
