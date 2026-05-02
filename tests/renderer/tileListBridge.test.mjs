@@ -81,7 +81,7 @@ test("tile-list bridge packs inverse conic parameters instead of scalar radius",
   const alphaParams = new Float32Array(8);
   writeGpuTileCoverageAlphaParams(alphaParams, bridge, Float32Array.of(0.6), 1);
 
-  assertCloseArray(Array.from(alphaParams), [0.6, 48, 48, 0, 1 / 64, 0, 25, 0], "alpha params");
+  assertCloseArray(Array.from(alphaParams), [0.6, 48, 48, -1, 1 / 64, 0, 25, 0], "alpha params");
 });
 
 test("tile-list bridge caps each tile while retaining visually important low-coverage refs", () => {

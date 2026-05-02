@@ -13,17 +13,24 @@ export function buildGpuTileCoverageBridge(coverage, options = {}) {
   const tileCount = coverage.tileColumns * coverage.tileRows;
   const splatCount = resolveSplatCount(coverage);
   const maxRefsPerTile = resolveMaxRefsPerTile(options.maxRefsPerTile ?? coverage.maxRefsPerTile);
-  const contributorArena = buildTileLocalContributorArena(coverage, {
+  const contributorArena = coverage.contributorArena ?? buildTileLocalContributorArena(coverage, {
     maxRefsPerTile,
     depthBandCount: options.depthBandCount ?? coverage.depthBandCount,
   });
-  const retainedTileEntries = retainTileEntries(coverage.tileEntries, maxRefsPerTile);
+  const normalizedContributorArena = normalizeContributorArena(contributorArena, coverage.tileColumns, tileCount);
+  const retainedTileEntries = normalizedContributorArena
+    ? normalizedContributorArena.records
+    : retainTileEntries(coverage.tileEntries, maxRefsPerTile);
   const retainedTileEntryCount = retainedTileEntries.length;
   const tileEntryCount = Math.max(retainedTileEntryCount, splatCount);
   const projectedBounds = new Uint32Array(Math.max(0, splatCount * 4));
   const tileHeaders = new Uint32Array(Math.max(0, tileCount * 4));
   const tileRefs = new Uint32Array(Math.max(0, tileEntryCount * 4));
   const tileCoverageWeights = new Float32Array(Math.max(0, tileEntryCount));
+  const tileRefOrderingKeys = new Uint32Array(Math.max(0, tileEntryCount));
+  tileRefOrderingKeys.fill(0xffffffff);
+  const tileRefSourceOpacities = new Float32Array(Math.max(0, tileEntryCount));
+  tileRefSourceOpacities.fill(Number.NaN);
   const tileRefShapeParams = new Float32Array(Math.max(0, tileEntryCount * 8));
   const splatsByIndex = new Map();
 
@@ -59,22 +66,31 @@ export function buildGpuTileCoverageBridge(coverage, options = {}) {
     tileRefs[refIndex * 4 + 2] = entry.tileIndex;
     tileRefs[refIndex * 4 + 3] = refIndex;
     tileCoverageWeights[refIndex] = entry.coverageWeight;
-    writeTileRefShapeParams(tileRefShapeParams, refIndex, splatsByIndex.get(entry.splatIndex));
+    if (Number.isInteger(entry.viewRank)) {
+      tileRefOrderingKeys[refIndex] = entry.viewRank >>> 0;
+    }
+    if (Number.isFinite(entry.opacity)) {
+      tileRefSourceOpacities[refIndex] = entry.opacity;
+    }
+    writeTileRefShapeParams(tileRefShapeParams, refIndex, splatsByIndex.get(entry.splatIndex), entry);
     refCount += 1;
   }
 
   if (currentTileIndex >= 0) {
     writeTileHeader(tileHeaders, currentTileIndex, firstRefIndex, refCount);
   }
+  const sourceTileEntries = Array.isArray(contributorArena?.projectedContributors)
+    ? contributorArena.projectedContributors
+    : normalizedContributorArena ? normalizedContributorArena.records : coverage.tileEntries;
   const tileRefCustody = summarizeTileRefCustody({
-    tileEntries: coverage.tileEntries,
+    tileEntries: sourceTileEntries,
     retainedTileEntryCount,
     tileHeaders,
     tileCount,
     maxRefsPerTile,
   });
   const retentionAudit = summarizeRetentionAudit({
-    tileEntries: coverage.tileEntries,
+    tileEntries: sourceTileEntries,
     tileColumns: coverage.tileColumns,
     tileRows: coverage.tileRows,
     maxRefsPerTile,
@@ -93,6 +109,8 @@ export function buildGpuTileCoverageBridge(coverage, options = {}) {
     tileHeaders,
     tileRefs,
     tileCoverageWeights,
+    tileRefOrderingKeys,
+    tileRefSourceOpacities,
     tileRefShapeParams,
     maxRefsPerTile,
     retainedTileEntryCount,
@@ -233,6 +251,61 @@ export function buildTileLocalContributorArena(coverage, options = {}) {
       droppedContributorCount: Math.max(0, projectedContributors.length - contributors.length),
     },
   };
+}
+
+function normalizeContributorArena(contributorArena, tileColumns, tileCount) {
+  if (contributorArena == null) {
+    return null;
+  }
+  const records = contributorArena.records ?? contributorArena.contributors;
+  if (!Array.isArray(records)) {
+    throw new TypeError("contributorArena.records must be an array");
+  }
+  return {
+    records: records
+      .map((record, index) => normalizeContributorArenaRecord(record, index, tileColumns, tileCount))
+      .sort(compareContributorArenaStorageOrder),
+  };
+}
+
+function normalizeContributorArenaRecord(record, index, tileColumns, tileCount) {
+  if (!record || typeof record !== "object") {
+    throw new TypeError(`contributor arena record ${index} must be an object`);
+  }
+  validateNonNegativeInteger(record.tileIndex, `contributor arena record ${index} tileIndex`);
+  if (record.tileIndex >= tileCount) {
+    throw new RangeError(`contributor arena record ${index} tileIndex exceeds tile count`);
+  }
+  validateNonNegativeInteger(record.splatIndex, `contributor arena record ${index} splatIndex`);
+  const originalId = "originalId" in record ? record.originalId : record.splatIndex;
+  validateNonNegativeInteger(originalId, `contributor arena record ${index} originalId`);
+  validateNonNegativeFinite(record.coverageWeight, `contributor arena record ${index} coverageWeight`);
+  validateUnitInterval(record.opacity, `contributor arena record ${index} opacity`);
+  validateNonNegativeInteger(record.viewRank, `contributor arena record ${index} viewRank`);
+  validateCenterPx(record.centerPx, `contributor arena record ${index} centerPx`);
+  validateInverseConic(record.inverseConic, `contributor arena record ${index} inverseConic`);
+  const inverseConic = normalizeInverseConic(record.inverseConic);
+
+  return {
+    ...record,
+    tileIndex: record.tileIndex,
+    tileX: record.tileIndex % tileColumns,
+    tileY: Math.floor(record.tileIndex / tileColumns),
+    splatIndex: record.splatIndex,
+    originalId,
+    coverageWeight: record.coverageWeight,
+    opacity: record.opacity,
+    viewRank: record.viewRank,
+    inverseConic,
+    arenaRecordIndex: index,
+  };
+}
+
+function compareContributorArenaStorageOrder(left, right) {
+  return (
+    left.tileIndex - right.tileIndex ||
+    left.arenaRecordIndex - right.arenaRecordIndex
+  );
 }
 
 function summarizeTileRefCustody({
@@ -677,8 +750,20 @@ function resolveDepthBandCount(value) {
   return depthBandCount;
 }
 
-function writeTileRefShapeParams(target, refIndex, splat) {
+function writeTileRefShapeParams(target, refIndex, splat, tileEntry = null) {
   const base = refIndex * 8;
+  if (tileEntry?.inverseConic) {
+    const inverseConic = normalizeInverseConic(tileEntry.inverseConic);
+    target[base] = tileEntry.centerPx[0];
+    target[base + 1] = tileEntry.centerPx[1];
+    target[base + 2] = inverseConic.xx;
+    target[base + 3] = inverseConic.xy;
+    target[base + 4] = inverseConic.yy;
+    target[base + 5] = 0;
+    target[base + 6] = 0;
+    target[base + 7] = 0;
+    return;
+  }
   if (!splat) {
     target[base] = 0;
     target[base + 1] = 0;
@@ -701,6 +786,21 @@ function writeTileRefShapeParams(target, refIndex, splat) {
   target[base + 7] = 0;
 }
 
+function normalizeInverseConic(inverseConic) {
+  if (Array.isArray(inverseConic)) {
+    return {
+      xx: inverseConic[0],
+      xy: inverseConic[1] ?? 0,
+      yy: inverseConic[2],
+    };
+  }
+  return {
+    xx: inverseConic.xx,
+    xy: inverseConic.xy ?? 0,
+    yy: inverseConic.yy,
+  };
+}
+
 export function writeGpuTileCoverageAlphaParams(target, bridge, effectiveOpacities, maxTileRefs = bridge.tileEntryCount) {
   const requiredLength = Math.max(1, maxTileRefs) * 8;
   if (target.length < requiredLength) {
@@ -712,10 +812,12 @@ export function writeGpuTileCoverageAlphaParams(target, bridge, effectiveOpaciti
     const shapeBase = refIndex * 8;
     const primaryBase = refIndex * 4;
     const conicBase = (maxTileRefs + refIndex) * 4;
-    target[primaryBase] = effectiveOpacities[splatId] ?? 0;
+    const sourceOpacity = bridge.tileRefSourceOpacities?.[refIndex];
+    target[primaryBase] = Number.isFinite(sourceOpacity) ? sourceOpacity : effectiveOpacities[splatId] ?? 0;
     target[primaryBase + 1] = bridge.tileRefShapeParams[shapeBase] ?? 0;
     target[primaryBase + 2] = bridge.tileRefShapeParams[shapeBase + 1] ?? 0;
-    target[primaryBase + 3] = 0;
+    const orderingKey = bridge.tileRefOrderingKeys?.[refIndex];
+    target[primaryBase + 3] = Number.isInteger(orderingKey) && orderingKey !== 0xffffffff ? orderingKey : -1;
     target[conicBase] = bridge.tileRefShapeParams[shapeBase + 2] ?? 1;
     target[conicBase + 1] = bridge.tileRefShapeParams[shapeBase + 3] ?? 0;
     target[conicBase + 2] = bridge.tileRefShapeParams[shapeBase + 4] ?? 1;
@@ -800,6 +902,43 @@ function padFloat32Storage(data) {
     return padded;
   }
   return data;
+}
+
+function validateCenterPx(centerPx, label) {
+  if (!Array.isArray(centerPx) || centerPx.length !== 2 || !centerPx.every(Number.isFinite)) {
+    throw new TypeError(`${label} must be a finite [x, y] array`);
+  }
+}
+
+function validateInverseConic(inverseConic, label) {
+  if (!inverseConic || typeof inverseConic !== "object") {
+    throw new TypeError(`${label} must be an object or tuple`);
+  }
+  const { xx, xy, yy } = normalizeInverseConic(inverseConic);
+  if (![xx, xy, yy].every(Number.isFinite)) {
+    throw new TypeError(`${label} must contain finite xx, xy, and yy components`);
+  }
+  if (xx <= 0 || yy <= 0 || xx * yy - xy * xy <= 0) {
+    throw new RangeError(`${label} must be positive definite`);
+  }
+}
+
+function validateNonNegativeInteger(value, label) {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new RangeError(`${label} must be a non-negative integer`);
+  }
+}
+
+function validateNonNegativeFinite(value, label) {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new RangeError(`${label} must be a non-negative finite number`);
+  }
+}
+
+function validateUnitInterval(value, label) {
+  if (!Number.isFinite(value) || value < 0 || value > 1) {
+    throw new RangeError(`${label} must be in [0, 1]`);
+  }
 }
 
 function createStorageBuffer(device, data, label) {

@@ -45,6 +45,14 @@ fn inverse_conic_radii(conicParam: vec4f) -> vec2f {
   return vec2f(inverseSqrt(lambdaSmall), inverseSqrt(lambdaLarge));
 }
 
+fn resolve_tile_ref_ordering_key(tileRef: vec4u, alphaParamIndex: u32) -> u32 {
+  let arenaOrderingKey = alphaParams[alphaParamIndex].w;
+  if (arenaOrderingKey >= 0.0) {
+    return u32(arenaOrderingKey);
+  }
+  return orderingKeys[tileRef.x];
+}
+
 fn debug_heatmap_color(
   debugMode: u32,
   coverageWeightSum: f32,
@@ -153,7 +161,8 @@ fn debug_heatmap_color(
       if (tileRef.x >= frame.splatCount) {
         continue;
       }
-      let rank = orderingKeys[tileRef.x];
+      let alphaParamIndex = min(tileRef.w, frame.maxTileRefs - 1u);
+      let rank = resolve_tile_ref_ordering_key(tileRef, alphaParamIndex);
       if ((previousRank == 0xffffffffu || rank > previousRank) && rank < selectedRank) {
         selectedRank = rank;
         selectedRefIndex = refIndex;
