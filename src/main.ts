@@ -89,6 +89,15 @@ import {
   type TileLocalPrepassBudgetDiagnostics,
 } from "./tileLocalPrepassBridge.js";
 import { createTileLocalTexturePresenter } from "./tileLocalTexturePresenter.js";
+import {
+  splatAttributesFromFixture,
+  configureCameraForFixture,
+  SHAPE_WITNESS_SPLAT_SCALE,
+  SHAPE_WITNESS_MIN_RADIUS_PX,
+  SHAPE_WITNESS_NEAR_FADE_START_NDC as SHAPE_WITNESS_NEAR_FADE_START,
+  SHAPE_WITNESS_NEAR_FADE_END_NDC as SHAPE_WITNESS_NEAR_FADE_END,
+} from "./rendererFidelityProbes/syntheticShapeLoader.js";
+import { getShapeFixture } from "./syntheticShapeFixtures.js";
 
 const statsEl = document.getElementById("stats")!;
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
@@ -210,25 +219,11 @@ async function main() {
   const splatRenderer = createSplatPlateRenderer(gpu.device, gpu.format, bgl);
   const tileLocalPresenter = createTileLocalTexturePresenter(gpu.device, gpu.format);
 
-  // shape-witness stub: detect ?synthetic=shape-witness-* and expose a placeholder
-  // rendererLabel so the pixel-shape-harness capture loop can identify readiness.
-  // This stub renders a placeholder (real Scaniverse asset) while the real fixture data
-  // loads. The renderer-path-integration lane must wire actual synthetic fixture loading
-  // via this query param before the pixel-shape gate can assert geometric invariants.
-  // See: docs/renderer-fidelity/pixel-shape-harness-renderer-stub.md
+  // shape-witness: detect ?synthetic=shape-witness-<id> and load the real synthetic fixture
+  // through the real WebGPU renderer path. This is the renderer-path-integration lane wiring.
+  // The fixture data replaces the real Scaniverse asset; the real compositor and plate
+  // renderer process the synthetic splats exactly as they would real splat data.
   const shapeWitnessFixtureId = selectedShapeWitnessFixtureId();
-  if (shapeWitnessFixtureId !== null) {
-    console.warn(
-      `[shape-witness stub] Detected ?synthetic=shape-witness-${shapeWitnessFixtureId}. ` +
-      `The renderer-path-integration lane must wire real synthetic fixture loading for this param. ` +
-      `Currently rendering the default Scaniverse asset as a placeholder. ` +
-      `The pixel-shape-harness capture harness will record rendererStubWarning=true until real fixture loading is wired.`
-    );
-    // Expose placeholder smoke evidence so the harness can detect the page loaded.
-    // rendererLabel: "shape-witness" signals to the harness that this param was recognized.
-    // ready: false until the real fixture loads (renderer-path-integration wires this).
-    exposeShapeWitnessStubEvidence(shapeWitnessFixtureId);
-  }
 
   statsEl.textContent = "Loading real Scaniverse splats...";
   const assetPath = selectedSplatAssetPath();
@@ -341,7 +336,35 @@ async function main() {
     requestFrame();
   }
 
-  replaceSplatScene(await fetchFirstSmokeSplatPayload(assetPath), assetPath);
+  if (shapeWitnessFixtureId !== null) {
+    // Load and render the synthetic fixture through the REAL renderer path.
+    // No CPU-only fake, no alternate renderer — the same WebGPU tile-local compositor
+    // and plate renderer that processes real Scaniverse splats processes the fixture data.
+    const fullFixtureId = `shape-witness-${shapeWitnessFixtureId}`;
+    const fixture = getShapeFixture(fullFixtureId);
+    if (fixture === undefined) {
+      console.error(
+        `[shape-witness] Unrecognized fixture ID: "${fullFixtureId}". ` +
+        `Valid IDs: shape-witness-{isotropic-circle,edge-on-ribbon,rotated-ellipse,near-plane-slab,dense-foreground}`
+      );
+      // Fall back to real Scaniverse so the page is not blank.
+      replaceSplatScene(await fetchFirstSmokeSplatPayload(assetPath), assetPath);
+    } else {
+      statsEl.textContent = `Loading shape-witness fixture: ${shapeWitnessFixtureId}...`;
+      const fixtureAttributes = splatAttributesFromFixture(fixture);
+      // replaceSplatScene uses the bounds-based camera internally; we will override
+      // the camera immediately after with the fixture's exact camera specification.
+      replaceSplatScene(fixtureAttributes, `shape-witness:${fullFixtureId}`);
+      // Override camera to fixture specification (replaces the bounds-based camera set above).
+      configureCameraForFixture(cam, fixture.camera, fixtureAttributes.bounds);
+      // Expose shape-witness smoke evidence with ready: true so the capture harness can proceed.
+      // This overwrites the replaceSplatScene evidence with shape-witness-specific metadata.
+      exposeShapeWitnessSmokeEvidence(shapeWitnessFixtureId, fixtureAttributes.count);
+      statsEl.textContent = `shape-witness: ${shapeWitnessFixtureId} | renderer: shape-witness | splats: ${fixtureAttributes.count}`;
+    }
+  } else {
+    replaceSplatScene(await fetchFirstSmokeSplatPayload(assetPath), assetPath);
+  }
   bindDroppedSplatLoading(canvas, async (file) => {
     statsEl.textContent = `Loading ${file.name}...`;
     try {
@@ -425,15 +448,22 @@ async function main() {
         scene.tileLocalState.needsDispatch = true;
       }
     }
+    // Use shape-witness rendering parameters when rendering synthetic fixtures.
+    // Shape-witness fixtures are defined in world-space units compatible with splatScale=600.
+    // Real Scaniverse uses splatScale=3000 for its own unit system.
+    const activeSplatScale = shapeWitnessFixtureId !== null ? SHAPE_WITNESS_SPLAT_SCALE : REAL_SCANIVERSE_SPLAT_SCALE;
+    const activeMinRadiusPx = shapeWitnessFixtureId !== null ? SHAPE_WITNESS_MIN_RADIUS_PX : REAL_SCANIVERSE_MIN_RADIUS_PX;
+    const activeNearFadeStart = shapeWitnessFixtureId !== null ? SHAPE_WITNESS_NEAR_FADE_START : REAL_SCANIVERSE_NEAR_FADE_START_NDC;
+    const activeNearFadeEnd = shapeWitnessFixtureId !== null ? SHAPE_WITNESS_NEAR_FADE_END : REAL_SCANIVERSE_NEAR_FADE_END_NDC;
     writeSplatPlateFrameUniforms(
       uniformData,
       viewProj,
       width,
       height,
-      REAL_SCANIVERSE_SPLAT_SCALE,
-      REAL_SCANIVERSE_MIN_RADIUS_PX,
-      REAL_SCANIVERSE_NEAR_FADE_START_NDC,
-      REAL_SCANIVERSE_NEAR_FADE_END_NDC
+      activeSplatScale,
+      activeMinRadiusPx,
+      activeNearFadeStart,
+      activeNearFadeEnd
     );
     gpu.device.queue.writeBuffer(uniformBuffer, 0, uniformData);
 
@@ -568,13 +598,20 @@ async function main() {
 
     // Stats overlay
     const alphaSummary = scene.alphaDensityState.summary;
-    const rendererLabel = labelRendererMode(
+    const baseRendererLabel = labelRendererMode(
       scene.rendererMode,
       scene.tileLocalState,
       scene.tileLocalDisabledReason,
       scene.tileLocalLastSkipReason
     );
-    let statsText = `${width}×${height} | ${displayFps} fps | ${scene.count.toLocaleString()} real Scaniverse splats | renderer: ${rendererLabel} | sort: ${SORT_BACKEND} | alpha: ${alphaSummary.accountingMode} density ${alphaSummary.compensatedSplatCount.toLocaleString()} splats/${alphaSummary.hotTileCount} tiles`;
+    // In shape-witness mode, prefix the renderer label so the capture harness sees "shape-witness".
+    const rendererLabel = shapeWitnessFixtureId !== null
+      ? `shape-witness`
+      : baseRendererLabel;
+    const splatKindLabel = shapeWitnessFixtureId !== null
+      ? `shape-witness (${shapeWitnessFixtureId})`
+      : "real Scaniverse splats";
+    let statsText = `${width}×${height} | ${displayFps} fps | ${scene.count.toLocaleString()} ${splatKindLabel} | renderer: ${rendererLabel} | sort: ${SORT_BACKEND} | alpha: ${alphaSummary.accountingMode} density ${alphaSummary.compensatedSplatCount.toLocaleString()} splats/${alphaSummary.hotTileCount} tiles`;
     if (scene.tileLocalState) {
       statsText += ` | tile-local: ${scene.tileLocalState.plan.tileColumns}x${scene.tileLocalState.plan.tileRows} tiles/${scene.tileLocalState.tileEntryCount} refs`;
       statsText += ` | tile-order: ${TILE_LOCAL_ORDERING_BACKEND}`;
@@ -966,18 +1003,15 @@ function usesTileLocalPrepass(mode: RendererMode): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// shape-witness stub helpers (renderer-pixel-harness lane)
+// shape-witness helpers (renderer-path-integration lane)
 //
-// These are placeholder stubs. The renderer-path-integration lane is responsible
-// for wiring real synthetic fixture loading via the ?synthetic= query param.
-// Until that wiring is complete, these functions expose a minimal placeholder
-// so the pixel-shape-harness capture loop can detect that the page is loaded
-// and that the synthetic query was recognized, without claiming ready=true.
+// These functions support real synthetic fixture loading via ?synthetic=shape-witness-<id>.
+// The fixture data is loaded through the real WebGPU renderer path (not a CPU fake).
 // ---------------------------------------------------------------------------
 
 /**
- * Returns the fixture ID from ?synthetic=shape-witness-<id>, or null if absent.
- * The fixture ID is validated against the known set for early fail-fast detection.
+ * Returns the fixture ID suffix from ?synthetic=shape-witness-<id>, or null if absent.
+ * Example: ?synthetic=shape-witness-isotropic-circle → "isotropic-circle"
  */
 function selectedShapeWitnessFixtureId(): string | null {
   const params = new URLSearchParams(window.location.search);
@@ -989,23 +1023,29 @@ function selectedShapeWitnessFixtureId(): string | null {
 }
 
 /**
- * Exposes placeholder smoke evidence for a shape-witness fixture stub.
- * Sets rendererLabel: "shape-witness" so the harness can detect recognition.
- * Does NOT set ready: true — that requires the renderer-path-integration lane
- * to wire real fixture loading and signal completion.
+ * Exposes shape-witness smoke evidence after the real fixture has been loaded and rendered.
+ * Sets ready: true and rendererLabel: "shape-witness" so the pixel-shape-gate capture
+ * harness knows the fixture rendered through the real WebGPU path.
+ *
+ * This is called AFTER replaceSplatScene() to layer shape-witness-specific fields
+ * on top of the base scene evidence. Each render frame, exposeTileLocalRuntimeEvidence()
+ * will merge into __MESH_SPLAT_SMOKE__ with rendererLabel = "shape-witness".
  */
-function exposeShapeWitnessStubEvidence(fixtureId: string): void {
+function exposeShapeWitnessSmokeEvidence(fixtureId: string, splatCount: number): void {
   const runtimeWindow = window as unknown as {
     __MESH_SPLAT_SMOKE__?: Record<string, unknown>;
   };
   runtimeWindow.__MESH_SPLAT_SMOKE__ = {
     ...(runtimeWindow.__MESH_SPLAT_SMOKE__ ?? {}),
+    ready: true,
     rendererLabel: "shape-witness",
     synthetic: true,
-    sourceKind: `shape-witness-stub`,
+    realSplatEvidence: false,
+    sourceKind: `shape-witness-real-renderer`,
     shapeWitnessFixtureId: fixtureId,
-    shapeWitnessStub: true,
-    // ready: false — not set until renderer-path-integration wires real fixture loading
+    shapeWitnessSplatCount: splatCount,
+    shapeWitnessRealRenderer: true,
+    // rendererLabel stays "shape-witness" each frame via the frame() closure override
   };
 }
 
