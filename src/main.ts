@@ -86,6 +86,7 @@ import {
   buildTileLocalPrepassBridge,
   captureTileLocalPrepassBridgeSignature,
   tileLocalPrepassBridgeSignatureChanged,
+  type TileLocalPrepassBudgetDiagnostics,
 } from "./tileLocalPrepassBridge.js";
 import { createTileLocalTexturePresenter } from "./tileLocalTexturePresenter.js";
 
@@ -148,6 +149,7 @@ interface TileLocalSceneState {
   tileEntryCount: number;
   tileRefCustody: TileRefCustodySummary;
   retentionAudit: TileRetentionAudit;
+  budgetDiagnostics: TileLocalPrepassBudgetDiagnostics;
   tileRefSplatIds: Uint32Array;
   prepassSignature: string;
   debugMode: GpuTileCoverageDebugMode;
@@ -672,7 +674,9 @@ function createTileLocalSceneState(
     maxTileEntries: TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES,
     nearFadeEndNdc: REAL_SCANIVERSE_NEAR_FADE_END_NDC,
   };
+  const bridgeBuildStartedAtMs = performance.now();
   const bridge = buildTileLocalPrepassBridge(bridgeInput);
+  const bridgeBuildDurationMs = Math.max(0, performance.now() - bridgeBuildStartedAtMs);
   const prepassSignature = captureTileLocalPrepassBridgeSignature(bridgeInput);
   const plan = createGpuTileCoveragePlan({
     viewportWidth,
@@ -681,6 +685,20 @@ function createTileLocalSceneState(
     splatCount: attributes.count,
     maxTileRefs: Math.max(bridge.tileEntryCount, 1),
   });
+  const budgetDiagnostics: TileLocalPrepassBudgetDiagnostics = {
+    ...bridge.budgetDiagnostics,
+    heat: {
+      cpu: {
+        ...bridge.budgetDiagnostics.heat.cpu,
+        buildDurationMs: roundRuntimeMetric(bridgeBuildDurationMs),
+      },
+      gpu: {
+        ...bridge.budgetDiagnostics.heat.gpu,
+        alphaParamBufferBytes: plan.alphaParamBytes,
+        orderingKeyBufferBytes: plan.orderingKeyBytes,
+      },
+    },
+  };
   const pipeline = createGpuTileCoveragePipelineSkeleton(device, "rgba16float");
   const frameUniformBuffer = createUniformBuffer(
     device,
@@ -764,6 +782,7 @@ function createTileLocalSceneState(
     tileEntryCount: bridge.tileEntryCount,
     tileRefCustody: bridge.tileRefCustody,
     retentionAudit: bridge.retentionAudit,
+    budgetDiagnostics,
     tileRefSplatIds,
     prepassSignature,
     debugMode: TILE_LOCAL_DEBUG_MODE,
@@ -782,6 +801,10 @@ function createTileLocalSceneState(
     lastCompositedFrame: -1,
     lastCompositedSignature: prepassSignature,
   };
+}
+
+function roundRuntimeMetric(value: number): number {
+  return Number.isFinite(value) ? Number(value.toFixed(3)) : 0;
 }
 
 function ensureTileLocalSceneState(
@@ -998,14 +1021,22 @@ function exposeTileLocalRuntimeEvidence(
     ? tileLocalPresentationFreshness(tileLocalState, tileLocalLastSkipReason, tileLocalLastSkipSignature, nowMs)
     : undefined;
   const budget = tileLocalBudgetEvidence(tileLocalLastSkipReason, viewportWidth, viewportHeight);
+  const tileLocalStatus = tileLocalRuntimeStatus({
+    tileLocalState,
+    tileLocalDisabledReason,
+    tileLocalLastSkipReason,
+    freshness,
+  });
   runtimeWindow.__MESH_SPLAT_SMOKE__ = {
     ...(runtimeWindow.__MESH_SPLAT_SMOKE__ ?? {}),
     rendererLabel,
     fps,
+    tileLocalStatus,
     tileLocalDisabledReason,
     tileLocalLastSkipReason,
     tileLocal: tileLocalState && diagnostics
       ? {
+          status: tileLocalStatus,
           refs: diagnostics.tileRefs.total,
           allocatedRefs: tileLocalState.tileEntryCount,
           tileColumns: tileLocalState.plan.tileColumns,
@@ -1013,7 +1044,11 @@ function exposeTileLocalRuntimeEvidence(
           orderingBackend: TILE_LOCAL_ORDERING_BACKEND,
           debugMode: tileLocalState.debugMode,
           freshness,
-          budget,
+          budget: {
+            ...budget,
+            status: tileLocalStatus,
+          },
+          budgetDiagnostics: tileLocalState.budgetDiagnostics,
           diagnostics,
         }
       : undefined,
@@ -1023,6 +1058,23 @@ function exposeTileLocalRuntimeEvidence(
   } else {
     delete runtimeWindow.__MESH_SPLAT_TILE_LOCAL_DIAGNOSTICS__;
   }
+}
+
+function tileLocalRuntimeStatus({
+  tileLocalState,
+  tileLocalDisabledReason,
+  tileLocalLastSkipReason,
+  freshness,
+}: {
+  tileLocalState: TileLocalSceneState | null;
+  tileLocalDisabledReason: string | null;
+  tileLocalLastSkipReason: string | null;
+  freshness?: { status?: string };
+}): string {
+  if (tileLocalDisabledReason) return "budget-disabled";
+  if (tileLocalLastSkipReason) return "stale-cache";
+  if (tileLocalState) return freshness?.status === "current" ? "current" : "current";
+  return "not-applicable";
 }
 
 function tileLocalPresentationFreshness(
@@ -1058,6 +1110,7 @@ function tileLocalBudgetEvidence(
 ) {
   const parsed = parseTileLocalBudgetSkipReason(tileLocalLastSkipReason);
   return {
+    status: parsed ? "skipped" : "current",
     tileSizePx: TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX,
     currentViewportWidth: viewportWidth,
     currentViewportHeight: viewportHeight,
@@ -1066,6 +1119,7 @@ function tileLocalBudgetEvidence(
     maxProjectedRefs: parsed?.maxProjectedRefs ?? TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES,
     skippedProjectedRefs: parsed?.skippedProjectedRefs ?? null,
     skipReason: tileLocalLastSkipReason,
+    overflowReasons: parsed ? ["projected-ref-budget"] : [],
   };
 }
 
