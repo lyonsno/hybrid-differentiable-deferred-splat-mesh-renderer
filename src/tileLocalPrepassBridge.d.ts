@@ -1,5 +1,16 @@
-import type { GpuTileCoverageBridge } from "./gpuTileCoverageBridge.js";
+import type {
+  GpuTileCoverageBridge,
+  TileLocalContributorArena,
+  TileLocalContributorRecord,
+  TileLocalContributorTileHeader,
+} from "./gpuTileCoverageBridge.js";
 import type { SplatAttributes } from "./splats.js";
+
+export type {
+  TileLocalContributorArena,
+  TileLocalContributorRecord,
+  TileLocalContributorTileHeader,
+};
 
 export function buildTileLocalPrepassBridge(input: {
   readonly attributes: SplatAttributes;

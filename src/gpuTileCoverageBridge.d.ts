@@ -47,6 +47,61 @@ export interface TileRetentionAudit {
   };
 }
 
+export type TileLocalContributorOverflowReason =
+  | "none"
+  | "perTileRetainedCap"
+  | "globalProjectedBudget"
+  | "invalidProjection"
+  | "nearPlaneSupport"
+  | "nonFiniteCoverage";
+
+export interface TileLocalContributorDeferredSurfaceEvidence {
+  readonly surfaceKind: "splat" | "mesh" | "unknown";
+  readonly surfaceId: number | null;
+  readonly meshPrimitiveId: number | null;
+  readonly gbufferVoteWeight: number;
+  readonly normalConfidence: number;
+  readonly albedoConfidence: number;
+  readonly materialConfidence: number;
+}
+
+export interface TileLocalContributorTileHeader {
+  readonly contributorOffset: number;
+  readonly retainedContributorCount: number;
+  readonly projectedContributorCount: number;
+  readonly droppedContributorCount: number;
+  readonly overflowFlags: number;
+  readonly maxRetainedViewRank: number;
+  readonly minRetainedDepth: number;
+  readonly maxRetainedDepth: number;
+}
+
+export interface TileLocalContributorRecord {
+  readonly splatIndex: number;
+  readonly originalId: number;
+  readonly tileIndex: number;
+  readonly contributorIndex: number;
+  readonly viewRank: number;
+  readonly viewDepth: number;
+  readonly depthBand: number;
+  readonly coverageWeight: number;
+  readonly centerPx: readonly [number, number];
+  readonly inverseConic: readonly [number, number, number];
+  readonly opacity: number;
+  readonly coverageAlpha: number;
+  readonly transmittanceBefore: number;
+  readonly retentionWeight: number;
+  readonly occlusionWeight: number;
+  readonly deferredSurface: TileLocalContributorDeferredSurfaceEvidence | null;
+}
+
+export interface TileLocalContributorArena {
+  readonly version: 1;
+  readonly tileHeaders: readonly TileLocalContributorTileHeader[];
+  readonly contributors: readonly TileLocalContributorRecord[];
+  readonly overflowReasons: Readonly<Record<TileLocalContributorOverflowReason, number>>;
+}
+
 export interface GpuTileCoverageBridge {
   readonly viewportWidth: number;
   readonly viewportHeight: number;
@@ -65,6 +120,7 @@ export interface GpuTileCoverageBridge {
   readonly retainedTileEntryCount: number;
   readonly tileRefCustody: TileRefCustodySummary;
   readonly retentionAudit: TileRetentionAudit;
+  readonly contributorArena?: TileLocalContributorArena;
 }
 
 export function buildGpuTileCoverageBridge(
