@@ -59,6 +59,11 @@ Each retained contributor record has these logical fields:
 | `transmittanceBefore` | current-final-color-only | Current final-color running transmission before this record. |
 | `retentionWeight` | shared-current-and-deferred | Retention/admission score; diagnostic after construction. |
 | `occlusionWeight` | shared-current-and-deferred | Foreground opacity pressure used by retention and diagnostics. |
+| `retentionStatus` | diagnostics | Whether this projected contributor was retained in the flat arena projection or dropped under cap pressure. |
+| `retained` | diagnostics compatibility | Legacy boolean alias on projected contributors. It must equal `retentionStatus === "retained"`. |
+| `retentionBand` | diagnostics | `front`, `middle`, or `back` band label for retained/dropped evidence. |
+| `overflowReason` | diagnostics | Backward-compatible coarse reason. Dropped cap-pressure records keep `perTileRetainedCap`. |
+| `overflowReasonDetail` | diagnostics | Refined reason for cap-pressure evidence such as policy-reserve displacement or front/behind-surface band loss. |
 | `deferredSurface` | future-deferred-surface-input | Future splat/mesh surface vote evidence. It is absent from the current final-color path. |
 
 `sourceColor` is current-final-color-only even though it is not a required arena record field. Future deferred lanes should vote albedo/material/normal evidence through `deferredSurface` fields rather than treating baked final color as a PBR input.
@@ -77,6 +82,8 @@ Overflow is an observed fact, not a reason to hide the artifact by raising caps.
 | `nonFiniteCoverage` | `16` | Coverage/conic math produced non-finite evidence. |
 
 `projectedContributorCount - retainedContributorCount` must equal `droppedContributorCount` for a fully built tile. When a global projected budget prevents full construction, diagnostics may report an incomplete tile set, but they must carry `globalProjectedBudget` instead of pretending dropped counts are zero.
+
+`overflowReasonDetail` refines the coarse retained-cap reason for projected contributors without changing the bitset or older `overflowReason` meaning. Current detail values are `perTileRetainedCapPolicyReserve`, `perTileRetainedCapForegroundBand`, `perTileRetainedCapMiddleBand`, and `perTileRetainedCapBehindSurfaceBand`. These labels make lost foreground or behind-surface contributors reviewable; they do not authorize a cap raise or visual tuning as the fix.
 
 ## Sibling Boundaries
 

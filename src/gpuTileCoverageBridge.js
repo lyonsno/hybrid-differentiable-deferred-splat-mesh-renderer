@@ -8,6 +8,14 @@ const CONTRIBUTOR_OVERFLOW_FLAGS = Object.freeze({
   nearPlaneSupport: 8,
   nonFiniteCoverage: 16,
 });
+const CONTRIBUTOR_OVERFLOW_REASONS = Object.freeze({
+  none: "none",
+  perTileRetainedCap: "perTileRetainedCap",
+  perTileRetainedCapPolicyReserve: "perTileRetainedCapPolicyReserve",
+  perTileRetainedCapForegroundBand: "perTileRetainedCapForegroundBand",
+  perTileRetainedCapMiddleBand: "perTileRetainedCapMiddleBand",
+  perTileRetainedCapBehindSurfaceBand: "perTileRetainedCapBehindSurfaceBand",
+});
 
 export function buildGpuTileCoverageBridge(coverage, options = {}) {
   const tileCount = coverage.tileColumns * coverage.tileRows;
@@ -148,6 +156,7 @@ export function buildTileLocalContributorArena(coverage, options = {}) {
       tileEntries.map((entry, index) => [tileEntryKey(entry), start + index])
     );
     const selected = selectTileEntries(tileEntries, maxRefsPerTile);
+    const legacySelectedKeys = new Set(tileEntries.slice(0, maxRefsPerTile).map(tileEntryKey));
     const selectedByKey = new Map();
     for (const entry of selected.sort(compareTileEntryOrder)) {
       selectedByKey.set(tileEntryKey(entry), nextContributorIndex + selectedByKey.size);
@@ -176,6 +185,12 @@ export function buildTileLocalContributorArena(coverage, options = {}) {
       const viewRank = readOrderRank(entry, orderIndex);
       const hasSourceViewRank = Number.isInteger(entry.viewRank);
       const coverageWeight = readCoverageWeight(entry);
+      const retentionBand = retentionBandForDepthBand(depthBand, depthBandCount);
+      const overflowReasonDetail = classifyProjectedContributorOverflowReason({
+        retained,
+        wasLegacySelected: legacySelectedKeys.has(key),
+        retentionBand,
+      });
       const record = {
         splatIndex: entry.splatIndex,
         originalId: entry.originalId,
@@ -194,6 +209,10 @@ export function buildTileLocalContributorArena(coverage, options = {}) {
         transmittanceBefore,
         retentionWeight: readRetentionWeight(entry),
         occlusionWeight: readOcclusionWeight(entry),
+        retentionStatus: retained ? "retained" : "dropped",
+        retentionBand,
+        overflowReason: retained ? CONTRIBUTOR_OVERFLOW_REASONS.none : CONTRIBUTOR_OVERFLOW_REASONS.perTileRetainedCap,
+        overflowReasonDetail,
         deferredSurface: null,
       };
       transmittance *= 1 - opacity;
@@ -214,7 +233,6 @@ export function buildTileLocalContributorArena(coverage, options = {}) {
         occlusionDensity: readOcclusionDensity(entry),
         transmittanceAfter: transmittance,
         retained,
-        overflowReason: retained ? "none" : "perTileRetainedCap",
       });
     }
 
@@ -240,6 +258,7 @@ export function buildTileLocalContributorArena(coverage, options = {}) {
     tileHeaders,
     contributors,
     overflowReasons: CONTRIBUTOR_OVERFLOW_FLAGS,
+    overflowReasonNames: CONTRIBUTOR_OVERFLOW_REASONS,
     projectedContributors,
     metadata: {
       viewportWidth: coverage.viewportWidth,
@@ -710,6 +729,36 @@ function assignDepthBand(depth, range, depthBandCount) {
   }
   const scaled = ((depth - range.min) / (range.max - range.min)) * depthBandCount;
   return Math.min(depthBandCount - 1, Math.max(0, Math.floor(scaled)));
+}
+
+function retentionBandForDepthBand(depthBand, depthBandCount) {
+  if (depthBand <= 0) {
+    return "front";
+  }
+  if (depthBand >= depthBandCount - 1) {
+    return "back";
+  }
+  return "middle";
+}
+
+function classifyProjectedContributorOverflowReason({
+  retained,
+  wasLegacySelected,
+  retentionBand,
+}) {
+  if (retained) {
+    return CONTRIBUTOR_OVERFLOW_REASONS.none;
+  }
+  if (wasLegacySelected) {
+    return CONTRIBUTOR_OVERFLOW_REASONS.perTileRetainedCapPolicyReserve;
+  }
+  if (retentionBand === "front") {
+    return CONTRIBUTOR_OVERFLOW_REASONS.perTileRetainedCapForegroundBand;
+  }
+  if (retentionBand === "back") {
+    return CONTRIBUTOR_OVERFLOW_REASONS.perTileRetainedCapBehindSurfaceBand;
+  }
+  return CONTRIBUTOR_OVERFLOW_REASONS.perTileRetainedCapMiddleBand;
 }
 
 function transferCoverageAlpha(opacity, coverageWeight) {

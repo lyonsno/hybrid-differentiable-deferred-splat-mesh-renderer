@@ -47,13 +47,26 @@ export interface TileRetentionAudit {
   };
 }
 
-export type TileLocalContributorOverflowReason =
+export type TileLocalContributorOverflowFlag =
   | "none"
   | "perTileRetainedCap"
   | "globalProjectedBudget"
   | "invalidProjection"
   | "nearPlaneSupport"
   | "nonFiniteCoverage";
+
+export type TileLocalContributorOverflowDetail =
+  | "perTileRetainedCapPolicyReserve"
+  | "perTileRetainedCapForegroundBand"
+  | "perTileRetainedCapMiddleBand"
+  | "perTileRetainedCapBehindSurfaceBand";
+
+export type TileLocalContributorOverflowReason =
+  | TileLocalContributorOverflowFlag
+  | TileLocalContributorOverflowDetail;
+
+export type TileLocalContributorRetentionStatus = "retained" | "dropped";
+export type TileLocalContributorRetentionBand = "front" | "middle" | "back";
 
 export interface TileLocalContributorDeferredSurfaceEvidence {
   readonly surfaceKind: "splat" | "mesh" | "unknown";
@@ -92,14 +105,30 @@ export interface TileLocalContributorRecord {
   readonly transmittanceBefore: number;
   readonly retentionWeight: number;
   readonly occlusionWeight: number;
+  readonly retentionStatus: TileLocalContributorRetentionStatus;
+  readonly retentionBand: TileLocalContributorRetentionBand;
+  readonly overflowReason: TileLocalContributorOverflowFlag;
+  readonly overflowReasonDetail: TileLocalContributorOverflowDetail | "none";
   readonly deferredSurface: TileLocalContributorDeferredSurfaceEvidence | null;
+}
+
+export interface TileLocalProjectedContributorRecord extends TileLocalContributorRecord {
+  readonly tileX: number;
+  readonly tileY: number;
+  readonly projectedIndex: number;
+  readonly occlusionDensity: number;
+  readonly transmittanceAfter: number;
+  /** Backward-compatible alias for retentionStatus === "retained". */
+  readonly retained: boolean;
 }
 
 export interface TileLocalContributorArena {
   readonly version: 1;
   readonly tileHeaders: readonly TileLocalContributorTileHeader[];
   readonly contributors: readonly TileLocalContributorRecord[];
-  readonly overflowReasons: Readonly<Record<TileLocalContributorOverflowReason, number>>;
+  readonly projectedContributors: readonly TileLocalProjectedContributorRecord[];
+  readonly overflowReasons: Readonly<Record<TileLocalContributorOverflowFlag, number>>;
+  readonly overflowReasonNames: Readonly<Record<string, TileLocalContributorOverflowReason>>;
 }
 
 export interface GpuTileCoverageBridge {

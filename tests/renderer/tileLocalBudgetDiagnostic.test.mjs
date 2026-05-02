@@ -46,7 +46,17 @@ test("tile-local prepass exposes budget overflow reasons and retained/dropped ba
   assert.equal(bridge.budgetDiagnostics.overflowReasons[0].reason, "per-tile-ref-cap");
   assert.equal(bridge.budgetDiagnostics.overflowReasons[0].droppedRefs > 0, true);
   assert.equal(bridge.budgetDiagnostics.retainedBands.front.total > 0, true);
-  assert.equal(bridge.budgetDiagnostics.droppedBands.front.total > 0, true);
+  assert.equal(
+    bridge.budgetDiagnostics.droppedBands.front.total +
+      bridge.budgetDiagnostics.droppedBands.middle.total +
+      bridge.budgetDiagnostics.droppedBands.back.total,
+    bridge.tileRefCustody.evictedTileEntryCount
+  );
+  assert.equal(bridge.budgetDiagnostics.capPressure.classification, "over-cap");
+  assert.equal(bridge.budgetDiagnostics.capPressure.refs.dropped, bridge.tileRefCustody.evictedTileEntryCount);
+  assert.equal(bridge.budgetDiagnostics.capPressure.policyHooks.every((hook) => hook.raisesCap === false), true);
+  assert.equal(bridge.budgetDiagnostics.retainedBands, bridge.budgetDiagnostics.capPressure.retainedBands);
+  assert.equal(bridge.budgetDiagnostics.droppedBands, bridge.budgetDiagnostics.capPressure.droppedBands);
   assert.equal(bridge.budgetDiagnostics.heat.cpu.projectedRefs, bridge.tileRefCustody.projectedTileEntryCount);
   assert.equal(bridge.budgetDiagnostics.heat.gpu.retainedRefs, bridge.tileRefCustody.retainedTileEntryCount);
 });
