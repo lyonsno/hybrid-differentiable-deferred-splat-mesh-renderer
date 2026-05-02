@@ -110,6 +110,51 @@ test("tile-local diagnostic classifier reports status labels, overflow reasons, 
   assert.equal(result.metrics.gpuAlphaParamBufferBytes, 1024);
 });
 
+test("tile-local diagnostic classifier makes CPU/GPU arena witness status explicit", () => {
+  const result = classifyTileLocalDiagnostics({
+    captures: [
+      diagnosticCapture("coverage-weight"),
+      diagnosticCapture("accumulated-alpha"),
+      diagnosticCapture("transmittance"),
+      diagnosticCapture("tile-ref-count", {
+        tileLocal: {
+          status: "current",
+          arena: {
+            backend: "cpu-contributor-arena",
+            status: "current",
+          },
+          budgetDiagnostics: {
+            arenaRefs: { projected: 2089656, retained: 44171, dropped: 2045485 },
+            overflowReasons: [{ reason: "per-tile-ref-cap", droppedRefs: 2045485 }],
+            heat: {
+              cpu: { projectedRefs: 2089656, projectedRefsPerTile: 81.371, buildDurationMs: 6652.6 },
+              gpu: { retainedRefs: 44171, retainedRefBufferBytes: 706736, dispatchDurationMs: 0 },
+            },
+          },
+        },
+      }),
+      diagnosticCapture("conic-shape"),
+    ],
+  });
+
+  assert.deepEqual(result.metrics.arenaWitness.cpu, {
+    backend: "cpu-contributor-arena",
+    status: "current",
+    projectedArenaRefs: 2089656,
+    retainedArenaRefs: 44171,
+    droppedArenaRefs: 2045485,
+    buildDurationMs: 6652.6,
+  });
+  assert.deepEqual(result.metrics.arenaWitness.gpu, {
+    backend: "not-reported",
+    status: "not-available",
+    dispatchDurationMs: 0,
+  });
+  assert.equal(result.metrics.arenaWitness.comparison.status, "gpu-unavailable");
+  assert.equal(result.metrics.arenaWitness.comparison.summary, "GPU arena construction was not reported; CPU fallback evidence remains current.");
+  assert.equal(result.findings.some((finding) => finding.kind === "silent-gpu-fallback"), false);
+});
+
 test("visual smoke CLI exposes a tile-local diagnostics batch mode", () => {
   const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
 

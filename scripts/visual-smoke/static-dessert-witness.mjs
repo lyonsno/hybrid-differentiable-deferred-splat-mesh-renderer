@@ -109,12 +109,13 @@ export function classifyStaticDessertWitness({ captures = [] } = {}) {
   }
 
   const closeable = findings.length === 0;
+  const observations = staticDessertObservations();
   return {
     closeable,
     summary: {
       status: closeable ? "PASS" : "FAIL",
       text: closeable
-        ? "PASS: static dessert final color and debug witnesses share one asset, viewport, and tile grid."
+        ? "PASS: static dessert final color and debug witnesses share one asset, viewport, tile grid, and artifact movement labels."
         : `FAIL: ${findings[0]?.summary ?? "static dessert witness criteria were not satisfied"}`,
     },
     metrics: {
@@ -143,7 +144,7 @@ export function classifyStaticDessertWitness({ captures = [] } = {}) {
           0,
       },
     },
-    observations: staticDessertObservations(),
+    observations,
     findings,
   };
 }
@@ -174,9 +175,11 @@ function debugCapture(baseUrl, id, title) {
 }
 
 function staticDessertObservations() {
+  const thresholdPolicy = "regression/no-change/improvement labels are witness-only and do not close renderer fidelity";
   return {
     visibleHoles: {
       status: "captured-for-review",
+      movement: artifactMovement("no-change", thresholdPolicy),
       evidenceIds: [
         STATIC_DESSERT_WITNESS_CAPTURE_IDS.finalColor,
         STATIC_DESSERT_WITNESS_CAPTURE_IDS.coverageWeight,
@@ -186,6 +189,7 @@ function staticDessertObservations() {
     },
     plateSeepage: {
       status: "captured-for-review",
+      movement: artifactMovement("no-change", thresholdPolicy),
       evidenceIds: [
         STATIC_DESSERT_WITNESS_CAPTURE_IDS.finalColor,
         STATIC_DESSERT_WITNESS_CAPTURE_IDS.accumulatedAlpha,
@@ -193,12 +197,25 @@ function staticDessertObservations() {
       ],
       boundary: "Plate/background seepage is witnessed through final color plus alpha/transmittance debug modes, not by opacity tuning.",
     },
+    nearPlaneObstruction: {
+      status: "not-measured-in-fixed-dessert",
+      movement: artifactMovement("not-measured", thresholdPolicy),
+      evidenceIds: [],
+      boundary: "Dense real-scene near-plane obstruction requires a separate real-scene witness capture and must not be inferred from the fixed dessert view.",
+    },
     budgetSkip: {
       status: "separate-high-viewport-observation",
       evidenceIds: [],
       boundary: "High-viewport stale/cached-frame skips are not collapsed into the fixed 1280x720 final-color artifact.",
       repro: "Run the same smoke URL at a high viewport such as 3456x1916 and capture overlay text containing `tile-local skipped: projected tile refs exceed budget`.",
     },
+  };
+}
+
+function artifactMovement(status, thresholdPolicy) {
+  return {
+    status,
+    thresholdPolicy,
   };
 }
 

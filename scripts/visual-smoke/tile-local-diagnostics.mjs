@@ -63,6 +63,7 @@ export function classifyTileLocalDiagnostics({ captures = [] } = {}) {
   const budgetDiagnostics = refTileLocal.budgetDiagnostics ?? {};
   const arenaRefs = budgetDiagnostics.arenaRefs ?? {};
   const heat = budgetDiagnostics.heat ?? {};
+  const arenaWitness = classifyArenaWitness(refCapture);
 
   if (!positiveNumber(alphaDiagnostics?.alpha?.estimatedMaxAccumulatedAlpha)) {
     findings.push(finding("missing-alpha-range", "Accumulated-alpha diagnostics did not report positive estimated alpha."));
@@ -89,6 +90,7 @@ export function classifyTileLocalDiagnostics({ captures = [] } = {}) {
     cpuBuildDurationMs: finiteNumber(heat.cpu?.buildDurationMs) ?? 0,
     gpuRetainedRefBufferBytes: finiteNumber(heat.gpu?.retainedRefBufferBytes) ?? 0,
     gpuAlphaParamBufferBytes: finiteNumber(heat.gpu?.alphaParamBufferBytes) ?? 0,
+    arenaWitness,
   };
   const closeable = findings.length === 0;
   return {
@@ -145,6 +147,110 @@ function presentationStatus(capture = {}) {
       capture.pageEvidence?.tileLocalStatus ??
       ""
   ).trim();
+}
+
+function classifyArenaWitness(capture = {}) {
+  const tileLocal = tileLocalEvidence(capture);
+  const budgetDiagnostics = tileLocal.budgetDiagnostics ?? {};
+  const arenaRefs = budgetDiagnostics.arenaRefs ?? {};
+  const heat = budgetDiagnostics.heat ?? {};
+  const arena = objectValue(tileLocal.arena) ?? objectValue(budgetDiagnostics.arena) ?? {};
+  const backend = stringValue(arena.backend) || stringValue(tileLocal.arenaBackend) || inferArenaBackend(heat, arenaRefs);
+  const status = stringValue(arena.status) || presentationStatus(capture) || "not-reported";
+  const cpuBuildDurationMs = finiteNumber(heat.cpu?.buildDurationMs) ?? 0;
+  const gpuDispatchDurationMs = finiteNumber(heat.gpu?.dispatchDurationMs) ?? 0;
+  const projectedArenaRefs = finiteNumber(arenaRefs.projected) ?? 0;
+  const retainedArenaRefs = finiteNumber(arenaRefs.retained) ?? 0;
+  const droppedArenaRefs = finiteNumber(arenaRefs.dropped) ?? 0;
+  const hasCpuEvidence = backend.includes("cpu") || cpuBuildDurationMs > 0 || finiteNumber(heat.cpu?.projectedRefs) !== undefined;
+  const hasGpuConstructionEvidence =
+    backend.includes("gpu") ||
+    gpuDispatchDurationMs > 0 ||
+    stringValue(heat.gpu?.constructionStatus) === "current" ||
+    stringValue(arena.gpuStatus) === "current";
+
+  const cpu = hasCpuEvidence
+    ? {
+        backend: backend || "cpu-contributor-arena",
+        status: status || "current",
+        projectedArenaRefs,
+        retainedArenaRefs,
+        droppedArenaRefs,
+        buildDurationMs: cpuBuildDurationMs,
+      }
+    : {
+        backend: "not-reported",
+        status: "not-available",
+        projectedArenaRefs: 0,
+        retainedArenaRefs: 0,
+        droppedArenaRefs: 0,
+        buildDurationMs: 0,
+      };
+  const gpu = hasGpuConstructionEvidence
+    ? {
+        backend: backend.includes("gpu") ? backend : stringValue(arena.gpuBackend) || "gpu-contributor-arena",
+        status: status || "current",
+        dispatchDurationMs: gpuDispatchDurationMs,
+      }
+    : {
+        backend: "not-reported",
+        status: "not-available",
+        dispatchDurationMs: 0,
+      };
+
+  return {
+    cpu,
+    gpu,
+    comparison: compareArenaConstruction({ cpu, gpu }),
+  };
+}
+
+function compareArenaConstruction({ cpu, gpu }) {
+  if (gpu.status === "not-available") {
+    return {
+      status: "gpu-unavailable",
+      summary: "GPU arena construction was not reported; CPU fallback evidence remains current.",
+    };
+  }
+  if (cpu.status === "not-available") {
+    return {
+      status: "cpu-baseline-missing",
+      summary: "GPU arena construction was reported without a CPU fallback baseline in this witness batch.",
+    };
+  }
+  const cpuMs = finiteNumber(cpu.buildDurationMs) ?? 0;
+  const gpuMs = finiteNumber(gpu.dispatchDurationMs) ?? 0;
+  if (cpuMs > 0 && gpuMs > 0 && gpuMs < cpuMs * 0.75) {
+    return {
+      status: "improvement",
+      summary: `GPU arena dispatch ${gpuMs}ms is below the CPU build baseline ${cpuMs}ms.`,
+    };
+  }
+  if (cpuMs > 0 && gpuMs > cpuMs * 1.25) {
+    return {
+      status: "regression",
+      summary: `GPU arena dispatch ${gpuMs}ms exceeds the CPU build baseline ${cpuMs}ms.`,
+    };
+  }
+  return {
+    status: "no-change",
+    summary: "GPU arena construction was reported without a material timing delta against the CPU baseline.",
+  };
+}
+
+function inferArenaBackend(heat, arenaRefs) {
+  if (finiteNumber(heat?.cpu?.buildDurationMs) !== undefined || finiteNumber(arenaRefs?.projected) !== undefined) {
+    return "cpu-contributor-arena";
+  }
+  return "";
+}
+
+function objectValue(value) {
+  return value && typeof value === "object" ? value : undefined;
+}
+
+function stringValue(value) {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function overflowReasonNames(reasons) {

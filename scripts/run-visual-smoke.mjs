@@ -556,6 +556,18 @@ ${result.captures
 - Estimated max accumulated alpha: ${metrics.estimatedMaxAccumulatedAlpha}
 - Estimated min transmittance: ${metrics.estimatedMinTransmittance}
 
+## Arena Construction Witness
+
+- CPU backend: ${metrics.arenaWitness.cpu.backend}
+- CPU status: ${metrics.arenaWitness.cpu.status}
+- CPU projected/retained/dropped refs: ${metrics.arenaWitness.cpu.projectedArenaRefs}/${metrics.arenaWitness.cpu.retainedArenaRefs}/${metrics.arenaWitness.cpu.droppedArenaRefs}
+- CPU build duration ms: ${metrics.arenaWitness.cpu.buildDurationMs}
+- GPU backend: ${metrics.arenaWitness.gpu.backend}
+- GPU status: ${metrics.arenaWitness.gpu.status}
+- GPU dispatch duration ms: ${metrics.arenaWitness.gpu.dispatchDurationMs}
+- Comparison: ${metrics.arenaWitness.comparison.status}
+- Comparison summary: ${metrics.arenaWitness.comparison.summary}
+
 ## Findings
 
 ${classification.findings.length === 0 ? "- None" : classification.findings.map((finding) => `- ${finding.kind}: ${finding.summary}`).join("\n")}
@@ -621,14 +633,26 @@ ${result.captures
 ### Visible holes
 
 - Status: ${observations.visibleHoles.status}
+- Movement: ${observations.visibleHoles.movement.status}
+- Movement threshold policy: ${observations.visibleHoles.movement.thresholdPolicy}
 - Evidence IDs: ${observations.visibleHoles.evidenceIds.join(", ")}
 - Boundary: ${observations.visibleHoles.boundary}
 
 ### Plate seepage
 
 - Status: ${observations.plateSeepage.status}
+- Movement: ${observations.plateSeepage.movement.status}
+- Movement threshold policy: ${observations.plateSeepage.movement.thresholdPolicy}
 - Evidence IDs: ${observations.plateSeepage.evidenceIds.join(", ")}
 - Boundary: ${observations.plateSeepage.boundary}
+
+### Dense-scene near-plane obstruction
+
+- Status: ${observations.nearPlaneObstruction.status}
+- Movement: ${observations.nearPlaneObstruction.movement.status}
+- Movement threshold policy: ${observations.nearPlaneObstruction.movement.thresholdPolicy}
+- Evidence IDs: ${observations.nearPlaneObstruction.evidenceIds.join(", ")}
+- Boundary: ${observations.nearPlaneObstruction.boundary}
 
 ### High-viewport budget skip
 

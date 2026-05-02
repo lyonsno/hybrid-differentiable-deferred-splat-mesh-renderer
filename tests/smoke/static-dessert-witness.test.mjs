@@ -119,6 +119,25 @@ test("static dessert witness classifier requires one asset, one viewport, final 
   assert.equal(result.observations.budgetSkip.status, "separate-high-viewport-observation");
 });
 
+test("static dessert witness reports artifact movement thresholds without claiming closure", () => {
+  const result = classifyStaticDessertWitness({
+    captures: [
+      witnessCapture("final-color", { rendererLabel: "tile-local-visible-gaussian-compositor" }),
+      witnessCapture("coverage-weight"),
+      witnessCapture("accumulated-alpha"),
+      witnessCapture("transmittance"),
+      witnessCapture("tile-ref-count"),
+      witnessCapture("conic-shape"),
+    ],
+  });
+
+  assert.equal(result.observations.visibleHoles.movement.status, "no-change");
+  assert.equal(result.observations.visibleHoles.movement.thresholdPolicy, "regression/no-change/improvement labels are witness-only and do not close renderer fidelity");
+  assert.equal(result.observations.plateSeepage.movement.status, "no-change");
+  assert.equal(result.observations.nearPlaneObstruction.movement.status, "not-measured");
+  assert.match(result.summary.text, /artifact movement/i);
+});
+
 test("visual smoke CLI exposes a static dessert witness batch mode", () => {
   const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
 
