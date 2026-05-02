@@ -14,6 +14,11 @@ import {
   createGpuTileContributorArenaLayout,
   getGpuTileContributorArenaDispatchPlan,
   assertGpuTileContributorArenaCompatibility,
+  GPU_TILE_CONTRIBUTOR_ARENA_HEADER_FLOAT32_STRIDE,
+  GPU_TILE_CONTRIBUTOR_ARENA_HEADER_UINT32_STRIDE,
+  GPU_TILE_CONTRIBUTOR_ARENA_RECORD_BYTES,
+  GPU_TILE_CONTRIBUTOR_ARENA_RECORD_FLOAT32_STRIDE,
+  GPU_TILE_CONTRIBUTOR_ARENA_RECORD_UINT32_STRIDE,
   getGpuTileCoverageDispatchPlan,
   writeGpuTileCoverageFrameUniforms,
 } from "../../node_modules/.cache/renderer-tests/src/gpuTileCoverage.js";
@@ -123,11 +128,17 @@ test("GPU contributor arena layout extends the legacy flat tile-ref buffers with
 
   assert.equal(arena.tileCount, plan.tileCount);
   assert.equal(arena.maxContributors, plan.maxTileRefs);
-  assert.equal(arena.headerBytes, plan.tileHeaderBytes);
+  assert.equal(arena.headerUint32Bytes, plan.tileCount * GPU_TILE_CONTRIBUTOR_ARENA_HEADER_UINT32_STRIDE * Uint32Array.BYTES_PER_ELEMENT);
+  assert.equal(arena.headerFloat32Bytes, plan.tileCount * GPU_TILE_CONTRIBUTOR_ARENA_HEADER_FLOAT32_STRIDE * Float32Array.BYTES_PER_ELEMENT);
+  assert.equal(arena.headerBytes, arena.headerUint32Bytes + arena.headerFloat32Bytes);
   assert.equal(arena.legacyTileRefBytes, plan.tileRefBytes);
   assert.equal(arena.prefixCountBytes, Math.max(16, plan.tileCount * Uint32Array.BYTES_PER_ELEMENT));
-  assert.equal(arena.contributorRecordBytes, Math.max(16, plan.maxTileRefs * 64));
-  assert.equal(arena.recordStrideBytes, 64);
+  assert.equal(arena.projectedCountBytes, arena.prefixCountBytes);
+  assert.equal(arena.scatterCursorBytes, arena.prefixCountBytes);
+  assert.equal(arena.contributorRecordUint32Bytes, plan.maxTileRefs * GPU_TILE_CONTRIBUTOR_ARENA_RECORD_UINT32_STRIDE * Uint32Array.BYTES_PER_ELEMENT);
+  assert.equal(arena.contributorRecordFloat32Bytes, plan.maxTileRefs * GPU_TILE_CONTRIBUTOR_ARENA_RECORD_FLOAT32_STRIDE * Float32Array.BYTES_PER_ELEMENT);
+  assert.equal(arena.contributorRecordBytes, Math.max(16, plan.maxTileRefs * GPU_TILE_CONTRIBUTOR_ARENA_RECORD_BYTES));
+  assert.equal(arena.recordStrideBytes, GPU_TILE_CONTRIBUTOR_ARENA_RECORD_BYTES);
   assert.equal(arena.forcesFirstSmokeGpuArena, false);
 });
 
@@ -197,7 +208,8 @@ test("GPU contributor arena WGSL is a nonblocking count-prefix-scatter skeleton"
   assert.match(shader, /@compute @workgroup_size\(64\)\s+fn count_tile_contributors/);
   assert.match(shader, /@compute @workgroup_size\(64\)\s+fn prefix_tile_contributor_counts/);
   assert.match(shader, /@compute @workgroup_size\(64\)\s+fn scatter_tile_contributors/);
-  assert.match(shader, /TODO\(contributor-arena-contract\)/);
-  assert.match(shader, /does not route first smoke through this GPU arena/);
+  assert.match(shader, /struct ProjectedContributor/);
+  assert.match(shader, /atomicAdd\(&projectedCounts\[tileIndex\],\s*1u\)/);
+  assert.match(shader, /prefixCounts\[tileIndex\]\s*=\s*runningOffset/);
   assert.doesNotMatch(shader, /@fragment|textureStore|globalOpacity|brightness/);
 });
