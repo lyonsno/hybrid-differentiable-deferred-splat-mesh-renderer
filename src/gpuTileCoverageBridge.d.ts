@@ -60,6 +60,8 @@ export interface GpuTileCoverageBridge {
   readonly tileHeaders: Uint32Array;
   readonly tileRefs: Uint32Array;
   readonly tileCoverageWeights: Float32Array;
+  readonly tileRefOrderingKeys: Uint32Array;
+  readonly tileRefSourceOpacities: Float32Array;
   readonly tileRefShapeParams: Float32Array;
   readonly maxRefsPerTile: number;
   readonly retainedTileEntryCount: number;
@@ -75,6 +77,7 @@ export function buildGpuTileCoverageBridge(
 export interface GpuTileCoverageAlphaParamSource {
   readonly tileRefs?: Uint32Array;
   readonly tileRefSplatIds?: Uint32Array;
+  readonly tileRefSourceOpacities?: Float32Array;
   readonly tileRefShapeParams: Float32Array;
   readonly tileEntryCount?: number;
 }
