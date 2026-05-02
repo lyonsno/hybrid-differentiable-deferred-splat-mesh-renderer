@@ -181,7 +181,7 @@ test("edge-on-ribbon: single highly anisotropic splat with camera nearly in the 
 
   const inv = fixture.expectedInvariants;
   assert.equal(inv.kind, "thin-ribbon", "edge-on-ribbon must claim thin-ribbon invariant");
-  assert.ok(inv.thicknessRatio?.max <= 0.15, "edge-on-ribbon thicknessRatio.max should be ≤ 0.15");
+  assert.ok(inv.thicknessRatio?.max <= 0.05, "edge-on-ribbon thicknessRatio.max should be ≤ 0.05");
 });
 
 test("rotated-ellipse: single anisotropic splat with 45-degree principal axis claim", () => {
@@ -211,15 +211,15 @@ test("rotated-ellipse: single anisotropic splat with 45-degree principal axis cl
   );
 });
 
-test("near-plane-slab: large splat with maxChangedPixelRatio ≤ 0.6", () => {
+test("near-plane-slab: large splat with maxChangedPixelRatio ≤ 0.35", () => {
   const fixture = fixtureByType("near-plane-slab");
   assert.ok(fixture, "near-plane-slab fixture must exist");
 
   const inv = fixture.expectedInvariants;
   assert.equal(inv.kind, "bounded-slab", "near-plane-slab must claim bounded-slab invariant");
   assert.ok(
-    typeof inv.maxChangedPixelRatio === "number" && inv.maxChangedPixelRatio <= 0.6,
-    `near-plane-slab maxChangedPixelRatio ${inv.maxChangedPixelRatio} must be ≤ 0.6`
+    typeof inv.maxChangedPixelRatio === "number" && inv.maxChangedPixelRatio <= 0.35,
+    `near-plane-slab maxChangedPixelRatio ${inv.maxChangedPixelRatio} must be ≤ 0.35`
   );
 });
 

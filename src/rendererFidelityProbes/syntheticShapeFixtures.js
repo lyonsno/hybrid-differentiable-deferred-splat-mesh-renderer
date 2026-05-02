@@ -156,7 +156,7 @@ const edgeOnRibbon = {
   expectedInvariants: {
     kind: "thin-ribbon",
     center: { x: 256, y: 256, tolerancePx: 20 },
-    thicknessRatio: { max: 0.15 },
+    thicknessRatio: { max: 0.05 },
   },
 };
 
@@ -208,7 +208,7 @@ const rotatedEllipse = {
  * Splat: large (radius 2.0), placed at Z = -0.05, just in front of camera.
  *
  * Expected invariant:
- *   - bounded-slab: maxChangedPixelRatio ≤ 0.6 (must NOT flood > 60% of 512×512)
+ *   - bounded-slab: maxChangedPixelRatio ≤ 0.35 (must NOT flood > 35% of 512×512)
  */
 const nearPlaneSlab = {
   id: "shape-witness-near-plane-slab",
@@ -230,7 +230,7 @@ const nearPlaneSlab = {
   viewport: { width: 512, height: 512 },
   expectedInvariants: {
     kind: "bounded-slab",
-    maxChangedPixelRatio: 0.6,
+    maxChangedPixelRatio: 0.35,
   },
 };
 

@@ -245,14 +245,16 @@ async function main() {
     const sortState = createSortSettleState(initialView);
     const buffers = uploadSplatAttributeBuffers(gpu.device, attributes);
     const effectiveOpacities = new Float32Array(attributes.count);
+    const initialSplatScale = shapeWitnessFixtureId !== null ? SHAPE_WITNESS_SPLAT_SCALE : REAL_SCANIVERSE_SPLAT_SCALE;
+    const initialMinRadiusPx = shapeWitnessFixtureId !== null ? SHAPE_WITNESS_MIN_RADIUS_PX : REAL_SCANIVERSE_MIN_RADIUS_PX;
     const alphaDensitySummary = writeAlphaDensityCompensatedOpacities(
       effectiveOpacities,
       attributes,
       initialViewProj,
       initialViewportWidth,
       initialViewportHeight,
-      REAL_SCANIVERSE_SPLAT_SCALE,
-      REAL_SCANIVERSE_MIN_RADIUS_PX,
+      initialSplatScale,
+      initialMinRadiusPx,
       ALPHA_DENSITY_MODE
     );
     gpu.device.queue.writeBuffer(buffers.opacityBuffer, 0, effectiveOpacities);
@@ -431,6 +433,11 @@ async function main() {
       now,
       ALPHA_DENSITY_SETTLE_MS
     );
+    // Use shape-witness rendering parameters when rendering synthetic fixtures.
+    // Shape-witness fixtures are defined in world-space units compatible with splatScale=600.
+    // Real Scaniverse uses splatScale=3000 for its own unit system.
+    const activeSplatScale = shapeWitnessFixtureId !== null ? SHAPE_WITNESS_SPLAT_SCALE : REAL_SCANIVERSE_SPLAT_SCALE;
+    const activeMinRadiusPx = shapeWitnessFixtureId !== null ? SHAPE_WITNESS_MIN_RADIUS_PX : REAL_SCANIVERSE_MIN_RADIUS_PX;
     if (alphaRefreshed) {
       scene.alphaDensityState.summary = writeAlphaDensityCompensatedOpacities(
         scene.effectiveOpacities,
@@ -438,8 +445,8 @@ async function main() {
         viewProj,
         width,
         height,
-        REAL_SCANIVERSE_SPLAT_SCALE,
-        REAL_SCANIVERSE_MIN_RADIUS_PX,
+        activeSplatScale,
+        activeMinRadiusPx,
         ALPHA_DENSITY_MODE
       );
       gpu.device.queue.writeBuffer(scene.buffers.opacityBuffer, 0, scene.effectiveOpacities);
@@ -448,11 +455,6 @@ async function main() {
         scene.tileLocalState.needsDispatch = true;
       }
     }
-    // Use shape-witness rendering parameters when rendering synthetic fixtures.
-    // Shape-witness fixtures are defined in world-space units compatible with splatScale=600.
-    // Real Scaniverse uses splatScale=3000 for its own unit system.
-    const activeSplatScale = shapeWitnessFixtureId !== null ? SHAPE_WITNESS_SPLAT_SCALE : REAL_SCANIVERSE_SPLAT_SCALE;
-    const activeMinRadiusPx = shapeWitnessFixtureId !== null ? SHAPE_WITNESS_MIN_RADIUS_PX : REAL_SCANIVERSE_MIN_RADIUS_PX;
     const activeNearFadeStart = shapeWitnessFixtureId !== null ? SHAPE_WITNESS_NEAR_FADE_START : REAL_SCANIVERSE_NEAR_FADE_START_NDC;
     const activeNearFadeEnd = shapeWitnessFixtureId !== null ? SHAPE_WITNESS_NEAR_FADE_END : REAL_SCANIVERSE_NEAR_FADE_END_NDC;
     writeSplatPlateFrameUniforms(

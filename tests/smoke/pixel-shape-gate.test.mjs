@@ -35,6 +35,7 @@ import {
   FIXTURE_IDS,
 } from "../../src/rendererFidelityProbes/syntheticShapeFixtures.js";
 import { analyzeShape, computeForegroundSuppression } from "../../scripts/visual-smoke/pixel-shape-analysis.mjs";
+import { decodePng } from "../../scripts/visual-smoke/png-analysis.mjs";
 import {
   buildShapeWitnessUrl,
   SHAPE_WITNESS_FIXTURE_IDS,
@@ -475,40 +476,29 @@ if (BROWSER_SMOKE) {
           break;
         }
         case "foreground-suppression": {
-          // dense-foreground: need a background-only reference image for computeForegroundSuppression.
-          // The background is a bright white splat alone. We use a bright-white synthetic reference PNG.
-          // This assertion is conservative: we just check the image is NOT predominantly bright white
-          // in the center (which would mean foreground suppression failed).
-          //
-          // Full suppression check requires background reference. We approximate by checking
-          // the centroid region is dark (not bright white leaking through dark foreground).
+          // dense-foreground: decode the rendered PNG and compute foreground
+          // suppression against a bright-white reference background. The fixture's
+          // background splat is bright white; if the foreground is working, most of
+          // those bright pixels should be hidden by dark opaque foreground splats.
           if (inv.foregroundSuppressionRatio) {
-            const { decoded } = decodePngForSuppression(png);
-            if (decoded) {
-              const { rgba, width, height } = decoded;
-              // Central patch (50px × 50px around center): should be dark if foreground is working.
-              const patchR = 25;
-              const cx = Math.round(width / 2);
-              const cy = Math.round(height / 2);
-              let sumBrightness = 0;
-              let patchCount = 0;
-              for (let y = cy - patchR; y <= cy + patchR; y++) {
-                for (let x = cx - patchR; x <= cx + patchR; x++) {
-                  if (x < 0 || x >= width || y < 0 || y >= height) continue;
-                  const offset = (y * width + x) * 4;
-                  sumBrightness += (rgba[offset] + rgba[offset + 1] + rgba[offset + 2]) / 3;
-                  patchCount++;
-                }
-              }
-              if (patchCount > 0) {
-                const avgBrightness = sumBrightness / patchCount;
-                // If average brightness is > 200, white background is leaking through (failure).
-                assert.ok(
-                  avgBrightness < 200,
-                  `[${fixtureId}] center patch avg brightness ${avgBrightness.toFixed(1)} must be < 200 (dark foreground must suppress bright background)`
-                );
-              }
+            const decoded = decodePng(png);
+            const { rgba, width, height } = decoded;
+            // Build a bright-white reference (what the image would look like
+            // with only the background splat and no foreground).
+            const bgRgba = new Uint8Array(width * height * 4);
+            for (let i = 0; i < bgRgba.length; i += 4) {
+              bgRgba[i] = 255;
+              bgRgba[i + 1] = 255;
+              bgRgba[i + 2] = 255;
+              bgRgba[i + 3] = 255;
             }
+            const { suppressionRatio } = computeForegroundSuppression(
+              rgba, width, height, bgRgba,
+            );
+            assert.ok(
+              suppressionRatio >= inv.foregroundSuppressionRatio.min,
+              `[${fixtureId}] foreground suppression ratio ${suppressionRatio.toFixed(3)} must be >= ${inv.foregroundSuppressionRatio.min} (bright background must be hidden by opaque foreground)`
+            );
           }
           break;
         }
@@ -530,21 +520,3 @@ if (BROWSER_SMOKE) {
  * Decode a PNG buffer for foreground suppression computation.
  * Returns null if decoding is not possible in this environment.
  */
-function decodePngForSuppression(pngBuffer) {
-  try {
-    const { decodePng } = await_sync_import_decodePng();
-    if (!decodePng) return { decoded: null };
-    const decoded = decodePng(pngBuffer);
-    return { decoded };
-  } catch {
-    return { decoded: null };
-  }
-}
-
-function await_sync_import_decodePng() {
-  // This is used synchronously inside a test callback. We do a lazy import trick.
-  // In practice the decodePng function is always available since png-analysis.mjs
-  // is already imported via pixel-shape-analysis.mjs (which imports from png-analysis.mjs).
-  // We don't call decodePng directly here to avoid the async boundary.
-  return { decodePng: null };
-}
