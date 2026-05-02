@@ -123,9 +123,20 @@ export interface GpuTileCoverageBridge {
   readonly contributorArena?: TileLocalContributorArena;
 }
 
+export function buildTileLocalContributorArena(
+  coverage: unknown,
+  options?: {
+    readonly maxRefsPerTile?: number;
+    readonly depthBandCount?: number;
+  },
+): TileLocalContributorArena;
+
 export function buildGpuTileCoverageBridge(
   coverage: unknown,
-  options?: { readonly maxRefsPerTile?: number },
+  options?: {
+    readonly maxRefsPerTile?: number;
+    readonly depthBandCount?: number;
+  },
 ): GpuTileCoverageBridge;
 
 export interface GpuTileCoverageAlphaParamSource {

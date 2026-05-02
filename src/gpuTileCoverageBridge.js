@@ -1,9 +1,22 @@
 const DEFAULT_MAX_REFS_PER_TILE = 32;
+const DEFAULT_DEPTH_BAND_COUNT = 4;
+const CONTRIBUTOR_OVERFLOW_FLAGS = Object.freeze({
+  none: 0,
+  perTileRetainedCap: 1,
+  globalProjectedBudget: 2,
+  invalidProjection: 4,
+  nearPlaneSupport: 8,
+  nonFiniteCoverage: 16,
+});
 
 export function buildGpuTileCoverageBridge(coverage, options = {}) {
   const tileCount = coverage.tileColumns * coverage.tileRows;
   const splatCount = resolveSplatCount(coverage);
   const maxRefsPerTile = resolveMaxRefsPerTile(options.maxRefsPerTile ?? coverage.maxRefsPerTile);
+  const contributorArena = buildTileLocalContributorArena(coverage, {
+    maxRefsPerTile,
+    depthBandCount: options.depthBandCount ?? coverage.depthBandCount,
+  });
   const retainedTileEntries = retainTileEntries(coverage.tileEntries, maxRefsPerTile);
   const retainedTileEntryCount = retainedTileEntries.length;
   const tileEntryCount = Math.max(retainedTileEntryCount, splatCount);
@@ -85,6 +98,140 @@ export function buildGpuTileCoverageBridge(coverage, options = {}) {
     retainedTileEntryCount,
     tileRefCustody,
     retentionAudit,
+    contributorArena,
+  };
+}
+
+export function buildTileLocalContributorArena(coverage, options = {}) {
+  const tileCount = coverage.tileColumns * coverage.tileRows;
+  const maxRefsPerTile = resolveMaxRefsPerTile(options.maxRefsPerTile ?? coverage.maxRefsPerTile);
+  const depthBandCount = resolveDepthBandCount(options.depthBandCount);
+  const entries = [...coverage.tileEntries].sort(compareTileEntryOrder);
+  const tileHeaders = [];
+  const contributors = [];
+  const projectedContributors = [];
+  const splatsByIndex = new Map();
+  for (const splat of coverage.splats ?? []) {
+    splatsByIndex.set(splat.splatIndex, splat);
+  }
+  let cursor = 0;
+  let nextContributorIndex = 0;
+
+  for (let tileIndex = 0; tileIndex < tileCount; tileIndex += 1) {
+    while (cursor < entries.length && entries[cursor].tileIndex < tileIndex) {
+      cursor += 1;
+    }
+    const start = cursor;
+    while (cursor < entries.length && entries[cursor].tileIndex === tileIndex) {
+      cursor += 1;
+    }
+    const tileEntries = entries.slice(start, cursor);
+    const projectedIndexByKey = new Map(
+      tileEntries.map((entry, index) => [tileEntryKey(entry), start + index])
+    );
+    const selected = selectTileEntries(tileEntries, maxRefsPerTile);
+    const selectedByKey = new Map();
+    for (const entry of selected.sort(compareTileEntryOrder)) {
+      selectedByKey.set(tileEntryKey(entry), nextContributorIndex + selectedByKey.size);
+    }
+
+    const contributorOffset = nextContributorIndex;
+    const recordByKey = new Map();
+    const depthRange = summarizeDepthRange(tileEntries);
+    let maxRetainedViewRank = 0;
+    let minRetainedDepth = Number.POSITIVE_INFINITY;
+    let maxRetainedDepth = Number.NEGATIVE_INFINITY;
+    let transmittance = 1;
+    const orderedContributors = [...tileEntries].sort(compareContributorArenaOrder);
+
+    for (let orderIndex = 0; orderIndex < orderedContributors.length; orderIndex += 1) {
+      const entry = orderedContributors[orderIndex];
+      const key = tileEntryKey(entry);
+      const contributorIndex = selectedByKey.get(key) ?? -1;
+      const retained = contributorIndex >= 0;
+      const opacity = readOpacity(entry);
+      const depth = readViewDepth(entry);
+      const depthBand = assignDepthBand(depth, depthRange, depthBandCount);
+      const transmittanceBefore = transmittance;
+      const shape = contributorShapeEvidence(entry, splatsByIndex);
+      const viewRank = readOrderRank(entry, orderIndex);
+      const coverageWeight = readCoverageWeight(entry);
+      const record = {
+        splatIndex: entry.splatIndex,
+        originalId: entry.originalId,
+        tileIndex,
+        contributorIndex,
+        viewRank,
+        viewDepth: depth,
+        depthBand,
+        coverageWeight,
+        centerPx: shape.centerPx,
+        inverseConic: shape.inverseConic,
+        opacity,
+        coverageAlpha: transferCoverageAlpha(opacity, coverageWeight),
+        transmittanceBefore,
+        retentionWeight: readRetentionWeight(entry),
+        occlusionWeight: readOcclusionWeight(entry),
+        deferredSurface: null,
+      };
+      transmittance *= 1 - opacity;
+      if (retained) {
+        maxRetainedViewRank = Math.max(maxRetainedViewRank, viewRank);
+        minRetainedDepth = Math.min(minRetainedDepth, depth);
+        maxRetainedDepth = Math.max(maxRetainedDepth, depth);
+      } else {
+        // Dropped records remain in this CPU-only reference list so diagnostics
+        // can prove what the flat retained projection lost under cap pressure.
+      }
+      recordByKey.set(key, record);
+      projectedContributors.push({
+        ...record,
+        tileX: entry.tileX,
+        tileY: entry.tileY,
+        projectedIndex: projectedIndexByKey.get(key) ?? start + orderIndex,
+        occlusionDensity: readOcclusionDensity(entry),
+        transmittanceAfter: transmittance,
+        retained,
+        overflowReason: retained ? "none" : "perTileRetainedCap",
+      });
+    }
+
+    for (const entry of selected.sort(compareTileEntryOrder)) {
+      contributors.push(recordByKey.get(tileEntryKey(entry)));
+    }
+    nextContributorIndex += selected.length;
+    const droppedContributorCount = Math.max(0, tileEntries.length - selected.length);
+    tileHeaders.push({
+      contributorOffset,
+      retainedContributorCount: selected.length,
+      projectedContributorCount: tileEntries.length,
+      droppedContributorCount,
+      overflowFlags: droppedContributorCount > 0 ? CONTRIBUTOR_OVERFLOW_FLAGS.perTileRetainedCap : CONTRIBUTOR_OVERFLOW_FLAGS.none,
+      maxRetainedViewRank: selected.length === 0 ? 0xffffffff : maxRetainedViewRank,
+      minRetainedDepth: selected.length === 0 ? Number.POSITIVE_INFINITY : minRetainedDepth,
+      maxRetainedDepth: selected.length === 0 ? Number.NEGATIVE_INFINITY : maxRetainedDepth,
+    });
+  }
+
+  return {
+    version: 1,
+    tileHeaders,
+    contributors,
+    overflowReasons: CONTRIBUTOR_OVERFLOW_FLAGS,
+    projectedContributors,
+    metadata: {
+      viewportWidth: coverage.viewportWidth,
+      viewportHeight: coverage.viewportHeight,
+      tileSizePx: coverage.tileSizePx,
+      tileColumns: coverage.tileColumns,
+      tileRows: coverage.tileRows,
+      tileCount,
+      maxRefsPerTile,
+      depthBandCount,
+      projectedContributorCount: projectedContributors.length,
+      retainedContributorCount: contributors.length,
+      droppedContributorCount: Math.max(0, projectedContributors.length - contributors.length),
+    },
   };
 }
 
@@ -374,6 +521,16 @@ function compareTileEntryOrder(left, right) {
   );
 }
 
+function compareContributorArenaOrder(left, right) {
+  return (
+    left.tileIndex - right.tileIndex ||
+    compareOptionalInteger(left.viewRank, right.viewRank) ||
+    readViewDepth(left) - readViewDepth(right) ||
+    left.splatIndex - right.splatIndex ||
+    left.originalId - right.originalId
+  );
+}
+
 function compareRetentionPriority(left, right) {
   const leftWeight = readRetentionWeight(left);
   const rightWeight = readRetentionWeight(right);
@@ -429,6 +586,77 @@ function readOcclusionDensity(entry) {
   return readOcclusionWeight(entry) / coverageWeight;
 }
 
+function readCoverageWeight(entry) {
+  return Number.isFinite(entry.coverageWeight) && entry.coverageWeight >= 0
+    ? entry.coverageWeight
+    : 0;
+}
+
+function readOpacity(entry) {
+  if (Number.isFinite(entry.opacity)) {
+    return Math.min(1, Math.max(0, entry.opacity));
+  }
+  return Math.min(1, Math.max(0, readOcclusionDensity(entry)));
+}
+
+function readViewDepth(entry) {
+  if (Number.isFinite(entry.viewDepth)) {
+    return entry.viewDepth;
+  }
+  if (Number.isFinite(entry.depth)) {
+    return entry.depth;
+  }
+  return Number.isInteger(entry.viewRank) ? entry.viewRank : 0;
+}
+
+function readOrderRank(entry, fallback) {
+  return Number.isInteger(entry.viewRank) ? entry.viewRank : fallback;
+}
+
+function summarizeDepthRange(tileEntries) {
+  if (tileEntries.length === 0) {
+    return { min: 0, max: 0 };
+  }
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+  for (const entry of tileEntries) {
+    const depth = readViewDepth(entry);
+    min = Math.min(min, depth);
+    max = Math.max(max, depth);
+  }
+  return { min, max };
+}
+
+function assignDepthBand(depth, range, depthBandCount) {
+  if (depthBandCount <= 1 || range.max <= range.min) {
+    return 0;
+  }
+  const scaled = ((depth - range.min) / (range.max - range.min)) * depthBandCount;
+  return Math.min(depthBandCount - 1, Math.max(0, Math.floor(scaled)));
+}
+
+function transferCoverageAlpha(opacity, coverageWeight) {
+  if (opacity <= 0 || coverageWeight <= 0) {
+    return 0;
+  }
+  return 1 - Math.pow(1 - opacity, coverageWeight);
+}
+
+function contributorShapeEvidence(entry, splatsByIndex) {
+  const splat = splatsByIndex.get(entry.splatIndex);
+  if (!splat) {
+    return {
+      centerPx: [0, 0],
+      inverseConic: [1, 0, 1],
+    };
+  }
+  const inverseConic = invertCovariancePx(splat.covariancePx);
+  return {
+    centerPx: [splat.centerPx[0], splat.centerPx[1]],
+    inverseConic: [inverseConic.xx, inverseConic.xy, inverseConic.yy],
+  };
+}
+
 function tileEntryKey(entry) {
   return `${entry.tileIndex}:${entry.splatIndex}:${entry.originalId}`;
 }
@@ -439,6 +667,14 @@ function resolveMaxRefsPerTile(value) {
     throw new Error("maxRefsPerTile must be a positive integer");
   }
   return maxRefsPerTile;
+}
+
+function resolveDepthBandCount(value) {
+  const depthBandCount = value ?? DEFAULT_DEPTH_BAND_COUNT;
+  if (!Number.isInteger(depthBandCount) || depthBandCount <= 0) {
+    throw new Error("depthBandCount must be a positive integer");
+  }
+  return depthBandCount;
 }
 
 function writeTileRefShapeParams(target, refIndex, splat) {

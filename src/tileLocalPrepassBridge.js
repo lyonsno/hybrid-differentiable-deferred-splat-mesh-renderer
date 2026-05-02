@@ -95,11 +95,12 @@ export function tileLocalPrepassBridgeSignatureChanged(previousSignature, input)
 }
 
 function orderCoverageEntriesForView(coverage, attributes, viewMatrix) {
-  const ranks = buildBackToFrontRanks(attributes, viewMatrix);
+  const { ranks, depths } = buildBackToFrontDepthEvidence(attributes, viewMatrix);
 
   const tileEntries = coverage.tileEntries.map((entry) => ({
     ...entry,
     viewRank: ranks[entry.splatIndex],
+    viewDepth: depths[entry.splatIndex],
     ...computeRetentionWeights(entry, attributes),
   })).sort((left, right) => {
     return (
@@ -131,6 +132,7 @@ function computeRetentionWeights(entry, attributes) {
     retentionWeight: coverageWeight * opacity * luminance,
     occlusionWeight: coverageWeight * opacity,
     occlusionDensity: opacity,
+    opacity,
   };
 }
 
@@ -148,7 +150,7 @@ function readNonNegativeFinite(value, fallback) {
   return Math.max(0, value);
 }
 
-function buildBackToFrontRanks(attributes, viewMatrix) {
+function buildBackToFrontDepthEvidence(attributes, viewMatrix) {
   const sortedIds = Array.from({ length: attributes.count }, (_, splatIndex) => ({
     splatIndex,
     depth:
@@ -159,11 +161,15 @@ function buildBackToFrontRanks(attributes, viewMatrix) {
   })).sort((left, right) => left.depth - right.depth || left.splatIndex - right.splatIndex);
 
   const ranks = new Uint32Array(Math.max(attributes.count, 1));
+  const depths = new Float32Array(Math.max(attributes.count, 1));
   ranks.fill(0xffffffff);
+  for (const { splatIndex, depth } of sortedIds) {
+    depths[splatIndex] = depth;
+  }
   for (let rank = 0; rank < sortedIds.length; rank += 1) {
     ranks[sortedIds[rank].splatIndex] = rank;
   }
-  return ranks;
+  return { ranks, depths };
 }
 
 function projectedSplatCovariancePx({
