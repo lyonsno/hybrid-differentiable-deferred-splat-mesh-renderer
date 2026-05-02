@@ -59,6 +59,10 @@ export function classifyTileLocalDiagnostics({ captures = [] } = {}) {
   const alphaDiagnostics = diagnostics(alphaCapture);
   const transmittanceDiagnostics = diagnostics(transmittanceCapture);
   const refDiagnostics = diagnostics(refCapture);
+  const refTileLocal = tileLocalEvidence(refCapture);
+  const budgetDiagnostics = refTileLocal.budgetDiagnostics ?? {};
+  const arenaRefs = budgetDiagnostics.arenaRefs ?? {};
+  const heat = budgetDiagnostics.heat ?? {};
 
   if (!positiveNumber(alphaDiagnostics?.alpha?.estimatedMaxAccumulatedAlpha)) {
     findings.push(finding("missing-alpha-range", "Accumulated-alpha diagnostics did not report positive estimated alpha."));
@@ -76,6 +80,15 @@ export function classifyTileLocalDiagnostics({ captures = [] } = {}) {
     maxTileRefsPerTile: finiteNumber(refDiagnostics?.tileRefs?.maxPerTile) ?? 0,
     estimatedMaxAccumulatedAlpha: finiteNumber(alphaDiagnostics?.alpha?.estimatedMaxAccumulatedAlpha) ?? 0,
     estimatedMinTransmittance: finiteNumber(transmittanceDiagnostics?.alpha?.estimatedMinTransmittance) ?? 0,
+    presentationStatus: presentationStatus(refCapture),
+    overflowReasons: overflowReasonNames(budgetDiagnostics.overflowReasons),
+    projectedArenaRefs: finiteNumber(arenaRefs.projected) ?? 0,
+    retainedArenaRefs: finiteNumber(arenaRefs.retained) ?? 0,
+    droppedArenaRefs: finiteNumber(arenaRefs.dropped) ?? 0,
+    cpuProjectedRefsPerTile: finiteNumber(heat.cpu?.projectedRefsPerTile) ?? 0,
+    cpuBuildDurationMs: finiteNumber(heat.cpu?.buildDurationMs) ?? 0,
+    gpuRetainedRefBufferBytes: finiteNumber(heat.gpu?.retainedRefBufferBytes) ?? 0,
+    gpuAlphaParamBufferBytes: finiteNumber(heat.gpu?.alphaParamBufferBytes) ?? 0,
   };
   const closeable = findings.length === 0;
   return {
@@ -117,6 +130,30 @@ function tileRefs(capture = {}) {
 
 function diagnostics(capture = {}) {
   return capture.pageEvidence?.tileLocal?.diagnostics ?? capture.pageEvidence?.tileLocalDiagnostics;
+}
+
+function tileLocalEvidence(capture = {}) {
+  const tileLocal = capture.pageEvidence?.tileLocal;
+  return tileLocal && typeof tileLocal === "object" ? tileLocal : {};
+}
+
+function presentationStatus(capture = {}) {
+  const tileLocal = tileLocalEvidence(capture);
+  return String(
+    tileLocal.status ??
+      tileLocal.freshness?.status ??
+      capture.pageEvidence?.tileLocalStatus ??
+      ""
+  ).trim();
+}
+
+function overflowReasonNames(reasons) {
+  if (!Array.isArray(reasons)) {
+    return [];
+  }
+  return reasons
+    .map((reason) => typeof reason === "string" ? reason : reason?.reason)
+    .filter((reason) => typeof reason === "string" && reason.length > 0);
 }
 
 function positiveNumber(value) {

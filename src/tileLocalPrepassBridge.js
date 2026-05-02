@@ -55,11 +55,95 @@ export function buildTileLocalPrepassBridge({
     splats,
   });
   const orderedCoverage = orderCoverageEntriesForView(coverage, attributes, viewMatrix);
-  return buildGpuTileCoverageBridge({
+  const bridge = buildGpuTileCoverageBridge({
     ...orderedCoverage,
     sourceSplatCount: attributes.count,
     maxRefsPerTile,
   });
+  return {
+    ...bridge,
+    budgetDiagnostics: summarizeTileLocalPrepassBudgetDiagnostics({
+      coverage: orderedCoverage,
+      bridge,
+      maxRefsPerTile: bridge.maxRefsPerTile,
+      maxTileEntries,
+    }),
+  };
+}
+
+export function summarizeTileLocalPrepassBudgetDiagnostics({
+  coverage,
+  bridge,
+  maxRefsPerTile,
+  maxTileEntries = Number.POSITIVE_INFINITY,
+}) {
+  const tileCount = Math.max(coverage?.tileColumns ?? 0, 0) * Math.max(coverage?.tileRows ?? 0, 0);
+  const projectedEntries = Array.isArray(coverage?.tileEntries) ? coverage.tileEntries : [];
+  const retainedKeys = retainedTileEntryKeys(bridge);
+  const retainedBands = createBandCounters();
+  const droppedBands = createBandCounters();
+
+  for (const entry of projectedEntries) {
+    accumulateBand(retainedKeys.has(tileEntryKey(entry)) ? retainedBands : droppedBands, entry, maxRefsPerTile);
+  }
+
+  const custody = bridge?.tileRefCustody ?? {};
+  const projectedRefs = nonNegativeFiniteInteger(custody.projectedTileEntryCount ?? projectedEntries.length);
+  const retainedRefs = nonNegativeFiniteInteger(custody.retainedTileEntryCount ?? bridge?.retainedTileEntryCount);
+  const droppedRefs = nonNegativeFiniteInteger(custody.evictedTileEntryCount ?? Math.max(0, projectedRefs - retainedRefs));
+  const overflowReasons = [];
+  if (droppedRefs > 0 || nonNegativeFiniteInteger(custody.cappedTileCount) > 0) {
+    overflowReasons.push({
+      reason: "per-tile-ref-cap",
+      projectedRefs,
+      retainedRefs,
+      droppedRefs,
+      cappedTileCount: nonNegativeFiniteInteger(custody.cappedTileCount),
+      maxRefsPerTile: nonNegativeFiniteInteger(maxRefsPerTile),
+    });
+  }
+  if (projectedRefs > maxTileEntries) {
+    overflowReasons.push({
+      reason: "projected-ref-budget",
+      projectedRefs,
+      maxProjectedRefs: maxTileEntries,
+    });
+  }
+  if (custody.headerAccountingMatches === false) {
+    overflowReasons.push({
+      reason: "header-accounting-mismatch",
+      retainedRefs,
+      headerRefCount: nonNegativeFiniteInteger(custody.headerRefCount),
+    });
+  }
+
+  return {
+    version: 1,
+    arenaRefs: {
+      projected: projectedRefs,
+      retained: retainedRefs,
+      dropped: droppedRefs,
+      cappedTileCount: nonNegativeFiniteInteger(custody.cappedTileCount),
+      saturatedRetainedTileCount: nonNegativeFiniteInteger(custody.saturatedRetainedTileCount),
+      maxProjectedRefsPerTile: nonNegativeFiniteInteger(custody.maxProjectedRefsPerTile),
+      maxRetainedRefsPerTile: nonNegativeFiniteInteger(custody.maxRetainedRefsPerTile),
+    },
+    overflowReasons,
+    retainedBands,
+    droppedBands,
+    heat: {
+      cpu: {
+        projectedRefs,
+        projectedRefsPerTile: tileCount > 0 ? round(projectedRefs / tileCount) : 0,
+        projectedToRetainedRatio: retainedRefs > 0 ? round(projectedRefs / retainedRefs) : 0,
+      },
+      gpu: {
+        retainedRefs,
+        retainedRefBufferBytes: retainedRefs * 4 * Uint32Array.BYTES_PER_ELEMENT,
+        coverageWeightBufferBytes: retainedRefs * Float32Array.BYTES_PER_ELEMENT,
+      },
+    },
+  };
 }
 
 export function captureTileLocalPrepassBridgeSignature({
@@ -116,6 +200,76 @@ function orderCoverageEntriesForView(coverage, attributes, viewMatrix) {
     ...coverage,
     tileEntries,
   };
+}
+
+function retainedTileEntryKeys(bridge) {
+  const keys = new Set();
+  const headers = bridge?.tileHeaders;
+  const refs = bridge?.tileRefs;
+  const tileCount = bridge?.tileCount ?? 0;
+  for (let tileIndex = 0; tileIndex < tileCount; tileIndex += 1) {
+    const first = headers?.[tileIndex * 4] ?? 0;
+    const count = headers?.[tileIndex * 4 + 1] ?? 0;
+    for (let offset = 0; offset < count; offset += 1) {
+      const refIndex = first + offset;
+      keys.add(tileEntryKey({
+        tileIndex,
+        splatIndex: refs?.[refIndex * 4] ?? 0,
+        originalId: refs?.[refIndex * 4 + 1] ?? 0,
+      }));
+    }
+  }
+  return keys;
+}
+
+function tileEntryKey(entry) {
+  return `${entry.tileIndex}:${entry.splatIndex}:${entry.originalId}`;
+}
+
+function createBandCounters() {
+  return {
+    front: createBandCounter(),
+    middle: createBandCounter(),
+    back: createBandCounter(),
+  };
+}
+
+function createBandCounter() {
+  return {
+    total: 0,
+    coverageHigh: 0,
+    coverageMedium: 0,
+    coverageLow: 0,
+  };
+}
+
+function accumulateBand(bands, entry, maxRefsPerTile) {
+  const band = bands[depthBand(entry, maxRefsPerTile)];
+  band.total += 1;
+  const coverage = Number.isFinite(entry.coverageWeight) ? entry.coverageWeight : 0;
+  if (coverage >= 0.75) {
+    band.coverageHigh += 1;
+  } else if (coverage >= 0.25) {
+    band.coverageMedium += 1;
+  } else {
+    band.coverageLow += 1;
+  }
+}
+
+function depthBand(entry, maxRefsPerTile) {
+  const rank = Number.isInteger(entry.viewRank) ? entry.viewRank : 0;
+  const cap = Math.max(nonNegativeFiniteInteger(maxRefsPerTile), 1);
+  if (rank < cap) return "front";
+  if (rank < cap * 4) return "middle";
+  return "back";
+}
+
+function nonNegativeFiniteInteger(value) {
+  return Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
+}
+
+function round(value) {
+  return Number.isFinite(value) ? Number(value.toFixed(6)) : 0;
 }
 
 function computeRetentionWeights(entry, attributes) {

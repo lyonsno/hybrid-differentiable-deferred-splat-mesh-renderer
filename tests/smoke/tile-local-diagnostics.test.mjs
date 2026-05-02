@@ -75,6 +75,41 @@ test("tile-local diagnostic classifier requires compact evidence for alpha/trans
   assert.equal(result.metrics.maxTileRefsPerTile, 32);
 });
 
+test("tile-local diagnostic classifier reports status labels, overflow reasons, and heat counters", () => {
+  const result = classifyTileLocalDiagnostics({
+    captures: [
+      diagnosticCapture("coverage-weight"),
+      diagnosticCapture("accumulated-alpha"),
+      diagnosticCapture("transmittance"),
+      diagnosticCapture("tile-ref-count", {
+        tileLocal: {
+          status: "current",
+          freshness: { status: "current" },
+          budgetDiagnostics: {
+            arenaRefs: { projected: 96, retained: 32, dropped: 64 },
+            overflowReasons: [{ reason: "per-tile-ref-cap", droppedRefs: 64 }],
+            heat: {
+              cpu: { projectedRefs: 96, projectedRefsPerTile: 96, projectedToRetainedRatio: 3, buildDurationMs: 12.5 },
+              gpu: { retainedRefs: 32, retainedRefBufferBytes: 512, alphaParamBufferBytes: 1024 },
+            },
+          },
+        },
+      }),
+      diagnosticCapture("conic-shape"),
+    ],
+  });
+
+  assert.equal(result.metrics.presentationStatus, "current");
+  assert.deepEqual(result.metrics.overflowReasons, ["per-tile-ref-cap"]);
+  assert.equal(result.metrics.projectedArenaRefs, 96);
+  assert.equal(result.metrics.retainedArenaRefs, 32);
+  assert.equal(result.metrics.droppedArenaRefs, 64);
+  assert.equal(result.metrics.cpuProjectedRefsPerTile, 96);
+  assert.equal(result.metrics.cpuBuildDurationMs, 12.5);
+  assert.equal(result.metrics.gpuRetainedRefBufferBytes, 512);
+  assert.equal(result.metrics.gpuAlphaParamBufferBytes, 1024);
+});
+
 test("visual smoke CLI exposes a tile-local diagnostics batch mode", () => {
   const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
 
@@ -84,6 +119,7 @@ test("visual smoke CLI exposes a tile-local diagnostics batch mode", () => {
 });
 
 function diagnosticCapture(id, overrides = {}) {
+  const tileLocalOverrides = overrides.tileLocal ?? {};
   return {
     id,
     classification: {
@@ -95,6 +131,7 @@ function diagnosticCapture(id, overrides = {}) {
       rendererLabel: `tile-local-visible-debug-${id}`,
       tileLocal: {
         refs: 24000,
+        ...tileLocalOverrides,
         diagnostics: {
           debugMode: id,
           tileRefs: { total: 24000, maxPerTile: 32, nonEmptyTiles: 400 },

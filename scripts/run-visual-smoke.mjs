@@ -542,8 +542,17 @@ ${result.captures
 ## Compact Diagnostics
 
 - Required modes present: ${metrics.requiredModesPresent}
+- Presentation status: ${metrics.presentationStatus || "not reported"}
 - Total tile refs: ${metrics.totalTileRefs}
 - Max tile refs per tile: ${metrics.maxTileRefsPerTile}
+- Projected arena refs: ${metrics.projectedArenaRefs}
+- Retained arena refs: ${metrics.retainedArenaRefs}
+- Dropped arena refs: ${metrics.droppedArenaRefs}
+- Overflow reasons: ${metrics.overflowReasons?.length ? metrics.overflowReasons.join(", ") : "none"}
+- CPU projected refs per tile: ${metrics.cpuProjectedRefsPerTile}
+- CPU build duration ms: ${metrics.cpuBuildDurationMs}
+- GPU retained ref buffer bytes: ${metrics.gpuRetainedRefBufferBytes}
+- GPU alpha param buffer bytes: ${metrics.gpuAlphaParamBufferBytes}
 - Estimated max accumulated alpha: ${metrics.estimatedMaxAccumulatedAlpha}
 - Estimated min transmittance: ${metrics.estimatedMinTransmittance}
 
