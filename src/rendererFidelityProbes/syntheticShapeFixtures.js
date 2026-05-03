@@ -130,12 +130,12 @@ const isotropicCircle = {
  *
  * A single highly anisotropic Gaussian splat viewed nearly edge-on.
  * The splat is a flat disk in the XZ plane (large X extent, large Z extent,
- * tiny Y extent).  The camera is on the Y axis, looking straight at the
- * origin — so it sees only the thin Y edge of the disk, producing a ribbon.
+ * tiny Y extent).  The camera is on the Z axis, looking straight at the
+ * origin — so it sees the large X axis and tiny Y edge, producing a ribbon.
  *
  * Splat scales (world space): X = 1.2, Y = 0.02, Z = 1.2  → anisotropy ≈ 60
  * Rotation: identity — disk lies in the XZ plane (axes X, Y, Z map to world X, Y, Z)
- * Camera: 4 units up on Y, looking down at origin
+ * Camera: 4 units back on Z, looking at origin
  *
  * Expected invariant:
  *   - thin-ribbon: thickness ratio < 0.15
@@ -151,7 +151,7 @@ const edgeOnRibbon = {
       color: [0.7, 0.7, 0.9],
     }),
   ],
-  camera: camera([0, 4, 0], [0, 0, 0], 60),
+  camera: camera([0, 0, 4], [0, 0, 0], 60),
   viewport: { width: 512, height: 512 },
   expectedInvariants: {
     kind: "thin-ribbon",
@@ -192,7 +192,7 @@ const rotatedEllipse = {
     kind: "oriented-ellipse",
     center: { x: 256, y: 256, tolerancePx: 20 },
     axisAngleDeg: { expected: 45, toleranceDeg: 15 },
-    aspectRatio: { min: 2.0, max: 10.0 },
+    thicknessRatio: { max: 0.35 },
   },
 };
 

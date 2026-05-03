@@ -494,10 +494,10 @@ describe("browser shape-gate smoke", { timeout: 120_000 }, () => {
               `[${fixtureId}] principalAxes.angleDeg ${angleDeg.toFixed(1)} must be within ${tolerance}° of ±${expected}°`
             );
           }
-          if (inv.aspectRatio) {
+          if (inv.thicknessRatio?.max !== undefined) {
             assert.ok(
-              result.aspectRatio >= inv.aspectRatio.min && result.aspectRatio <= inv.aspectRatio.max,
-              `[${fixtureId}] aspectRatio ${result.aspectRatio.toFixed(3)} must be in [${inv.aspectRatio.min}, ${inv.aspectRatio.max}]`
+              result.thicknessRatio <= inv.thicknessRatio.max,
+              `[${fixtureId}] thicknessRatio ${result.thicknessRatio.toFixed(3)} must be <= ${inv.thicknessRatio.max} (oriented ellipse must stay elongated)`
             );
           }
           break;

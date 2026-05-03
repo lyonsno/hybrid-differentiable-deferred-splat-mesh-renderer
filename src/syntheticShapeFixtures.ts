@@ -219,7 +219,7 @@ const isotropicCircle: ShapeFixture = {
  * edge-on-ribbon
  *
  * Highly anisotropic splat (X=1.2, Y=0.02, Z=1.2; anisotropy ≈ 60).
- * Camera on the Y axis — sees the thin Y edge of the disk → ribbon.
+ * Camera on the Z axis — sees the thin Y edge of the disk → ribbon.
  */
 const edgeOnRibbon: ShapeFixture = {
   id: "shape-witness-edge-on-ribbon",
@@ -232,7 +232,7 @@ const edgeOnRibbon: ShapeFixture = {
       color: [0.7, 0.7, 0.9],
     }),
   ],
-  camera: camera([0, 4, 0], [0, 0, 0], 60),
+  camera: camera([0, 0, 4], [0, 0, 0], 60),
   viewport: { width: 512, height: 512 },
   expectedInvariants: {
     kind: "thin-ribbon",
@@ -264,7 +264,7 @@ const rotatedEllipse: ShapeFixture = {
     kind: "oriented-ellipse",
     center: { x: 256, y: 256, tolerancePx: 20 },
     axisAngleDeg: { expected: 45, toleranceDeg: 15 },
-    aspectRatio: { min: 2.0, max: 10.0 },
+    thicknessRatio: { max: 0.35 },
   },
 };
 
