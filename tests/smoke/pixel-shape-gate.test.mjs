@@ -540,6 +540,28 @@ describe("browser shape-gate smoke", { timeout: 120_000 }, () => {
       }
     });
   }
+
+  test("edge-on ribbon shape failure is paired with tile-local footprint pressure", async (t) => {
+    t.timeout = 60_000;
+
+    const { metadata } = await captureShapeWitness("edge-on-ribbon", {
+      baseUrl,
+      rendererMode: "tile-local-visible",
+      settleMs: 3000,
+      timeoutMs: 30_000,
+    });
+
+    assert.ok(!metadata.rendererStubWarning, "edge-on ribbon must render through the real shape-witness path");
+    assert.equal(metadata.rendererLabel, "shape-witness", "shape witness renderer label must survive tile-local mode");
+    assert.ok(metadata.tileLocal, "tile-local-visible shape witness must expose tile-local pressure evidence");
+    assert.equal(metadata.tileLocal.status, "current", "tile-local pressure evidence must be current, not stale");
+    const tileGrid = metadata.tileLocal.tileColumns * metadata.tileLocal.tileRows;
+    const coveredTileRatio = metadata.tileLocal.refs / tileGrid;
+    assert.ok(
+      coveredTileRatio <= 0.25,
+      `edge-on ribbon should stay narrow in tile coverage, got ${metadata.tileLocal.refs}/${tileGrid} tile refs (${coveredTileRatio.toFixed(3)})`
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------

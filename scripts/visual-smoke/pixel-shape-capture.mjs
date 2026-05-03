@@ -75,10 +75,12 @@ const DEFAULT_BROWSER_CHANNEL = process.env.VISUAL_SMOKE_BROWSER_CHANNEL || "chr
  *
  * @param {string} baseUrl - Base URL of the running renderer (e.g. http://localhost:5173)
  * @param {string} fixtureId - One of SHAPE_WITNESS_FIXTURE_IDS
+ * @param {object} [options]
+ * @param {string} [options.rendererMode] - Optional renderer query param, e.g. "tile-local-visible"
  * @returns {string} Full URL with query string
  * @throws {Error} If fixtureId is not in SHAPE_WITNESS_FIXTURE_IDS
  */
-export function buildShapeWitnessUrl(baseUrl, fixtureId) {
+export function buildShapeWitnessUrl(baseUrl, fixtureId, options = {}) {
   if (!SHAPE_WITNESS_FIXTURE_IDS.includes(fixtureId)) {
     throw new Error(
       `Unrecognized fixture ID: "${fixtureId}". Valid IDs: ${SHAPE_WITNESS_FIXTURE_IDS.join(", ")}`
@@ -86,6 +88,9 @@ export function buildShapeWitnessUrl(baseUrl, fixtureId) {
   }
   const url = new URL(baseUrl);
   url.searchParams.set("synthetic", `shape-witness-${fixtureId}`);
+  if (options.rendererMode) {
+    url.searchParams.set("renderer", options.rendererMode);
+  }
   return url.toString();
 }
 
@@ -193,6 +198,7 @@ function readPixelRgba(rgba, width, x, y) {
  * @param {number} [options.timeoutMs=20000] - Max wait time for renderer ready
  * @param {number} [options.settleMs=2000] - Settle time after canvas ready
  * @param {string} [options.outputPath] - If set, write PNG to this path
+ * @param {string} [options.rendererMode] - Optional renderer query param for pressure witnesses
  * @returns {Promise<{ png: Buffer, metadata: object }>}
  */
 export async function captureShapeWitness(fixtureId, options = {}) {
@@ -210,13 +216,14 @@ export async function captureShapeWitness(fixtureId, options = {}) {
     timeoutMs = DEFAULT_TIMEOUT_MS,
     settleMs = DEFAULT_SETTLE_MS,
     outputPath,
+    rendererMode,
   } = options;
 
   if (!baseUrl) {
     throw new Error("captureShapeWitness: options.baseUrl is required (e.g. 'http://localhost:5173')");
   }
 
-  const url = buildShapeWitnessUrl(baseUrl, fixtureId);
+  const url = buildShapeWitnessUrl(baseUrl, fixtureId, { rendererMode });
 
   const { chromium } = await loadPlaywright();
   const browser = await chromium.launch({
@@ -269,6 +276,13 @@ export async function captureShapeWitness(fixtureId, options = {}) {
 
     await page.waitForTimeout(settleMs);
 
+    const pageEvidence = await page.evaluate(() => {
+      const smoke = globalThis.__MESH_SPLAT_SMOKE__;
+      if (!smoke || typeof smoke !== "object") return null;
+      return JSON.parse(JSON.stringify(smoke));
+    });
+    rendererLabel = pageEvidence?.rendererLabel ?? rendererLabel;
+
     // Hide overlays before capturing, same pattern as the existing smoke harness.
     await page.addStyleTag({
       content: "#stats,[data-visual-smoke-ignore]{visibility:hidden!important}",
@@ -297,6 +311,10 @@ export async function captureShapeWitness(fixtureId, options = {}) {
       captureViewport: SHAPE_WITNESS_CAPTURE_VIEWPORT,
       rendererReady,
       rendererLabel,
+      rendererMode: rendererMode ?? "plate",
+      pageEvidence,
+      tileLocal: pageEvidence?.tileLocal ?? null,
+      tileLocalStatus: pageEvidence?.tileLocalStatus ?? null,
       // If renderer didn't signal readiness, the synthetic fixture URL may not be
       // wired yet. The renderer-path-integration lane must connect the real fixture loading.
       rendererStubWarning: !rendererReady,
