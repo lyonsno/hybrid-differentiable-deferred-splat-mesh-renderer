@@ -193,11 +193,11 @@ export function configureCameraForFixture(cam, fixtureCamera, bounds) {
   cam.navigationScale = Math.max(bounds.radius, 0.1);
 
   // Near/far: use fixture-specified near if provided, otherwise derive from distance and bounds.
+  const paddedRadius = Math.max(bounds.radius, safeDistance * 0.5);
   if (typeof fixtureCamera.near === "number" && fixtureCamera.near > 0) {
     cam.near = fixtureCamera.near;
-    cam.far  = safeDistance + bounds.radius * 4;
+    cam.far  = safeDistance + paddedRadius * 4;
   } else {
-    const paddedRadius = Math.max(bounds.radius, safeDistance * 0.5);
     cam.near = Math.max(0.001, safeDistance - paddedRadius * 2);
     cam.far  = safeDistance + paddedRadius * 4;
   }
