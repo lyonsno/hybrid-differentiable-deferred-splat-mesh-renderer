@@ -171,6 +171,12 @@ interface TileLocalSceneState {
 
 type RendererMode = "plate" | "tile-local" | "tile-local-visible";
 
+interface RuntimeFootprintParams {
+  readonly splatScale: number;
+  readonly minRadiusPx: number;
+  readonly nearFadeEndNdc: number;
+}
+
 interface SortSettleState {
   lastSortedViewDepthKey: Float32Array;
   observedViewDepthKey: Float32Array;
@@ -281,7 +287,12 @@ async function main() {
           initialView,
           initialViewProj,
           initialViewportWidth,
-          initialViewportHeight
+          initialViewportHeight,
+          {
+            splatScale: initialSplatScale,
+            minRadiusPx: initialMinRadiusPx,
+            nearFadeEndNdc: shapeWitnessFixtureId !== null ? SHAPE_WITNESS_NEAR_FADE_END : REAL_SCANIVERSE_NEAR_FADE_END_NDC,
+          }
         );
       } catch (err) {
         if (!isTileLocalBudgetError(err)) {
@@ -483,7 +494,11 @@ async function main() {
     const pendingGpuSort = gpuSortRefreshPending(scene.sortState, view);
     const pendingAlphaDensity = scene.alphaDensityState.refreshState.needsRefresh;
     const tileLocalCurrentSignature = scene.tileLocalState
-      ? captureCurrentTileLocalSignature(view, viewProj, width, height)
+      ? captureCurrentTileLocalSignature(view, viewProj, width, height, {
+        splatScale: activeSplatScale,
+        minRadiusPx: activeMinRadiusPx,
+        nearFadeEndNdc: activeNearFadeEnd,
+      })
       : null;
     if (
       scene.tileLocalState &&
@@ -507,7 +522,12 @@ async function main() {
           viewProj,
           width,
           height,
-          true
+          true,
+          {
+            splatScale: activeSplatScale,
+            minRadiusPx: activeMinRadiusPx,
+            nearFadeEndNdc: activeNearFadeEnd,
+          }
         );
         scene.tileLocalState = tileLocalState;
         scene.tileLocalLastSkipReason = null;
@@ -719,7 +739,8 @@ function createTileLocalSceneState(
   viewMatrix: Float32Array,
   viewProj: Float32Array,
   viewportWidth: number,
-  viewportHeight: number
+  viewportHeight: number,
+  footprintParams: RuntimeFootprintParams
 ): TileLocalSceneState {
   const bridgeInput = {
     attributes,
@@ -729,10 +750,10 @@ function createTileLocalSceneState(
     viewportHeight,
     tileSizePx: TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX,
     samplesPerAxis: TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES,
-    splatScale: REAL_SCANIVERSE_SPLAT_SCALE,
-    minRadiusPx: REAL_SCANIVERSE_MIN_RADIUS_PX,
+    splatScale: footprintParams.splatScale,
+    minRadiusPx: footprintParams.minRadiusPx,
     maxTileEntries: TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES,
-    nearFadeEndNdc: REAL_SCANIVERSE_NEAR_FADE_END_NDC,
+    nearFadeEndNdc: footprintParams.nearFadeEndNdc,
   };
   const bridgeBuildStartedAtMs = performance.now();
   const bridge = buildTileLocalPrepassBridge(bridgeInput);
@@ -875,7 +896,8 @@ function ensureTileLocalSceneState(
   viewProj: Float32Array,
   viewportWidth: number,
   viewportHeight: number,
-  allowViewRebuild: boolean
+  allowViewRebuild: boolean,
+  footprintParams: RuntimeFootprintParams
 ): TileLocalSceneState {
   const bridgeInput = {
     viewMatrix,
@@ -884,10 +906,10 @@ function ensureTileLocalSceneState(
     viewportHeight,
     tileSizePx: TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX,
     samplesPerAxis: TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES,
-    splatScale: REAL_SCANIVERSE_SPLAT_SCALE,
-    minRadiusPx: REAL_SCANIVERSE_MIN_RADIUS_PX,
+    splatScale: footprintParams.splatScale,
+    minRadiusPx: footprintParams.minRadiusPx,
     maxTileEntries: TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES,
-    nearFadeEndNdc: REAL_SCANIVERSE_NEAR_FADE_END_NDC,
+    nearFadeEndNdc: footprintParams.nearFadeEndNdc,
   };
   const viewportMatches = state.viewportWidth === viewportWidth && state.viewportHeight === viewportHeight;
   const bridgeStillFresh = !tileLocalPrepassBridgeSignatureChanged(state.prepassSignature, bridgeInput);
@@ -903,7 +925,8 @@ function ensureTileLocalSceneState(
     viewMatrix,
     viewProj,
     viewportWidth,
-    viewportHeight
+    viewportHeight,
+    footprintParams
   );
   destroyTileLocalSceneState(state);
   return nextState;
@@ -913,7 +936,8 @@ function captureCurrentTileLocalSignature(
   viewMatrix: Float32Array,
   viewProj: Float32Array,
   viewportWidth: number,
-  viewportHeight: number
+  viewportHeight: number,
+  footprintParams: RuntimeFootprintParams
 ): string {
   return captureTileLocalPrepassBridgeSignature({
     viewMatrix,
@@ -922,10 +946,10 @@ function captureCurrentTileLocalSignature(
     viewportHeight,
     tileSizePx: TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX,
     samplesPerAxis: TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES,
-    splatScale: REAL_SCANIVERSE_SPLAT_SCALE,
-    minRadiusPx: REAL_SCANIVERSE_MIN_RADIUS_PX,
+    splatScale: footprintParams.splatScale,
+    minRadiusPx: footprintParams.minRadiusPx,
     maxTileEntries: TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES,
-    nearFadeEndNdc: REAL_SCANIVERSE_NEAR_FADE_END_NDC,
+    nearFadeEndNdc: footprintParams.nearFadeEndNdc,
   });
 }
 
