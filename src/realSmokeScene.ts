@@ -15,6 +15,7 @@ const MIN_ALPHA_DENSITY_OPACITY_FRACTION = 0.5;
 const ALPHA_DENSITY_TILE_SIZE_PX = 48;
 const ALPHA_DENSITY_GAUSSIAN_SUPPORT_SIGMA = 3;
 const ALPHA_DENSITY_COVERAGE_SAMPLES_PER_AXIS = 5;
+const STATIC_DESSERT_RIM_BAND_CROP = { x: 390, y: 322, width: 500, height: 115 } as const;
 
 const VIEWER_VERTICAL_FLIP = new Float32Array([
   1, 0, 0, 0,
@@ -52,6 +53,9 @@ export interface MeshSplatRendererWitness {
     readonly fieldSuspiciousSplatCount: number;
     readonly rotationOrderComparison?: ProjectedAnisotropyComparison;
     readonly footprint?: ProjectedFootprintSummary;
+    readonly cropSupport?: {
+      readonly rimBand: ProjectedCropSupportSummary;
+    };
   };
   readonly slab: {
     readonly statusCounts: {
@@ -113,6 +117,23 @@ export interface ProjectedFootprintSummary {
   readonly majorRadiusCapPx: number;
   readonly highEnergySplatCount: number;
   readonly projectedSplatCount: number;
+  readonly sampleOriginalIds: readonly number[];
+}
+
+export interface ProjectedCropSupportSummary {
+  readonly crop: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  };
+  readonly projectedCenterCount: number;
+  readonly projectedSupportCount: number;
+  readonly nearFloorMinorCount: number;
+  readonly maxMajorRadiusPx: number;
+  readonly medianMajorRadiusPx: number;
+  readonly medianMinorRadiusPx: number;
+  readonly supportAreaPxSum: number;
   readonly sampleOriginalIds: readonly number[];
 }
 
@@ -214,6 +235,16 @@ export function createMeshSplatRendererWitness(
   const projectedFootprint = options.viewProj === undefined
     ? undefined
     : summarizeProjectedFootprint(attributes, options.viewProj, options);
+  const cropSupport = options.viewProj === undefined
+    ? undefined
+    : {
+        rimBand: summarizeProjectedCropSupport(
+          attributes,
+          options.viewProj,
+          options,
+          STATIC_DESSERT_RIM_BAND_CROP
+        ),
+      };
   const overlapDensity = options.viewProj === undefined
     ? undefined
     : summarizeAlphaOverlapDensity(attributes, options.viewProj, options);
@@ -234,6 +265,7 @@ export function createMeshSplatRendererWitness(
       fieldSuspiciousSplatCount: anisotropy.suspiciousSplatCount,
       rotationOrderComparison: projectedComparison,
       footprint: projectedFootprint,
+      cropSupport,
     },
     slab: {
       statusCounts: {
@@ -425,6 +457,72 @@ function summarizeProjectedFootprint(
     majorRadiusCapPx,
     highEnergySplatCount,
     projectedSplatCount,
+    sampleOriginalIds,
+  };
+}
+
+function summarizeProjectedCropSupport(
+  attributes: SplatAttributes,
+  viewProj: mat4,
+  options: MeshSplatRendererWitnessOptions,
+  crop: { readonly x: number; readonly y: number; readonly width: number; readonly height: number }
+): ProjectedCropSupportSummary {
+  const viewportWidth = positiveOrDefault(options.viewportWidth, 1280);
+  const viewportHeight = positiveOrDefault(options.viewportHeight, 720);
+  const viewportMin = Math.max(Math.min(viewportWidth, viewportHeight), 1);
+  const splatScale = positiveOrDefault(options.splatScale, REAL_SCANIVERSE_SPLAT_SCALE);
+  const minRadiusPx = positiveOrDefault(options.minRadiusPx, REAL_SCANIVERSE_MIN_RADIUS_PX);
+  const cropMaxX = crop.x + crop.width;
+  const cropMaxY = crop.y + crop.height;
+  let projectedCenterCount = 0;
+  let projectedSupportCount = 0;
+  let nearFloorMinorCount = 0;
+  let maxMajorRadiusPx = 0;
+  let supportAreaPxSum = 0;
+  const majorRadii: number[] = [];
+  const minorRadii: number[] = [];
+  const sampleOriginalIds: number[] = [];
+
+  for (let index = 0; index < attributes.count; index++) {
+    const center = projectSplatCenterPx(attributes, viewProj, index, viewportWidth, viewportHeight);
+    if (!center) continue;
+
+    if (center[0] >= crop.x && center[0] < cropMaxX && center[1] >= crop.y && center[1] < cropMaxY) {
+      projectedCenterCount += 1;
+    }
+
+    const projectedAxes = projectSplatAxesForWitness(attributes, viewProj, index, "wxyz");
+    if (!projectedAxes) continue;
+    const footprint = projectedFootprintFromAxes(projectedAxes, viewportMin, splatScale, minRadiusPx);
+    const supportIntersectsCrop =
+      center[0] + footprint.majorRadiusPx >= crop.x &&
+      center[0] - footprint.majorRadiusPx < cropMaxX &&
+      center[1] + footprint.majorRadiusPx >= crop.y &&
+      center[1] - footprint.majorRadiusPx < cropMaxY;
+    if (!supportIntersectsCrop) continue;
+
+    projectedSupportCount += 1;
+    supportAreaPxSum += footprint.areaPx;
+    maxMajorRadiusPx = Math.max(maxMajorRadiusPx, footprint.majorRadiusPx);
+    majorRadii.push(footprint.majorRadiusPx);
+    minorRadii.push(footprint.minorRadiusPx);
+    if (footprint.minorRadiusPx <= minRadiusPx * 1.1) {
+      nearFloorMinorCount += 1;
+    }
+    if (sampleOriginalIds.length < 12) {
+      sampleOriginalIds.push(attributes.originalIds[index] ?? index);
+    }
+  }
+
+  return {
+    crop,
+    projectedCenterCount,
+    projectedSupportCount,
+    nearFloorMinorCount,
+    maxMajorRadiusPx,
+    medianMajorRadiusPx: median(majorRadii),
+    medianMinorRadiusPx: median(minorRadii),
+    supportAreaPxSum,
     sampleOriginalIds,
   };
 }
@@ -940,6 +1038,14 @@ function dot3(a: readonly [number, number, number], b: readonly [number, number,
 
 function positiveOrDefault(value: number | undefined, fallback: number): number {
   return Number.isFinite(value) && value !== undefined && value > 0 ? value : fallback;
+}
+
+function median(values: readonly number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) return sorted[middle];
+  return (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
 function clampUnit(value: number): number {

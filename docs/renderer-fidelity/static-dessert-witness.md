@@ -4,6 +4,39 @@ Lane: `static-dessert-witness` in `metadosis/coordination-packets/meshsplat-stat
 
 Status: witness-only dossier from renderer base `origin/cc/double-attenuated-conic-seepage-integration-0501@223c6ff`. This lane does not change production renderer math, global opacity/brightness, tile-ref budgets, asset decoding, camera controls, or the tile-local bridge policy.
 
+## 2026-05-06 Plate/Tile-Local Bridge Update
+
+The static dessert witness now captures the default `plate` renderer alongside the `tile-local-visible` final color and debug modes, so rim diagnosis can keep the renderer-mode gap explicit instead of treating tile-local debug evidence as if it were plate evidence. The witness also records crop-local source/footprint support for the packet rim band `x=390,y=322,w=500,h=115` at `1280x720`.
+
+Durable artifacts:
+
+- `docs/renderer-fidelity/static-dessert-witness-0506/report.md`
+- `docs/renderer-fidelity/static-dessert-witness-0506/analysis.json`
+- `docs/renderer-fidelity/static-dessert-witness-0506/plate-final-color.png`
+- `docs/renderer-fidelity/static-dessert-witness-0506/final-color.png`
+- `docs/renderer-fidelity/static-dessert-witness-0506/coverage-weight.png`
+- `docs/renderer-fidelity/static-dessert-witness-0506/accumulated-alpha.png`
+- `docs/renderer-fidelity/static-dessert-witness-0506/transmittance.png`
+- `docs/renderer-fidelity/static-dessert-witness-0506/tile-ref-count.png`
+- `docs/renderer-fidelity/static-dessert-witness-0506/conic-shape.png`
+
+Fixed-view bridge metrics from the 2026-05-06 capture:
+
+| Field | Value |
+| --- | ---: |
+| Plate renderer label | `plate` |
+| Tile-local renderer label | `tile-local-visible-gaussian-compositor` |
+| Same asset | `true` |
+| Same viewport | `true` |
+| Rim crop source centers | `87,499` |
+| Rim crop projected support splats | `88,901` |
+| Rim crop near-floor minor splats | `47,346` |
+| Rim crop max major radius | `51.362080196886815px` |
+| Rim crop median major radius | `3.2926847247256466px` |
+| Rim crop median minor radius | `1.5533136541375223px` |
+
+Interpretation boundary: this update is evidence plumbing, not a renderer fix. It makes source sparsity unlikely as the primary explanation for the fixed static crop, keeps alpha/global opacity blocked, and gives a future conic/coverage patch a concrete before/after witness.
+
 ## Fixed Static View
 
 Command:

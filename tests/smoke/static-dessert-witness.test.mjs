@@ -14,6 +14,11 @@ test("static dessert witness plan captures final color and all debug modes for o
     plan.map((capture) => [capture.id, capture.expectedRendererLabel, capture.url]),
     [
       [
+        "plate-final-color",
+        "plate",
+        "http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+      ],
+      [
         "final-color",
         "tile-local-visible",
         "http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&renderer=tile-local-visible",
@@ -51,6 +56,7 @@ test("static dessert witness classifier requires one asset, one viewport, final 
   const result = classifyStaticDessertWitness({
     captures: [
       witnessCapture("final-color", { rendererLabel: "tile-local-visible-gaussian-compositor" }),
+      witnessCapture("plate-final-color", { rendererLabel: "plate" }),
       witnessCapture("coverage-weight"),
       witnessCapture("accumulated-alpha", {
         diagnostics: {
@@ -114,6 +120,11 @@ test("static dessert witness classifier requires one asset, one viewport, final 
   assert.equal(result.metrics.retentionAudit.fullFrame.addedByPolicyCount, 120);
   assert.equal(result.metrics.retentionAudit.regions.centerLeakBand.addedByPolicyCount, 17);
   assert.equal(result.metrics.conicShape.maxAnisotropy, 5);
+  assert.equal(result.metrics.rendererBridge.plateRendererLabel, "plate");
+  assert.equal(result.metrics.rendererBridge.tileLocalRendererLabel, "tile-local-visible-gaussian-compositor");
+  assert.equal(result.metrics.sourceSupport.rimBand.projectedCenterCount, 37);
+  assert.equal(result.metrics.sourceSupport.rimBand.projectedSupportCount, 91);
+  assert.deepEqual(result.metrics.sourceSupport.rimBand.sampleOriginalIds, [100, 101, 102]);
   assert.equal(result.observations.visibleHoles.evidenceIds.includes("coverage-weight"), true);
   assert.equal(result.observations.plateSeepage.evidenceIds.includes("transmittance"), true);
   assert.equal(result.observations.budgetSkip.status, "separate-high-viewport-observation");
@@ -141,6 +152,18 @@ function witnessCapture(id, overrides = {}) {
     },
     pageEvidence: {
       rendererLabel,
+      witness: {
+        projection: {
+          cropSupport: {
+            rimBand: {
+              crop: { x: 390, y: 322, width: 500, height: 115 },
+              projectedCenterCount: 37,
+              projectedSupportCount: 91,
+              sampleOriginalIds: [100, 101, 102],
+            },
+          },
+        },
+      },
       assetPath: "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
       splatCount: 94406,
       canvas: { width: 1280, height: 720, clientWidth: 1280, clientHeight: 720 },

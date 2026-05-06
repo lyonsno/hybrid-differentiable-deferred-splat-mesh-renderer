@@ -593,6 +593,14 @@ function renderStaticDessertWitnessReport(result) {
 - Header accounting matches retained refs: ${metrics.tileRefCustody.headerAccountingMatches}
 - Retention audit full frame: current ${metrics.retentionAudit.fullFrame.currentRetainedEntryCount} refs vs legacy ${metrics.retentionAudit.fullFrame.legacyRetainedEntryCount}; policy added ${metrics.retentionAudit.fullFrame.addedByPolicyCount}, dropped ${metrics.retentionAudit.fullFrame.droppedByPolicyCount}
 - Center leak band retention audit: projected ${metrics.retentionAudit.regions.centerLeakBand.projectedTileEntryCount}, current ${metrics.retentionAudit.regions.centerLeakBand.currentRetainedEntryCount}, legacy ${metrics.retentionAudit.regions.centerLeakBand.legacyRetainedEntryCount}; policy added ${metrics.retentionAudit.regions.centerLeakBand.addedByPolicyCount}, dropped ${metrics.retentionAudit.regions.centerLeakBand.droppedByPolicyCount}
+- Plate renderer label: ${metrics.rendererBridge.plateRendererLabel || "not reported"}
+- Tile-local renderer label: ${metrics.rendererBridge.tileLocalRendererLabel || "not reported"}
+- Plate/tile-local same asset: ${metrics.rendererBridge.sameAsset}
+- Plate/tile-local same viewport: ${metrics.rendererBridge.sameViewport}
+- Rim crop source centers: ${metrics.sourceSupport.rimBand.projectedCenterCount}
+- Rim crop projected support splats: ${metrics.sourceSupport.rimBand.projectedSupportCount}
+- Rim crop near-floor minor splats: ${metrics.sourceSupport.rimBand.nearFloorMinorCount}
+- Rim crop source sample IDs: ${metrics.sourceSupport.rimBand.sampleOriginalIds.join(", ") || "none"}
 - Estimated max accumulated alpha: ${metrics.alpha.estimatedMaxAccumulatedAlpha}
 - Estimated min transmittance: ${metrics.alpha.estimatedMinTransmittance}
 - Max conic major radius px: ${metrics.conicShape.maxMajorRadiusPx}

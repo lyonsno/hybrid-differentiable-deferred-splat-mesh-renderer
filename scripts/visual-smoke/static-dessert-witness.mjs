@@ -1,4 +1,5 @@
 export const STATIC_DESSERT_WITNESS_CAPTURE_IDS = {
+  plateFinalColor: "plate-final-color",
   finalColor: "final-color",
   coverageWeight: "coverage-weight",
   accumulatedAlpha: "accumulated-alpha",
@@ -18,6 +19,7 @@ const DEBUG_CAPTURE_IDS = new Set([
 
 export function buildStaticDessertWitnessPlan(baseUrl) {
   return [
+    plateFinalColorCapture(baseUrl),
     finalColorCapture(baseUrl),
     debugCapture(baseUrl, STATIC_DESSERT_WITNESS_CAPTURE_IDS.coverageWeight, "Coverage weight heatmap"),
     debugCapture(baseUrl, STATIC_DESSERT_WITNESS_CAPTURE_IDS.accumulatedAlpha, "Accumulated alpha heatmap"),
@@ -46,6 +48,15 @@ export function classifyStaticDessertWitness({ captures = [] } = {}) {
   }
 
   const finalColor = byId.get(STATIC_DESSERT_WITNESS_CAPTURE_IDS.finalColor);
+  const plateFinalColor = byId.get(STATIC_DESSERT_WITNESS_CAPTURE_IDS.plateFinalColor);
+  if (plateFinalColor && rendererLabel(plateFinalColor) !== "plate") {
+    findings.push(
+      finding(
+        "plate-label-mismatch",
+        `Plate final-color capture reported renderer label ${rendererLabel(plateFinalColor) || "missing"}.`
+      )
+    );
+  }
   if (finalColor && !rendererLabel(finalColor).includes("tile-local-visible")) {
     findings.push(
       finding(
@@ -107,6 +118,12 @@ export function classifyStaticDessertWitness({ captures = [] } = {}) {
   if (!positiveNumber(conicDiagnostics?.conicShape?.maxMajorRadiusPx)) {
     findings.push(finding("missing-conic-shape", "Conic-shape capture did not report major/minor conic shape evidence."));
   }
+  const rimBandSupport =
+    plateFinalColor?.pageEvidence?.witness?.projection?.cropSupport?.rimBand ??
+    finalColor?.pageEvidence?.witness?.projection?.cropSupport?.rimBand;
+  if (!positiveNumber(rimBandSupport?.projectedSupportCount)) {
+    findings.push(finding("missing-rim-source-support", "Static dessert witness did not report crop-local rim source support."));
+  }
 
   const closeable = findings.length === 0;
   return {
@@ -134,6 +151,18 @@ export function classifyStaticDessertWitness({ captures = [] } = {}) {
         estimatedMaxAccumulatedAlpha: finiteNumber(alphaDiagnostics?.alpha?.estimatedMaxAccumulatedAlpha) ?? 0,
         estimatedMinTransmittance: finiteNumber(transmittanceDiagnostics?.alpha?.estimatedMinTransmittance) ?? 0,
       },
+      rendererBridge: {
+        plateRendererLabel: rendererLabel(plateFinalColor),
+        tileLocalRendererLabel: rendererLabel(finalColor),
+        sameAsset: assetPath(plateFinalColor) !== "" && assetPath(plateFinalColor) === assetPath(finalColor),
+        sameViewport: viewportKey(plateFinalColor) !== "" && viewportKey(plateFinalColor) === viewportKey(finalColor),
+      },
+      sourceSupport: {
+        rimBand: normalizeRimBandSourceSupport(
+          plateFinalColor?.pageEvidence?.witness?.projection?.cropSupport?.rimBand ??
+            finalColor?.pageEvidence?.witness?.projection?.cropSupport?.rimBand
+        ),
+      },
       conicShape: {
         maxMajorRadiusPx: finiteNumber(conicDiagnostics?.conicShape?.maxMajorRadiusPx) ?? 0,
         minMinorRadiusPx: finiteNumber(conicDiagnostics?.conicShape?.minMinorRadiusPx) ?? 0,
@@ -145,6 +174,19 @@ export function classifyStaticDessertWitness({ captures = [] } = {}) {
     },
     observations: staticDessertObservations(),
     findings,
+  };
+}
+
+function plateFinalColorCapture(baseUrl) {
+  const url = new URL(baseUrl);
+  url.searchParams.delete("renderer");
+  url.searchParams.delete("tileDebug");
+  url.searchParams.delete("debug");
+  return {
+    id: STATIC_DESSERT_WITNESS_CAPTURE_IDS.plateFinalColor,
+    title: "Plate baseline final color",
+    expectedRendererLabel: "plate",
+    url: url.toString().replaceAll("%2F", "/"),
   };
 }
 
@@ -210,8 +252,31 @@ function rendererLabel(capture = {}) {
   return String(capture.pageEvidence?.rendererLabel ?? "").trim();
 }
 
+function assetPath(capture = {}) {
+  return stringValue(capture.pageEvidence?.assetPath);
+}
+
 function tileRefs(capture = {}) {
   return finiteNumber(capture.pageEvidence?.tileLocal?.refs) ?? 0;
+}
+
+function normalizeRimBandSourceSupport(support = {}) {
+  const crop = support && typeof support === "object" ? support.crop : {};
+  return {
+    crop: {
+      x: finiteNumber(crop?.x) ?? 0,
+      y: finiteNumber(crop?.y) ?? 0,
+      width: finiteNumber(crop?.width) ?? 0,
+      height: finiteNumber(crop?.height) ?? 0,
+    },
+    projectedCenterCount: finiteNumber(support?.projectedCenterCount) ?? 0,
+    projectedSupportCount: finiteNumber(support?.projectedSupportCount) ?? 0,
+    nearFloorMinorCount: finiteNumber(support?.nearFloorMinorCount) ?? 0,
+    maxMajorRadiusPx: finiteNumber(support?.maxMajorRadiusPx) ?? 0,
+    medianMajorRadiusPx: finiteNumber(support?.medianMajorRadiusPx) ?? 0,
+    medianMinorRadiusPx: finiteNumber(support?.medianMinorRadiusPx) ?? 0,
+    sampleOriginalIds: Array.isArray(support?.sampleOriginalIds) ? support.sampleOriginalIds.slice(0, 12) : [],
+  };
 }
 
 function normalizeTileRefCustody(tileRefCustody, tileRefs = {}) {
