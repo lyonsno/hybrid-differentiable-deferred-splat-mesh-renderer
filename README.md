@@ -55,6 +55,8 @@ http://127.0.0.1:5173/?renderer=tile-local-visible
 
 This presents the tile-local output texture instead of the plate renderer. It consumes CPU-bridge-populated tile refs, coverage weights, opacity, source colors, and ordered contributions to produce a first real tile-local Gaussian compositor output. It is still deliberately scoped: this does not claim the final GPU ref-builder, SH shading, PBR relighting, mesh integration, or deferred G-buffer path.
 
+The visible tile-local compositor uses plate-rate conic falloff for sample-local coverage. The fixed static dessert witness keeps the plate/tile-local footprint ratio guarded so rim expansion regressions do not get mistaken for alpha or global opacity problems.
+
 The visual smoke harness can compare all three tile-local surfaces in one run:
 
 ```
@@ -82,7 +84,7 @@ Requires Apple Silicon (MLX) for SAM3 segmentation. Outputs `oracle_output.npz` 
 
 ## First-smoke pipeline
 
-The current browser path is a real-splat smoke viewer with the production-spine fidelity baseline landed at `1e6034f`, not the full deferred renderer yet. It:
+The current browser path is a real-splat smoke viewer with the renderer-fidelity baseline landed at `05ceef6`, not the full deferred renderer yet. It:
 
 - loads the committed Scaniverse PLY-derived smoke asset
 - decodes packed position/color/opacity/radius rows plus original-ID, scale, and quaternion sidecars
@@ -148,11 +150,12 @@ npm test
 npm run build
 npm run smoke:visual:real
 npm run smoke:visual:real -- --tile-local-comparison --out-dir /tmp/tile-local-visual-perf-comparison
+npm run smoke:visual:real -- --static-dessert-witness --out-dir /tmp/static-dessert-witness
 ```
 
 ## Status
 
-The preprocessing oracle (Packet L) is feature-complete. Validated on real Scaniverse phone scans with SAM3 MLX running at 90ms/concept on M4 Max. First real-splat visual smoke is passing in the WebGPU viewer against the committed Scaniverse asset. Renderer main has the production-spine smoke baseline plus the first tile-local compositor plumbing: Jacobian covariance projection, bounded near-plane LOD policy, fidelity witness diagnostics, fly-camera framing, deferred CPU depth-key refresh, WebGPU bitonic sort, coverage-aware alpha, GPU tile coverage contracts, CPU tile-list bridge packing, a smoke-toggleable `plate+tile-local-prepass` mode, and a visible `tile-local-visible-gaussian-compositor` mode over CPU-bridge tile buffers. This is still a first-smoke renderer-fidelity baseline, not the finished production renderer; the visible tile-local path now produces a coarse tile-local Gaussian compositor image, but it does not claim final GPU ref-builder, SH shading, PBR relighting, mesh integration, or deferred G-buffer quality. Remaining triage includes final GPU tile-list construction, conic/parity validation, clipping and culling policy, SH evaluation, and deferred G-buffer integration. See [FANOUT.md](FANOUT.md) for the original coordination plan.
+The preprocessing oracle (Packet L) is feature-complete. Validated on real Scaniverse phone scans with SAM3 MLX running at 90ms/concept on M4 Max. First real-splat visual smoke is passing in the WebGPU viewer against the committed Scaniverse asset. Renderer main at `05ceef6` has the production-spine smoke baseline plus the first tile-local compositor plumbing: Jacobian covariance projection, bounded near-plane LOD policy, fidelity witness diagnostics, fly-camera framing, deferred CPU depth-key refresh, WebGPU bitonic sort, coverage-aware alpha, GPU tile coverage contracts, CPU tile-list bridge packing, a smoke-toggleable `plate+tile-local-prepass` mode, and a visible `tile-local-visible-gaussian-compositor` mode over CPU-bridge tile buffers. The visible tile-local path now uses plate-rate conic falloff and the static dessert witness guards the fixed-view tile-local/plate footprint ratio. This is still a first-smoke renderer-fidelity baseline, not the finished production renderer; the visible tile-local path produces a coarse tile-local Gaussian compositor image, but it does not claim final GPU ref-builder, SH shading, PBR relighting, mesh integration, or deferred G-buffer quality. Remaining triage includes tile-ref/cap retention for the remaining porous dessert body, final GPU tile-list construction, clipping and culling policy, SH evaluation, and deferred G-buffer integration. See [FANOUT.md](FANOUT.md) for the original coordination plan.
 
 ## License
 
