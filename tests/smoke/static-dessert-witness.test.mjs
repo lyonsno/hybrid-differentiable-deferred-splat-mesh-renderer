@@ -130,6 +130,43 @@ test("static dessert witness classifier requires one asset, one viewport, final 
   assert.equal(result.observations.budgetSkip.status, "separate-high-viewport-observation");
 });
 
+test("static dessert witness classifier flags tile-local final-color footprint expansion against plate", () => {
+  const result = classifyStaticDessertWitness({
+    captures: [
+      witnessCapture("final-color", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        changedPixelRatio: 0.0924728732638889,
+      }),
+      witnessCapture("plate-final-color", {
+        rendererLabel: "plate",
+        changedPixelRatio: 0.03407335069444444,
+      }),
+      witnessCapture("coverage-weight"),
+      witnessCapture("accumulated-alpha", {
+        diagnostics: {
+          alpha: { estimatedMaxAccumulatedAlpha: 1, estimatedMinTransmittance: 0 },
+        },
+      }),
+      witnessCapture("transmittance", {
+        diagnostics: {
+          alpha: { estimatedMaxAccumulatedAlpha: 1, estimatedMinTransmittance: 0 },
+        },
+      }),
+      witnessCapture("tile-ref-count"),
+      witnessCapture("conic-shape"),
+    ],
+  });
+
+  assert.equal(result.closeable, false);
+  assert.equal(result.metrics.rendererBridge.plateChangedPixelRatio, 0.03407335069444444);
+  assert.equal(result.metrics.rendererBridge.tileLocalChangedPixelRatio, 0.0924728732638889);
+  assert.ok(result.metrics.rendererBridge.tileLocalToPlateChangedPixelRatio > 2.7);
+  assert.equal(
+    result.findings.some((finding) => finding.kind === "tile-local-visible-footprint-expansion"),
+    true,
+  );
+});
+
 test("visual smoke CLI exposes a static dessert witness batch mode", () => {
   const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
 
@@ -137,6 +174,7 @@ test("visual smoke CLI exposes a static dessert witness batch mode", () => {
   assert.match(source, /runStaticDessertWitness/);
   assert.match(source, /renderStaticDessertWitnessReport/);
   assert.match(source, /Projected tile refs before cap/);
+  assert.match(source, /Tile-local\/plate changed-pixel ratio/);
   assert.match(source, /Retention audit full frame/);
   assert.match(source, /Center leak band retention audit/);
 });
@@ -183,7 +221,7 @@ function witnessCapture(id, overrides = {}) {
     },
     imageAnalysis: {
       nonblank: true,
-      changedPixelRatio: 0.2,
+      changedPixelRatio: overrides.changedPixelRatio ?? 0.2,
       distinctColorCount: 1024,
     },
   };

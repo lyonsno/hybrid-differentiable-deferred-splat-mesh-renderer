@@ -16,6 +16,7 @@ const DEBUG_CAPTURE_IDS = new Set([
   STATIC_DESSERT_WITNESS_CAPTURE_IDS.tileRefCount,
   STATIC_DESSERT_WITNESS_CAPTURE_IDS.conicShape,
 ]);
+const MAX_TILE_LOCAL_TO_PLATE_CHANGED_PIXEL_RATIO = 2.0;
 
 export function buildStaticDessertWitnessPlan(baseUrl) {
   return [
@@ -124,6 +125,26 @@ export function classifyStaticDessertWitness({ captures = [] } = {}) {
   if (!positiveNumber(rimBandSupport?.projectedSupportCount)) {
     findings.push(finding("missing-rim-source-support", "Static dessert witness did not report crop-local rim source support."));
   }
+  const plateChangedPixelRatio = finiteNumber(plateFinalColor?.imageAnalysis?.changedPixelRatio) ?? 0;
+  const tileLocalChangedPixelRatio = finiteNumber(finalColor?.imageAnalysis?.changedPixelRatio) ?? 0;
+  const tileLocalToPlateChangedPixelRatio =
+    plateChangedPixelRatio > 0 ? tileLocalChangedPixelRatio / plateChangedPixelRatio : 0;
+  const bridgeCapturesSameView =
+    assetPath(plateFinalColor) !== "" &&
+    assetPath(plateFinalColor) === assetPath(finalColor) &&
+    viewportKey(plateFinalColor) !== "" &&
+    viewportKey(plateFinalColor) === viewportKey(finalColor);
+  if (
+    bridgeCapturesSameView &&
+    tileLocalToPlateChangedPixelRatio > MAX_TILE_LOCAL_TO_PLATE_CHANGED_PIXEL_RATIO
+  ) {
+    findings.push(
+      finding(
+        "tile-local-visible-footprint-expansion",
+        `Tile-local final color changed ${tileLocalToPlateChangedPixelRatio.toFixed(2)}x as many pixels as plate on the fixed dessert witness.`
+      )
+    );
+  }
 
   const closeable = findings.length === 0;
   return {
@@ -156,6 +177,10 @@ export function classifyStaticDessertWitness({ captures = [] } = {}) {
         tileLocalRendererLabel: rendererLabel(finalColor),
         sameAsset: assetPath(plateFinalColor) !== "" && assetPath(plateFinalColor) === assetPath(finalColor),
         sameViewport: viewportKey(plateFinalColor) !== "" && viewportKey(plateFinalColor) === viewportKey(finalColor),
+        plateChangedPixelRatio,
+        tileLocalChangedPixelRatio,
+        tileLocalToPlateChangedPixelRatio,
+        maxTileLocalToPlateChangedPixelRatio: MAX_TILE_LOCAL_TO_PLATE_CHANGED_PIXEL_RATIO,
       },
       sourceSupport: {
         rimBand: normalizeRimBandSourceSupport(

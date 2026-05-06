@@ -31,7 +31,7 @@ fn conic_pixel_weight(alphaParam: vec4f, conicParam: vec4f, pixelCenter: vec2f) 
   let mahalanobis2 = conicParam.x * delta.x * delta.x
     + 2.0 * conicParam.y * delta.x * delta.y
     + conicParam.z * delta.y * delta.y;
-  return exp(-0.5 * mahalanobis2);
+  return exp(-2.0 * mahalanobis2);
 }
 
 fn inverse_conic_radii(conicParam: vec4f) -> vec2f {

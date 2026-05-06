@@ -40,11 +40,12 @@ test("tile-local visible conic coverage feeds sample-local Gaussian weight to al
   );
 });
 
-test("tile-local visible conic coverage keeps anisotropic falloff without scalar-radius overcoverage", () => {
+test("tile-local visible conic coverage keeps plate-rate anisotropic falloff without scalar-radius overcoverage", () => {
   const shader = shaderSource();
 
   assert.match(shader, /fn conic_pixel_weight\(alphaParam: vec4f, conicParam: vec4f, pixelCenter: vec2f\) -> f32/);
   assert.match(shader, /2\.0 \* conicParam\.y \* delta\.x \* delta\.y/);
-  assert.match(shader, /exp\(-0\.5 \* mahalanobis2\)/);
+  assert.match(shader, /exp\(-2\.0 \* mahalanobis2\)/);
+  assert.doesNotMatch(shader, /exp\(-0\.5 \* mahalanobis2\)/);
   assert.doesNotMatch(shader, /radiusPx/);
 });

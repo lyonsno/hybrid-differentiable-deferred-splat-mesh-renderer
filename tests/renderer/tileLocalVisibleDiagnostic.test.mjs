@@ -40,7 +40,8 @@ test("tile-local visible shader composites ordered tile refs with sample-local c
   assert.match(shader, /orderingKeys\[tileRef\.x\]/);
   assert.match(shader, /conic_pixel_weight/);
   assert.match(shader, /mahalanobis2/);
-  assert.match(shader, /exp\(-0\.5 \* mahalanobis2\)/);
+  assert.match(shader, /exp\(-2\.0 \* mahalanobis2\)/);
+  assert.doesNotMatch(shader, /exp\(-0\.5 \* mahalanobis2\)/);
   assert.doesNotMatch(shader, /tileCoverageWeights\[selectedRefIndex\][^;]*\*\s*conic_pixel_weight/);
   assert.doesNotMatch(shader, /radiusPx/);
   assert.match(shader, /resolve_tile_ref_ordering_key/);

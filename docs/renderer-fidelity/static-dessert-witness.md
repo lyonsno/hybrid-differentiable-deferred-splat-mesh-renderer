@@ -2,7 +2,35 @@
 
 Lane: `static-dessert-witness` in `metadosis/coordination-packets/meshsplat-static-artifact-diagnostic-convergence_2026-05-01.md`.
 
-Status: witness-only dossier from renderer base `origin/cc/double-attenuated-conic-seepage-integration-0501@223c6ff`. This lane does not change production renderer math, global opacity/brightness, tile-ref budgets, asset decoding, camera controls, or the tile-local bridge policy.
+Status: historical witness dossier from renderer base `origin/cc/double-attenuated-conic-seepage-integration-0501@223c6ff`, with later 2026-05-06 plate/tile-local bridge and conic parity evidence. The original witness lane did not change production renderer math, global opacity/brightness, tile-ref budgets, asset decoding, camera controls, or the tile-local bridge policy.
+
+## 2026-05-06 Conic Parity Follow-Up
+
+The tile-local visible compositor now uses the plate-rate conic falloff `exp(-2.0 * mahalanobis2)` for sample-local coverage, while preserving the optical-depth alpha transfer and not multiplying by the tile-integrated coverage mass. The hard support-discard variant was tested and rejected because it made the footprint metric tight while visibly exposing tile-cap perforation in the dessert body. The landed direction is the softer falloff: it reduces the fixed-view tile-local footprint expansion without pretending the remaining porous body is solved.
+
+Durable artifacts:
+
+- `docs/renderer-fidelity/static-dessert-witness-0506-conic-parity/report.md`
+- `docs/renderer-fidelity/static-dessert-witness-0506-conic-parity/analysis.json`
+- `docs/renderer-fidelity/static-dessert-witness-0506-conic-parity/plate-final-color.png`
+- `docs/renderer-fidelity/static-dessert-witness-0506-conic-parity/final-color.png`
+- `docs/renderer-fidelity/static-dessert-witness-0506-conic-parity/coverage-weight.png`
+- `docs/renderer-fidelity/static-dessert-witness-0506-conic-parity/accumulated-alpha.png`
+- `docs/renderer-fidelity/static-dessert-witness-0506-conic-parity/transmittance.png`
+- `docs/renderer-fidelity/static-dessert-witness-0506-conic-parity/tile-ref-count.png`
+- `docs/renderer-fidelity/static-dessert-witness-0506-conic-parity/conic-shape.png`
+
+Parity metrics from the final capture:
+
+| Field | Value |
+| --- | ---: |
+| Plate changed pixels | `31,402 / 921,600 (3.407%)` |
+| Tile-local changed pixels | `40,000 / 921,600 (4.340%)` |
+| Tile-local / plate changed-pixel ratio | `1.273804216291956` |
+| Classifier maximum ratio | `2.0` |
+| Pre-fix bridge ratio from `static-dessert-witness-0506` | `2.714` |
+
+Interpretation boundary: this is a conic footprint/falloff repair, not an alpha, opacity, brightness, tile-budget, or global scale repair. The remaining final-color holes are still live evidence for tile-ref/cap and deeper contributor retention work.
 
 ## 2026-05-06 Plate/Tile-Local Bridge Update
 

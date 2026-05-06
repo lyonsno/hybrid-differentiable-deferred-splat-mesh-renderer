@@ -597,6 +597,9 @@ function renderStaticDessertWitnessReport(result) {
 - Tile-local renderer label: ${metrics.rendererBridge.tileLocalRendererLabel || "not reported"}
 - Plate/tile-local same asset: ${metrics.rendererBridge.sameAsset}
 - Plate/tile-local same viewport: ${metrics.rendererBridge.sameViewport}
+- Plate changed pixels: ${formatPercent(metrics.rendererBridge.plateChangedPixelRatio)}
+- Tile-local changed pixels: ${formatPercent(metrics.rendererBridge.tileLocalChangedPixelRatio)}
+- Tile-local/plate changed-pixel ratio: ${formatMetricRatio(metrics.rendererBridge.tileLocalToPlateChangedPixelRatio)} (max ${formatMetricRatio(metrics.rendererBridge.maxTileLocalToPlateChangedPixelRatio)})
 - Rim crop source centers: ${metrics.sourceSupport.rimBand.projectedCenterCount}
 - Rim crop projected support splats: ${metrics.sourceSupport.rimBand.projectedSupportCount}
 - Rim crop near-floor minor splats: ${metrics.sourceSupport.rimBand.nearFloorMinorCount}
