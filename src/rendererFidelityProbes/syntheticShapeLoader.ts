@@ -44,12 +44,17 @@ import { FIRST_SMOKE_SPLAT_LAYOUT } from "../splats.js";
  */
 export const SHAPE_WITNESS_SPLAT_SCALE = 600;
 
-/** Near-plane fade: no fade for synthetic fixtures (both = 0 disables it). */
+/**
+ * Synthetic witnesses use the same first-smoke near-plane alpha band as the
+ * production Scaniverse path.  The near-plane-slab fixture is specifically a
+ * slab-sentinel witness, so disabling this band hides the policy it is meant to
+ * exercise.
+ */
 export const SHAPE_WITNESS_NEAR_FADE_START_NDC = 0;
-export const SHAPE_WITNESS_NEAR_FADE_END_NDC = 0;
+export const SHAPE_WITNESS_NEAR_FADE_END_NDC = 0.08;
 
-/** Minimum rendered splat radius in pixels. Small value for synthetic scenes. */
-export const SHAPE_WITNESS_MIN_RADIUS_PX = 0.5;
+/** Minimum rendered splat radius in pixels. Match the production plate smoke floor. */
+export const SHAPE_WITNESS_MIN_RADIUS_PX = 1.5;
 
 // ---------------------------------------------------------------------------
 // Main conversion function

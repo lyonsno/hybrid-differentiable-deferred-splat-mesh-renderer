@@ -56,12 +56,16 @@ export const SHAPE_WITNESS_SPLAT_SCALE = 600;
 // Near-plane and min-radius parameters for synthetic scenes
 // ---------------------------------------------------------------------------
 
-/** Near-plane fade parameters: no fade for synthetic fixtures (start > end = disabled). */
+/**
+ * Synthetic witnesses use the same first-smoke near-plane alpha band as the
+ * production Scaniverse path.  The near-plane-slab fixture exists to exercise
+ * that bounded policy, so disabling the band hides the failure.
+ */
 export const SHAPE_WITNESS_NEAR_FADE_START_NDC = 0;
-export const SHAPE_WITNESS_NEAR_FADE_END_NDC = 0;
+export const SHAPE_WITNESS_NEAR_FADE_END_NDC = 0.08;
 
-/** Minimum rendered splat radius in pixels. Keep small for synthetic scenes. */
-export const SHAPE_WITNESS_MIN_RADIUS_PX = 0.5;
+/** Minimum rendered splat radius in pixels. Match the production plate smoke floor. */
+export const SHAPE_WITNESS_MIN_RADIUS_PX = 1.5;
 
 // ---------------------------------------------------------------------------
 // Main conversion function

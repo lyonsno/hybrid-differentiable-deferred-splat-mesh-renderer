@@ -214,12 +214,30 @@ test("rotated-ellipse: single anisotropic splat with 45-degree principal axis cl
 test("near-plane-slab: large splat with maxChangedPixelRatio ≤ 0.35", () => {
   const fixture = fixtureByType("near-plane-slab");
   assert.ok(fixture, "near-plane-slab fixture must exist");
+  assert.equal(fixture.splats.length, 1, "near-plane-slab must have exactly one splat");
 
   const inv = fixture.expectedInvariants;
   assert.equal(inv.kind, "bounded-slab", "near-plane-slab must claim bounded-slab invariant");
   assert.ok(
     typeof inv.maxChangedPixelRatio === "number" && inv.maxChangedPixelRatio <= 0.35,
     `near-plane-slab maxChangedPixelRatio ${inv.maxChangedPixelRatio} must be ≤ 0.35`
+  );
+  assert.deepEqual(inv.backgroundColor, [5, 5, 10, 255], "near-plane-slab must pin the renderer clear color");
+  assert.ok(
+    typeof inv.cornerMaxMeanDeltaFromBackground === "number" && inv.cornerMaxMeanDeltaFromBackground <= 20,
+    "near-plane-slab must guard all capture corners against flood-as-background drift"
+  );
+
+  const splat = fixture.splats[0];
+  const camera = fixture.camera;
+  const near = camera.near ?? 0.1;
+  const centerDistance = camera.position[2] - splat.position[2];
+  const zRadius = Math.exp(splat.scale[2]);
+
+  assert.ok(centerDistance > near, "near-plane-slab center must remain in front of the near plane");
+  assert.ok(
+    centerDistance - zRadius < near,
+    "near-plane-slab support must cross the near plane so slab-sentinel policy is exercised"
   );
 });
 

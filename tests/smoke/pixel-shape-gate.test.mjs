@@ -163,6 +163,37 @@ function makeFloodedPng(size) {
   });
 }
 
+/** Full-frame flood: no safe dark corners for corner-estimated background. */
+function makeFullFrameFloodPng(size) {
+  return makePng(size, size, () => [208, 116, 116, 255]);
+}
+
+function meanRgbDelta(a, b) {
+  return (Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2])) / 3;
+}
+
+function readRgbaPixel(rgba, width, x, y) {
+  const offset = (y * width + x) * 4;
+  return [rgba[offset], rgba[offset + 1], rgba[offset + 2], rgba[offset + 3]];
+}
+
+function assertCornersNearBackground(png, backgroundColor, maxMeanDelta, label) {
+  const { rgba, width, height } = decodePng(png);
+  const corners = [
+    ["top-left", 0, 0],
+    ["top-right", width - 1, 0],
+    ["bottom-left", 0, height - 1],
+    ["bottom-right", width - 1, height - 1],
+  ];
+  for (const [name, x, y] of corners) {
+    const delta = meanRgbDelta(readRgbaPixel(rgba, width, x, y), backgroundColor);
+    assert.ok(
+      delta <= maxMeanDelta,
+      `${label} ${name} corner mean RGB delta ${delta.toFixed(1)} must be <= ${maxMeanDelta}`
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Unit tests: splatAttributesFromFixture conversion contract
 // ---------------------------------------------------------------------------
@@ -347,6 +378,27 @@ test("analyzeShape detects near-plane flooding for a fully filled PNG (bounded-s
   );
 });
 
+test("bounded-slab uses fixed clear background so whole-frame floods cannot become background", () => {
+  const fixture = getShapeFixture(FIXTURE_IDS.nearPlaneSlab);
+  assert.ok(fixture, "near-plane-slab fixture must exist");
+  const inv = fixture.expectedInvariants;
+  assert.equal(inv.kind, "bounded-slab", "near-plane-slab must use bounded-slab invariant");
+  assert.deepEqual(inv.backgroundColor, [5, 5, 10, 255], "bounded-slab must declare the renderer clear background");
+  assert.equal(inv.cornerMaxMeanDeltaFromBackground, 20, "bounded-slab must declare a corner flood guard");
+
+  const png = makeFullFrameFloodPng(128);
+  const result = analyzeShape(png, undefined, undefined, { backgroundColor: inv.backgroundColor });
+  assert.ok(
+    result.mask.changedPixelRatio > 0.95,
+    `whole-frame flood must be measured as flood against fixed background, got ${result.mask.changedPixelRatio.toFixed(3)}`
+  );
+  assert.throws(
+    () => assertCornersNearBackground(png, inv.backgroundColor, inv.cornerMaxMeanDeltaFromBackground, "whole-frame flood"),
+    /corner mean RGB delta/,
+    "corner guard must reject a flood that reaches every corner"
+  );
+});
+
 // ---------------------------------------------------------------------------
 // Unit tests: fixture → URL round-trip (ID contract)
 // ---------------------------------------------------------------------------
@@ -503,10 +555,28 @@ describe("browser shape-gate smoke", { timeout: 120_000 }, () => {
           break;
         }
         case "bounded-slab": {
+          assert.ok(
+            Array.isArray(inv.backgroundColor) && inv.backgroundColor.length === 4,
+            `[${fixtureId}] bounded-slab invariant must declare fixed backgroundColor`
+          );
+          assert.equal(
+            typeof inv.cornerMaxMeanDeltaFromBackground,
+            "number",
+            `[${fixtureId}] bounded-slab invariant must declare cornerMaxMeanDeltaFromBackground`
+          );
+          const resultWithFixedBackground = analyzeShape(png, undefined, undefined, {
+            backgroundColor: inv.backgroundColor,
+          });
           // near-plane-slab: changedPixelRatio must NOT exceed the max
           assert.ok(
-            result.mask.changedPixelRatio <= inv.maxChangedPixelRatio,
-            `[${fixtureId}] changedPixelRatio ${result.mask.changedPixelRatio.toFixed(3)} must be <= ${inv.maxChangedPixelRatio} (near-plane slab must not flood screen)`
+            resultWithFixedBackground.mask.changedPixelRatio <= inv.maxChangedPixelRatio,
+            `[${fixtureId}] changedPixelRatio ${resultWithFixedBackground.mask.changedPixelRatio.toFixed(3)} must be <= ${inv.maxChangedPixelRatio} (near-plane slab must not flood screen)`
+          );
+          assertCornersNearBackground(
+            png,
+            inv.backgroundColor,
+            inv.cornerMaxMeanDeltaFromBackground,
+            `[${fixtureId}]`
           );
           break;
         }

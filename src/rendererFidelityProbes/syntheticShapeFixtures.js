@@ -209,13 +209,15 @@ const rotatedEllipse = {
  *
  * Expected invariant:
  *   - bounded-slab: maxChangedPixelRatio ≤ 0.35 (must NOT flood > 35% of 512×512)
+ *   - all corners remain near the renderer clear color, so a whole-frame flood
+ *     cannot be normalized into "background" by corner sampling.
  */
 const nearPlaneSlab = {
   id: "shape-witness-near-plane-slab",
   splats: [
     splat({
-      position: [0, 0, -0.05],
-      scale: [logScale(2.0), logScale(2.0), logScale(0.05)],
+      position: [0, 0, 0.35],
+      scale: [logScale(2.0), logScale(2.0), logScale(0.08)],
       rotation: IDENTITY_QUAT,
       opacity: 1.0,
       color: [0.9, 0.5, 0.5],
@@ -230,7 +232,9 @@ const nearPlaneSlab = {
   viewport: { width: 512, height: 512 },
   expectedInvariants: {
     kind: "bounded-slab",
+    backgroundColor: [5, 5, 10, 255],
     maxChangedPixelRatio: 0.35,
+    cornerMaxMeanDeltaFromBackground: 20,
   },
 };
 

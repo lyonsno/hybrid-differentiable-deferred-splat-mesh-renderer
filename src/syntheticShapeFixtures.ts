@@ -124,6 +124,19 @@ export interface ShapeInvariants {
   readonly maxChangedPixelRatio?: number;
 
   /**
+   * Fixed expected background for invariants where corner-estimated background
+   * would normalize away the failure.  Used for near-plane-slab screen-flood
+   * detection against the renderer clear color.
+   */
+  readonly backgroundColor?: readonly [number, number, number, number];
+
+  /**
+   * Maximum mean RGB delta between each capture corner and `backgroundColor`.
+   * Used as a direct corner-flood guard for near-plane-slab.
+   */
+  readonly cornerMaxMeanDeltaFromBackground?: number;
+
+  /**
    * Minimum fraction of the foreground coverage area that must be suppressing
    * the bright background.  Used for dense-foreground fixtures.
    */
@@ -279,8 +292,8 @@ const nearPlaneSlab: ShapeFixture = {
   id: "shape-witness-near-plane-slab",
   splats: [
     splat({
-      position: [0, 0, -0.05],
-      scale: [logScale(2.0), logScale(2.0), logScale(0.05)],
+      position: [0, 0, 0.35],
+      scale: [logScale(2.0), logScale(2.0), logScale(0.08)],
       rotation: IDENTITY_QUAT,
       opacity: 1.0,
       color: [0.9, 0.5, 0.5],
@@ -295,7 +308,9 @@ const nearPlaneSlab: ShapeFixture = {
   viewport: { width: 512, height: 512 },
   expectedInvariants: {
     kind: "bounded-slab",
+    backgroundColor: [5, 5, 10, 255],
     maxChangedPixelRatio: 0.35,
+    cornerMaxMeanDeltaFromBackground: 20,
   },
 };
 
