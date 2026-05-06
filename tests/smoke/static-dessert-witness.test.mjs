@@ -91,6 +91,14 @@ test("static dessert witness classifier requires one asset, one viewport, final 
               droppedByPolicyCount: 120,
             },
             regions: {
+              porousBody: {
+                projectedTileEntryCount: 7200,
+                currentRetainedEntryCount: 512,
+                legacyRetainedEntryCount: 512,
+                cappedTileCount: 16,
+                addedByPolicyCount: 19,
+                droppedByPolicyCount: 19,
+              },
               centerLeakBand: {
                 projectedTileEntryCount: 9000,
                 currentRetainedEntryCount: 1024,
@@ -118,6 +126,9 @@ test("static dessert witness classifier requires one asset, one viewport, final 
   assert.equal(result.metrics.tileRefCustody.evictedTileEntryCount, 40000);
   assert.equal(result.metrics.tileRefCustody.headerAccountingMatches, true);
   assert.equal(result.metrics.retentionAudit.fullFrame.addedByPolicyCount, 120);
+  assert.equal(result.metrics.retentionAudit.regions.porousBody.projectedTileEntryCount, 7200);
+  assert.equal(result.metrics.retentionAudit.regions.porousBody.currentRetainedEntryCount, 512);
+  assert.equal(result.metrics.retentionAudit.regions.porousBody.cappedTileCount, 16);
   assert.equal(result.metrics.retentionAudit.regions.centerLeakBand.addedByPolicyCount, 17);
   assert.equal(result.metrics.conicShape.maxAnisotropy, 5);
   assert.equal(result.metrics.rendererBridge.plateRendererLabel, "plate");
@@ -125,6 +136,9 @@ test("static dessert witness classifier requires one asset, one viewport, final 
   assert.equal(result.metrics.sourceSupport.rimBand.projectedCenterCount, 37);
   assert.equal(result.metrics.sourceSupport.rimBand.projectedSupportCount, 91);
   assert.deepEqual(result.metrics.sourceSupport.rimBand.sampleOriginalIds, [100, 101, 102]);
+  assert.equal(result.metrics.sourceSupport.porousBody.projectedCenterCount, 63);
+  assert.equal(result.metrics.sourceSupport.porousBody.projectedSupportCount, 144);
+  assert.deepEqual(result.metrics.sourceSupport.porousBody.sampleOriginalIds, [200, 201, 202]);
   assert.equal(result.observations.visibleHoles.evidenceIds.includes("coverage-weight"), true);
   assert.equal(result.observations.plateSeepage.evidenceIds.includes("transmittance"), true);
   assert.equal(result.observations.budgetSkip.status, "separate-high-viewport-observation");
@@ -176,6 +190,8 @@ test("visual smoke CLI exposes a static dessert witness batch mode", () => {
   assert.match(source, /Projected tile refs before cap/);
   assert.match(source, /Tile-local\/plate changed-pixel ratio/);
   assert.match(source, /Retention audit full frame/);
+  assert.match(source, /Porous body retention audit/);
+  assert.match(source, /Porous body projected support splats/);
   assert.match(source, /Center leak band retention audit/);
 });
 
@@ -198,6 +214,12 @@ function witnessCapture(id, overrides = {}) {
               projectedCenterCount: 37,
               projectedSupportCount: 91,
               sampleOriginalIds: [100, 101, 102],
+            },
+            porousBody: {
+              crop: { x: 520, y: 270, width: 260, height: 150 },
+              projectedCenterCount: 63,
+              projectedSupportCount: 144,
+              sampleOriginalIds: [200, 201, 202],
             },
           },
         },

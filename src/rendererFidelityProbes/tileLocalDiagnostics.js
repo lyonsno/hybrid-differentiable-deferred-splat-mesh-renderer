@@ -41,6 +41,7 @@ function normalizeRetentionAudit(retentionAudit) {
   return {
     fullFrame: normalizeRetentionAuditSummary(retentionAudit.fullFrame),
     regions: {
+      porousBody: normalizeRetentionAuditSummary(retentionAudit.regions?.porousBody),
       centerLeakBand: normalizeRetentionAuditSummary(retentionAudit.regions?.centerLeakBand),
     },
   };

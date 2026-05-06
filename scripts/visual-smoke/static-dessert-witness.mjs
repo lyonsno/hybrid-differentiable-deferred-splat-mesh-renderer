@@ -122,8 +122,14 @@ export function classifyStaticDessertWitness({ captures = [] } = {}) {
   const rimBandSupport =
     plateFinalColor?.pageEvidence?.witness?.projection?.cropSupport?.rimBand ??
     finalColor?.pageEvidence?.witness?.projection?.cropSupport?.rimBand;
+  const porousBodySupport =
+    plateFinalColor?.pageEvidence?.witness?.projection?.cropSupport?.porousBody ??
+    finalColor?.pageEvidence?.witness?.projection?.cropSupport?.porousBody;
   if (!positiveNumber(rimBandSupport?.projectedSupportCount)) {
     findings.push(finding("missing-rim-source-support", "Static dessert witness did not report crop-local rim source support."));
+  }
+  if (!positiveNumber(porousBodySupport?.projectedSupportCount)) {
+    findings.push(finding("missing-porous-body-source-support", "Static dessert witness did not report crop-local porous body source support."));
   }
   const plateChangedPixelRatio = finiteNumber(plateFinalColor?.imageAnalysis?.changedPixelRatio) ?? 0;
   const tileLocalChangedPixelRatio = finiteNumber(finalColor?.imageAnalysis?.changedPixelRatio) ?? 0;
@@ -186,6 +192,10 @@ export function classifyStaticDessertWitness({ captures = [] } = {}) {
         rimBand: normalizeRimBandSourceSupport(
           plateFinalColor?.pageEvidence?.witness?.projection?.cropSupport?.rimBand ??
             finalColor?.pageEvidence?.witness?.projection?.cropSupport?.rimBand
+        ),
+        porousBody: normalizeRimBandSourceSupport(
+          plateFinalColor?.pageEvidence?.witness?.projection?.cropSupport?.porousBody ??
+            finalColor?.pageEvidence?.witness?.projection?.cropSupport?.porousBody
         ),
       },
       conicShape: {
@@ -337,12 +347,16 @@ function normalizeRetentionAudit(retentionAudit) {
   if (!retentionAudit || typeof retentionAudit !== "object") {
     return {
       fullFrame: normalizeRetentionAuditSummary(),
-      regions: { centerLeakBand: normalizeRetentionAuditSummary() },
+      regions: {
+        porousBody: normalizeRetentionAuditSummary(),
+        centerLeakBand: normalizeRetentionAuditSummary(),
+      },
     };
   }
   return {
     fullFrame: normalizeRetentionAuditSummary(retentionAudit.fullFrame),
     regions: {
+      porousBody: normalizeRetentionAuditSummary(retentionAudit.regions?.porousBody),
       centerLeakBand: normalizeRetentionAuditSummary(retentionAudit.regions?.centerLeakBand),
     },
   };

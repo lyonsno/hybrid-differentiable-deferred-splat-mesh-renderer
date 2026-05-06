@@ -16,6 +16,7 @@ const ALPHA_DENSITY_TILE_SIZE_PX = 48;
 const ALPHA_DENSITY_GAUSSIAN_SUPPORT_SIGMA = 3;
 const ALPHA_DENSITY_COVERAGE_SAMPLES_PER_AXIS = 5;
 const STATIC_DESSERT_RIM_BAND_CROP = { x: 390, y: 322, width: 500, height: 115 } as const;
+const STATIC_DESSERT_POROUS_BODY_CROP = { x: 520, y: 270, width: 260, height: 150 } as const;
 
 const VIEWER_VERTICAL_FLIP = new Float32Array([
   1, 0, 0, 0,
@@ -55,6 +56,7 @@ export interface MeshSplatRendererWitness {
     readonly footprint?: ProjectedFootprintSummary;
     readonly cropSupport?: {
       readonly rimBand: ProjectedCropSupportSummary;
+      readonly porousBody: ProjectedCropSupportSummary;
     };
   };
   readonly slab: {
@@ -243,6 +245,12 @@ export function createMeshSplatRendererWitness(
           options.viewProj,
           options,
           STATIC_DESSERT_RIM_BAND_CROP
+        ),
+        porousBody: summarizeProjectedCropSupport(
+          attributes,
+          options.viewProj,
+          options,
+          STATIC_DESSERT_POROUS_BODY_CROP
         ),
       };
   const overlapDensity = options.viewProj === undefined

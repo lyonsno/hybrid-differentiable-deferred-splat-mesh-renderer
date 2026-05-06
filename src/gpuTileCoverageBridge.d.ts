@@ -43,6 +43,7 @@ export interface TileRetentionAuditSummary {
 export interface TileRetentionAudit {
   readonly fullFrame: TileRetentionAuditSummary;
   readonly regions: {
+    readonly porousBody: TileRetentionAuditSummary;
     readonly centerLeakBand: TileRetentionAuditSummary;
   };
 }

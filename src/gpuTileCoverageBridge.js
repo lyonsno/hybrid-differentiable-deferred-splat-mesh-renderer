@@ -378,6 +378,15 @@ function retainTileEntries(tileEntries, maxRefsPerTile) {
 
 function summarizeRetentionAudit({ tileEntries, tileColumns, tileRows, maxRefsPerTile }) {
   const regions = {
+    porousBody: createTileRegion({
+      name: "porous-body",
+      tileColumns,
+      tileRows,
+      minX: 0.41,
+      maxX: 0.62,
+      minY: 0.36,
+      maxY: 0.52,
+    }),
     centerLeakBand: createTileRegion({
       name: "center-leak-band",
       tileColumns,
@@ -391,6 +400,7 @@ function summarizeRetentionAudit({ tileEntries, tileColumns, tileRows, maxRefsPe
   const summaries = {
     fullFrame: createRetentionAuditSummary("full-frame"),
     regions: {
+      porousBody: createRetentionAuditSummary(regions.porousBody.name),
       centerLeakBand: createRetentionAuditSummary(regions.centerLeakBand.name),
     },
   };
@@ -405,6 +415,9 @@ function summarizeRetentionAudit({ tileEntries, tileColumns, tileRows, maxRefsPe
     }
     const tileGroup = entries.slice(cursor, end);
     accumulateRetentionAudit(summaries.fullFrame, tileGroup, maxRefsPerTile);
+    if (tileInRegion(tileIndex, tileColumns, regions.porousBody)) {
+      accumulateRetentionAudit(summaries.regions.porousBody, tileGroup, maxRefsPerTile);
+    }
     if (tileInRegion(tileIndex, tileColumns, regions.centerLeakBand)) {
       accumulateRetentionAudit(summaries.regions.centerLeakBand, tileGroup, maxRefsPerTile);
     }

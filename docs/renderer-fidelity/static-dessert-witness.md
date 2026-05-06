@@ -4,6 +4,38 @@ Lane: `static-dessert-witness` in `metadosis/coordination-packets/meshsplat-stat
 
 Status: historical witness dossier from renderer base `origin/cc/double-attenuated-conic-seepage-integration-0501@223c6ff`, with later 2026-05-06 plate/tile-local bridge and conic parity evidence. The original witness lane did not change production renderer math, global opacity/brightness, tile-ref budgets, asset decoding, camera controls, or the tile-local bridge policy.
 
+## 2026-05-06 Porous Body Truth Table
+
+After conic parity, the fixed static dessert witness now records a narrower `porousBody` region in addition to the older center leak band. The region is intentionally diagnostic-only: it asks whether body holes have local source support and whether the tile-local cap is filtering that support before compositing. It does not raise caps or change alpha, opacity, brightness, global splat scale, or min-radius policy.
+
+Durable artifacts:
+
+- `docs/renderer-fidelity/static-dessert-witness-0506-porous-body-truth-table/report.md`
+- `docs/renderer-fidelity/static-dessert-witness-0506-porous-body-truth-table/analysis.json`
+- `docs/renderer-fidelity/static-dessert-witness-0506-porous-body-truth-table/plate-final-color.png`
+- `docs/renderer-fidelity/static-dessert-witness-0506-porous-body-truth-table/final-color.png`
+- `docs/renderer-fidelity/static-dessert-witness-0506-porous-body-truth-table/coverage-weight.png`
+- `docs/renderer-fidelity/static-dessert-witness-0506-porous-body-truth-table/accumulated-alpha.png`
+- `docs/renderer-fidelity/static-dessert-witness-0506-porous-body-truth-table/transmittance.png`
+- `docs/renderer-fidelity/static-dessert-witness-0506-porous-body-truth-table/tile-ref-count.png`
+- `docs/renderer-fidelity/static-dessert-witness-0506-porous-body-truth-table/conic-shape.png`
+
+Porous-body fixed-view evidence:
+
+| Field | Value |
+| --- | ---: |
+| Source centers in crop | `91,238` |
+| Projected support splats in crop | `92,432` |
+| Near-floor minor splats in crop | `49,672` |
+| Region tiles | `909` |
+| Capped region tiles | `791` |
+| Projected tile entries in region | `1,569,835` |
+| Retained tile entries in region | `27,057` |
+| Region projected/retained ratio | `58.02` |
+| Policy swaps in region | `3,078 added / 3,078 dropped` |
+
+Interpretation boundary: this makes source sparsity unlikely for the fixed porous body crop and keeps alpha/global opacity blocked as the first explanation. The next implementation question is retention/compositor architecture: whether the CPU bridge can keep enough pixel-local body contributors under the per-tile cap, or whether this proves the need for a richer contributor arena / GPU construction path before a visual fix can be honest.
+
 ## 2026-05-06 Conic Parity Follow-Up
 
 The tile-local visible compositor now uses the plate-rate conic falloff `exp(-2.0 * mahalanobis2)` for sample-local coverage, while preserving the optical-depth alpha transfer and not multiplying by the tile-integrated coverage mass. The hard support-discard variant was tested and rejected because it made the footprint metric tight while visibly exposing tile-cap perforation in the dessert body. The landed direction is the softer falloff: it reduces the fixed-view tile-local footprint expansion without pretending the remaining porous body is solved.
