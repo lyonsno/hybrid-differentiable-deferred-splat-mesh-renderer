@@ -6,6 +6,7 @@ import {
   classifyTileLocalComparison,
   extractTileLocalPageMetrics,
   isVisualSmokeCaptureReady,
+  summarizeTileLocalArenaWitness,
 } from "../../scripts/visual-smoke/tile-local-comparison.mjs";
 
 test("tile-local comparison plan captures plate, silent prepass, and visible compositor modes", () => {
@@ -247,7 +248,64 @@ test("tile-local comparison catches bridge-block diagnostics and frame-rate coll
   );
 });
 
+test("tile-local arena witness reports gpu-unavailable, current/fallback states, and regressed tile-cell artifacts without dispatch evidence", () => {
+  const result = summarizeTileLocalArenaWitness({
+    plate: capture("plate", {
+      rendererLabel: "plate",
+      fps: 60,
+      changedPixelRatio: 0.18,
+      imageFingerprint: "plate-a",
+    }),
+    prepass: capture("tile-local-prepass", {
+      rendererLabel: "plate+tile-local-prepass",
+      fps: 56,
+      imageFingerprint: "plate-a",
+      tileRefs: 22000,
+      tileLocalStatus: "budget-disabled",
+      tileLocalDisabledReason: "projected tile refs exceed budget: 20000001 > 20000000",
+    }),
+    visible: capture("tile-local-visible", {
+      rendererLabel: "tile-local-visible-gaussian-compositor",
+      fps: 42,
+      changedPixelRatio: 0.27,
+      imageFingerprint: "compositor-b",
+      tileRefs: 22000,
+      tileLocalStatus: "current",
+      distinctColorCount: 44,
+      tileLocal: {
+        budgetDiagnostics: {
+          heat: {
+            cpu: { buildDurationMs: 9314.7 },
+            gpu: {
+              retainedRefBufferBytes: 512,
+              alphaParamBufferBytes: 1024,
+            },
+          },
+        },
+      },
+    }),
+  });
+
+  assert.equal(result.arenaBackend, "gpu-unavailable");
+  assert.equal(result.cpuBuildDurationMs, 9314.7);
+  assert.equal(result.gpuDispatchDurationMs, undefined);
+  assert.deepEqual(result.presentation, {
+    plate: "not-applicable",
+    prepass: "fallback",
+    visible: "current",
+  });
+  assert.equal(result.artifactMovement.status, "regressed");
+  assert.match(result.artifactMovement.summary, /tile-cell\/block artifacts/i);
+});
+
 function capture(id, overrides = {}) {
+  const tileLocal = {
+    refs: overrides.tileRefs ?? 0,
+    ...(overrides.tileLocal ?? {}),
+  };
+  if (overrides.pageEvidence?.tileLocal) {
+    Object.assign(tileLocal, overrides.pageEvidence.tileLocal);
+  }
   return {
     id,
     classification: {
@@ -265,9 +323,11 @@ function capture(id, overrides = {}) {
     pageEvidence: {
       rendererLabel: overrides.rendererLabel,
       fps: overrides.fps,
-      tileLocal: {
-        refs: overrides.tileRefs ?? 0,
-      },
+      tileLocalStatus: overrides.tileLocalStatus,
+      tileLocalDisabledReason: overrides.tileLocalDisabledReason,
+      tileLocalLastSkipReason: overrides.tileLocalLastSkipReason,
+      tileLocal,
+      ...(overrides.pageEvidence ?? {}),
     },
   };
 }

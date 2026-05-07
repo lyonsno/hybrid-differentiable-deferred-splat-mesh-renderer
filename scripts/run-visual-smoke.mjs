@@ -501,6 +501,13 @@ ${result.captures
 - Visible tile-local FPS: ${metrics.fps.visible} (${formatMetricRatio(metrics.fps.visibleToPlateRatio)} x plate)
 - Prepass tile refs: ${metrics.tileRefs.prepass}
 - Visible tile refs: ${metrics.tileRefs.visible}
+- Arena backend: ${metrics.arenaBackend}
+- CPU build duration ms: ${metrics.cpuBuildDurationMs ?? "not reported"}
+- GPU dispatch duration ms: ${metrics.gpuDispatchDurationMs ?? "gpu-unavailable"}
+- Plate presentation state: ${metrics.presentation?.plate || "not-applicable"}
+- Silent prepass presentation state: ${metrics.presentation?.prepass || "not-applicable"}
+- Visible presentation state: ${metrics.presentation?.visible || "not-applicable"}
+- Artifact movement: ${metrics.artifactMovement?.status || "not-measured"}${metrics.artifactMovement?.summary ? ` (${metrics.artifactMovement.summary})` : ""}
 
 ## Findings
 
@@ -543,6 +550,9 @@ ${result.captures
 
 - Required modes present: ${metrics.requiredModesPresent}
 - Presentation status: ${metrics.presentationStatus || "not reported"}
+- Arena backend: ${metrics.arenaBackend || "gpu-unavailable"}
+- CPU build duration ms: ${metrics.cpuBuildDurationMs ?? "not reported"}
+- GPU dispatch duration ms: ${metrics.gpuDispatchDurationMs ?? "gpu-unavailable"}
 - Total tile refs: ${metrics.totalTileRefs}
 - Max tile refs per tile: ${metrics.maxTileRefsPerTile}
 - Projected arena refs: ${metrics.projectedArenaRefs}
