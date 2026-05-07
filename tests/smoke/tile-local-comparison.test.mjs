@@ -135,7 +135,7 @@ test("tile-local comparison refuses stale cached tile-local output after a skipp
   );
 });
 
-test("tile-local comparison preserves initial high-viewport budget skip evidence without stale-cache labeling", () => {
+test("tile-local comparison accepts initial high-viewport budget skip evidence without stale-cache labeling", () => {
   const pageEvidence = {
     ready: true,
     sourceKind: "real_scaniverse_ply",
@@ -155,7 +155,52 @@ test("tile-local comparison preserves initial high-viewport budget skip evidence
   assert.equal(metrics.tileLocal.freshness, undefined);
   assert.equal(
     isVisualSmokeCaptureReady(pageEvidence, { expectedRendererLabel: "tile-local-visible" }),
-    false
+    true
+  );
+});
+
+test("tile-local comparison accepts explicit requested/effective fallback evidence instead of waiting for a quiet plate fallback", () => {
+  const pageEvidence = {
+    ready: true,
+    sourceKind: "real_scaniverse_ply",
+    splatCount: 94406,
+    requestedRenderer: "tile-local-visible",
+    effectiveRenderer: "tile-local-visible-budget-disabled-plate",
+    rendererLabel: "tile-local-visible-budget-disabled-plate",
+    statsText:
+      "3456x1916 | 60 fps | requested renderer: tile-local-visible | effective renderer: tile-local-visible-budget-disabled-plate | renderer: tile-local-visible-budget-disabled-plate | tile-local budget: skipped 20,000,001 projected refs | cap 20,000,000 | per-tile cap 32 | skip reason: projected tile refs exceed budget: 20000001 > 20000000",
+    canvas: { width: 3456, height: 1916, clientWidth: 3456, clientHeight: 1916 },
+    tileLocalDisabledReason: "projected tile refs exceed budget: 20000001 > 20000000",
+    tileLocal: {
+      tileSizePx: 6,
+      maxRefsPerTile: 32,
+      refs: 0,
+      budget: {
+        projectedRefs: 20000001,
+        retainedRefs: 20000000,
+        droppedRefs: 1,
+        skippedProjectedRefs: 20000001,
+        maxProjectedRefs: 20000000,
+        maxRefsPerTile: 32,
+        skipReason: "projected tile refs exceed budget: 20000001 > 20000000",
+      },
+    },
+  };
+
+  const metrics = extractTileLocalPageMetrics(pageEvidence);
+  assert.equal(metrics.requestedRenderer, "tile-local-visible");
+  assert.equal(metrics.effectiveRenderer, "tile-local-visible-budget-disabled-plate");
+  assert.equal(metrics.tileLocal.tileSizePx, 6);
+  assert.equal(metrics.tileLocal.budget.maxRefsPerTile, 32);
+  assert.equal(metrics.tileLocal.budget.projectedRefs, 20000001);
+  assert.equal(metrics.tileLocal.budget.retainedRefs, 20000000);
+  assert.equal(metrics.tileLocal.budget.droppedRefs, 1);
+  assert.equal(metrics.tileLocal.budget.skippedProjectedRefs, 20000001);
+  assert.equal(metrics.tileLocal.budget.maxProjectedRefs, 20000000);
+  assert.equal(metrics.tileLocal.budget.skipReason, "projected tile refs exceed budget: 20000001 > 20000000");
+  assert.equal(
+    isVisualSmokeCaptureReady(pageEvidence, { expectedRendererLabel: "tile-local-visible" }),
+    true
   );
 });
 

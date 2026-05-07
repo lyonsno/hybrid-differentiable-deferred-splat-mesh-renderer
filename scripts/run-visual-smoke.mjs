@@ -433,6 +433,9 @@ function renderMarkdownReport(result) {
 - Source kind: ${classification.sourceKind || "not reported"}
 - Splat count: ${classification.splatCount || 0}
 - Asset path: ${classification.assetPath || "not reported"}
+- Requested renderer: ${evidence.requestedRenderer || "not reported"}
+- Effective renderer: ${evidence.effectiveRenderer || "not reported"}
+- Tile-local budget: ${formatTileLocalBudgetSummary(evidence.tileLocal)}
 - Sort backend: ${result.pageEvidence.sortBackend || "not reported"}
 - Summary: ${classification.summary}
 
@@ -483,9 +486,12 @@ ${result.captures
 
 - URL: ${capture.url}
 - Screenshot: \`${path.relative(path.dirname(result.reportPath), capture.screenshotPath)}\`
+- Requested renderer: ${capture.pageEvidence.requestedRenderer || "not reported"}
+- Effective renderer: ${capture.pageEvidence.effectiveRenderer || "not reported"}
 - Renderer label: ${capture.pageEvidence.rendererLabel || "not reported"}
 - FPS: ${capture.pageEvidence.fps || 0}
 - Tile refs: ${capture.pageEvidence.tileLocal?.refs || 0}
+- Tile-local budget: ${formatTileLocalBudgetSummary(capture.pageEvidence.tileLocal)}
 - Real splat evidence: ${capture.classification.realSplatEvidence}
 - Nonblank: ${capture.classification.nonblank}
 - Changed pixels: ${capture.imageAnalysis.changedPixels} / ${capture.imageAnalysis.totalPixels} (${formatPercent(capture.imageAnalysis.changedPixelRatio)})
@@ -530,9 +536,12 @@ ${result.captures
 
 - URL: ${capture.url}
 - Screenshot: \`${path.relative(path.dirname(result.reportPath), capture.screenshotPath)}\`
+- Requested renderer: ${capture.pageEvidence.requestedRenderer || "not reported"}
+- Effective renderer: ${capture.pageEvidence.effectiveRenderer || "not reported"}
 - Renderer label: ${capture.pageEvidence.rendererLabel || "not reported"}
 - Tile refs: ${capture.pageEvidence.tileLocal?.refs || 0}
 - Debug mode: ${capture.pageEvidence.tileLocal?.diagnostics?.debugMode || "not reported"}
+- Tile-local budget: ${formatTileLocalBudgetSummary(capture.pageEvidence.tileLocal)}
 - Nonblank: ${capture.classification.nonblank}
 - Changed pixels: ${capture.imageAnalysis.changedPixels} / ${capture.imageAnalysis.totalPixels} (${formatPercent(capture.imageAnalysis.changedPixelRatio)})
 `
@@ -670,6 +679,27 @@ function printSummary(result) {
 
 function formatMetricRatio(value) {
   return Number.isFinite(value) ? String(value) : "n/a";
+}
+
+function formatTileLocalBudgetSummary(tileLocal = {}) {
+  const budget = tileLocal?.budget ?? {};
+  const parts = [];
+  if (Number.isFinite(budget.projectedRefs) && Number.isFinite(budget.retainedRefs) && Number.isFinite(budget.droppedRefs)) {
+    parts.push(`projected ${budget.projectedRefs.toLocaleString()} retained ${budget.retainedRefs.toLocaleString()} dropped ${budget.droppedRefs.toLocaleString()}`);
+  }
+  if (Number.isFinite(budget.skippedProjectedRefs)) {
+    parts.push(`skipped ${budget.skippedProjectedRefs.toLocaleString()} projected refs`);
+  }
+  if (Number.isFinite(budget.maxProjectedRefs)) {
+    parts.push(`cap ${budget.maxProjectedRefs.toLocaleString()}`);
+  }
+  if (Number.isFinite(budget.maxRefsPerTile)) {
+    parts.push(`per-tile cap ${budget.maxRefsPerTile.toLocaleString()}`);
+  }
+  if (budget.skipReason) {
+    parts.push(`skip reason: ${budget.skipReason}`);
+  }
+  return parts.length > 0 ? parts.join(" | ") : "not reported";
 }
 
 function printTileLocalComparisonSummary(result) {

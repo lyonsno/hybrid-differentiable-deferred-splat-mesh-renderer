@@ -55,6 +55,8 @@ http://127.0.0.1:5173/?renderer=tile-local-visible
 
 This presents the tile-local output texture instead of the plate renderer. It consumes CPU-bridge-populated tile refs, coverage weights, opacity, source colors, and ordered contributions to produce a first real tile-local Gaussian compositor output. It is still deliberately scoped: this does not claim the final GPU ref-builder, SH shading, PBR relighting, mesh integration, or deferred G-buffer path.
 
+The visible smoke overlay now reports the requested renderer, the effective renderer label, and the tile-local budget result explicitly, so a high-viewport `tile-local-visible` request can fail fast with honest skip evidence instead of quietly masquerading as a plain `plate` capture.
+
 The visible tile-local compositor uses plate-rate conic falloff for sample-local coverage. The fixed static dessert witness keeps the plate/tile-local footprint ratio guarded so rim expansion regressions do not get mistaken for alpha or global opacity problems.
 
 The visual smoke harness can compare all three tile-local surfaces in one run:
@@ -63,7 +65,7 @@ The visual smoke harness can compare all three tile-local surfaces in one run:
 npm run smoke:visual:real -- --tile-local-comparison --out-dir /tmp/tile-local-visual-perf-comparison
 ```
 
-That comparison captures the plate baseline, `plate+tile-local-prepass`, and `renderer=tile-local-visible`; it fails if the visible mode falls back to plate, still presents the bridge-block diagnostic, loses tile-local refs, lacks real Scaniverse evidence, or suffers a catastrophic FPS collapse. See `docs/smoke/tile-local-visual-perf-comparison.md`.
+That comparison captures the plate baseline, `plate+tile-local-prepass`, and `renderer=tile-local-visible`; it fails if the requested `tile-local-visible` request resolves to a quiet plate fallback, still presents the bridge-block diagnostic, loses tile-local refs or explicit skip evidence, lacks real Scaniverse evidence, or suffers a catastrophic FPS collapse. See `docs/smoke/tile-local-visual-perf-comparison.md`.
 
 The viewer also accepts local binary little-endian PLY splat files by drag-and-drop onto the canvas. Drag-and-drop SPZ loading is not wired yet.
 
