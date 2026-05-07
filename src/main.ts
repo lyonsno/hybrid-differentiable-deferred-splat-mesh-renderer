@@ -71,6 +71,10 @@ import {
   type TileLocalDiagnosticSummary,
 } from "./rendererFidelityProbes/tileLocalDiagnostics.js";
 import {
+  formatTileLocalBudgetPair,
+  resolveTileLocalBudgetConfig,
+} from "./tileLocalBudgetConfig.js";
+import {
   createSplatPlateRenderer,
   SPLAT_PLATE_FRAME_UNIFORM_BYTES,
   writeSplatPlateFrameUniforms,
@@ -108,7 +112,9 @@ const ALPHA_DENSITY_SETTLE_MS = 160;
 const ALPHA_DENSITY_MODE = selectedAlphaDensityMode();
 const RENDERER_MODE = selectedRendererMode();
 const TILE_LOCAL_DEBUG_MODE = selectedTileLocalDebugMode();
-const TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX = 6;
+const TILE_LOCAL_BUDGET_CONFIG = resolveTileLocalBudgetConfig(new URLSearchParams(window.location.search));
+const TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX = TILE_LOCAL_BUDGET_CONFIG.tileSizePx;
+const TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE = TILE_LOCAL_BUDGET_CONFIG.maxRefsPerTile;
 const TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES = 1;
 const TILE_LOCAL_PROVISIONAL_MAX_SPLATS = 150_000;
 const TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES = 20_000_000;
@@ -649,6 +655,7 @@ async function main() {
       if (budgetText) {
         statsText += ` | tile-local budget: ${budgetText}`;
       }
+      statsText += ` | tile-budget: ${formatTileLocalBudgetPair(TILE_LOCAL_BUDGET_CONFIG)}`;
       statsText += ` | tile-order: ${TILE_LOCAL_ORDERING_BACKEND}`;
       const freshness = tileLocalPresentationFreshness(
         scene.tileLocalState,
@@ -688,7 +695,8 @@ async function main() {
       now,
       width,
       height,
-      tileLocalBudget
+      tileLocalBudget,
+      gpuTimings
     );
 
     if (shouldContinueRendering({
@@ -768,6 +776,7 @@ function createTileLocalSceneState(
     samplesPerAxis: TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES,
     splatScale: footprintParams.splatScale,
     minRadiusPx: footprintParams.minRadiusPx,
+    maxRefsPerTile: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
     maxTileEntries: TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES,
     nearFadeEndNdc: footprintParams.nearFadeEndNdc,
   };
@@ -924,6 +933,7 @@ function ensureTileLocalSceneState(
     samplesPerAxis: TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES,
     splatScale: footprintParams.splatScale,
     minRadiusPx: footprintParams.minRadiusPx,
+    maxRefsPerTile: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
     maxTileEntries: TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES,
     nearFadeEndNdc: footprintParams.nearFadeEndNdc,
   };
@@ -964,6 +974,7 @@ function captureCurrentTileLocalSignature(
     samplesPerAxis: TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES,
     splatScale: footprintParams.splatScale,
     minRadiusPx: footprintParams.minRadiusPx,
+    maxRefsPerTile: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
     maxTileEntries: TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES,
     nearFadeEndNdc: footprintParams.nearFadeEndNdc,
   });
@@ -1160,13 +1171,17 @@ function exposeTileLocalRuntimeEvidence(
   nowMs: number,
   viewportWidth: number,
   viewportHeight: number,
-  tileLocalBudget: ReturnType<typeof tileLocalBudgetEvidence>
+  tileLocalBudget: ReturnType<typeof tileLocalBudgetEvidence>,
+  gpuTimings: Map<string, number>
 ): void {
   const runtimeWindow = window as unknown as {
     __MESH_SPLAT_SMOKE__?: Record<string, unknown>;
     __MESH_SPLAT_TILE_LOCAL_DIAGNOSTICS__?: TileLocalDiagnosticSummary;
   };
   const diagnostics = tileLocalState ? refreshTileLocalDiagnostics(tileLocalState) : undefined;
+  const budgetDiagnostics = tileLocalState
+    ? tileLocalBudgetDiagnosticsForRuntime(tileLocalState, gpuTimings)
+    : undefined;
   const freshness = tileLocalState
     ? tileLocalPresentationFreshness(tileLocalState, tileLocalLastSkipReason, tileLocalLastSkipSignature, nowMs)
     : undefined;
@@ -1182,6 +1197,7 @@ function exposeTileLocalRuntimeEvidence(
     effectiveRenderer,
     rendererLabel,
     tileSizePx: tileLocalBudget.tileSizePx,
+    pair: tileLocalBudget.pair,
     tileColumns: tileLocalBudget.currentTileColumns,
     tileRows: tileLocalBudget.currentTileRows,
     maxRefsPerTile: tileLocalBudget.maxRefsPerTile,
@@ -1203,7 +1219,7 @@ function exposeTileLocalRuntimeEvidence(
       ...tileLocalBudget,
       status: tileLocalStatus,
     };
-    tileLocalEvidence.budgetDiagnostics = tileLocalState.budgetDiagnostics;
+    tileLocalEvidence.budgetDiagnostics = budgetDiagnostics;
     tileLocalEvidence.diagnostics = diagnostics;
   } else {
     tileLocalEvidence.budget = {
@@ -1292,11 +1308,12 @@ function tileLocalBudgetEvidence(
           ? "current"
           : "not-applicable",
     tileSizePx: tileLocalState?.plan.tileSizePx ?? TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX,
+    pair: formatTileLocalBudgetPair(TILE_LOCAL_BUDGET_CONFIG),
     currentViewportWidth: viewportWidth,
     currentViewportHeight: viewportHeight,
     currentTileColumns: tileColumnsForViewport(viewportWidth),
     currentTileRows: tileRowsForViewport(viewportHeight),
-    maxRefsPerTile: arenaRefs?.maxRetainedRefsPerTile ?? null,
+    maxRefsPerTile: arenaRefs?.maxRetainedRefsPerTile ?? TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
     maxProjectedRefs: projectedBudgetReason?.maxProjectedRefs ?? parsed?.maxProjectedRefs ?? null,
     projectedRefs: arenaRefs?.projected ?? null,
     retainedRefs: arenaRefs?.retained ?? null,
@@ -1326,6 +1343,26 @@ function formatTileLocalBudgetLabel(budget: ReturnType<typeof tileLocalBudgetEvi
     return budget.skipReason;
   }
   return "";
+}
+
+function tileLocalBudgetDiagnosticsForRuntime(
+  state: TileLocalSceneState,
+  gpuTimings: Map<string, number>
+): TileLocalPrepassBudgetDiagnostics {
+  const renderDurationMs = roundRuntimeMetric(gpuTimings.get("render") ?? Number.NaN);
+  if (renderDurationMs <= 0) {
+    return state.budgetDiagnostics;
+  }
+  return {
+    ...state.budgetDiagnostics,
+    heat: {
+      ...state.budgetDiagnostics.heat,
+      gpu: {
+        ...state.budgetDiagnostics.heat.gpu,
+        renderDurationMs,
+      },
+    },
+  };
 }
 
 function parseTileLocalBudgetSkipReason(reason: string | null): { skippedProjectedRefs: number; maxProjectedRefs: number } | null {

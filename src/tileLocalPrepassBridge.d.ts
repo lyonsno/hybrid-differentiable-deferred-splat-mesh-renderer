@@ -63,6 +63,7 @@ export interface TileLocalPrepassBudgetDiagnostics {
       readonly coverageWeightBufferBytes: number;
       readonly alphaParamBufferBytes?: number;
       readonly orderingKeyBufferBytes?: number;
+      readonly renderDurationMs?: number;
     };
   };
 }
