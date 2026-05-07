@@ -486,6 +486,12 @@ ${result.captures
 - Renderer label: ${capture.pageEvidence.rendererLabel || "not reported"}
 - FPS: ${capture.pageEvidence.fps || 0}
 - Tile refs: ${capture.pageEvidence.tileLocal?.refs || 0}
+- Arena requested backend: ${capture.pageEvidence.arenaRuntime?.requestedArenaBackend || "not reported"}
+- Arena effective backend: ${capture.pageEvidence.arenaRuntime?.effectiveArenaBackend || "not reported"}
+- CPU build duration ms: ${formatArenaDuration(capture.pageEvidence.arenaRuntime?.cpuBuildDurationMs)}
+- GPU dispatch duration ms: ${formatArenaDuration(capture.pageEvidence.arenaRuntime?.gpuDispatchDurationMs)}
+- Unavailable reason: ${capture.pageEvidence.arenaRuntime?.unavailableReason || "not reported"}
+- Skipped reason: ${capture.pageEvidence.arenaRuntime?.skippedReason || "not reported"}
 - Real splat evidence: ${capture.classification.realSplatEvidence}
 - Nonblank: ${capture.classification.nonblank}
 - Changed pixels: ${capture.imageAnalysis.changedPixels} / ${capture.imageAnalysis.totalPixels} (${formatPercent(capture.imageAnalysis.changedPixelRatio)})
@@ -533,6 +539,12 @@ ${result.captures
 - Renderer label: ${capture.pageEvidence.rendererLabel || "not reported"}
 - Tile refs: ${capture.pageEvidence.tileLocal?.refs || 0}
 - Debug mode: ${capture.pageEvidence.tileLocal?.diagnostics?.debugMode || "not reported"}
+- Arena requested backend: ${capture.pageEvidence.arenaRuntime?.requestedArenaBackend || "not reported"}
+- Arena effective backend: ${capture.pageEvidence.arenaRuntime?.effectiveArenaBackend || "not reported"}
+- CPU build duration ms: ${formatArenaDuration(capture.pageEvidence.arenaRuntime?.cpuBuildDurationMs)}
+- GPU dispatch duration ms: ${formatArenaDuration(capture.pageEvidence.arenaRuntime?.gpuDispatchDurationMs)}
+- Unavailable reason: ${capture.pageEvidence.arenaRuntime?.unavailableReason || "not reported"}
+- Skipped reason: ${capture.pageEvidence.arenaRuntime?.skippedReason || "not reported"}
 - Nonblank: ${capture.classification.nonblank}
 - Changed pixels: ${capture.imageAnalysis.changedPixels} / ${capture.imageAnalysis.totalPixels} (${formatPercent(capture.imageAnalysis.changedPixelRatio)})
 `
@@ -670,6 +682,10 @@ function printSummary(result) {
 
 function formatMetricRatio(value) {
   return Number.isFinite(value) ? String(value) : "n/a";
+}
+
+function formatArenaDuration(value) {
+  return Number.isFinite(value) ? `${Number(value).toFixed(3)}` : "not reported";
 }
 
 function printTileLocalComparisonSummary(result) {

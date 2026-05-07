@@ -131,12 +131,21 @@ export function extractTileLocalPageMetrics(pageEvidence = {}) {
     ?? parseTileLocalBudgetGuardrailReason(statsText);
   const parsedBudget = parseTileLocalBudget(statsText);
   const tileLocal = pageEvidence.tileLocal && typeof pageEvidence.tileLocal === "object" ? pageEvidence.tileLocal : {};
+  const arenaRuntime = pageEvidence.arenaRuntime && typeof pageEvidence.arenaRuntime === "object" ? pageEvidence.arenaRuntime : {};
   const freshness = tileLocal.freshness
     ?? (/stale-cache/i.test(statsText) ? { status: "stale-cache" } : undefined);
   return {
     rendererLabel: pageEvidence.rendererLabel ?? parseRendererLabel(statsText),
     fps: finiteNumber(pageEvidence.fps) ?? parseFps(statsText),
     tileLocalLastSkipReason: skipReason,
+    arenaRuntime: {
+      requestedArenaBackend: optionalString(arenaRuntime.requestedArenaBackend),
+      effectiveArenaBackend: optionalString(arenaRuntime.effectiveArenaBackend),
+      cpuBuildDurationMs: optionalFiniteNumber(arenaRuntime.cpuBuildDurationMs),
+      gpuDispatchDurationMs: optionalFiniteNumber(arenaRuntime.gpuDispatchDurationMs),
+      unavailableReason: optionalString(arenaRuntime.unavailableReason),
+      skippedReason: optionalString(arenaRuntime.skippedReason),
+    },
     tileLocal: {
       ...tileLocal,
       refs: finiteNumber(tileLocal.refs) ?? parsedGrid.refs,
@@ -324,4 +333,19 @@ function finiteNumber(value) {
   }
   const number = Number(value);
   return Number.isFinite(number) ? number : undefined;
+}
+
+function optionalFiniteNumber(value) {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+  return finiteNumber(value);
+}
+
+function optionalString(value) {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
