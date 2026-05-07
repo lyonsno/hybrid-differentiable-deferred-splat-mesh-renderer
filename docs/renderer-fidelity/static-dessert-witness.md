@@ -2,7 +2,36 @@
 
 Lane: `static-dessert-witness` in `metadosis/coordination-packets/meshsplat-static-artifact-diagnostic-convergence_2026-05-01.md`.
 
-Status: historical witness dossier from renderer base `origin/cc/double-attenuated-conic-seepage-integration-0501@223c6ff`, with later 2026-05-06 plate/tile-local bridge and conic parity evidence. The original witness lane did not change production renderer math, global opacity/brightness, tile-ref budgets, asset decoding, camera controls, or the tile-local bridge policy.
+Status: historical witness dossier from renderer base `origin/cc/double-attenuated-conic-seepage-integration-0501@223c6ff`, with later 2026-05-06 plate/tile-local bridge and conic parity evidence plus a 2026-05-07 bounded retention-policy repair. The original witness lane did not change production renderer math, global opacity/brightness, tile-ref budgets, asset decoding, camera controls, or the tile-local bridge policy.
+
+## 2026-05-07 Porous Body Retention Repair
+
+The tile-local bridge now scales its low-coverage retention reserve with per-tile cap pressure. The per-tile cap remains `32`; the policy only changes which contributors survive inside that fixed budget when a tile is severely oversubscribed. The reserve is capped at half of the retained list so coverage-first ordering still owns at least half of every saturated tile.
+
+Durable artifacts:
+
+- `docs/renderer-fidelity/static-dessert-witness-0507-porous-body-retention-repair/report.md`
+- `docs/renderer-fidelity/static-dessert-witness-0507-porous-body-retention-repair/analysis.json`
+- `docs/renderer-fidelity/static-dessert-witness-0507-porous-body-retention-repair/plate-final-color.png`
+- `docs/renderer-fidelity/static-dessert-witness-0507-porous-body-retention-repair/final-color.png`
+- `docs/renderer-fidelity/static-dessert-witness-0507-porous-body-retention-repair/coverage-weight.png`
+- `docs/renderer-fidelity/static-dessert-witness-0507-porous-body-retention-repair/accumulated-alpha.png`
+- `docs/renderer-fidelity/static-dessert-witness-0507-porous-body-retention-repair/transmittance.png`
+- `docs/renderer-fidelity/static-dessert-witness-0507-porous-body-retention-repair/tile-ref-count.png`
+- `docs/renderer-fidelity/static-dessert-witness-0507-porous-body-retention-repair/conic-shape.png`
+
+Fixed-view evidence:
+
+| Field | Before | After |
+| --- | ---: | ---: |
+| Retained tile entries in porous-body region | `27,057` | `27,057` |
+| Max refs per tile | `32` | `32` |
+| Projected tile entries in porous-body region | `1,569,835` | `1,569,835` |
+| Policy swaps in porous-body region | `3,078 added / 3,078 dropped` | `10,719 added / 10,719 dropped` |
+| Full-frame policy swaps | `7,433 added / 7,433 dropped` | `26,300 added / 26,300 dropped` |
+| Tile-local / plate changed-pixel ratio | `1.273804216291956` | `1.2435832112604295` |
+
+Interpretation boundary: this is a bounded retention repair, not a tile-budget increase or alpha/opacity fix. It makes the fixed porous body crop less starved by the coverage-first cap, but it does not settle the deeper architecture question: the same `58.02` projected/retained ratio remains, so richer contributor retention or GPU-built arenas may still be required for the final production-quality renderer.
 
 ## 2026-05-06 Porous Body Truth Table
 

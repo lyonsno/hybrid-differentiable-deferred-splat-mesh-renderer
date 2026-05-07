@@ -528,7 +528,7 @@ function selectTileEntries(tileEntries, maxRefsPerTile) {
     return tileEntries;
   }
   const selected = tileEntries.slice(0, maxRefsPerTile);
-  const reserveCount = Math.min(maxRefsPerTile, Math.min(4, Math.max(2, Math.floor(maxRefsPerTile / 8))));
+  const reserveCount = resolveRetentionReserveCount(tileEntries.length, maxRefsPerTile);
   const selectedKeys = new Set(selected.map(tileEntryKey));
   const retentionCandidates = selectRetentionCandidates(tileEntries, selectedKeys, reserveCount);
   const reservedKeys = new Set(retentionCandidates.map(({ entry }) => tileEntryKey(entry)));
@@ -549,6 +549,16 @@ function selectTileEntries(tileEntries, maxRefsPerTile) {
   }
 
   return selected.sort(compareTileEntryOrder);
+}
+
+function resolveRetentionReserveCount(projectedRefCount, maxRefsPerTile) {
+  const baseReserveCount = Math.min(maxRefsPerTile, Math.min(4, Math.max(2, Math.floor(maxRefsPerTile / 8))));
+  if (projectedRefCount <= maxRefsPerTile) {
+    return 0;
+  }
+  const overflowFraction = (projectedRefCount - maxRefsPerTile) / projectedRefCount;
+  const pressureReserveCount = Math.floor(maxRefsPerTile * Math.min(0.5, overflowFraction));
+  return Math.min(maxRefsPerTile, Math.max(baseReserveCount, pressureReserveCount));
 }
 
 function selectRetentionCandidates(tileEntries, selectedKeys, reserveCount) {

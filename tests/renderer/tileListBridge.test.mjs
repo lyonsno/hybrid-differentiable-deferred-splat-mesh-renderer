@@ -218,6 +218,71 @@ test("tile-list bridge reserves both bright behind refs and alpha-occluding fore
   assert.equal(bridge.tileRefCustody.maxRetainedRefsPerTile, 8);
 });
 
+test("tile-list bridge expands retention reserve under severe cap pressure without raising the cap", () => {
+  const maxRefsPerTile = 32;
+  const surfaceEntries = Array.from({ length: 64 }, (_, index) => ({
+    tileIndex: 0,
+    tileX: 0,
+    tileY: 0,
+    splatIndex: index,
+    originalId: 100 + index,
+    coverageWeight: 20 - index * 0.01,
+    retentionWeight: 0.2,
+    occlusionWeight: 0.2,
+    occlusionDensity: 0.01,
+  }));
+  const pressureEntries = Array.from({ length: 16 }, (_, index) => ({
+    tileIndex: 0,
+    tileX: 0,
+    tileY: 0,
+    splatIndex: 64 + index,
+    originalId: 900 + index,
+    coverageWeight: 0.1 + index * 0.001,
+    retentionWeight: 3 - index * 0.01,
+    occlusionWeight: 2 - index * 0.01,
+    occlusionDensity: 0.95 - index * 0.001,
+  }));
+
+  const bridge = buildGpuTileCoverageBridge({
+    viewportWidth: 64,
+    viewportHeight: 64,
+    tileSizePx: 64,
+    tileColumns: 1,
+    tileRows: 1,
+    sourceSplatCount: 80,
+    splats: Array.from({ length: 80 }, (_, index) => ({
+      splatIndex: index,
+      originalId: index >= 64 ? 900 + index - 64 : 100 + index,
+      centerPx: [32, 32],
+      covariancePx: { xx: 16, xy: 0, yy: 16 },
+      tileBounds: { minTileX: 0, minTileY: 0, maxTileX: 0, maxTileY: 0 },
+    })),
+    tileEntries: [...surfaceEntries, ...pressureEntries],
+    maxRefsPerTile,
+  });
+
+  const retainedRefCount = bridge.tileHeaders[1];
+  const retainedOriginalIds = [];
+  for (let index = 0; index < retainedRefCount; index += 1) {
+    retainedOriginalIds.push(bridge.tileRefs[index * 4 + 1]);
+  }
+  const retainedPressureCount = retainedOriginalIds.filter((originalId) => originalId >= 900).length;
+
+  assert.equal(retainedRefCount, maxRefsPerTile);
+  assert.equal(bridge.maxRefsPerTile, maxRefsPerTile);
+  assert.equal(bridge.tileRefCustody.maxRetainedRefsPerTile, maxRefsPerTile);
+  assert.equal(bridge.tileRefCustody.projectedTileEntryCount, 80);
+  assert.equal(bridge.tileRefCustody.evictedTileEntryCount, 48);
+  assert.ok(
+    retainedPressureCount >= 12,
+    `expected at least 12 pressure-selected refs, retained ${retainedPressureCount}`
+  );
+  assert.ok(
+    bridge.retentionAudit.fullFrame.addedByPolicyCount >= 12,
+    `expected at least 12 policy additions, saw ${bridge.retentionAudit.fullFrame.addedByPolicyCount}`
+  );
+});
+
 test("tile-list bridge audits current retention against legacy coverage-first cap selection", () => {
   const surfaceEntries = Array.from({ length: 10 }, (_, index) => ({
     tileIndex: 0,
