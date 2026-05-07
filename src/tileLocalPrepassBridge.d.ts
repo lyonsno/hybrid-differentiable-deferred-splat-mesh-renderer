@@ -1,13 +1,16 @@
 import type {
   GpuTileCoverageBridge,
   TileLocalContributorArena,
+  TileLocalProjectedContributorRecord,
   TileLocalContributorRecord,
   TileLocalContributorTileHeader,
 } from "./gpuTileCoverageBridge.js";
+import type { CapPressureRetentionSummary } from "./rendererFidelityProbes/capPressureRetention.js";
 import type { SplatAttributes } from "./splats.js";
 
 export type {
   TileLocalContributorArena,
+  TileLocalProjectedContributorRecord,
   TileLocalContributorRecord,
   TileLocalContributorTileHeader,
 };
@@ -40,6 +43,7 @@ export interface TileLocalPrepassBudgetDiagnostics {
     readonly maxProjectedRefs?: number;
     readonly headerRefCount?: number;
   }[];
+  readonly capPressure: CapPressureRetentionSummary;
   readonly retainedBands: {
     readonly front: TileLocalPrepassBudgetBandCounter;
     readonly middle: TileLocalPrepassBudgetBandCounter;

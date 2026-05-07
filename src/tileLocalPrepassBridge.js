@@ -1,4 +1,5 @@
 import { buildGpuTileCoverageBridge } from "./gpuTileCoverageBridge.js";
+import { summarizeCapPressureRetention } from "./rendererFidelityProbes/capPressureRetention.js";
 import { buildProjectedGaussianTileCoverage } from "./rendererFidelityProbes/tileCoverage.js";
 
 export function buildTileLocalPrepassBridge({
@@ -79,18 +80,11 @@ export function summarizeTileLocalPrepassBudgetDiagnostics({
 }) {
   const tileCount = Math.max(coverage?.tileColumns ?? 0, 0) * Math.max(coverage?.tileRows ?? 0, 0);
   const projectedEntries = Array.isArray(coverage?.tileEntries) ? coverage.tileEntries : [];
-  const retainedKeys = retainedTileEntryKeys(bridge);
-  const retainedBands = createBandCounters();
-  const droppedBands = createBandCounters();
-
-  for (const entry of projectedEntries) {
-    accumulateBand(retainedKeys.has(tileEntryKey(entry)) ? retainedBands : droppedBands, entry, maxRefsPerTile);
-  }
-
   const custody = bridge?.tileRefCustody ?? {};
   const projectedRefs = nonNegativeFiniteInteger(custody.projectedTileEntryCount ?? projectedEntries.length);
   const retainedRefs = nonNegativeFiniteInteger(custody.retainedTileEntryCount ?? bridge?.retainedTileEntryCount);
   const droppedRefs = nonNegativeFiniteInteger(custody.evictedTileEntryCount ?? Math.max(0, projectedRefs - retainedRefs));
+  const capPressure = summarizeCapPressureRetention(bridge);
   const overflowReasons = [];
   if (droppedRefs > 0 || nonNegativeFiniteInteger(custody.cappedTileCount) > 0) {
     overflowReasons.push({
@@ -129,8 +123,9 @@ export function summarizeTileLocalPrepassBudgetDiagnostics({
       maxRetainedRefsPerTile: nonNegativeFiniteInteger(custody.maxRetainedRefsPerTile),
     },
     overflowReasons,
-    retainedBands,
-    droppedBands,
+    capPressure,
+    retainedBands: capPressure.retainedBands,
+    droppedBands: capPressure.droppedBands,
     heat: {
       cpu: {
         projectedRefs,
@@ -200,68 +195,6 @@ function orderCoverageEntriesForView(coverage, attributes, viewMatrix) {
     ...coverage,
     tileEntries,
   };
-}
-
-function retainedTileEntryKeys(bridge) {
-  const keys = new Set();
-  const headers = bridge?.tileHeaders;
-  const refs = bridge?.tileRefs;
-  const tileCount = bridge?.tileCount ?? 0;
-  for (let tileIndex = 0; tileIndex < tileCount; tileIndex += 1) {
-    const first = headers?.[tileIndex * 4] ?? 0;
-    const count = headers?.[tileIndex * 4 + 1] ?? 0;
-    for (let offset = 0; offset < count; offset += 1) {
-      const refIndex = first + offset;
-      keys.add(tileEntryKey({
-        tileIndex,
-        splatIndex: refs?.[refIndex * 4] ?? 0,
-        originalId: refs?.[refIndex * 4 + 1] ?? 0,
-      }));
-    }
-  }
-  return keys;
-}
-
-function tileEntryKey(entry) {
-  return `${entry.tileIndex}:${entry.splatIndex}:${entry.originalId}`;
-}
-
-function createBandCounters() {
-  return {
-    front: createBandCounter(),
-    middle: createBandCounter(),
-    back: createBandCounter(),
-  };
-}
-
-function createBandCounter() {
-  return {
-    total: 0,
-    coverageHigh: 0,
-    coverageMedium: 0,
-    coverageLow: 0,
-  };
-}
-
-function accumulateBand(bands, entry, maxRefsPerTile) {
-  const band = bands[depthBand(entry, maxRefsPerTile)];
-  band.total += 1;
-  const coverage = Number.isFinite(entry.coverageWeight) ? entry.coverageWeight : 0;
-  if (coverage >= 0.75) {
-    band.coverageHigh += 1;
-  } else if (coverage >= 0.25) {
-    band.coverageMedium += 1;
-  } else {
-    band.coverageLow += 1;
-  }
-}
-
-function depthBand(entry, maxRefsPerTile) {
-  const rank = Number.isInteger(entry.viewRank) ? entry.viewRank : 0;
-  const cap = Math.max(nonNegativeFiniteInteger(maxRefsPerTile), 1);
-  if (rank < cap) return "front";
-  if (rank < cap * 4) return "middle";
-  return "back";
 }
 
 function nonNegativeFiniteInteger(value) {
