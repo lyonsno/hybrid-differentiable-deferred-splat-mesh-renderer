@@ -8,26 +8,30 @@ export const TILE_BUDGET_SWEEP_PAIRS = Object.freeze([
 ]);
 
 export function buildTileBudgetSweepPlan(baseUrl, pairs = TILE_BUDGET_SWEEP_PAIRS) {
-  return pairs.map((pair) => {
-    const url = new URL(baseUrl);
-    url.searchParams.set("renderer", "tile-local-visible");
-    url.searchParams.set("tileDebug", "tile-ref-count");
-    url.searchParams.set("tileSizePx", String(pair.tileSizePx));
-    url.searchParams.set("maxRefsPerTile", String(pair.maxRefsPerTile));
-    const id = candidateId(pair);
-    return {
-      id,
-      title: `Tile ${pair.tileSizePx}px / cap ${pair.maxRefsPerTile}`,
-      expectedRendererLabel: "tile-local-visible-debug-tile-ref-count",
-      tileSizePx: pair.tileSizePx,
-      maxRefsPerTile: pair.maxRefsPerTile,
-      url: url.toString().replaceAll("%2F", "/"),
-    };
+  return pairs.flatMap((pair) => {
+    const candidate = candidateId(pair);
+    return [
+      buildCandidateCapture(baseUrl, pair, {
+        id: `${candidate}-tile-ref-count`,
+        candidateId: candidate,
+        evidenceKind: "tile-ref-count",
+        title: `Tile ${pair.tileSizePx}px / cap ${pair.maxRefsPerTile} tile refs`,
+        expectedRendererLabel: "tile-local-visible-debug-tile-ref-count",
+        tileDebug: "tile-ref-count",
+      }),
+      buildCandidateCapture(baseUrl, pair, {
+        id: `${candidate}-final-color`,
+        candidateId: candidate,
+        evidenceKind: "final-color",
+        title: `Tile ${pair.tileSizePx}px / cap ${pair.maxRefsPerTile} final color`,
+        expectedRendererLabel: "tile-local-visible",
+      }),
+    ];
   });
 }
 
 export function classifyTileBudgetSweep({ captures = [] } = {}) {
-  const candidates = captures.map((capture) => classifyCandidate(capture));
+  const candidates = [...groupCandidateCaptures(captures).values()].map((group) => classifyCandidate(group));
   const baseline = candidates.find((candidate) => candidate.id === "tile-6px-cap-32") ?? null;
   for (const candidate of candidates) {
     candidate.status = classifyCandidateStatus(candidate, baseline);
@@ -38,6 +42,18 @@ export function classifyTileBudgetSweep({ captures = [] } = {}) {
       findings.push({
         kind: "candidate-not-ready",
         summary: `${candidate.id} did not report current tile-local sweep evidence.`,
+      });
+    }
+    if (!candidate.finalColor.ready) {
+      findings.push({
+        kind: "missing-final-color-evidence",
+        summary: `${candidate.id} did not report current final-color evidence.`,
+      });
+    }
+    if (candidate.finalColor.visibleCompositedRefLimit < candidate.metrics.maxRefsPerTile) {
+      findings.push({
+        kind: "visible-compositor-cap-mismatch",
+        summary: `${candidate.id} reports cap ${candidate.metrics.maxRefsPerTile} but final-color compositor consumes only ${candidate.finalColor.visibleCompositedRefLimit} refs per tile.`,
       });
     }
     if (candidate.metrics.tileSizePx !== candidate.tileSizePx) {
@@ -72,11 +88,14 @@ export function classifyTileBudgetSweep({ captures = [] } = {}) {
 }
 
 function classifyCandidate(capture) {
+  const metricCapture = capture.metricCapture ?? {};
+  const finalColorCapture = capture.finalColorCapture ?? {};
   const pair = {
-    tileSizePx: Number(capture.tileSizePx),
-    maxRefsPerTile: Number(capture.maxRefsPerTile),
+    tileSizePx: Number(metricCapture.tileSizePx ?? finalColorCapture.tileSizePx),
+    maxRefsPerTile: Number(metricCapture.maxRefsPerTile ?? finalColorCapture.maxRefsPerTile),
   };
-  const tileLocal = objectValue(capture.pageEvidence?.tileLocal);
+  const tileLocal = objectValue(metricCapture.pageEvidence?.tileLocal);
+  const finalColorTileLocal = objectValue(finalColorCapture.pageEvidence?.tileLocal);
   const budget = objectValue(tileLocal.budget);
   const diagnostics = objectValue(tileLocal.budgetDiagnostics);
   const arenaRefs = objectValue(diagnostics.arenaRefs);
@@ -100,15 +119,23 @@ function classifyCandidate(capture) {
     fps: finiteNumber(capture.pageEvidence?.fps) ?? 0,
   };
   const ready =
-    capture.classification?.harnessPassed === true &&
+    metricCapture.classification?.harnessPassed === true &&
     tileLocal.status !== "stale-cache" &&
     metrics.tileCount > 0 &&
     metrics.retainedRefs > 0;
+  const finalColor = {
+    ready: finalColorCapture.classification?.harnessPassed === true &&
+      finalColorTileLocal.status !== "stale-cache" &&
+      String(finalColorCapture.pageEvidence?.rendererLabel ?? "").includes("tile-local-visible"),
+    rendererLabel: String(finalColorCapture.pageEvidence?.rendererLabel ?? ""),
+    visibleCompositedRefLimit: finiteNumber(finalColorTileLocal.visibleCompositedRefLimit) ?? Number.POSITIVE_INFINITY,
+  };
   return {
     id: candidateId(pair),
     tileSizePx: pair.tileSizePx,
     maxRefsPerTile: pair.maxRefsPerTile,
-    rendererLabel: String(capture.pageEvidence?.rendererLabel ?? ""),
+    rendererLabel: String(metricCapture.pageEvidence?.rendererLabel ?? ""),
+    finalColor,
     ready,
     status: "underdetermined",
     metrics,
@@ -118,8 +145,10 @@ function classifyCandidate(capture) {
 function classifyCandidateStatus(candidate, baseline) {
   if (candidate.tileSizePx === 6 && candidate.maxRefsPerTile === 32) return "baseline";
   if (!candidate.ready) return "blocked";
+  if (!candidate.finalColor.ready) return "blocked";
   const metrics = candidate.metrics;
   if (metrics.retainedRefs <= 0 || metrics.tileCount <= 0) return "rejected";
+  if (candidate.finalColor.visibleCompositedRefLimit < metrics.maxRefsPerTile) return "rejected";
   if (!baseline?.ready) return "underdetermined";
   const baselineMetrics = baseline.metrics;
   const lowersTileCount = metrics.tileCount < baselineMetrics.tileCount;
@@ -137,7 +166,7 @@ function summarizeRecommendation(candidates) {
     return {
       status: "underdetermined",
       candidateIds: [],
-      text: "No larger tile/cap pair cleared the baseline-relative metric heuristic; visual witness input is still required before any default change.",
+      text: "No larger tile/cap pair cleared both budget metrics and final-color acceptance; visual witness input is still required before any default change.",
     };
   }
   plausible.sort((left, right) =>
@@ -148,8 +177,61 @@ function summarizeRecommendation(candidates) {
   return {
     status: "provisional",
     candidateIds: plausible.map((candidate) => candidate.id),
-    text: `${plausible[0].id} is the strongest metric-only candidate; visual witness and G-buffer alignment must still confirm it before any default declaration.`,
+    text: `${plausible[0].id} is the strongest candidate with both budget and final-color acceptance evidence; G-buffer alignment must still confirm it before any default declaration.`,
   };
+}
+
+function buildCandidateCapture(baseUrl, pair, {
+  id,
+  candidateId,
+  evidenceKind,
+  title,
+  expectedRendererLabel,
+  tileDebug,
+}) {
+  const url = new URL(baseUrl);
+  url.searchParams.set("renderer", "tile-local-visible");
+  if (tileDebug) {
+    url.searchParams.set("tileDebug", tileDebug);
+  } else {
+    url.searchParams.delete("tileDebug");
+    url.searchParams.delete("debug");
+  }
+  url.searchParams.set("tileSizePx", String(pair.tileSizePx));
+  url.searchParams.set("maxRefsPerTile", String(pair.maxRefsPerTile));
+  return {
+    id,
+    candidateId,
+    evidenceKind,
+    title,
+    expectedRendererLabel,
+    tileSizePx: pair.tileSizePx,
+    maxRefsPerTile: pair.maxRefsPerTile,
+    url: url.toString().replaceAll("%2F", "/"),
+  };
+}
+
+function groupCandidateCaptures(captures) {
+  const groups = new Map();
+  for (const capture of captures) {
+    const pair = {
+      tileSizePx: Number(capture.tileSizePx),
+      maxRefsPerTile: Number(capture.maxRefsPerTile),
+    };
+    const id = capture.candidateId || candidateId(pair);
+    const group = groups.get(id) ?? {
+      id,
+      metricCapture: null,
+      finalColorCapture: null,
+    };
+    if (capture.evidenceKind === "final-color") {
+      group.finalColorCapture = capture;
+    } else {
+      group.metricCapture = capture;
+    }
+    groups.set(id, group);
+  }
+  return groups;
 }
 
 function candidateId(pair) {

@@ -639,6 +639,8 @@ function renderTileBudgetSweepReport(result) {
 - cappedTiles: tiles whose projected refs exceeded maxRefsPerTile
 - buildTimeMs: CPU tile-local prepass build time
 - renderTimeMs: GPU render pass duration when timestamp queries are available
+- finalColor: separate final-color capture required before a candidate can become plausible
+- visibleCompositedRefLimit: final-color compositor ref limit; lower than maxRefsPerTile rejects the candidate
 
 ## Candidates
 
@@ -654,6 +656,8 @@ ${classification.candidates
 - Capped tiles: ${candidate.metrics.cappedTiles}
 - Build/render ms: ${candidate.metrics.buildTimeMs} / ${candidate.metrics.renderTimeMs}
 - FPS: ${candidate.metrics.fps}
+- Final-color renderer label: ${candidate.finalColor.rendererLabel || "not reported"}
+- Visible composited ref limit: ${Number.isFinite(candidate.finalColor.visibleCompositedRefLimit) ? candidate.finalColor.visibleCompositedRefLimit : "not reported"}
 `
   )
   .join("\n")}
@@ -666,7 +670,7 @@ ${classification.findings.length === 0 ? "- None" : classification.findings.map(
 
 - Status: ${classification.recommendation.status}
 - Candidate IDs: ${classification.recommendation.candidateIds.join(", ") || "none"}
-- Boundary: metric-only; final visual default declaration waits for witness and G-buffer alignment lanes.
+- Boundary: final-color evidence required; default declaration still waits for human witness and G-buffer alignment lanes.
 - Text: ${classification.recommendation.text}
 
 ## Summary

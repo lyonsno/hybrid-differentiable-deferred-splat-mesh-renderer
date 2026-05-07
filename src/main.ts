@@ -118,6 +118,7 @@ const TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE = TILE_LOCAL_BUDGET_CONFIG.maxRef
 const TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES = 1;
 const TILE_LOCAL_PROVISIONAL_MAX_SPLATS = 150_000;
 const TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES = 20_000_000;
+const TILE_LOCAL_VISIBLE_COMPOSITOR_REF_LIMIT = 32;
 const TILE_LOCAL_UNSAFE = selectedTileLocalUnsafeMode();
 
 interface ActiveSplatScene {
@@ -1214,6 +1215,9 @@ function exposeTileLocalRuntimeEvidence(
     tileLocalEvidence.allocatedRefs = tileLocalState.tileEntryCount;
     tileLocalEvidence.orderingBackend = TILE_LOCAL_ORDERING_BACKEND;
     tileLocalEvidence.debugMode = tileLocalState.debugMode;
+    if (tileLocalState.debugMode === "final-color") {
+      tileLocalEvidence.visibleCompositedRefLimit = TILE_LOCAL_VISIBLE_COMPOSITOR_REF_LIMIT;
+    }
     tileLocalEvidence.freshness = freshness;
     tileLocalEvidence.budget = {
       ...tileLocalBudget,
