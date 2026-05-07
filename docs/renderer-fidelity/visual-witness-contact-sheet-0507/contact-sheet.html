@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Visual Witness Contact Sheet</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #07070a;
+        --panel: #111117;
+        --panel-soft: #17171f;
+        --line: rgba(255, 255, 255, 0.12);
+        --text: #f4f0e8;
+        --muted: #b8b0a4;
+        --accent: #ffb36b;
+        --accent2: #7cf7a6;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background:
+          radial-gradient(circle at 20% 10%, rgba(255, 179, 107, 0.12), transparent 34%),
+          radial-gradient(circle at 80% 0%, rgba(124, 247, 166, 0.12), transparent 28%),
+          linear-gradient(180deg, #08080c 0%, #050507 100%);
+        color: var(--text);
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      .sheet {
+        width: 1680px;
+        margin: 0 auto;
+        padding: 28px 30px 36px;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: 1.4fr 1fr;
+        gap: 18px;
+        align-items: end;
+        margin-bottom: 22px;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 44px;
+        line-height: 0.95;
+        letter-spacing: -0.04em;
+      }
+
+      .lede {
+        margin: 0;
+        max-width: 72ch;
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1.55;
+      }
+
+      .meta {
+        justify-self: end;
+        padding: 14px 16px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        color: var(--muted);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px;
+        line-height: 1.6;
+        max-width: 470px;
+      }
+
+      .meta strong {
+        color: var(--text);
+      }
+
+      .section {
+        margin-top: 18px;
+        margin-bottom: 14px;
+      }
+
+      .section h2 {
+        margin: 0 0 8px;
+        font-size: 15px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--accent);
+      }
+
+      .grid {
+        display: grid;
+        gap: 14px;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .card {
+        position: relative;
+        overflow: hidden;
+        min-height: 252px;
+        background: linear-gradient(180deg, var(--panel), var(--panel-soft));
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        box-shadow: 0 18px 60px rgba(0, 0, 0, 0.36);
+      }
+
+      .card.large {
+        min-height: 320px;
+      }
+
+      .card .label {
+        position: absolute;
+        left: 14px;
+        top: 12px;
+        z-index: 2;
+        display: inline-flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 8px 10px;
+        max-width: calc(100% - 28px);
+        background: rgba(5, 5, 8, 0.68);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 12px;
+        backdrop-filter: blur(8px);
+      }
+
+      .title {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 13px;
+        color: var(--text);
+      }
+
+      .note {
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      figure {
+        margin: 0;
+      }
+
+      img.full {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center center;
+        filter: saturate(1.02) contrast(1.02);
+      }
+
+      .crop {
+        width: 100%;
+        height: 100%;
+        background-repeat: no-repeat;
+        background-color: #000;
+        background-size: auto;
+        image-rendering: auto;
+      }
+
+      .crop.rim {
+        background-image: url("./assets/final-color.png");
+        background-position: -390px -322px;
+        background-size: 1280px 720px;
+      }
+
+      .crop.porous {
+        background-image: url("./assets/final-color.png");
+        background-position: -520px -270px;
+        background-size: 1280px 720px;
+      }
+
+      .crop.plate-rim {
+        background-image: url("./assets/plate-final-color.png");
+        background-position: -390px -322px;
+        background-size: 1280px 720px;
+      }
+
+      .crop.plate-porous {
+        background-image: url("./assets/plate-final-color.png");
+        background-position: -520px -270px;
+        background-size: 1280px 720px;
+      }
+
+      .debug {
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        padding: 16px;
+        gap: 8px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.08));
+      }
+
+      .debug .swatch {
+        height: 154px;
+        border-radius: 14px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .debug .swatch img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .text-card {
+        min-height: 252px;
+        padding: 18px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 18px;
+      }
+
+      .text-card pre {
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 11px;
+        line-height: 1.5;
+        color: #e8e1d7;
+      }
+
+      .pillrow {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .pill {
+        padding: 6px 8px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.05);
+        color: var(--text);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 11px;
+      }
+
+      .emerald {
+        color: var(--accent2);
+      }
+
+      .smallgrid {
+        display: grid;
+        gap: 14px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .footer {
+        margin-top: 14px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.6;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="sheet">
+      <div class="hero">
+        <div>
+          <h1>Visual Witness Contact Sheet</h1>
+          <p class="lede">
+            Current `tile-local-visible` evidence for the porous dessert view: the fixed dessert witness is intact,
+            the renderer labels are truthful, and the contact sheet stays honest about the absent candidate sweep
+            surface instead of pretending the runtime can vary tile size or cap yet.
+          </p>
+        </div>
+        <aside class="meta">
+          <strong>Baseline</strong><br />
+          Plate label: `plate`<br />
+          Tile-local label: `tile-local-visible-gaussian-compositor`<br />
+          Tile refs after cap: `77,221`<br />
+          Tile-local / plate ratio: `1.2435832112604295`<br />
+          Crop rects: rim `390x322+500x115`, porous body `520x270+260x150`
+        </aside>
+      </div>
+
+      <section class="section">
+        <h2>Fixed View</h2>
+        <div class="grid">
+          <figure class="card large">
+            <div class="label">
+              <span class="title">Plate baseline final color</span>
+              <span class="note">Renderer label `plate`</span>
+            </div>
+            <img class="full" src="./assets/plate-final-color.png" alt="Plate baseline final color" />
+          </figure>
+
+          <figure class="card large">
+            <div class="label">
+              <span class="title">Tile-local visible final color</span>
+              <span class="note">Renderer label `tile-local-visible-gaussian-compositor`</span>
+            </div>
+            <img class="full" src="./assets/final-color.png" alt="Tile-local visible final color" />
+          </figure>
+
+          <figure class="card large debug">
+            <div class="label">
+              <span class="title">Coverage weight heatmap</span>
+              <span class="note">Debug label `tile-local-visible-debug-coverage-weight`</span>
+            </div>
+            <div class="swatch">
+              <img src="./assets/coverage-weight.png" alt="Coverage weight heatmap" />
+            </div>
+          </figure>
+
+          <figure class="card large debug">
+            <div class="label">
+              <span class="title">Accumulated alpha heatmap</span>
+              <span class="note">Debug label `tile-local-visible-debug-accumulated-alpha`</span>
+            </div>
+            <div class="swatch">
+              <img src="./assets/accumulated-alpha.png" alt="Accumulated alpha heatmap" />
+            </div>
+          </figure>
+
+          <figure class="card large debug">
+            <div class="label">
+              <span class="title">Transmittance heatmap</span>
+              <span class="note">Debug label `tile-local-visible-debug-transmittance`</span>
+            </div>
+            <div class="swatch">
+              <img src="./assets/transmittance.png" alt="Transmittance heatmap" />
+            </div>
+          </figure>
+
+          <figure class="card large debug">
+            <div class="label">
+              <span class="title">Tile-ref density heatmap</span>
+              <span class="note">Debug label `tile-local-visible-debug-tile-ref-count`</span>
+            </div>
+            <div class="swatch">
+              <img src="./assets/tile-ref-count.png" alt="Tile-ref density heatmap" />
+            </div>
+          </figure>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Crop Evidence</h2>
+        <div class="smallgrid">
+          <figure class="card">
+            <div class="label">
+              <span class="title">Rim band crop, final color</span>
+              <span class="note">`x=390,y=322,w=500,h=115`</span>
+            </div>
+            <div class="crop rim" aria-label="Rim band crop from final color"></div>
+          </figure>
+
+          <figure class="card">
+            <div class="label">
+              <span class="title">Rim band crop, plate baseline</span>
+              <span class="note">Same crop rect on `plate`</span>
+            </div>
+            <div class="crop plate-rim" aria-label="Rim band crop from plate baseline"></div>
+          </figure>
+
+          <figure class="card">
+            <div class="label">
+              <span class="title">Porous body crop, final color</span>
+              <span class="note">`x=520,y=270,w=260,h=150`</span>
+            </div>
+            <div class="crop porous" aria-label="Porous body crop from final color"></div>
+          </figure>
+
+          <figure class="card">
+            <div class="label">
+              <span class="title">Porous body crop, plate baseline</span>
+              <span class="note">Same crop rect on `plate`</span>
+            </div>
+            <div class="crop plate-porous" aria-label="Porous body crop from plate baseline"></div>
+          </figure>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Gap Card</h2>
+        <div class="grid">
+          <article class="card text-card" style="grid-column: span 2;">
+            <div>
+              <div class="pillrow" style="margin-bottom: 12px;">
+                <span class="pill emerald">Oakland crop unavailable</span>
+                <span class="pill">candidate matrix not yet exposed</span>
+              </div>
+              <pre>
+The Oakland foreground-slab fixture is only referenced by a diagnostic test path in this tree; there is no checked-in Oakland capture to include here.
+
+The tile/cap candidate set from the packet still needs a runtime or sweep surface before a true multi-pair contact sheet can be rendered. Until then, this sheet is a baseline witness, not a sweep result.
+              </pre>
+            </div>
+            <div class="footer">
+              The fixed dessert witness remains the durable evidence surface for the current renderer state.
+            </div>
+          </article>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
