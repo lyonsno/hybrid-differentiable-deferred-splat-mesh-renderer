@@ -19,6 +19,10 @@ import {
   buildStaticDessertWitnessPlan,
   classifyStaticDessertWitness,
 } from "./visual-smoke/static-dessert-witness.mjs";
+import {
+  buildTileBudgetSweepPlan,
+  classifyTileBudgetSweep,
+} from "./visual-smoke/tile-budget-sweep.mjs";
 import { classifyWitnessCapture } from "./visual-smoke/witness-diagnostics.mjs";
 
 async function main() {
@@ -80,6 +84,25 @@ async function main() {
       printTileLocalDiagnosticsSummary(diagnostics);
       if (!diagnostics.classification.closeable) {
         process.exitCode = 4;
+      }
+      return;
+    }
+
+    if (options.tileBudgetSweep) {
+      const sweep = await runTileBudgetSweep({
+        browser,
+        options,
+        baseUrl: url,
+        reportDir,
+        analysisPath,
+        reportPath,
+        generatedAt,
+      });
+      await writeFile(analysisPath, `${JSON.stringify(sweep, null, 2)}\n`);
+      await writeFile(reportPath, renderTileBudgetSweepReport(sweep));
+      printTileBudgetSweepSummary(sweep);
+      if (sweep.classification.summary.status !== "PASS") {
+        process.exitCode = 6;
       }
       return;
     }
@@ -226,6 +249,26 @@ async function runTileLocalDiagnostics({ browser, options, baseUrl, reportDir, a
     captures.push(await captureVisualSmoke({ browser, options, capture, reportDir }));
   }
   const classification = classifyTileLocalDiagnostics({ captures });
+
+  return {
+    generatedAt,
+    baseUrl,
+    analysisPath: path.relative(options.appRoot, analysisPath),
+    reportPath: path.relative(options.appRoot, reportPath),
+    options: publicOptions(options),
+    plan,
+    captures,
+    classification,
+  };
+}
+
+async function runTileBudgetSweep({ browser, options, baseUrl, reportDir, analysisPath, reportPath, generatedAt }) {
+  const plan = buildTileBudgetSweepPlan(baseUrl);
+  const captures = [];
+  for (const capture of plan) {
+    captures.push(await captureVisualSmoke({ browser, options, capture, reportDir }));
+  }
+  const classification = classifyTileBudgetSweep({ captures });
 
   return {
     generatedAt,
@@ -566,6 +609,63 @@ ${classification.summary.text}
 `;
 }
 
+function renderTileBudgetSweepReport(result) {
+  const classification = result.classification;
+  return `# Tile Budget Sweep Report
+
+- Status: ${classification.summary.status}
+- Generated: ${result.generatedAt}
+- Base URL: ${result.baseUrl}
+- Analysis JSON: \`${path.relative(path.dirname(result.reportPath), result.analysisPath)}\`
+
+## Metric Schema
+
+- schemaVersion: ${classification.schemaVersion}
+- tileSizePx: query/runtime tile edge in CSS pixels
+- maxRefsPerTile: per-tile retained contributor cap
+- tileCount: tileColumns * tileRows
+- projectedRefs: projected tile contributor refs before cap
+- retainedRefs: retained refs after cap/policy
+- droppedRefs: projectedRefs - retainedRefs when reported by diagnostics
+- cappedTiles: tiles whose projected refs exceeded maxRefsPerTile
+- buildTimeMs: CPU tile-local prepass build time
+- renderTimeMs: GPU render pass duration when timestamp queries are available
+
+## Candidates
+
+${classification.candidates
+  .map(
+    (candidate) => `### ${candidate.id}
+
+- Status: ${candidate.status}
+- Renderer label: ${candidate.rendererLabel || "not reported"}
+- Tile size/cap: ${candidate.metrics.tileSizePx}px / ${candidate.metrics.maxRefsPerTile}
+- Tiles: ${candidate.metrics.tileColumns}x${candidate.metrics.tileRows} (${candidate.metrics.tileCount})
+- Refs: projected ${candidate.metrics.projectedRefs}, retained ${candidate.metrics.retainedRefs}, dropped ${candidate.metrics.droppedRefs}
+- Capped tiles: ${candidate.metrics.cappedTiles}
+- Build/render ms: ${candidate.metrics.buildTimeMs} / ${candidate.metrics.renderTimeMs}
+- FPS: ${candidate.metrics.fps}
+`
+  )
+  .join("\n")}
+
+## Findings
+
+${classification.findings.length === 0 ? "- None" : classification.findings.map((finding) => `- ${finding.kind}: ${finding.summary}`).join("\n")}
+
+## Provisional Recommendation
+
+- Status: ${classification.recommendation.status}
+- Candidate IDs: ${classification.recommendation.candidateIds.join(", ") || "none"}
+- Boundary: metric-only; final visual default declaration waits for witness and G-buffer alignment lanes.
+- Text: ${classification.recommendation.text}
+
+## Summary
+
+${classification.summary.text}
+`;
+}
+
 function renderStaticDessertWitnessReport(result) {
   const classification = result.classification;
   const metrics = classification.metrics;
@@ -688,6 +788,16 @@ function printTileLocalDiagnosticsSummary(result) {
   }
 }
 
+function printTileBudgetSweepSummary(result) {
+  const classification = result.classification;
+  const plausible = classification.candidates
+    .filter((candidate) => candidate.status === "plausible")
+    .map((candidate) => candidate.id);
+  console.log(`${classification.summary.status}: ${classification.summary.text}`);
+  console.log(`Candidates: ${classification.candidates.length}; plausible: ${plausible.join(", ") || "none"}`);
+  console.log(`Report: ${result.reportPath}`);
+}
+
 function printStaticDessertWitnessSummary(result) {
   console.log(result.classification.summary.text);
   console.log(`report: ${result.reportPath}`);
@@ -790,6 +900,13 @@ function parseArgs(args) {
           options.settleMs = 5000;
         }
         break;
+      case "--tile-budget-sweep":
+        options.tileBudgetSweep = true;
+        options.requireRealSplat = true;
+        if (options.settleMs === 1000) {
+          options.settleMs = 5000;
+        }
+        break;
       case "--static-dessert-witness":
       case "--dessert-witness":
         options.staticDessertWitness = true;
@@ -829,6 +946,7 @@ function publicOptions(options) {
     imageThresholds: options.imageThresholds,
     tileLocalComparison: options.tileLocalComparison,
     tileLocalDiagnostics: options.tileLocalDiagnostics,
+    tileBudgetSweep: options.tileBudgetSweep,
     staticDessertWitness: options.staticDessertWitness,
   };
 }
@@ -874,6 +992,7 @@ Options:
   --settle-ms <ms>                Wait after canvas sizing before screenshot. Defaults to 1000, or 5000 for tile-local comparison.
   --tile-local-comparison         Capture plate, renderer=tile-local, and renderer=tile-local-visible in one report.
   --tile-local-diagnostics        Capture tile-local-visible diagnostic heatmaps and compact evidence in one report.
+  --tile-budget-sweep             Capture tile-local-visible tile-ref evidence for the packet tile/cap sweep matrix.
   --static-dessert-witness        Capture fixed dessert final color plus tile-local debug evidence in one report.
 `);
 }
