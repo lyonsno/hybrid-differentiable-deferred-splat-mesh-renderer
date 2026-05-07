@@ -15,6 +15,11 @@ test("main wires a smoke-toggleable tile-local prepass beside the plate fallback
   assert.match(source, /tileLocalUnsafe/);
   assert.match(source, /tileLocalDisabledReason/);
   assert.match(source, /maxTileEntries/);
+  assert.match(source, /requestedRenderer/);
+  assert.match(source, /effectiveRenderer/);
+  assert.match(source, /requested renderer:/);
+  assert.match(source, /effective renderer:/);
+  assert.match(source, /tile-local budget:/);
   assert.match(source, /plate\+tile-local-prepass/);
   assert.match(source, /createSplatPlateRenderer/);
   assert.doesNotMatch(source, /tileCoverageWeightData\[splatId\]\s*=\s*1/);

@@ -620,12 +620,14 @@ async function main() {
 
     // Stats overlay
     const alphaSummary = scene.alphaDensityState.summary;
+    const requestedRenderer = scene.rendererMode;
     const baseRendererLabel = labelRendererMode(
       scene.rendererMode,
       scene.tileLocalState,
       scene.tileLocalDisabledReason,
       scene.tileLocalLastSkipReason
     );
+    const effectiveRenderer = baseRendererLabel;
     // In shape-witness mode, prefix the renderer label so the capture harness sees "shape-witness".
     const rendererLabel = shapeWitnessFixtureId !== null
       ? `shape-witness`
@@ -633,9 +635,20 @@ async function main() {
     const splatKindLabel = shapeWitnessFixtureId !== null
       ? `shape-witness (${shapeWitnessFixtureId})`
       : "real Scaniverse splats";
-    let statsText = `${width}×${height} | ${displayFps} fps | ${scene.count.toLocaleString()} ${splatKindLabel} | renderer: ${rendererLabel} | sort: ${SORT_BACKEND} | alpha: ${alphaSummary.accountingMode} density ${alphaSummary.compensatedSplatCount.toLocaleString()} splats/${alphaSummary.hotTileCount} tiles`;
+    const tileLocalBudget = tileLocalBudgetEvidence(
+      scene.tileLocalState,
+      scene.tileLocalDisabledReason,
+      scene.tileLocalLastSkipReason,
+      width,
+      height
+    );
+    let statsText = `${width}×${height} | ${displayFps} fps | ${scene.count.toLocaleString()} ${splatKindLabel} | requested renderer: ${requestedRenderer} | effective renderer: ${effectiveRenderer} | renderer: ${rendererLabel} | sort: ${SORT_BACKEND} | alpha: ${alphaSummary.accountingMode} density ${alphaSummary.compensatedSplatCount.toLocaleString()} splats/${alphaSummary.hotTileCount} tiles`;
     if (scene.tileLocalState) {
       statsText += ` | tile-local: ${scene.tileLocalState.plan.tileColumns}x${scene.tileLocalState.plan.tileRows} tiles/${scene.tileLocalState.tileEntryCount} refs`;
+      const budgetText = formatTileLocalBudgetLabel(tileLocalBudget);
+      if (budgetText) {
+        statsText += ` | tile-local budget: ${budgetText}`;
+      }
       statsText += ` | tile-order: ${TILE_LOCAL_ORDERING_BACKEND}`;
       const freshness = tileLocalPresentationFreshness(
         scene.tileLocalState,
@@ -651,11 +664,11 @@ async function main() {
         statsText += ` | tile-debug: ${scene.tileLocalState.debugMode}`;
       }
     }
-    if (scene.tileLocalDisabledReason) {
-      statsText += ` | ${scene.tileLocalDisabledReason}`;
-    }
-    if (scene.tileLocalLastSkipReason) {
-      statsText += ` | tile-local skipped: ${scene.tileLocalLastSkipReason}`;
+    if (!scene.tileLocalState) {
+      const budgetText = formatTileLocalBudgetLabel(tileLocalBudget);
+      if (budgetText) {
+        statsText += ` | tile-local budget: ${budgetText}`;
+      }
     }
     if (gpuTimings.size > 0) {
       for (const [label, ms] of gpuTimings) {
@@ -664,6 +677,8 @@ async function main() {
     }
     statsEl.textContent = statsText;
     exposeTileLocalRuntimeEvidence(
+      requestedRenderer,
+      effectiveRenderer,
       rendererLabel,
       displayFps,
       scene.tileLocalState,
@@ -672,7 +687,8 @@ async function main() {
       scene.tileLocalLastSkipSignature,
       now,
       width,
-      height
+      height,
+      tileLocalBudget
     );
 
     if (shouldContinueRendering({
@@ -1133,6 +1149,8 @@ function refreshTileLocalDiagnostics(state: TileLocalSceneState): TileLocalDiagn
 }
 
 function exposeTileLocalRuntimeEvidence(
+  requestedRenderer: RendererMode,
+  effectiveRenderer: string,
   rendererLabel: string,
   fps: number,
   tileLocalState: TileLocalSceneState | null,
@@ -1141,7 +1159,8 @@ function exposeTileLocalRuntimeEvidence(
   tileLocalLastSkipSignature: string | null,
   nowMs: number,
   viewportWidth: number,
-  viewportHeight: number
+  viewportHeight: number,
+  tileLocalBudget: ReturnType<typeof tileLocalBudgetEvidence>
 ): void {
   const runtimeWindow = window as unknown as {
     __MESH_SPLAT_SMOKE__?: Record<string, unknown>;
@@ -1151,38 +1170,57 @@ function exposeTileLocalRuntimeEvidence(
   const freshness = tileLocalState
     ? tileLocalPresentationFreshness(tileLocalState, tileLocalLastSkipReason, tileLocalLastSkipSignature, nowMs)
     : undefined;
-  const budget = tileLocalBudgetEvidence(tileLocalLastSkipReason, viewportWidth, viewportHeight);
   const tileLocalStatus = tileLocalRuntimeStatus({
     tileLocalState,
     tileLocalDisabledReason,
     tileLocalLastSkipReason,
     freshness,
   });
+  const tileLocalEvidence: Record<string, unknown> = {
+    status: tileLocalStatus,
+    requestedRenderer,
+    effectiveRenderer,
+    rendererLabel,
+    tileSizePx: tileLocalBudget.tileSizePx,
+    tileColumns: tileLocalBudget.currentTileColumns,
+    tileRows: tileLocalBudget.currentTileRows,
+    maxRefsPerTile: tileLocalBudget.maxRefsPerTile,
+    maxProjectedRefs: tileLocalBudget.maxProjectedRefs,
+    projectedRefs: tileLocalBudget.projectedRefs,
+    retainedRefs: tileLocalBudget.retainedRefs,
+    droppedRefs: tileLocalBudget.droppedRefs,
+    skippedProjectedRefs: tileLocalBudget.skippedProjectedRefs,
+    skipReason: tileLocalBudget.skipReason,
+    overflowReasons: tileLocalBudget.overflowReasons,
+  };
+  if (tileLocalState && diagnostics) {
+    tileLocalEvidence.refs = diagnostics.tileRefs.total;
+    tileLocalEvidence.allocatedRefs = tileLocalState.tileEntryCount;
+    tileLocalEvidence.orderingBackend = TILE_LOCAL_ORDERING_BACKEND;
+    tileLocalEvidence.debugMode = tileLocalState.debugMode;
+    tileLocalEvidence.freshness = freshness;
+    tileLocalEvidence.budget = {
+      ...tileLocalBudget,
+      status: tileLocalStatus,
+    };
+    tileLocalEvidence.budgetDiagnostics = tileLocalState.budgetDiagnostics;
+    tileLocalEvidence.diagnostics = diagnostics;
+  } else {
+    tileLocalEvidence.budget = {
+      ...tileLocalBudget,
+      status: tileLocalStatus,
+    };
+  }
   runtimeWindow.__MESH_SPLAT_SMOKE__ = {
     ...(runtimeWindow.__MESH_SPLAT_SMOKE__ ?? {}),
+    requestedRenderer,
+    effectiveRenderer,
     rendererLabel,
     fps,
     tileLocalStatus,
     tileLocalDisabledReason,
     tileLocalLastSkipReason,
-    tileLocal: tileLocalState && diagnostics
-      ? {
-          status: tileLocalStatus,
-          refs: diagnostics.tileRefs.total,
-          allocatedRefs: tileLocalState.tileEntryCount,
-          tileColumns: tileLocalState.plan.tileColumns,
-          tileRows: tileLocalState.plan.tileRows,
-          orderingBackend: TILE_LOCAL_ORDERING_BACKEND,
-          debugMode: tileLocalState.debugMode,
-          freshness,
-          budget: {
-            ...budget,
-            status: tileLocalStatus,
-          },
-          budgetDiagnostics: tileLocalState.budgetDiagnostics,
-          diagnostics,
-        }
-      : undefined,
+    tileLocal: tileLocalEvidence,
   };
   if (diagnostics) {
     runtimeWindow.__MESH_SPLAT_TILE_LOCAL_DIAGNOSTICS__ = diagnostics;
@@ -1235,23 +1273,59 @@ function tileLocalPresentationFreshness(
 }
 
 function tileLocalBudgetEvidence(
+  tileLocalState: TileLocalSceneState | null,
+  tileLocalDisabledReason: string | null,
   tileLocalLastSkipReason: string | null,
   viewportWidth: number,
   viewportHeight: number
 ) {
-  const parsed = parseTileLocalBudgetSkipReason(tileLocalLastSkipReason);
+  const parsed = parseTileLocalBudgetSkipReason(tileLocalLastSkipReason ?? tileLocalDisabledReason);
+  const diagnostics = tileLocalState?.budgetDiagnostics ?? null;
+  const arenaRefs = diagnostics?.arenaRefs ?? null;
+  const projectedBudgetReason = diagnostics?.overflowReasons?.find((reason) => reason.reason === "projected-ref-budget");
   return {
-    status: parsed ? "skipped" : "current",
-    tileSizePx: TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX,
+    status: tileLocalDisabledReason
+      ? "budget-disabled"
+      : tileLocalLastSkipReason
+        ? "stale-cache"
+        : tileLocalState
+          ? "current"
+          : "not-applicable",
+    tileSizePx: tileLocalState?.plan.tileSizePx ?? TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX,
     currentViewportWidth: viewportWidth,
     currentViewportHeight: viewportHeight,
     currentTileColumns: tileColumnsForViewport(viewportWidth),
     currentTileRows: tileRowsForViewport(viewportHeight),
-    maxProjectedRefs: parsed?.maxProjectedRefs ?? TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES,
+    maxRefsPerTile: arenaRefs?.maxRetainedRefsPerTile ?? null,
+    maxProjectedRefs: projectedBudgetReason?.maxProjectedRefs ?? parsed?.maxProjectedRefs ?? null,
+    projectedRefs: arenaRefs?.projected ?? null,
+    retainedRefs: arenaRefs?.retained ?? null,
+    droppedRefs: arenaRefs?.dropped ?? null,
     skippedProjectedRefs: parsed?.skippedProjectedRefs ?? null,
-    skipReason: tileLocalLastSkipReason,
-    overflowReasons: parsed ? ["projected-ref-budget"] : [],
+    skipReason: tileLocalLastSkipReason ?? tileLocalDisabledReason ?? null,
+    overflowReasons: diagnostics?.overflowReasons?.map((reason) => reason.reason) ?? (parsed ? ["projected-ref-budget"] : []),
   };
+}
+
+function formatTileLocalBudgetLabel(budget: ReturnType<typeof tileLocalBudgetEvidence>): string {
+  if (budget.projectedRefs !== null && budget.retainedRefs !== null && budget.droppedRefs !== null) {
+    const capParts = [];
+    if (budget.maxProjectedRefs !== null) {
+      capParts.push(`cap ${budget.maxProjectedRefs.toLocaleString()}`);
+    }
+    if (budget.maxRefsPerTile !== null) {
+      capParts.push(`per-tile cap ${budget.maxRefsPerTile.toLocaleString()}`);
+    }
+    const suffix = capParts.length > 0 ? ` | ${capParts.join(" | ")}` : "";
+    return `projected ${budget.projectedRefs.toLocaleString()} retained ${budget.retainedRefs.toLocaleString()} dropped ${budget.droppedRefs.toLocaleString()}${suffix}${budget.skipReason ? ` | skip ${budget.skipReason}` : ""}`;
+  }
+  if (budget.skippedProjectedRefs !== null && budget.maxProjectedRefs !== null) {
+    return `skipped ${budget.skippedProjectedRefs.toLocaleString()} projected refs | cap ${budget.maxProjectedRefs.toLocaleString()}${budget.skipReason ? ` | skip ${budget.skipReason}` : ""}`;
+  }
+  if (budget.skipReason) {
+    return budget.skipReason;
+  }
+  return "";
 }
 
 function parseTileLocalBudgetSkipReason(reason: string | null): { skippedProjectedRefs: number; maxProjectedRefs: number } | null {
