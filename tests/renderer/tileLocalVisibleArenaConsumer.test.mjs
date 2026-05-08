@@ -63,7 +63,7 @@ test("visible bridge consumes contributor arena ordering, coverage, and opacity 
   });
 
   assert.equal(bridge.retainedTileEntryCount, 2);
-  assert.deepEqual(Array.from(bridge.tileHeaders), [0, 2, 0, 0]);
+  assert.deepEqual(Array.from(bridge.tileHeaders), [0, 2, 2, 0]);
   assert.deepEqual(Array.from(bridge.tileRefs.slice(0, 8)), [2, 202, 0, 0, 1, 101, 0, 1]);
   assert.deepEqual(Array.from(bridge.tileRefOrderingKeys), [41, 7, 0xffffffff]);
   assertClose(bridge.tileCoverageWeights[0], 0.75, "first arena coverage");

@@ -60,6 +60,7 @@ export function classifyTileLocalDiagnostics({ captures = [] } = {}) {
   const transmittanceDiagnostics = diagnostics(transmittanceCapture);
   const refDiagnostics = diagnostics(refCapture);
   const refTileLocal = tileLocalEvidence(refCapture);
+  const arenaRuntime = arenaRuntimeEvidence(refCapture);
   const budgetDiagnostics = refTileLocal.budgetDiagnostics ?? {};
   const arenaRefs = budgetDiagnostics.arenaRefs ?? {};
   const heat = budgetDiagnostics.heat ?? {};
@@ -87,6 +88,7 @@ export function classifyTileLocalDiagnostics({ captures = [] } = {}) {
     droppedArenaRefs: finiteNumber(arenaRefs.dropped) ?? 0,
     cpuProjectedRefsPerTile: finiteNumber(heat.cpu?.projectedRefsPerTile) ?? 0,
     cpuBuildDurationMs: finiteNumber(heat.cpu?.buildDurationMs) ?? 0,
+    arenaRuntime,
     gpuRetainedRefBufferBytes: finiteNumber(heat.gpu?.retainedRefBufferBytes) ?? 0,
     gpuAlphaParamBufferBytes: finiteNumber(heat.gpu?.alphaParamBufferBytes) ?? 0,
   };
@@ -135,6 +137,11 @@ function diagnostics(capture = {}) {
 function tileLocalEvidence(capture = {}) {
   const tileLocal = capture.pageEvidence?.tileLocal;
   return tileLocal && typeof tileLocal === "object" ? tileLocal : {};
+}
+
+function arenaRuntimeEvidence(capture = {}) {
+  const arenaRuntime = capture.pageEvidence?.arenaRuntime;
+  return arenaRuntime && typeof arenaRuntime === "object" ? arenaRuntime : {};
 }
 
 function presentationStatus(capture = {}) {

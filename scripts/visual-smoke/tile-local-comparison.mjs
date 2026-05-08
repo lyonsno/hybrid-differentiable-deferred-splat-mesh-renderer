@@ -99,6 +99,7 @@ export function classifyTileLocalComparison({
   }
 
   const metrics = comparisonMetrics({ plate, prepass, visible });
+  const arena = summarizeTileLocalArenaWitness({ plate, prepass, visible });
   if (Number.isFinite(metrics.fps.visibleToPlateRatio) && metrics.fps.visibleToPlateRatio < minVisibleToPlateFpsRatio) {
     findings.push(
       finding(
@@ -117,7 +118,10 @@ export function classifyTileLocalComparison({
         ? "PASS: plate, silent prepass, and visible tile-local compositor evidence are distinguishable without performance collapse."
         : `FAIL: ${findings[0]?.summary ?? "tile-local comparison criteria were not satisfied"}`,
     },
-    metrics,
+    metrics: {
+      ...metrics,
+      ...arena,
+    },
     findings,
   };
 }
@@ -131,12 +135,21 @@ export function extractTileLocalPageMetrics(pageEvidence = {}) {
     ?? parseTileLocalBudgetGuardrailReason(statsText);
   const parsedBudget = parseTileLocalBudget(statsText);
   const tileLocal = pageEvidence.tileLocal && typeof pageEvidence.tileLocal === "object" ? pageEvidence.tileLocal : {};
+  const arenaRuntime = pageEvidence.arenaRuntime && typeof pageEvidence.arenaRuntime === "object" ? pageEvidence.arenaRuntime : {};
   const freshness = tileLocal.freshness
     ?? (/stale-cache/i.test(statsText) ? { status: "stale-cache" } : undefined);
   return {
     rendererLabel: pageEvidence.rendererLabel ?? parseRendererLabel(statsText),
     fps: finiteNumber(pageEvidence.fps) ?? parseFps(statsText),
     tileLocalLastSkipReason: skipReason,
+    arenaRuntime: {
+      requestedArenaBackend: optionalString(arenaRuntime.requestedArenaBackend),
+      effectiveArenaBackend: optionalString(arenaRuntime.effectiveArenaBackend),
+      cpuBuildDurationMs: finiteNumber(arenaRuntime.cpuBuildDurationMs),
+      gpuDispatchDurationMs: finiteNumber(arenaRuntime.gpuDispatchDurationMs),
+      unavailableReason: optionalString(arenaRuntime.unavailableReason),
+      skippedReason: optionalString(arenaRuntime.skippedReason),
+    },
     tileLocal: {
       ...tileLocal,
       refs: finiteNumber(tileLocal.refs) ?? parsedGrid.refs,
@@ -154,6 +167,25 @@ export function extractTileLocalPageMetrics(pageEvidence = {}) {
           ?? skipReason,
       },
     },
+  };
+}
+
+export function summarizeTileLocalArenaWitness({
+  plate,
+  prepass,
+  visible,
+} = {}) {
+  const presentation = {
+    plate: capturePresentationState(plate),
+    prepass: capturePresentationState(prepass),
+    visible: capturePresentationState(visible),
+  };
+  return {
+    arenaBackend: visibleArenaBackend(visible),
+    cpuBuildDurationMs: visibleCpuBuildDurationMs(visible),
+    gpuDispatchDurationMs: visibleGpuDispatchDurationMs(visible),
+    presentation,
+    artifactMovement: summarizeArtifactMovement({ plate, visible }),
   };
 }
 
@@ -236,6 +268,95 @@ function rendererLabelMatches(actual, expected) {
 
 function rendererLabel(capture = {}) {
   return String(capture.pageEvidence?.rendererLabel ?? "").trim();
+}
+
+function capturePresentationState(capture = {}) {
+  const status = String(
+    capture.pageEvidence?.tileLocalStatus ??
+      capture.pageEvidence?.tileLocal?.freshness?.status ??
+      ""
+  ).trim();
+  if (status === "budget-disabled") return "fallback";
+  if (status === "stale-cache") return "stale";
+  if (status === "current") return "current";
+  if (capture.pageEvidence?.tileLocalDisabledReason || capture.pageEvidence?.tileLocalLastSkipReason) {
+    return "fallback";
+  }
+  if (!status) return "not-applicable";
+  return status;
+}
+
+function visibleArenaBackend(capture = {}) {
+  return visibleGpuDispatchDurationMs(capture) === undefined ? "gpu-unavailable" : "gpu";
+}
+
+function visibleCpuBuildDurationMs(capture = {}) {
+  const heat = capture?.pageEvidence?.tileLocal?.budgetDiagnostics?.heat;
+  return finiteNumber(heat?.cpu?.buildDurationMs);
+}
+
+function visibleGpuDispatchDurationMs(capture = {}) {
+  const heat = capture?.pageEvidence?.tileLocal?.budgetDiagnostics?.heat;
+  return finiteNumber(heat?.gpu?.dispatchDurationMs);
+}
+
+function summarizeArtifactMovement({ plate, visible } = {}) {
+  if (!plate || !visible) {
+    return {
+      status: "not-measured",
+      summary: "Missing plate or visible capture.",
+      visibleChangedPixelRatio: finiteNumber(visible?.imageAnalysis?.changedPixelRatio) ?? undefined,
+      plateChangedPixelRatio: finiteNumber(plate?.imageAnalysis?.changedPixelRatio) ?? undefined,
+      changedPixelDelta: undefined,
+      visibleToPlateChangedPixelRatio: undefined,
+    };
+  }
+
+  const plateChangedPixelRatio = finiteNumber(plate.imageAnalysis?.changedPixelRatio) ?? 0;
+  const visibleChangedPixelRatio = finiteNumber(visible.imageAnalysis?.changedPixelRatio) ?? 0;
+  const changedPixelDelta = visibleChangedPixelRatio - plateChangedPixelRatio;
+  const visibleToPlateChangedPixelRatio = ratio(visibleChangedPixelRatio, plateChangedPixelRatio);
+  const visibleLabel = rendererLabel(visible);
+  const visibleBlockRatio = bridgeBlockRatio(visible);
+  const visibleDistinctColors = distinctColorCount(visible);
+
+  if (sameFingerprint(plate, visible)) {
+    return {
+      status: "unchanged",
+      summary: "Visible capture matches the plate baseline fingerprint.",
+      visibleChangedPixelRatio,
+      plateChangedPixelRatio,
+      changedPixelDelta,
+      visibleToPlateChangedPixelRatio,
+    };
+  }
+
+  if (
+    visibleLabel.includes("stale-cache") ||
+    visibleLabel.includes("bridge-diagnostic") ||
+    visibleBlockRatio >= 0.5 ||
+    visibleDistinctColors < 256
+  ) {
+    return {
+      status: "regressed",
+      summary:
+        `Visible capture still shows tile-cell/block artifacts ` +
+        `(bridge ratio ${formatRatio(visibleBlockRatio)}, ${visibleDistinctColors} distinct colors).`,
+      visibleChangedPixelRatio,
+      plateChangedPixelRatio,
+      changedPixelDelta,
+      visibleToPlateChangedPixelRatio,
+    };
+  }
+
+  return {
+    status: "moved",
+    summary: `Visible capture diverged from plate by ${formatRatio(changedPixelDelta)} changed-pixel ratio.`,
+    visibleChangedPixelRatio,
+    plateChangedPixelRatio,
+    changedPixelDelta,
+    visibleToPlateChangedPixelRatio,
+  };
 }
 
 function fps(capture = {}) {
@@ -324,4 +445,8 @@ function finiteNumber(value) {
   }
   const number = Number(value);
   return Number.isFinite(number) ? number : undefined;
+}
+
+function optionalString(value) {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }

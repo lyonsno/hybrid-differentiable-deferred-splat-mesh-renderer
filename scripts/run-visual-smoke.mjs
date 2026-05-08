@@ -501,6 +501,13 @@ ${result.captures
 - Visible tile-local FPS: ${metrics.fps.visible} (${formatMetricRatio(metrics.fps.visibleToPlateRatio)} x plate)
 - Prepass tile refs: ${metrics.tileRefs.prepass}
 - Visible tile refs: ${metrics.tileRefs.visible}
+- Arena backend: ${metrics.arenaBackend}
+- CPU build duration ms: ${metrics.cpuBuildDurationMs ?? "not reported"}
+- GPU dispatch duration ms: ${metrics.gpuDispatchDurationMs ?? "gpu-unavailable"}
+- Plate presentation state: ${metrics.presentation?.plate || "not-applicable"}
+- Silent prepass presentation state: ${metrics.presentation?.prepass || "not-applicable"}
+- Visible presentation state: ${metrics.presentation?.visible || "not-applicable"}
+- Artifact movement: ${metrics.artifactMovement?.status || "not-measured"}${metrics.artifactMovement?.summary ? ` (${metrics.artifactMovement.summary})` : ""}
 
 ## Findings
 
@@ -549,8 +556,14 @@ ${result.captures
 - Retained arena refs: ${metrics.retainedArenaRefs}
 - Dropped arena refs: ${metrics.droppedArenaRefs}
 - Overflow reasons: ${metrics.overflowReasons?.length ? metrics.overflowReasons.join(", ") : "none"}
-- CPU projected refs per tile: ${metrics.cpuProjectedRefsPerTile}
-- CPU build duration ms: ${metrics.cpuBuildDurationMs}
+- Tile-local CPU projected refs per tile: ${metrics.cpuProjectedRefsPerTile}
+- Tile-local CPU build duration ms: ${metrics.cpuBuildDurationMs}
+- Arena requested backend: ${metrics.arenaRuntime?.requestedArenaBackend || "not reported"}
+- Arena effective backend: ${metrics.arenaRuntime?.effectiveArenaBackend || "not reported"}
+- Arena CPU build duration ms: ${metrics.arenaRuntime?.cpuBuildDurationMs ?? "not reported"}
+- Arena GPU dispatch duration ms: ${metrics.arenaRuntime?.gpuDispatchDurationMs ?? "not reported"}
+- Unavailable reason: ${metrics.arenaRuntime?.unavailableReason || "not reported"}
+- Skipped reason: ${metrics.arenaRuntime?.skippedReason || "not reported"}
 - GPU retained ref buffer bytes: ${metrics.gpuRetainedRefBufferBytes}
 - GPU alpha param buffer bytes: ${metrics.gpuAlphaParamBufferBytes}
 - Estimated max accumulated alpha: ${metrics.estimatedMaxAccumulatedAlpha}

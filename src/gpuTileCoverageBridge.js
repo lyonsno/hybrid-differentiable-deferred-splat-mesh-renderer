@@ -41,6 +41,10 @@ export function buildGpuTileCoverageBridge(coverage, options = {}) {
   tileRefSourceOpacities.fill(Number.NaN);
   const tileRefShapeParams = new Float32Array(Math.max(0, tileEntryCount * 8));
   const splatsByIndex = new Map();
+  const sourceTileEntries = Array.isArray(contributorArena?.projectedContributors)
+    ? contributorArena.projectedContributors
+    : normalizedContributorArena ? normalizedContributorArena.records : coverage.tileEntries;
+  const projectedCountsByTile = countProjectedTileEntries(sourceTileEntries, tileCount);
 
   for (const splat of coverage.splats) {
     splatsByIndex.set(splat.splatIndex, splat);
@@ -62,7 +66,7 @@ export function buildGpuTileCoverageBridge(coverage, options = {}) {
     const entry = retainedTileEntries[refIndex];
     if (entry.tileIndex !== currentTileIndex) {
       if (currentTileIndex >= 0) {
-        writeTileHeader(tileHeaders, currentTileIndex, firstRefIndex, refCount);
+        writeTileHeader(tileHeaders, currentTileIndex, firstRefIndex, refCount, projectedCountsByTile[currentTileIndex] ?? refCount);
       }
       currentTileIndex = entry.tileIndex;
       firstRefIndex = refIndex;
@@ -85,11 +89,8 @@ export function buildGpuTileCoverageBridge(coverage, options = {}) {
   }
 
   if (currentTileIndex >= 0) {
-    writeTileHeader(tileHeaders, currentTileIndex, firstRefIndex, refCount);
+    writeTileHeader(tileHeaders, currentTileIndex, firstRefIndex, refCount, projectedCountsByTile[currentTileIndex] ?? refCount);
   }
-  const sourceTileEntries = Array.isArray(contributorArena?.projectedContributors)
-    ? contributorArena.projectedContributors
-    : normalizedContributorArena ? normalizedContributorArena.records : coverage.tileEntries;
   const tileRefCustody = summarizeTileRefCustody({
     tileEntries: sourceTileEntries,
     retainedTileEntryCount,
@@ -377,6 +378,16 @@ function summarizeTileRefCustody({
     headerRefCount,
     headerAccountingMatches: headerRefCount === retainedTileEntryCount,
   };
+}
+
+function countProjectedTileEntries(tileEntries, tileCount) {
+  const projectedCounts = new Uint32Array(Math.max(0, tileCount));
+  for (const entry of tileEntries) {
+    if (Number.isInteger(entry.tileIndex) && entry.tileIndex >= 0 && entry.tileIndex < tileCount) {
+      projectedCounts[entry.tileIndex] += 1;
+    }
+  }
+  return projectedCounts;
 }
 
 function retainTileEntries(tileEntries, maxRefsPerTile) {
@@ -951,15 +962,15 @@ export function createGpuTileCoverageBridgeBuffers(device, bridge) {
   };
 }
 
-function writeTileHeader(tileHeaders, tileIndex, firstRefIndex, refCount) {
+function writeTileHeader(tileHeaders, tileIndex, firstRefIndex, refCount, projectedCount = refCount) {
   const base = tileIndex * 4;
   if (base + 3 >= tileHeaders.length) {
     throw new Error("tile index exceeds tile header storage");
   }
   tileHeaders[base] = firstRefIndex;
   tileHeaders[base + 1] = refCount;
-  tileHeaders[base + 2] = 0;
-  tileHeaders[base + 3] = 0;
+  tileHeaders[base + 2] = projectedCount;
+  tileHeaders[base + 3] = Math.max(0, projectedCount - refCount);
 }
 
 function padUint32Storage(data) {

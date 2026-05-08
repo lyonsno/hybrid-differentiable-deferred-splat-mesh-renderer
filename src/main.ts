@@ -108,6 +108,7 @@ const ALPHA_DENSITY_SETTLE_MS = 160;
 const ALPHA_DENSITY_MODE = selectedAlphaDensityMode();
 const RENDERER_MODE = selectedRendererMode();
 const TILE_LOCAL_DEBUG_MODE = selectedTileLocalDebugMode();
+const REQUESTED_ARENA_BACKEND = selectedArenaBackend();
 const TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX = 6;
 const TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES = 1;
 const TILE_LOCAL_PROVISIONAL_MAX_SPLATS = 150_000;
@@ -167,6 +168,16 @@ interface TileLocalSceneState {
   lastCompositedAtMs: number;
   lastCompositedFrame: number;
   lastCompositedSignature: string;
+}
+
+interface ArenaRuntimeEvidence {
+  requestedArenaBackend: "cpu" | "gpu";
+  effectiveArenaBackend: "cpu";
+  cpuBuildDurationMs?: number;
+  gpuDispatchDurationMs?: number;
+  unavailableReason?: string;
+  skippedReason?: string;
+  fallbackReason?: string;
 }
 
 type RendererMode = "plate" | "tile-local" | "tile-local-visible";
@@ -651,6 +662,29 @@ async function main() {
         statsText += ` | tile-debug: ${scene.tileLocalState.debugMode}`;
       }
     }
+    const arenaRuntime = buildArenaRuntimeEvidence(
+      REQUESTED_ARENA_BACKEND,
+      scene.tileLocalState,
+      scene.tileLocalDisabledReason,
+      scene.tileLocalLastSkipReason
+    );
+    statsText += ` | arena requested: ${arenaRuntime.requestedArenaBackend}`;
+    statsText += ` | arena effective: ${arenaRuntime.effectiveArenaBackend}`;
+    if (arenaRuntime.cpuBuildDurationMs !== undefined) {
+      statsText += ` | arena CPU build: ${arenaRuntime.cpuBuildDurationMs.toFixed(3)}ms`;
+    }
+    if (arenaRuntime.gpuDispatchDurationMs !== undefined) {
+      statsText += ` | arena GPU dispatch: ${arenaRuntime.gpuDispatchDurationMs.toFixed(3)}ms`;
+    }
+    if (arenaRuntime.unavailableReason) {
+      statsText += ` | arena unavailable: ${arenaRuntime.unavailableReason}`;
+    }
+    if (arenaRuntime.skippedReason) {
+      statsText += ` | arena skipped: ${arenaRuntime.skippedReason}`;
+    }
+    if (arenaRuntime.fallbackReason) {
+      statsText += ` | arena fallback: ${arenaRuntime.fallbackReason}`;
+    }
     if (scene.tileLocalDisabledReason) {
       statsText += ` | ${scene.tileLocalDisabledReason}`;
     }
@@ -1016,6 +1050,12 @@ function selectedTileLocalUnsafeMode(): boolean {
   return params.has("tileLocalUnsafe") || params.get("tileLocalBudget") === "unsafe";
 }
 
+function selectedArenaBackend(): "cpu" | "gpu" {
+  const params = new URLSearchParams(window.location.search);
+  const requested = params.get("arenaBackend") ?? params.get("requestedArenaBackend");
+  return requested === "gpu" ? "gpu" : "cpu";
+}
+
 function selectedRendererMode(): RendererMode {
   const params = new URLSearchParams(window.location.search);
   if (params.get("renderer") === "tile-local-visible") {
@@ -1158,6 +1198,12 @@ function exposeTileLocalRuntimeEvidence(
     tileLocalLastSkipReason,
     freshness,
   });
+  const arenaRuntime = buildArenaRuntimeEvidence(
+    REQUESTED_ARENA_BACKEND,
+    tileLocalState,
+    tileLocalDisabledReason,
+    tileLocalLastSkipReason
+  );
   runtimeWindow.__MESH_SPLAT_SMOKE__ = {
     ...(runtimeWindow.__MESH_SPLAT_SMOKE__ ?? {}),
     rendererLabel,
@@ -1165,6 +1211,7 @@ function exposeTileLocalRuntimeEvidence(
     tileLocalStatus,
     tileLocalDisabledReason,
     tileLocalLastSkipReason,
+    arenaRuntime,
     tileLocal: tileLocalState && diagnostics
       ? {
           status: tileLocalStatus,
@@ -1189,6 +1236,29 @@ function exposeTileLocalRuntimeEvidence(
   } else {
     delete runtimeWindow.__MESH_SPLAT_TILE_LOCAL_DIAGNOSTICS__;
   }
+}
+
+function buildArenaRuntimeEvidence(
+  requestedArenaBackend: "cpu" | "gpu",
+  tileLocalState: TileLocalSceneState | null,
+  tileLocalDisabledReason: string | null,
+  tileLocalLastSkipReason: string | null
+): ArenaRuntimeEvidence {
+  const cpuBuildDurationMs = tileLocalState?.budgetDiagnostics.heat.cpu.buildDurationMs;
+  return {
+    requestedArenaBackend,
+    effectiveArenaBackend: "cpu",
+    cpuBuildDurationMs: typeof cpuBuildDurationMs === "number" && Number.isFinite(cpuBuildDurationMs)
+      ? cpuBuildDurationMs
+      : undefined,
+    gpuDispatchDurationMs: undefined,
+    unavailableReason: requestedArenaBackend === "gpu" ? "gpu contributor arena runtime not promoted" : undefined,
+    skippedReason: tileLocalLastSkipReason ?? tileLocalDisabledReason ?? undefined,
+    fallbackReason:
+      requestedArenaBackend === "gpu"
+        ? "requested gpu arena backend fell back to the CPU bridge"
+        : undefined,
+  };
 }
 
 function tileLocalRuntimeStatus({

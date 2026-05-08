@@ -6,6 +6,7 @@ import {
   buildTileLocalDiagnosticPlan,
   classifyTileLocalDiagnostics,
 } from "../../scripts/visual-smoke/tile-local-diagnostics.mjs";
+import { extractTileLocalPageMetrics } from "../../scripts/visual-smoke/tile-local-comparison.mjs";
 
 test("tile-local diagnostic plan captures alpha, transmittance, coverage, ref density, and conic shape URLs", () => {
   const plan = buildTileLocalDiagnosticPlan("http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json");
@@ -116,6 +117,41 @@ test("visual smoke CLI exposes a tile-local diagnostics batch mode", () => {
   assert.match(source, /--tile-local-diagnostics/);
   assert.match(source, /runTileLocalDiagnostics/);
   assert.match(source, /renderTileLocalDiagnosticsReport/);
+});
+
+test("tile-local page metrics preserve requested and effective arena backend evidence", () => {
+  const metrics = extractTileLocalPageMetrics({
+    rendererLabel: "tile-local-visible-gaussian-compositor",
+    fps: 42,
+    arenaRuntime: {
+      requestedArenaBackend: "gpu",
+      effectiveArenaBackend: "cpu",
+      cpuBuildDurationMs: 12.5,
+      gpuDispatchDurationMs: null,
+      unavailableReason: "gpu contributor arena runtime not promoted",
+      skippedReason: "arena backend gpu requested without live GPU output",
+    },
+  });
+
+  assert.deepEqual(metrics.arenaRuntime, {
+    requestedArenaBackend: "gpu",
+    effectiveArenaBackend: "cpu",
+    cpuBuildDurationMs: 12.5,
+    gpuDispatchDurationMs: undefined,
+    unavailableReason: "gpu contributor arena runtime not promoted",
+    skippedReason: "arena backend gpu requested without live GPU output",
+  });
+});
+
+test("visual smoke CLI reports requested and effective arena backend fields", () => {
+  const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
+
+  assert.match(source, /Arena requested backend:/);
+  assert.match(source, /Arena effective backend:/);
+  assert.match(source, /CPU build duration ms:/);
+  assert.match(source, /GPU dispatch duration ms:/);
+  assert.match(source, /Unavailable reason:/);
+  assert.match(source, /Skipped reason:/);
 });
 
 function diagnosticCapture(id, overrides = {}) {
