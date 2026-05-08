@@ -8,14 +8,22 @@ export function resolveTileLocalBudgetConfig(input = "") {
   const hasTileSize = params.has("tileSizePx");
   const hasMaxRefs = params.has("maxRefsPerTile");
   if (hasTileSize !== hasMaxRefs) {
-    throw new Error("tileSizePx and maxRefsPerTile must be provided together");
+    return fallbackConfig("tileSizePx and maxRefsPerTile must be provided together");
   }
   if (!hasTileSize) {
     return { ...DEFAULT_TILE_LOCAL_BUDGET_CONFIG };
   }
+  const tileSizePx = readPositiveInteger(params.get("tileSizePx"), "tileSizePx");
+  const maxRefsPerTile = readPositiveInteger(params.get("maxRefsPerTile"), "maxRefsPerTile");
+  if (typeof tileSizePx === "string") {
+    return fallbackConfig(tileSizePx);
+  }
+  if (typeof maxRefsPerTile === "string") {
+    return fallbackConfig(maxRefsPerTile);
+  }
   return {
-    tileSizePx: readPositiveInteger(params.get("tileSizePx"), "tileSizePx"),
-    maxRefsPerTile: readPositiveInteger(params.get("maxRefsPerTile"), "maxRefsPerTile"),
+    tileSizePx,
+    maxRefsPerTile,
   };
 }
 
@@ -35,7 +43,14 @@ function normalizeSearchParams(input) {
 
 function readPositiveInteger(value, label) {
   if (!/^[1-9]\d*$/.test(String(value ?? ""))) {
-    throw new Error(`${label} must be a positive integer`);
+    return `${label} must be a positive integer`;
   }
   return Number(value);
+}
+
+function fallbackConfig(invalidReason) {
+  return {
+    ...DEFAULT_TILE_LOCAL_BUDGET_CONFIG,
+    invalidReason,
+  };
 }

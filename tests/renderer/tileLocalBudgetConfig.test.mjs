@@ -25,19 +25,19 @@ test("tile-local budget config parses coupled query params without a lower artif
   );
 });
 
-test("tile-local budget config rejects partial or invalid sweep pairs", () => {
-  assert.throws(
-    () => resolveTileLocalBudgetConfig("?tileSizePx=16"),
-    /tileSizePx and maxRefsPerTile must be provided together/
-  );
-  assert.throws(
-    () => resolveTileLocalBudgetConfig("?tileSizePx=0&maxRefsPerTile=128"),
-    /tileSizePx must be a positive integer/
-  );
-  assert.throws(
-    () => resolveTileLocalBudgetConfig("?tileSizePx=16&maxRefsPerTile=12.5"),
-    /maxRefsPerTile must be a positive integer/
-  );
+test("tile-local budget config falls back visibly instead of crashing on partial or invalid sweep pairs", () => {
+  assert.deepEqual(resolveTileLocalBudgetConfig("?tileSizePx=16"), {
+    ...DEFAULT_TILE_LOCAL_BUDGET_CONFIG,
+    invalidReason: "tileSizePx and maxRefsPerTile must be provided together",
+  });
+  assert.deepEqual(resolveTileLocalBudgetConfig("?tileSizePx=0&maxRefsPerTile=128"), {
+    ...DEFAULT_TILE_LOCAL_BUDGET_CONFIG,
+    invalidReason: "tileSizePx must be a positive integer",
+  });
+  assert.deepEqual(resolveTileLocalBudgetConfig("?tileSizePx=16&maxRefsPerTile=12.5"), {
+    ...DEFAULT_TILE_LOCAL_BUDGET_CONFIG,
+    invalidReason: "maxRefsPerTile must be a positive integer",
+  });
 });
 
 test("main consumes query-controlled tile-local budget config", () => {
@@ -46,5 +46,6 @@ test("main consumes query-controlled tile-local budget config", () => {
   assert.match(source, /resolveTileLocalBudgetConfig/);
   assert.match(source, /TILE_LOCAL_BUDGET_CONFIG\.tileSizePx/);
   assert.match(source, /TILE_LOCAL_BUDGET_CONFIG\.maxRefsPerTile/);
+  assert.match(source, /TILE_LOCAL_BUDGET_CONFIG\.invalidReason/);
   assert.doesNotMatch(source, /const TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX = 6;/);
 });
