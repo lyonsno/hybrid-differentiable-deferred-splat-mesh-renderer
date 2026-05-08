@@ -33,22 +33,32 @@ test("tile-local visible shader composites ordered tile refs with sample-local c
   assert.match(shader, /conicParam\.x/);
   assert.match(shader, /conicParam\.y/);
   assert.match(shader, /conicParam\.z/);
-  assert.match(shader, /let tileCoverageWeight = max\(tileCoverageWeights\[selectedRefIndex\], 0\.0\)/);
+  assert.match(shader, /let tileCoverageWeight = max\(tileCoverageWeights\[refIndex\], 0\.0\)/);
   assert.match(shader, /if\s*\(tileCoverageWeight <= 0\.0\)\s*\{\s*continue;\s*\}/);
   assert.match(shader, /let pixelCoverageWeight = conic_pixel_weight\(alphaParam, conicParam, pixelCenter\)/);
   assert.match(shader, /1\.0\s*-\s*pow\(1\.0\s*-\s*sourceOpacity,\s*pixelCoverageWeight\)/);
-  assert.match(shader, /orderingKeys\[tileRef\.x\]/);
+  assert.match(shader, /let orderingKey = orderingKeys\[splatId\]/);
   assert.match(shader, /conic_pixel_weight/);
   assert.match(shader, /mahalanobis2/);
   assert.match(shader, /exp\(-2\.0 \* mahalanobis2\)/);
   assert.doesNotMatch(shader, /exp\(-0\.5 \* mahalanobis2\)/);
-  assert.doesNotMatch(shader, /tileCoverageWeights\[selectedRefIndex\][^;]*\*\s*conic_pixel_weight/);
+  assert.doesNotMatch(shader, /tileCoverageWeights\[refIndex\][^;]*\*\s*conic_pixel_weight/);
   assert.doesNotMatch(shader, /radiusPx/);
-  assert.match(shader, /resolve_tile_ref_ordering_key/);
+  assert.doesNotMatch(shader, /for \(var candidate = 0u; candidate < refLimit/);
   assert.match(shader, /remainingTransmission/);
   assert.doesNotMatch(shader, /identityTint/);
   assert.doesNotMatch(shader, /occupancyWitness/);
   assert.doesNotMatch(shader, /alphaScale \* 0\.0/);
+});
+
+test("tile-local visible compositor consumes the retained tile header count without a hidden 32-ref cap", () => {
+  const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+
+  assert.doesNotMatch(shader, /min\(header\.y,\s*32u\)/);
+  assert.match(shader, /let refLimit = min\(header\.y,\s*frame\.maxTileRefs\)/);
+  assert.match(source, /visible-compositor cap/);
+  assert.match(source, /visibleCompositedRefLimit/);
 });
 
 test("tile-local texture presenter samples the offscreen tile-local output", () => {

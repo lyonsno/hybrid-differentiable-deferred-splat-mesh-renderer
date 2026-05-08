@@ -158,8 +158,9 @@ export function buildTileLocalContributorArena(coverage, options = {}) {
     );
     const selected = selectTileEntries(tileEntries, maxRefsPerTile);
     const legacySelectedKeys = new Set(tileEntries.slice(0, maxRefsPerTile).map(tileEntryKey));
+    const selectedInCompositorOrder = [...selected].sort(compareContributorArenaOrder);
     const selectedByKey = new Map();
-    for (const entry of selected.sort(compareTileEntryOrder)) {
+    for (const entry of selectedInCompositorOrder) {
       selectedByKey.set(tileEntryKey(entry), nextContributorIndex + selectedByKey.size);
     }
 
@@ -237,7 +238,7 @@ export function buildTileLocalContributorArena(coverage, options = {}) {
       });
     }
 
-    for (const entry of selected.sort(compareTileEntryOrder)) {
+    for (const entry of selectedInCompositorOrder) {
       contributors.push(recordByKey.get(tileEntryKey(entry)));
     }
     nextContributorIndex += selected.length;
@@ -328,6 +329,10 @@ function normalizeContributorArenaRecord(record, index, tileColumns, tileCount) 
 function compareContributorArenaStorageOrder(left, right) {
   return (
     left.tileIndex - right.tileIndex ||
+    compareOptionalInteger(left.viewRank, right.viewRank) ||
+    readViewDepth(left) - readViewDepth(right) ||
+    left.splatIndex - right.splatIndex ||
+    left.originalId - right.originalId ||
     left.arenaRecordIndex - right.arenaRecordIndex
   );
 }

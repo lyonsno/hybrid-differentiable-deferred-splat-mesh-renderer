@@ -79,6 +79,10 @@ import {
   type TileLocalDiagnosticSummary,
 } from "./rendererFidelityProbes/tileLocalDiagnostics.js";
 import {
+  formatTileLocalBudgetPair,
+  resolveTileLocalBudgetConfig,
+} from "./tileLocalBudgetConfig.js";
+import {
   createSplatPlateRenderer,
   SPLAT_PLATE_FRAME_UNIFORM_BYTES,
   writeSplatPlateFrameUniforms,
@@ -117,7 +121,9 @@ const ALPHA_DENSITY_MODE = selectedAlphaDensityMode();
 const RENDERER_MODE = selectedRendererMode();
 const TILE_LOCAL_DEBUG_MODE = selectedTileLocalDebugMode();
 const REQUESTED_ARENA_BACKEND = selectedArenaBackend();
-const TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX = 6;
+const TILE_LOCAL_BUDGET_CONFIG = resolveTileLocalBudgetConfig(new URLSearchParams(window.location.search));
+const TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX = TILE_LOCAL_BUDGET_CONFIG.tileSizePx;
+const TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE = TILE_LOCAL_BUDGET_CONFIG.maxRefsPerTile;
 const TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES = 1;
 const TILE_LOCAL_PROVISIONAL_MAX_SPLATS = 150_000;
 const TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES = 20_000_000;
@@ -510,8 +516,7 @@ async function main() {
       writeViewDepthSortInput(gpu.device.queue, scene.gpuSort, scene.attributes.positions, view);
       encodeGpuSortPrototype(encoder, scene.gpuSort);
       if (scene.tileLocalState) {
-        encodeGpuOrderingRanks(encoder, scene.tileLocalState.orderingRanker);
-        scene.tileLocalState.orderingRanksNeedDispatch = false;
+        scene.tileLocalState.orderingRanksNeedDispatch = true;
         scene.tileLocalState.needsDispatch = true;
       }
     }
@@ -665,6 +670,17 @@ async function main() {
     let statsText = `${width}×${height} | ${displayFps} fps | ${scene.count.toLocaleString()} ${splatKindLabel} | renderer: ${rendererLabel} | sort: ${SORT_BACKEND} | alpha: ${alphaSummary.accountingMode} density ${alphaSummary.compensatedSplatCount.toLocaleString()} splats/${alphaSummary.hotTileCount} tiles`;
     if (scene.tileLocalState) {
       statsText += ` | tile-local: ${scene.tileLocalState.plan.tileColumns}x${scene.tileLocalState.plan.tileRows} tiles/${scene.tileLocalState.tileEntryCount} refs`;
+      const budgetText = formatTileLocalBudgetLabel(tileLocalBudgetEvidence(scene.tileLocalLastSkipReason, width, height));
+      if (budgetText) {
+        statsText += ` | tile-local budget: ${budgetText}`;
+      }
+      statsText += ` | tile-budget: ${formatTileLocalBudgetPair(TILE_LOCAL_BUDGET_CONFIG)}`;
+      if (TILE_LOCAL_BUDGET_CONFIG.invalidReason) {
+        statsText += ` | tile-budget invalid: ${TILE_LOCAL_BUDGET_CONFIG.invalidReason}`;
+      }
+      if (scene.tileLocalState.debugMode === "final-color") {
+        statsText += ` | visible-compositor cap: ${TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE} refs`;
+      }
       statsText += ` | tile-order: ${TILE_LOCAL_ORDERING_BACKEND}`;
       const freshness = tileLocalPresentationFreshness(
         scene.tileLocalState,
@@ -804,6 +820,7 @@ function createTileLocalSceneState(
     samplesPerAxis: TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES,
     splatScale: footprintParams.splatScale,
     minRadiusPx: footprintParams.minRadiusPx,
+    maxRefsPerTile: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
     maxTileEntries: TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES,
     nearFadeEndNdc: footprintParams.nearFadeEndNdc,
   };
@@ -1325,6 +1342,7 @@ function exposeTileLocalRuntimeEvidence(
           tileRows: tileLocalState.plan.tileRows,
           orderingBackend: TILE_LOCAL_ORDERING_BACKEND,
           debugMode: tileLocalState.debugMode,
+          visibleCompositedRefLimit: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
           freshness,
           budget: {
             ...budget,
@@ -1420,6 +1438,7 @@ function tileLocalBudgetEvidence(
   return {
     status: parsed ? "skipped" : "current",
     tileSizePx: TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX,
+    maxRefsPerTile: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
     currentViewportWidth: viewportWidth,
     currentViewportHeight: viewportHeight,
     currentTileColumns: tileColumnsForViewport(viewportWidth),
@@ -1429,6 +1448,13 @@ function tileLocalBudgetEvidence(
     skipReason: tileLocalLastSkipReason,
     overflowReasons: parsed ? ["projected-ref-budget"] : [],
   };
+}
+
+function formatTileLocalBudgetLabel(budget: ReturnType<typeof tileLocalBudgetEvidence>): string {
+  if (budget.skippedProjectedRefs !== null && budget.maxProjectedRefs !== null) {
+    return `skipped ${budget.skippedProjectedRefs.toLocaleString()} projected refs | cap ${budget.maxProjectedRefs.toLocaleString()} | per-tile cap ${budget.maxRefsPerTile.toLocaleString()}${budget.skipReason ? ` | skip ${budget.skipReason}` : ""}`;
+  }
+  return `cap ${budget.maxProjectedRefs.toLocaleString()} | per-tile cap ${budget.maxRefsPerTile.toLocaleString()}`;
 }
 
 function parseTileLocalBudgetSkipReason(reason: string | null): { skippedProjectedRefs: number; maxProjectedRefs: number } | null {

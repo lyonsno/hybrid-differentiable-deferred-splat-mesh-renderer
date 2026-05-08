@@ -116,6 +116,9 @@ test("GPU contributor arena runtime writes legacy compositor buffers for live co
 
   assert.match(runtimeSource, /createGpuTileContributorArenaRuntime/);
   assert.match(runtimeSource, /projectGpuArenaToLegacyCompositorBuffers/);
+  assert.match(runtimeSource, /orderedContributors = \[\.\.\.contributors\]\.sort\(compareGpuArenaContributorStorageOrder\)/);
+  assert.match(runtimeSource, /left\.tileIndex - right\.tileIndex/);
+  assert.match(runtimeSource, /left\.viewRank - right\.viewRank/);
   assert.match(shader, /legacyTileHeaders/);
   assert.match(shader, /legacyTileRefs/);
   assert.match(shader, /legacyTileCoverageWeights/);

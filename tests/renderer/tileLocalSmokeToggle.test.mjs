@@ -36,3 +36,16 @@ test("main labels skipped tile-local rebuilds as stale cached presentations", ()
     /tileLocalCurrentSignature !== scene\.tileLocalState\.lastCompositedSignature[\s\S]*scene\.tileLocalState\.needsDispatch = true/
   );
 });
+
+test("main does not encode tile-local ordering ranks before a possible state rebuild", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+
+  assert.doesNotMatch(
+    source,
+    /if \(gpuSortRefreshed\) \{[\s\S]*?encodeGpuOrderingRanks\(encoder, scene\.tileLocalState\.orderingRanker\)/
+  );
+  assert.match(
+    source,
+    /if \(tileLocalState\.orderingRanksNeedDispatch\) \{[\s\S]*?encodeGpuOrderingRanks\(encoder, tileLocalState\.orderingRanker\)/
+  );
+});

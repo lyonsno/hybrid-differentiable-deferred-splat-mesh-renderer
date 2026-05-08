@@ -114,6 +114,7 @@ export function projectGpuArenaToLegacyCompositorBuffers(
   plan: Pick<GpuTileCoveragePlan, "tileCount" | "maxTileRefs">,
   contributors: readonly GpuTileContributorArenaProjectedContributor[],
 ): GpuTileContributorArenaLegacyProjection {
+  const orderedContributors = [...contributors].sort(compareGpuArenaContributorStorageOrder);
   const tileHeaders = new Uint32Array(Math.max(0, plan.tileCount * 4));
   const tileRefs = new Uint32Array(Math.max(0, plan.maxTileRefs * 4));
   const tileCoverageWeights = new Float32Array(Math.max(0, plan.maxTileRefs));
@@ -126,7 +127,7 @@ export function projectGpuArenaToLegacyCompositorBuffers(
   const tileRefSplatIds = new Uint32Array(Math.max(0, plan.maxTileRefs));
 
   const counts = new Uint32Array(Math.max(0, plan.tileCount));
-  for (const contributor of contributors) {
+  for (const contributor of orderedContributors) {
     if (contributor.tileIndex < counts.length) {
       counts[contributor.tileIndex] += 1;
     }
@@ -143,7 +144,7 @@ export function projectGpuArenaToLegacyCompositorBuffers(
   }
 
   const cursors = new Uint32Array(Math.max(0, plan.tileCount));
-  for (const contributor of contributors) {
+  for (const contributor of orderedContributors) {
     if (contributor.tileIndex >= cursors.length) {
       continue;
     }
@@ -190,6 +191,19 @@ export function projectGpuArenaToLegacyCompositorBuffers(
     alphaParamData,
     tileRefSplatIds,
   };
+}
+
+function compareGpuArenaContributorStorageOrder(
+  left: GpuTileContributorArenaProjectedContributor,
+  right: GpuTileContributorArenaProjectedContributor,
+): number {
+  return (
+    left.tileIndex - right.tileIndex ||
+    left.viewRank - right.viewRank ||
+    left.viewDepth - right.viewDepth ||
+    left.splatIndex - right.splatIndex ||
+    left.originalId - right.originalId
+  );
 }
 
 export function packGpuArenaProjectedContributors(contributors: readonly GpuTileContributorArenaProjectedContributor[]): {

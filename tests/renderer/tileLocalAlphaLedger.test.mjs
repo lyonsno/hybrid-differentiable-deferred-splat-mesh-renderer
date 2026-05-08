@@ -48,9 +48,9 @@ test("tile-local alpha transfer treats conic pixel weight as optical depth witho
 test("tile-local visible WGSL does not multiply tile-integrated coverage by conic pixel coverage for alpha transfer", () => {
   const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
 
-  assert.match(shader, /let tileCoverageWeight = max\(tileCoverageWeights\[selectedRefIndex\], 0\.0\)/);
+  assert.match(shader, /let tileCoverageWeight = max\(tileCoverageWeights\[refIndex\], 0\.0\)/);
   assert.match(shader, /if\s*\(tileCoverageWeight <= 0\.0\)\s*\{\s*continue;\s*\}/);
   assert.match(shader, /let pixelCoverageWeight = conic_pixel_weight\(alphaParam, conicParam, pixelCenter\)/);
   assert.match(shader, /1\.0\s*-\s*pow\(1\.0\s*-\s*sourceOpacity,\s*pixelCoverageWeight\)/);
-  assert.doesNotMatch(shader, /tileCoverageWeights\[selectedRefIndex\][^;\n]*\*\s*conic_pixel_weight/);
+  assert.doesNotMatch(shader, /tileCoverageWeights\[refIndex\][^;\n]*\*\s*conic_pixel_weight/);
 });

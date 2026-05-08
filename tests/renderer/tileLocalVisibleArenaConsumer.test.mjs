@@ -20,7 +20,7 @@ function assertCloseArray(actual, expected, label) {
   }
 }
 
-test("visible bridge consumes contributor arena ordering, coverage, and opacity records", () => {
+test("visible bridge stores contributor arena refs in compositor rank order", () => {
   const bridge = buildGpuTileCoverageBridge({
     viewportWidth: 64,
     viewportHeight: 64,
@@ -64,34 +64,33 @@ test("visible bridge consumes contributor arena ordering, coverage, and opacity 
 
   assert.equal(bridge.retainedTileEntryCount, 2);
   assert.deepEqual(Array.from(bridge.tileHeaders), [0, 2, 2, 0]);
-  assert.deepEqual(Array.from(bridge.tileRefs.slice(0, 8)), [2, 202, 0, 0, 1, 101, 0, 1]);
-  assert.deepEqual(Array.from(bridge.tileRefOrderingKeys), [41, 7, 0xffffffff]);
-  assertClose(bridge.tileCoverageWeights[0], 0.75, "first arena coverage");
-  assertClose(bridge.tileCoverageWeights[1], 2.5, "second arena coverage");
-  assertClose(bridge.tileRefSourceOpacities[0], 0.32, "first arena opacity");
-  assertClose(bridge.tileRefSourceOpacities[1], 0.9, "second arena opacity");
+  assert.deepEqual(Array.from(bridge.tileRefs.slice(0, 8)), [1, 101, 0, 0, 2, 202, 0, 1]);
+  assert.deepEqual(Array.from(bridge.tileRefOrderingKeys), [7, 41, 0xffffffff]);
+  assertClose(bridge.tileCoverageWeights[0], 2.5, "first arena coverage");
+  assertClose(bridge.tileCoverageWeights[1], 0.75, "second arena coverage");
+  assertClose(bridge.tileRefSourceOpacities[0], 0.9, "first arena opacity");
+  assertClose(bridge.tileRefSourceOpacities[1], 0.32, "second arena opacity");
   assertCloseArray(
     Array.from(bridge.tileRefShapeParams.slice(0, 16)),
-    [17, 19, 0.25, 0.05, 0.5, 0, 0, 0, 23, 29, 0.125, -0.025, 0.333, 0, 0, 0],
+    [23, 29, 0.125, -0.025, 0.333, 0, 0, 0, 17, 19, 0.25, 0.05, 0.5, 0, 0, 0],
     "arena shape params",
   );
 
   const alphaParams = new Float32Array(bridge.tileEntryCount * 8);
   writeGpuTileCoverageAlphaParams(alphaParams, bridge, Float32Array.of(1, 0.1, 0.2), bridge.tileEntryCount);
-  assertClose(alphaParams[0], 0.32, "first alpha param consumes arena opacity");
-  assertClose(alphaParams[3], 41, "first alpha param carries arena ordering key");
-  assertClose(alphaParams[4], 0.9, "second alpha param consumes arena opacity");
-  assertClose(alphaParams[7], 7, "second alpha param carries arena ordering key");
+  assertClose(alphaParams[0], 0.9, "first alpha param consumes arena opacity");
+  assertClose(alphaParams[3], 7, "first alpha param carries arena ordering key");
+  assertClose(alphaParams[4], 0.32, "second alpha param consumes arena opacity");
+  assertClose(alphaParams[7], 41, "second alpha param carries arena ordering key");
 });
 
-test("visible shader prefers contributor arena per-ref ordering keys with legacy fallback", () => {
+test("visible shader consumes preordered tile refs without a per-pixel rank search", () => {
   const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
 
   assert.doesNotMatch(shader, /@binding\(3\)/);
-  assert.match(shader, /fn resolve_tile_ref_ordering_key\(tileRef: vec4u, alphaParamIndex: u32\) -> u32/);
-  assert.match(shader, /let arenaOrderingKey = alphaParams\[alphaParamIndex\]\.w/);
-  assert.match(shader, /if \(arenaOrderingKey >= 0\.0\)/);
-  assert.match(shader, /return u32\(arenaOrderingKey\)/);
-  assert.match(shader, /return orderingKeys\[tileRef\.x\]/);
-  assert.match(shader, /let rank = resolve_tile_ref_ordering_key\(tileRef, alphaParamIndex\)/);
+  assert.match(shader, /let refIndex = header\.x \+ layer/);
+  assert.match(shader, /let tileCoverageWeight = max\(tileCoverageWeights\[refIndex\], 0\.0\)/);
+  assert.doesNotMatch(shader, /for \(var candidate = 0u; candidate < refLimit/);
+  assert.doesNotMatch(shader, /selectedRefIndex|selectedRank|previousRank/);
+  assert.doesNotMatch(shader, /resolve_tile_ref_ordering_key/);
 });

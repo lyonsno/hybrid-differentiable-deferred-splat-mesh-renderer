@@ -53,7 +53,7 @@ test("tile-local prepass bridge preserves sparse splat ids and real coverage wei
   assert.ok(Array.from(bridge.tileCoverageWeights).some((weight) => weight !== 1));
 });
 
-test("tile-local prepass bridge feeds each bounded tile list with strongest coverage candidates first", () => {
+test("tile-local prepass bridge stores each retained tile list in compositor order", () => {
   const attributes = {
     count: 3,
     positions: new Float32Array([
@@ -84,10 +84,9 @@ test("tile-local prepass bridge feeds each bounded tile list with strongest cove
   assert.equal(bridge.tileHeaders[1], 3);
   assert.deepEqual(
     [bridge.tileRefs[0], bridge.tileRefs[4], bridge.tileRefs[8]],
-    [2, 0, 1]
+    [1, 2, 0]
   );
-  assert.ok(bridge.tileCoverageWeights[0] >= bridge.tileCoverageWeights[1]);
-  assert.ok(bridge.tileCoverageWeights[1] > bridge.tileCoverageWeights[2]);
+  assert.ok(Math.max(...bridge.tileCoverageWeights.slice(0, 3)) > Math.min(...bridge.tileCoverageWeights.slice(0, 3)));
 });
 
 test("tile-local prepass bridge keeps a bright behind-surface contributor inside the capped tile list", () => {
@@ -151,7 +150,11 @@ test("tile-local prepass bridge keeps a bright behind-surface contributor inside
   assert.equal(retainedSplatIds.includes(brightIndex), true);
   assert.notEqual(brightRefIndex, -1);
   assert.ok(bridge.tileCoverageWeights[brightRefIndex] > 0);
-  assert.ok(bridge.tileCoverageWeights[brightRefIndex] < bridge.tileCoverageWeights[0]);
+  assert.ok(
+    Array.from(bridge.tileCoverageWeights.slice(0, retainedRefCount)).some(
+      (weight, index) => index !== brightRefIndex && weight > bridge.tileCoverageWeights[brightRefIndex],
+    ),
+  );
 });
 
 test("tile-local prepass bridge keeps dark foreground occluders alongside bright behind contributors", () => {

@@ -45,14 +45,6 @@ fn inverse_conic_radii(conicParam: vec4f) -> vec2f {
   return vec2f(inverseSqrt(lambdaSmall), inverseSqrt(lambdaLarge));
 }
 
-fn resolve_tile_ref_ordering_key(tileRef: vec4u, alphaParamIndex: u32) -> u32 {
-  let arenaOrderingKey = alphaParams[alphaParamIndex].w;
-  if (arenaOrderingKey >= 0.0) {
-    return u32(arenaOrderingKey);
-  }
-  return orderingKeys[tileRef.x];
-}
-
 fn debug_heatmap_color(
   debugMode: u32,
   coverageWeightSum: f32,
@@ -142,41 +134,25 @@ fn debug_heatmap_color(
   let header = tileHeaders[tileId];
   let outputCoord = vec2i(globalId.xy);
   let pixelCenter = vec2f(f32(globalId.x) + 0.5, f32(globalId.y) + 0.5);
-  let refLimit = min(header.y, 32u);
+  let refLimit = min(header.y, frame.maxTileRefs);
   var composedColor = vec3f(0.02, 0.02, 0.04);
   var remainingTransmission = 1.0;
-  var previousRank = 0xffffffffu;
   var coverageWeightSum = 0.0;
   var maxMajorRadiusPx = 0.0;
   var minMinorRadiusPx = 1000000.0;
   for (var layer = 0u; layer < refLimit; layer = layer + 1u) {
-    var selectedRefIndex = 0xffffffffu;
-    var selectedRank = 0xffffffffu;
-    for (var candidate = 0u; candidate < refLimit; candidate = candidate + 1u) {
-      let refIndex = header.x + candidate;
-      if (refIndex >= frame.maxTileRefs) {
-        break;
-      }
-      let tileRef = tileRefs[refIndex];
-      if (tileRef.x >= frame.splatCount) {
-        continue;
-      }
-      let alphaParamIndex = min(tileRef.w, frame.maxTileRefs - 1u);
-      let rank = resolve_tile_ref_ordering_key(tileRef, alphaParamIndex);
-      if ((previousRank == 0xffffffffu || rank > previousRank) && rank < selectedRank) {
-        selectedRank = rank;
-        selectedRefIndex = refIndex;
-      }
-    }
-    if (selectedRefIndex == 0xffffffffu) {
+    let refIndex = header.x + layer;
+    if (refIndex >= frame.maxTileRefs) {
       break;
     }
-    previousRank = selectedRank;
-    let tileRef = tileRefs[selectedRefIndex];
+    let tileRef = tileRefs[refIndex];
+    if (tileRef.x >= frame.splatCount) {
+      continue;
+    }
     let alphaParamIndex = min(tileRef.w, frame.maxTileRefs - 1u);
     let alphaParam = alphaParams[alphaParamIndex];
     let conicParam = alphaParams[alphaParamIndex + frame.maxTileRefs];
-    let tileCoverageWeight = max(tileCoverageWeights[selectedRefIndex], 0.0);
+    let tileCoverageWeight = max(tileCoverageWeights[refIndex], 0.0);
     if (tileCoverageWeight <= 0.0) {
       continue;
     }
