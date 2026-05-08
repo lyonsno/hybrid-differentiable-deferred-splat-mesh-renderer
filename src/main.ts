@@ -17,9 +17,16 @@ import {
   createGpuTileCoveragePlan,
   GPU_TILE_COVERAGE_FRAME_UNIFORM_BYTES,
   writeGpuTileCoverageFrameUniforms,
+  type GpuTileContributorArenaProjectedContributor,
   type GpuTileCoverageDebugMode,
   type GpuTileCoveragePlan,
 } from "./gpuTileCoverage.js";
+import {
+  createGpuTileContributorArenaRuntime,
+  packGpuArenaProjectedContributors,
+  projectGpuArenaToLegacyCompositorBuffers,
+  type GpuTileContributorArenaRuntime,
+} from "./gpuTileContributorArenaRuntime.js";
 import {
   createGpuTileCoveragePipelineSkeleton,
   type GpuTileCoveragePipelineSkeleton,
@@ -164,6 +171,11 @@ interface TileLocalSceneState {
   prepassSignature: string;
   debugMode: GpuTileCoverageDebugMode;
   diagnostics: TileLocalDiagnosticSummary;
+  arenaBackend: "cpu" | "gpu";
+  gpuArenaRuntime: GpuTileContributorArenaRuntime | null;
+  gpuArenaProjectedContributors: readonly GpuTileContributorArenaProjectedContributor[];
+  arenaUnavailableReason?: string;
+  gpuDispatchDurationMs?: number;
   needsDispatch: boolean;
   lastCompositedAtMs: number;
   lastCompositedFrame: number;
@@ -172,7 +184,7 @@ interface TileLocalSceneState {
 
 interface ArenaRuntimeEvidence {
   requestedArenaBackend: "cpu" | "gpu";
-  effectiveArenaBackend: "cpu";
+  effectiveArenaBackend: "cpu" | "gpu";
   cpuBuildDurationMs?: number;
   gpuDispatchDurationMs?: number;
   unavailableReason?: string;
@@ -555,6 +567,11 @@ async function main() {
         );
         gpu.device.queue.writeBuffer(tileLocalState.frameUniformBuffer, 0, tileLocalState.frameUniformData);
         const tileLocalComputePass = encoder.beginComputePass();
+        if (tileLocalState.gpuArenaRuntime) {
+          const gpuArenaDispatchStartedAtMs = performance.now();
+          tileLocalState.gpuArenaRuntime.dispatch(tileLocalComputePass, tileLocalState.plan);
+          tileLocalState.gpuDispatchDurationMs = roundRuntimeMetric(performance.now() - gpuArenaDispatchStartedAtMs);
+        }
         if (scene.rendererMode === "tile-local-visible") {
           tileLocalState.pipeline.dispatchComposite(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
         } else {
@@ -793,15 +810,38 @@ function createTileLocalSceneState(
   const bridge = buildTileLocalPrepassBridge(bridgeInput);
   const bridgeBuildDurationMs = Math.max(0, performance.now() - bridgeBuildStartedAtMs);
   const prepassSignature = captureTileLocalPrepassBridgeSignature(bridgeInput);
+  const gpuArenaProjectedContributors = REQUESTED_ARENA_BACKEND === "gpu"
+    ? projectedContributorsWithEffectiveOpacity(bridge.contributorArena?.projectedContributors ?? [], effectiveOpacities)
+    : [];
+  const gpuArenaCapBlocker = REQUESTED_ARENA_BACKEND === "gpu" && bridge.tileRefCustody.evictedTileEntryCount > 0
+    ? "gpu arena runtime requires a retention adapter before cap-pressure scenes can bypass the CPU retained list"
+    : undefined;
+  const requestedGpuArenaRuntime = gpuArenaProjectedContributors.length > 0 && !gpuArenaCapBlocker;
   const plan = createGpuTileCoveragePlan({
     viewportWidth,
     viewportHeight,
     tileSizePx: TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX,
     splatCount: attributes.count,
-    maxTileRefs: Math.max(bridge.tileEntryCount, 1),
+    maxTileRefs: Math.max(requestedGpuArenaRuntime ? gpuArenaProjectedContributors.length : bridge.tileEntryCount, attributes.count, 1),
   });
+  const gpuArenaRuntimeBlocker = requestedGpuArenaRuntime
+    ? gpuArenaRuntimeUnavailableReason(device, plan, gpuArenaProjectedContributors.length)
+    : REQUESTED_ARENA_BACKEND === "gpu"
+      ? gpuArenaCapBlocker ?? "no projected contributors for gpu arena runtime"
+      : undefined;
+  const gpuArenaRuntime = requestedGpuArenaRuntime && !gpuArenaRuntimeBlocker
+    ? createGpuTileContributorArenaRuntime(device, plan, gpuArenaProjectedContributors)
+    : null;
+  const legacyProjection = gpuArenaRuntime?.legacyProjection;
   const budgetDiagnostics: TileLocalPrepassBudgetDiagnostics = {
     ...bridge.budgetDiagnostics,
+    arenaRefs: legacyProjection
+      ? {
+          ...bridge.budgetDiagnostics.arenaRefs,
+          retained: gpuArenaProjectedContributors.length,
+          dropped: 0,
+        }
+      : bridge.budgetDiagnostics.arenaRefs,
     heat: {
       cpu: {
         ...bridge.budgetDiagnostics.heat.cpu,
@@ -822,17 +862,34 @@ function createTileLocalSceneState(
   );
   const frameUniformData = new Float32Array(GPU_TILE_COVERAGE_FRAME_UNIFORM_BYTES / Float32Array.BYTES_PER_ELEMENT);
   const alphaParamData = new Float32Array(Math.max(plan.alphaParamBytes / Float32Array.BYTES_PER_ELEMENT, 8));
+  if (legacyProjection) {
+    alphaParamData.set(legacyProjection.alphaParamData.slice(0, alphaParamData.length));
+  }
   const orderingKeyData = new Uint32Array(Math.max(plan.orderingKeyBytes / Uint32Array.BYTES_PER_ELEMENT, 4));
   orderingKeyData.fill(0xffffffff);
   const tileRefSplatIds = new Uint32Array(plan.maxTileRefs);
   for (let refIndex = 0; refIndex < plan.maxTileRefs; refIndex++) {
-    const splatId = bridge.tileRefs[refIndex * 4] ?? 0;
+    const splatId = legacyProjection?.tileRefSplatIds[refIndex] ?? bridge.tileRefs[refIndex * 4] ?? 0;
     tileRefSplatIds[refIndex] = splatId;
   }
-  writeGpuTileCoverageAlphaParams(alphaParamData, bridge, effectiveOpacities, plan.maxTileRefs);
+  if (!legacyProjection) {
+    writeGpuTileCoverageAlphaParams(alphaParamData, bridge, effectiveOpacities, plan.maxTileRefs);
+  }
 
-  const bridgeBuffers = createGpuTileCoverageBridgeBuffers(device, bridge);
-  const alphaParamBuffer = createStorageBuffer(device, alphaParamData.buffer, "tile_local_alpha_params");
+  const bridgeBuffers = gpuArenaRuntime
+    ? {
+        projectedBoundsBuffer: createStorageBuffer(
+          device,
+          new Uint32Array(bridge.projectedBounds).buffer,
+          "gpu_arena_cpu_projected_bounds"
+        ),
+        tileHeaderBuffer: gpuArenaRuntime.buffers.legacyTileHeaderBuffer,
+        tileRefBuffer: gpuArenaRuntime.buffers.legacyTileRefBuffer,
+        tileCoverageWeightBuffer: gpuArenaRuntime.buffers.legacyTileCoverageWeightBuffer,
+      }
+    : createGpuTileCoverageBridgeBuffers(device, bridge);
+  const alphaParamBuffer = gpuArenaRuntime?.buffers.legacyAlphaParamBuffer
+    ?? createStorageBuffer(device, alphaParamData.buffer, "tile_local_alpha_params");
   const orderingKeyBuffer = createStorageBuffer(
     device,
     orderingKeyData.buffer as ArrayBuffer,
@@ -881,21 +938,21 @@ function createTileLocalSceneState(
     frameUniformData,
     projectedBoundsBuffer: bridgeBuffers.projectedBoundsBuffer,
     tileHeaderBuffer: bridgeBuffers.tileHeaderBuffer,
-    tileHeaderData: bridge.tileHeaders,
+    tileHeaderData: legacyProjection?.tileHeaders ?? bridge.tileHeaders,
     tileRefBuffer: bridgeBuffers.tileRefBuffer,
     tileCoverageWeightBuffer: bridgeBuffers.tileCoverageWeightBuffer,
-    tileCoverageWeightData: bridge.tileCoverageWeights,
+    tileCoverageWeightData: legacyProjection?.tileCoverageWeights ?? bridge.tileCoverageWeights,
     orderingKeyBuffer,
     orderingKeyData,
     orderingRanker,
     orderingRanksNeedDispatch: true,
     alphaParamBuffer,
     alphaParamData,
-    tileRefShapeParams: bridge.tileRefShapeParams,
+    tileRefShapeParams: legacyProjection?.tileRefShapeParams ?? bridge.tileRefShapeParams,
     outputTexture,
     outputView,
-    tileEntryCount: bridge.tileEntryCount,
-    tileRefCustody: bridge.tileRefCustody,
+    tileEntryCount: legacyProjection ? gpuArenaProjectedContributors.length : bridge.tileEntryCount,
+    tileRefCustody: legacyProjection ? promoteTileRefCustodyToGpuArena(bridge.tileRefCustody, gpuArenaProjectedContributors.length) : bridge.tileRefCustody,
     retentionAudit: bridge.retentionAudit,
     budgetDiagnostics,
     tileRefSplatIds,
@@ -904,13 +961,18 @@ function createTileLocalSceneState(
     diagnostics: summarizeTileLocalDiagnostics({
       debugMode: TILE_LOCAL_DEBUG_MODE,
       plan,
-      tileEntryCount: bridge.tileEntryCount,
-      tileHeaders: bridge.tileHeaders,
-      tileRefCustody: bridge.tileRefCustody,
+      tileEntryCount: legacyProjection ? gpuArenaProjectedContributors.length : bridge.tileEntryCount,
+      tileHeaders: legacyProjection?.tileHeaders ?? bridge.tileHeaders,
+      tileRefCustody: legacyProjection ? promoteTileRefCustodyToGpuArena(bridge.tileRefCustody, gpuArenaProjectedContributors.length) : bridge.tileRefCustody,
       retentionAudit: bridge.retentionAudit,
-      tileCoverageWeights: bridge.tileCoverageWeights,
+      tileCoverageWeights: legacyProjection?.tileCoverageWeights ?? bridge.tileCoverageWeights,
       alphaParamData,
     }),
+    arenaBackend: gpuArenaRuntime ? "gpu" : "cpu",
+    gpuArenaRuntime,
+    gpuArenaProjectedContributors,
+    arenaUnavailableReason: gpuArenaRuntime ? undefined : gpuArenaRuntimeBlocker,
+    gpuDispatchDurationMs: undefined,
     needsDispatch: true,
     lastCompositedAtMs: 0,
     lastCompositedFrame: -1,
@@ -992,6 +1054,17 @@ function syncTileLocalAlphaParams(
   state: TileLocalSceneState,
   effectiveOpacities: Float32Array
 ): void {
+  if (state.gpuArenaRuntime) {
+    const contributors = projectedContributorsWithEffectiveOpacity(state.gpuArenaProjectedContributors, effectiveOpacities);
+    const packed = packGpuArenaProjectedContributors(contributors);
+    const projection = projectGpuArenaToLegacyCompositorBuffers(state.plan, contributors);
+    state.alphaParamData.set(projection.alphaParamData.slice(0, state.alphaParamData.length));
+    queue.writeBuffer(state.gpuArenaRuntime.buffers.projectedContributorU32Buffer, 0, packed.u32);
+    queue.writeBuffer(state.gpuArenaRuntime.buffers.projectedContributorF32Buffer, 0, packed.f32);
+    queue.writeBuffer(state.gpuArenaRuntime.buffers.legacyAlphaParamBuffer, 0, state.alphaParamData);
+    refreshTileLocalDiagnostics(state);
+    return;
+  }
   const alphaParamData = new Float32Array(Math.max(state.plan.alphaParamBytes / Float32Array.BYTES_PER_ELEMENT, 8));
   writeGpuTileCoverageAlphaParams(alphaParamData, state, effectiveOpacities, state.plan.maxTileRefs);
   state.alphaParamData.set(alphaParamData);
@@ -1002,13 +1075,57 @@ function syncTileLocalAlphaParams(
 function destroyTileLocalSceneState(state: TileLocalSceneState): void {
   state.frameUniformBuffer.destroy();
   state.projectedBoundsBuffer.destroy();
-  state.tileHeaderBuffer.destroy();
-  state.tileRefBuffer.destroy();
-  state.tileCoverageWeightBuffer.destroy();
+  if (state.gpuArenaRuntime) {
+    state.gpuArenaRuntime.destroy();
+  } else {
+    state.tileHeaderBuffer.destroy();
+    state.tileRefBuffer.destroy();
+    state.tileCoverageWeightBuffer.destroy();
+    state.alphaParamBuffer.destroy();
+  }
   state.orderingKeyBuffer.destroy();
   state.orderingRanker.paramsBuffer.destroy();
-  state.alphaParamBuffer.destroy();
   state.outputTexture.destroy();
+}
+
+function projectedContributorsWithEffectiveOpacity(
+  contributors: readonly GpuTileContributorArenaProjectedContributor[],
+  effectiveOpacities: Float32Array
+): readonly GpuTileContributorArenaProjectedContributor[] {
+  return contributors.map((contributor) => ({
+    ...contributor,
+    opacity: effectiveOpacities[contributor.splatIndex] ?? contributor.opacity,
+  }));
+}
+
+function promoteTileRefCustodyToGpuArena(
+  custody: TileRefCustodySummary,
+  retainedTileEntryCount: number
+): TileRefCustodySummary {
+  return {
+    ...custody,
+    retainedTileEntryCount,
+    evictedTileEntryCount: 0,
+    headerRefCount: retainedTileEntryCount,
+    headerAccountingMatches: true,
+  };
+}
+
+function gpuArenaRuntimeUnavailableReason(
+  device: GPUDevice,
+  plan: GpuTileCoveragePlan,
+  projectedContributorCount: number
+): string | undefined {
+  const maxStorageBindingBytes = device.limits.maxStorageBufferBindingSize;
+  const largestBindingBytes = Math.max(
+    Math.max(1, projectedContributorCount) * 16 * Float32Array.BYTES_PER_ELEMENT,
+    Math.max(1, plan.maxTileRefs) * 16 * Float32Array.BYTES_PER_ELEMENT,
+    Math.max(8, plan.maxTileRefs * 8) * Float32Array.BYTES_PER_ELEMENT,
+  );
+  if (largestBindingBytes > maxStorageBindingBytes) {
+    return `gpu arena projected contributor buffers exceed max storage binding: ${largestBindingBytes} > ${maxStorageBindingBytes}`;
+  }
+  return undefined;
 }
 
 function selectedSplatAssetPath(): string {
@@ -1245,17 +1362,20 @@ function buildArenaRuntimeEvidence(
   tileLocalLastSkipReason: string | null
 ): ArenaRuntimeEvidence {
   const cpuBuildDurationMs = tileLocalState?.budgetDiagnostics.heat.cpu.buildDurationMs;
+  const effectiveArenaBackend = tileLocalState?.arenaBackend ?? "cpu";
   return {
     requestedArenaBackend,
-    effectiveArenaBackend: "cpu",
+    effectiveArenaBackend,
     cpuBuildDurationMs: typeof cpuBuildDurationMs === "number" && Number.isFinite(cpuBuildDurationMs)
       ? cpuBuildDurationMs
       : undefined,
-    gpuDispatchDurationMs: undefined,
-    unavailableReason: requestedArenaBackend === "gpu" ? "gpu contributor arena runtime not promoted" : undefined,
+    gpuDispatchDurationMs: effectiveArenaBackend === "gpu" ? tileLocalState?.gpuDispatchDurationMs : undefined,
+    unavailableReason: requestedArenaBackend === "gpu" && effectiveArenaBackend !== "gpu"
+      ? tileLocalState?.arenaUnavailableReason ?? "gpu contributor arena runtime unavailable"
+      : undefined,
     skippedReason: tileLocalLastSkipReason ?? tileLocalDisabledReason ?? undefined,
     fallbackReason:
-      requestedArenaBackend === "gpu"
+      requestedArenaBackend === "gpu" && effectiveArenaBackend !== "gpu"
         ? "requested gpu arena backend fell back to the CPU bridge"
         : undefined,
   };

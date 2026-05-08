@@ -95,11 +95,35 @@ test("GPU contributor arena WGSL has production count, prefix, and scatter stage
   assert.match(shader, /struct ProjectedContributor/);
   assert.match(shader, /headerU32/);
   assert.match(shader, /recordF32/);
+  assert.match(shader, /projectedContributorU32/);
+  assert.match(shader, /projectedContributorF32/);
   assert.match(shader, /atomicAdd\(&projectedCounts\[tileIndex\],\s*1u\)/);
   assert.match(shader, /prefixCounts\[tileIndex\]\s*=\s*runningOffset/);
   assert.match(shader, /atomicAdd\(&scatterCursors\[tileIndex\],\s*1u\)/);
-  assert.match(shader, /recordU32\[recordBaseU32 \+ 1u\]\s*=\s*projected\.originalId/);
+  assert.match(shader, /recordU32\[recordBaseU32 \+ 1u\]\s*=\s*originalId/);
   assert.doesNotMatch(shader, /TODO\(contributor-arena-contract\)|intentionally inert|does not route first smoke/);
+});
+
+test("GPU contributor arena runtime writes legacy compositor buffers for live consumption", () => {
+  const runtimeSource = readFileSync(
+    new URL("../../src/gpuTileContributorArenaRuntime.ts", import.meta.url),
+    "utf8",
+  );
+  const shader = readFileSync(new URL("../../src/shaders/gpu_tile_contributor_arena.wgsl", import.meta.url), "utf8");
+  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+
+  assert.match(runtimeSource, /createGpuTileContributorArenaRuntime/);
+  assert.match(runtimeSource, /projectGpuArenaToLegacyCompositorBuffers/);
+  assert.match(shader, /legacyTileHeaders/);
+  assert.match(shader, /legacyTileRefs/);
+  assert.match(shader, /legacyTileCoverageWeights/);
+  assert.match(shader, /legacyAlphaParams/);
+  assert.match(mainSource, /REQUESTED_ARENA_BACKEND/);
+  assert.match(mainSource, /gpuArenaRuntime\.dispatch/);
+  assert.match(mainSource, /effectiveArenaBackend\s*=\s*tileLocalState\?\.arenaBackend/);
+  assert.match(mainSource, /maxStorageBufferBindingSize/);
+  assert.match(mainSource, /gpu arena projected contributor buffers exceed max storage binding/);
+  assert.match(mainSource, /retention adapter before cap-pressure scenes/);
 });
 
 function contributor(overrides) {
