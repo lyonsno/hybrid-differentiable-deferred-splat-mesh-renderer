@@ -19,6 +19,13 @@ test("main exposes a visible tile-local Gaussian compositor without replacing th
   assert.match(source, /params\.get\("renderer"\)\s*===\s*"tile-local"/);
 });
 
+test("main makes the visible compositor ref limit human-visible beside tile budget caps", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+
+  assert.match(source, /TILE_LOCAL_VISIBLE_COMPOSITOR_REF_LIMIT/);
+  assert.match(source, /visible-compositor cap/);
+});
+
 test("tile-local visible shader composites ordered tile refs with sample-local conic coverage, alpha, and real colors", () => {
   const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
 

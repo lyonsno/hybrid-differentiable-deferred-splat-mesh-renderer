@@ -657,6 +657,9 @@ async function main() {
         statsText += ` | tile-local budget: ${budgetText}`;
       }
       statsText += ` | tile-budget: ${formatTileLocalBudgetPair(TILE_LOCAL_BUDGET_CONFIG)}`;
+      if (scene.tileLocalState.debugMode === "final-color") {
+        statsText += ` | visible-compositor cap: ${TILE_LOCAL_VISIBLE_COMPOSITOR_REF_LIMIT} refs`;
+      }
       statsText += ` | tile-order: ${TILE_LOCAL_ORDERING_BACKEND}`;
       const freshness = tileLocalPresentationFreshness(
         scene.tileLocalState,
