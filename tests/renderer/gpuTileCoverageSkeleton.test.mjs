@@ -210,6 +210,7 @@ test("GPU contributor arena WGSL is a nonblocking count-prefix-scatter carrier",
   assert.match(shader, /@compute @workgroup_size\(64\)\s+fn scatter_tile_contributors/);
   assert.match(shader, /struct ProjectedContributor/);
   assert.match(shader, /atomicAdd\(&projectedCounts\[tileIndex\],\s*1u\)/);
-  assert.match(shader, /prefixCounts\[tileIndex\]\s*=\s*runningOffset/);
+  assert.match(shader, /legacyTileHeaders\[tileIndex\]\s*=\s*vec4u\(runningOffset,\s*projectedCount,\s*projectedCount,\s*0u\)/);
+  assert.doesNotMatch(shader, /@binding\(8\)|@binding\(9\)|@binding\(10\)|@binding\(11\)|@binding\(12\)/);
   assert.doesNotMatch(shader, /@fragment|textureStore|globalOpacity|brightness/);
 });

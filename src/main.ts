@@ -27,6 +27,7 @@ import {
   projectGpuArenaToLegacyCompositorBuffers,
   type GpuTileContributorArenaRuntime,
 } from "./gpuTileContributorArenaRuntime.js";
+import { adaptGpuArenaRetainedContributors } from "./gpuArenaRetainedListAdapter.js";
 import {
   createGpuTileCoveragePipelineSkeleton,
   type GpuTileCoveragePipelineSkeleton,
@@ -810,13 +811,11 @@ function createTileLocalSceneState(
   const bridge = buildTileLocalPrepassBridge(bridgeInput);
   const bridgeBuildDurationMs = Math.max(0, performance.now() - bridgeBuildStartedAtMs);
   const prepassSignature = captureTileLocalPrepassBridgeSignature(bridgeInput);
-  const gpuArenaProjectedContributors = REQUESTED_ARENA_BACKEND === "gpu"
-    ? projectedContributorsWithEffectiveOpacity(bridge.contributorArena?.projectedContributors ?? [], effectiveOpacities)
-    : [];
-  const gpuArenaCapBlocker = REQUESTED_ARENA_BACKEND === "gpu" && bridge.tileRefCustody.evictedTileEntryCount > 0
-    ? "gpu arena runtime requires a retention adapter before cap-pressure scenes can bypass the CPU retained list"
-    : undefined;
-  const requestedGpuArenaRuntime = gpuArenaProjectedContributors.length > 0 && !gpuArenaCapBlocker;
+  const gpuArenaRetainedAdapter = REQUESTED_ARENA_BACKEND === "gpu"
+    ? adaptGpuArenaRetainedContributors(bridge, effectiveOpacities)
+    : null;
+  const gpuArenaProjectedContributors = gpuArenaRetainedAdapter?.contributors ?? [];
+  const requestedGpuArenaRuntime = gpuArenaProjectedContributors.length > 0;
   const plan = createGpuTileCoveragePlan({
     viewportWidth,
     viewportHeight,
@@ -827,7 +826,7 @@ function createTileLocalSceneState(
   const gpuArenaRuntimeBlocker = requestedGpuArenaRuntime
     ? gpuArenaRuntimeUnavailableReason(device, plan, gpuArenaProjectedContributors.length)
     : REQUESTED_ARENA_BACKEND === "gpu"
-      ? gpuArenaCapBlocker ?? "no projected contributors for gpu arena runtime"
+      ? "no retained contributors for gpu arena runtime"
       : undefined;
   const gpuArenaRuntime = requestedGpuArenaRuntime && !gpuArenaRuntimeBlocker
     ? createGpuTileContributorArenaRuntime(device, plan, gpuArenaProjectedContributors)
@@ -838,8 +837,9 @@ function createTileLocalSceneState(
     arenaRefs: legacyProjection
       ? {
           ...bridge.budgetDiagnostics.arenaRefs,
-          retained: gpuArenaProjectedContributors.length,
-          dropped: 0,
+          projected: gpuArenaRetainedAdapter?.projectedContributorCount ?? bridge.budgetDiagnostics.arenaRefs.projected,
+          retained: gpuArenaRetainedAdapter?.retainedContributorCount ?? gpuArenaProjectedContributors.length,
+          dropped: gpuArenaRetainedAdapter?.droppedContributorCount ?? 0,
         }
       : bridge.budgetDiagnostics.arenaRefs,
     heat: {
@@ -952,7 +952,7 @@ function createTileLocalSceneState(
     outputTexture,
     outputView,
     tileEntryCount: legacyProjection ? gpuArenaProjectedContributors.length : bridge.tileEntryCount,
-    tileRefCustody: legacyProjection ? promoteTileRefCustodyToGpuArena(bridge.tileRefCustody, gpuArenaProjectedContributors.length) : bridge.tileRefCustody,
+    tileRefCustody: bridge.tileRefCustody,
     retentionAudit: bridge.retentionAudit,
     budgetDiagnostics,
     tileRefSplatIds,
@@ -963,7 +963,7 @@ function createTileLocalSceneState(
       plan,
       tileEntryCount: legacyProjection ? gpuArenaProjectedContributors.length : bridge.tileEntryCount,
       tileHeaders: legacyProjection?.tileHeaders ?? bridge.tileHeaders,
-      tileRefCustody: legacyProjection ? promoteTileRefCustodyToGpuArena(bridge.tileRefCustody, gpuArenaProjectedContributors.length) : bridge.tileRefCustody,
+      tileRefCustody: bridge.tileRefCustody,
       retentionAudit: bridge.retentionAudit,
       tileCoverageWeights: legacyProjection?.tileCoverageWeights ?? bridge.tileCoverageWeights,
       alphaParamData,
@@ -1096,19 +1096,6 @@ function projectedContributorsWithEffectiveOpacity(
     ...contributor,
     opacity: effectiveOpacities[contributor.splatIndex] ?? contributor.opacity,
   }));
-}
-
-function promoteTileRefCustodyToGpuArena(
-  custody: TileRefCustodySummary,
-  retainedTileEntryCount: number
-): TileRefCustodySummary {
-  return {
-    ...custody,
-    retainedTileEntryCount,
-    evictedTileEntryCount: 0,
-    headerRefCount: retainedTileEntryCount,
-    headerAccountingMatches: true,
-  };
 }
 
 function gpuArenaRuntimeUnavailableReason(

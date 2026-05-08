@@ -93,14 +93,16 @@ test("GPU contributor arena WGSL has production count, prefix, and scatter stage
   const shader = readFileSync(new URL("../../src/shaders/gpu_tile_contributor_arena.wgsl", import.meta.url), "utf8");
 
   assert.match(shader, /struct ProjectedContributor/);
-  assert.match(shader, /headerU32/);
-  assert.match(shader, /recordF32/);
   assert.match(shader, /projectedContributorU32/);
   assert.match(shader, /projectedContributorF32/);
+  assert.match(shader, /legacyTileHeaders/);
+  assert.match(shader, /legacyTileRefs/);
+  assert.match(shader, /legacyAlphaParams/);
   assert.match(shader, /atomicAdd\(&projectedCounts\[tileIndex\],\s*1u\)/);
-  assert.match(shader, /prefixCounts\[tileIndex\]\s*=\s*runningOffset/);
+  assert.match(shader, /legacyTileHeaders\[tileIndex\]\s*=\s*vec4u\(runningOffset,\s*projectedCount,\s*projectedCount,\s*0u\)/);
   assert.match(shader, /atomicAdd\(&scatterCursors\[tileIndex\],\s*1u\)/);
-  assert.match(shader, /recordU32\[recordBaseU32 \+ 1u\]\s*=\s*originalId/);
+  assert.match(shader, /legacyTileRefs\[recordIndex\]\s*=\s*vec4u\(splatIndex,\s*originalId,\s*tileIndex,\s*recordIndex\)/);
+  assert.doesNotMatch(shader, /@binding\(8\)|@binding\(9\)|@binding\(10\)|@binding\(11\)|@binding\(12\)/);
   assert.doesNotMatch(shader, /TODO\(contributor-arena-contract\)|intentionally inert|does not route first smoke/);
 });
 
@@ -123,7 +125,7 @@ test("GPU contributor arena runtime writes legacy compositor buffers for live co
   assert.match(mainSource, /effectiveArenaBackend\s*=\s*tileLocalState\?\.arenaBackend/);
   assert.match(mainSource, /maxStorageBufferBindingSize/);
   assert.match(mainSource, /gpu arena projected contributor buffers exceed max storage binding/);
-  assert.match(mainSource, /retention adapter before cap-pressure scenes/);
+  assert.match(mainSource, /adaptGpuArenaRetainedContributors/);
 });
 
 function contributor(overrides) {

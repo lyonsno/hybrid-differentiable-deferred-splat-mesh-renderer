@@ -1,7 +1,5 @@
 import gpuTileContributorArenaShader from "./shaders/gpu_tile_contributor_arena.wgsl?raw";
 import {
-  GPU_TILE_CONTRIBUTOR_ARENA_HEADER_FLOAT32_STRIDE,
-  GPU_TILE_CONTRIBUTOR_ARENA_HEADER_UINT32_STRIDE,
   GPU_TILE_CONTRIBUTOR_ARENA_RECORD_FLOAT32_STRIDE,
   GPU_TILE_CONTRIBUTOR_ARENA_RECORD_UINT32_STRIDE,
   getGpuTileContributorArenaDispatchPlan,
@@ -24,13 +22,8 @@ export interface GpuTileContributorArenaLegacyProjection {
 export interface GpuTileContributorArenaRuntimeBuffers {
   readonly projectedContributorU32Buffer: GPUBuffer;
   readonly projectedContributorF32Buffer: GPUBuffer;
-  readonly headerU32Buffer: GPUBuffer;
-  readonly headerF32Buffer: GPUBuffer;
-  readonly prefixCountBuffer: GPUBuffer;
   readonly projectedCountBuffer: GPUBuffer;
   readonly scatterCursorBuffer: GPUBuffer;
-  readonly recordU32Buffer: GPUBuffer;
-  readonly recordF32Buffer: GPUBuffer;
   readonly legacyTileHeaderBuffer: GPUBuffer;
   readonly legacyTileRefBuffer: GPUBuffer;
   readonly legacyTileCoverageWeightBuffer: GPUBuffer;
@@ -62,17 +55,12 @@ export function createGpuTileContributorArenaRuntime(
     entries: [
       storageEntry(0),
       storageEntry(1),
-      storageEntry(2),
-      storageEntry(3),
+      storageEntry(2, "read-only-storage"),
+      storageEntry(3, "read-only-storage"),
       storageEntry(4),
-      storageEntry(5, "read-only-storage"),
-      storageEntry(6, "read-only-storage"),
+      storageEntry(5),
+      storageEntry(6),
       storageEntry(7),
-      storageEntry(8),
-      storageEntry(9),
-      storageEntry(10),
-      storageEntry(11),
-      storageEntry(12),
     ],
   });
   const pipelineLayout = device.createPipelineLayout({
@@ -88,19 +76,14 @@ export function createGpuTileContributorArenaRuntime(
     label: "gpu_tile_contributor_arena_bind_group",
     layout: bindGroupLayout,
     entries: [
-      { binding: 0, resource: { buffer: buffers.headerU32Buffer } },
-      { binding: 1, resource: { buffer: buffers.headerF32Buffer } },
-      { binding: 2, resource: { buffer: buffers.prefixCountBuffer } },
-      { binding: 3, resource: { buffer: buffers.projectedCountBuffer } },
-      { binding: 4, resource: { buffer: buffers.scatterCursorBuffer } },
-      { binding: 5, resource: { buffer: buffers.projectedContributorU32Buffer } },
-      { binding: 6, resource: { buffer: buffers.projectedContributorF32Buffer } },
-      { binding: 7, resource: { buffer: buffers.recordU32Buffer } },
-      { binding: 8, resource: { buffer: buffers.recordF32Buffer } },
-      { binding: 9, resource: { buffer: buffers.legacyTileHeaderBuffer } },
-      { binding: 10, resource: { buffer: buffers.legacyTileRefBuffer } },
-      { binding: 11, resource: { buffer: buffers.legacyTileCoverageWeightBuffer } },
-      { binding: 12, resource: { buffer: buffers.legacyAlphaParamBuffer } },
+      { binding: 0, resource: { buffer: buffers.projectedCountBuffer } },
+      { binding: 1, resource: { buffer: buffers.scatterCursorBuffer } },
+      { binding: 2, resource: { buffer: buffers.projectedContributorU32Buffer } },
+      { binding: 3, resource: { buffer: buffers.projectedContributorF32Buffer } },
+      { binding: 4, resource: { buffer: buffers.legacyTileHeaderBuffer } },
+      { binding: 5, resource: { buffer: buffers.legacyTileRefBuffer } },
+      { binding: 6, resource: { buffer: buffers.legacyTileCoverageWeightBuffer } },
+      { binding: 7, resource: { buffer: buffers.legacyAlphaParamBuffer } },
     ],
   });
 
@@ -249,29 +232,8 @@ function createRuntimeBuffers(
   return {
     projectedContributorU32Buffer: storageBuffer(device, packed.u32, "gpu_arena_projected_contributor_u32"),
     projectedContributorF32Buffer: storageBuffer(device, packed.f32, "gpu_arena_projected_contributor_f32"),
-    headerU32Buffer: emptyStorageBuffer(
-      device,
-      Math.max(16, plan.tileCount * GPU_TILE_CONTRIBUTOR_ARENA_HEADER_UINT32_STRIDE * Uint32Array.BYTES_PER_ELEMENT),
-      "gpu_arena_header_u32",
-    ),
-    headerF32Buffer: emptyStorageBuffer(
-      device,
-      Math.max(16, plan.tileCount * GPU_TILE_CONTRIBUTOR_ARENA_HEADER_FLOAT32_STRIDE * Float32Array.BYTES_PER_ELEMENT),
-      "gpu_arena_header_f32",
-    ),
-    prefixCountBuffer: emptyStorageBuffer(device, Math.max(16, plan.tileCount * Uint32Array.BYTES_PER_ELEMENT), "gpu_arena_prefix_counts"),
     projectedCountBuffer: emptyStorageBuffer(device, Math.max(16, plan.tileCount * Uint32Array.BYTES_PER_ELEMENT), "gpu_arena_projected_counts"),
     scatterCursorBuffer: emptyStorageBuffer(device, Math.max(16, plan.tileCount * Uint32Array.BYTES_PER_ELEMENT), "gpu_arena_scatter_cursors"),
-    recordU32Buffer: emptyStorageBuffer(
-      device,
-      Math.max(16, plan.maxTileRefs * GPU_TILE_CONTRIBUTOR_ARENA_RECORD_UINT32_STRIDE * Uint32Array.BYTES_PER_ELEMENT),
-      "gpu_arena_record_u32",
-    ),
-    recordF32Buffer: emptyStorageBuffer(
-      device,
-      Math.max(16, plan.maxTileRefs * GPU_TILE_CONTRIBUTOR_ARENA_RECORD_FLOAT32_STRIDE * Float32Array.BYTES_PER_ELEMENT),
-      "gpu_arena_record_f32",
-    ),
     legacyTileHeaderBuffer: storageBuffer(device, legacyProjection.tileHeaders, "gpu_arena_legacy_tile_headers"),
     legacyTileRefBuffer: storageBuffer(device, legacyProjection.tileRefs, "gpu_arena_legacy_tile_refs"),
     legacyTileCoverageWeightBuffer: storageBuffer(device, legacyProjection.tileCoverageWeights, "gpu_arena_legacy_tile_coverage_weights"),
