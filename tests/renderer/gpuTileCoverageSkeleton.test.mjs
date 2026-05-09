@@ -10,6 +10,8 @@ import {
   GPU_TILE_COVERAGE_TILE_REF_BYTES,
   GPU_TILE_COVERAGE_ALPHA_PARAM_FLOATS_PER_REF,
   GPU_TILE_COVERAGE_WORKGROUP_SIZE,
+  GPU_TILE_COVERAGE_COMPOSITE_WORKGROUP_WIDTH,
+  GPU_TILE_COVERAGE_COMPOSITE_WORKGROUP_HEIGHT,
   createGpuTileCoveragePlan,
   createGpuTileContributorArenaLayout,
   getGpuTileContributorArenaDispatchPlan,
@@ -96,7 +98,11 @@ test("GPU tile coverage dispatch plan separates bounds, list construction, and t
   assert.deepEqual(dispatch, {
     clearTiles: { x: Math.ceil(plan.tileCount / GPU_TILE_COVERAGE_WORKGROUP_SIZE), y: 1, z: 1 },
     buildTileRefs: { x: 2, y: 1, z: 1 },
-    compositeTiles: { x: plan.tileColumns, y: plan.tileRows, z: 1 },
+    compositeTiles: {
+      x: Math.ceil(plan.viewportWidth / GPU_TILE_COVERAGE_COMPOSITE_WORKGROUP_WIDTH),
+      y: Math.ceil(plan.viewportHeight / GPU_TILE_COVERAGE_COMPOSITE_WORKGROUP_HEIGHT),
+      z: 1,
+    },
   });
 });
 

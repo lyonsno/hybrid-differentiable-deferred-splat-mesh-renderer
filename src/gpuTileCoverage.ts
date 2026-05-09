@@ -394,8 +394,8 @@ export function getGpuTileCoverageDispatchPlan(plan: GpuTileCoveragePlan): GpuTi
     clearTiles: linearDispatch(plan.tileCount),
     buildTileRefs: linearDispatch(plan.splatCount),
     compositeTiles: {
-      x: plan.tileColumns,
-      y: plan.tileRows,
+      x: Math.ceil(plan.viewportWidth / GPU_TILE_COVERAGE_COMPOSITE_WORKGROUP_WIDTH),
+      y: Math.ceil(plan.viewportHeight / GPU_TILE_COVERAGE_COMPOSITE_WORKGROUP_HEIGHT),
       z: 1,
     },
   };
