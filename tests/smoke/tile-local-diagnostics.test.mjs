@@ -127,7 +127,7 @@ test("tile-local page metrics preserve requested and effective arena backend evi
       requestedArenaBackend: "gpu",
       effectiveArenaBackend: "cpu",
       cpuBuildDurationMs: 12.5,
-      gpuDispatchDurationMs: null,
+      gpuDispatchEnqueueDurationMs: null,
       unavailableReason: "gpu contributor arena runtime not promoted",
       skippedReason: "arena backend gpu requested without live GPU output",
     },
@@ -137,7 +137,7 @@ test("tile-local page metrics preserve requested and effective arena backend evi
     requestedArenaBackend: "gpu",
     effectiveArenaBackend: "cpu",
     cpuBuildDurationMs: 12.5,
-    gpuDispatchDurationMs: undefined,
+    gpuDispatchEnqueueDurationMs: undefined,
     unavailableReason: "gpu contributor arena runtime not promoted",
     skippedReason: "arena backend gpu requested without live GPU output",
   });
@@ -150,7 +150,8 @@ test("visual smoke CLI reports requested and effective arena backend fields", ()
   assert.match(source, /Arena effective backend:/);
   assert.match(source, /Arena state:/);
   assert.match(source, /CPU bridge build duration ms:/);
-  assert.match(source, /GPU dispatch duration ms:/);
+  assert.match(source, /GPU dispatch enqueue duration ms:/);
+  assert.doesNotMatch(source, /Arena GPU dispatch duration ms:/);
   assert.match(source, /Unavailable reason:/);
   assert.match(source, /Skipped reason:/);
 });

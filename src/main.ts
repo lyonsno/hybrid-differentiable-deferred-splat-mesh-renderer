@@ -186,7 +186,7 @@ interface TileLocalSceneState {
   gpuArenaRuntime: GpuTileContributorArenaRuntime | null;
   gpuArenaProjectedContributors: readonly GpuTileContributorArenaProjectedContributor[];
   arenaUnavailableReason?: string;
-  gpuDispatchDurationMs?: number;
+  gpuDispatchEnqueueDurationMs?: number;
   needsDispatch: boolean;
   lastCompositedAtMs: number;
   lastCompositedFrame: number;
@@ -198,7 +198,7 @@ interface ArenaRuntimeEvidence {
   effectiveArenaBackend: "cpu" | "gpu";
   cpuBuildDurationMs?: number;
   cpuBridgeBuildDurationMs?: number;
-  gpuDispatchDurationMs?: number;
+  gpuDispatchEnqueueDurationMs?: number;
   unavailableReason?: string;
   skippedReason?: string;
   fallbackReason?: string;
@@ -546,6 +546,7 @@ async function main() {
     if (scene.tileLocalState && shouldDispatchTileLocalCompositor({
       needsDispatch: scene.tileLocalState.needsDispatch,
       activeInput,
+      allowActiveInputDispatch: scene.tileLocalState.arenaBackend === "gpu",
       pendingGpuSort,
       pendingAlphaDensity,
     })) {
@@ -580,7 +581,7 @@ async function main() {
         );
         gpu.device.queue.writeBuffer(tileLocalState.frameUniformBuffer, 0, tileLocalState.frameUniformData);
         const tileLocalComputePass = encoder.beginComputePass();
-        const gpuDispatchStartedAtMs = tileLocalState.arenaBackend === "gpu"
+        const gpuDispatchEnqueueStartedAtMs = tileLocalState.arenaBackend === "gpu"
           ? performance.now()
           : undefined;
         if (tileLocalState.gpuArenaRuntime) {
@@ -591,8 +592,10 @@ async function main() {
         } else {
           tileLocalState.pipeline.dispatch(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
         }
-        if (gpuDispatchStartedAtMs !== undefined) {
-          tileLocalState.gpuDispatchDurationMs = roundRuntimeMetric(performance.now() - gpuDispatchStartedAtMs);
+        if (gpuDispatchEnqueueStartedAtMs !== undefined) {
+          tileLocalState.gpuDispatchEnqueueDurationMs = roundRuntimeMetric(
+            performance.now() - gpuDispatchEnqueueStartedAtMs
+          );
         }
         tileLocalComputePass.end();
         tileLocalState.needsDispatch = false;
@@ -718,8 +721,8 @@ async function main() {
     if (arenaRuntime.cpuBuildDurationMs !== undefined) {
       statsText += ` | arena CPU bridge build: ${arenaRuntime.cpuBuildDurationMs.toFixed(3)}ms`;
     }
-    if (arenaRuntime.gpuDispatchDurationMs !== undefined) {
-      statsText += ` | arena GPU dispatch: ${arenaRuntime.gpuDispatchDurationMs.toFixed(3)}ms`;
+    if (arenaRuntime.gpuDispatchEnqueueDurationMs !== undefined) {
+      statsText += ` | arena GPU dispatch enqueue: ${arenaRuntime.gpuDispatchEnqueueDurationMs.toFixed(3)}ms`;
     }
     if (arenaRuntime.unavailableReason) {
       statsText += ` | arena unavailable: ${arenaRuntime.unavailableReason}`;
@@ -761,6 +764,7 @@ async function main() {
       pendingTileLocalCompositor: shouldDispatchTileLocalCompositor({
         needsDispatch: scene.tileLocalState?.needsDispatch === true,
         activeInput,
+        allowActiveInputDispatch: scene.tileLocalState?.arenaBackend === "gpu",
         pendingGpuSort,
         pendingAlphaDensity,
       }),
@@ -985,7 +989,7 @@ function createGpuArenaTileLocalSceneState(
     gpuArenaRuntime: null,
     gpuArenaProjectedContributors: [],
     arenaUnavailableReason: undefined,
-    gpuDispatchDurationMs: undefined,
+    gpuDispatchEnqueueDurationMs: undefined,
     needsDispatch: true,
     lastCompositedAtMs: 0,
     lastCompositedFrame: -1,
@@ -1196,7 +1200,7 @@ function createCpuTileLocalSceneState(
     gpuArenaRuntime,
     gpuArenaProjectedContributors,
     arenaUnavailableReason: gpuArenaRuntime ? undefined : gpuArenaRuntimeBlocker,
-    gpuDispatchDurationMs: undefined,
+    gpuDispatchEnqueueDurationMs: undefined,
     needsDispatch: true,
     lastCompositedAtMs: 0,
     lastCompositedFrame: -1,
@@ -1743,7 +1747,9 @@ function buildArenaRuntimeEvidence(
     cpuBridgeBuildDurationMs: typeof cpuBuildDurationMs === "number" && Number.isFinite(cpuBuildDurationMs)
       ? cpuBuildDurationMs
       : undefined,
-    gpuDispatchDurationMs: effectiveArenaBackend === "gpu" ? tileLocalState?.gpuDispatchDurationMs : undefined,
+    gpuDispatchEnqueueDurationMs: effectiveArenaBackend === "gpu"
+      ? tileLocalState?.gpuDispatchEnqueueDurationMs
+      : undefined,
     unavailableReason: requestedArenaBackend === "gpu" && effectiveArenaBackend !== "gpu"
       ? tileLocalState?.arenaUnavailableReason ?? "gpu contributor arena runtime unavailable"
       : undefined,

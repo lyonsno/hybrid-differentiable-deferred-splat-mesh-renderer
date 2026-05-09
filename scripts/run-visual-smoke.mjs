@@ -507,7 +507,7 @@ ${result.captures
 - Arena requested backend: ${metrics.arenaRuntime?.requestedArenaBackend || "not reported"}
 - Arena effective backend: ${metrics.arenaRuntime?.effectiveArenaBackend || "not reported"}
 - CPU bridge build duration ms: ${metrics.cpuBuildDurationMs ?? "not reported"}
-- GPU dispatch duration ms: ${metrics.gpuDispatchDurationMs ?? "gpu-unavailable"}
+- GPU dispatch enqueue duration ms: ${metrics.gpuDispatchEnqueueDurationMs ?? "gpu-unavailable"}
 - Plate presentation state: ${metrics.presentation?.plate || "not-applicable"}
 - Silent prepass presentation state: ${metrics.presentation?.prepass || "not-applicable"}
 - Visible presentation state: ${metrics.presentation?.visible || "not-applicable"}
@@ -566,7 +566,7 @@ ${result.captures
 - Arena effective backend: ${metrics.arenaRuntime?.effectiveArenaBackend || "not reported"}
 - Arena state: ${classifyArenaRuntimeState(metrics.arenaRuntime)}
 - Arena CPU bridge build duration ms: ${metrics.arenaRuntime?.cpuBuildDurationMs ?? "not reported"}
-- Arena GPU dispatch duration ms: ${metrics.arenaRuntime?.gpuDispatchDurationMs ?? "not reported"}
+- Arena GPU dispatch enqueue duration ms: ${metrics.arenaRuntime?.gpuDispatchEnqueueDurationMs ?? "not reported"}
 - Unavailable reason: ${metrics.arenaRuntime?.unavailableReason || "not reported"}
 - Skipped reason: ${metrics.arenaRuntime?.skippedReason || "not reported"}
 - GPU retained ref buffer bytes: ${metrics.gpuRetainedRefBufferBytes}

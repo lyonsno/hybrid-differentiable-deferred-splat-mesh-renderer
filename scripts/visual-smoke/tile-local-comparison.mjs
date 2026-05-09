@@ -146,7 +146,8 @@ export function extractTileLocalPageMetrics(pageEvidence = {}) {
       requestedArenaBackend: optionalString(arenaRuntime.requestedArenaBackend),
       effectiveArenaBackend: optionalString(arenaRuntime.effectiveArenaBackend),
       cpuBuildDurationMs: finiteNumber(arenaRuntime.cpuBuildDurationMs),
-      gpuDispatchDurationMs: finiteNumber(arenaRuntime.gpuDispatchDurationMs),
+      gpuDispatchEnqueueDurationMs:
+        finiteNumber(arenaRuntime.gpuDispatchEnqueueDurationMs) ?? finiteNumber(arenaRuntime.gpuDispatchDurationMs),
       unavailableReason: optionalString(arenaRuntime.unavailableReason),
       skippedReason: optionalString(arenaRuntime.skippedReason),
     },
@@ -185,7 +186,7 @@ export function summarizeTileLocalArenaWitness({
     arenaBackend: visibleArenaBackend(visible),
     arenaState: classifyArenaRuntimeState(visibleArenaRuntime),
     cpuBuildDurationMs: visibleCpuBuildDurationMs(visible),
-    gpuDispatchDurationMs: visibleGpuDispatchDurationMs(visible),
+    gpuDispatchEnqueueDurationMs: visibleGpuDispatchEnqueueDurationMs(visible),
     arenaRuntime: visibleArenaRuntime,
     presentation,
     artifactMovement: summarizeArtifactMovement({ plate, visible }),
@@ -197,12 +198,13 @@ export function classifyArenaRuntimeState(arenaRuntime = {}) {
   const effectiveArenaBackend = String(arenaRuntime.effectiveArenaBackend ?? "").trim();
   const cpuBridgeBuildDurationMs =
     finiteNumber(arenaRuntime.cpuBridgeBuildDurationMs) ?? finiteNumber(arenaRuntime.cpuBuildDurationMs);
-  const gpuDispatchDurationMs = finiteNumber(arenaRuntime.gpuDispatchDurationMs);
+  const gpuDispatchEnqueueDurationMs =
+    finiteNumber(arenaRuntime.gpuDispatchEnqueueDurationMs) ?? finiteNumber(arenaRuntime.gpuDispatchDurationMs);
   const hasExplicitEvidence =
     requestedArenaBackend.length > 0 ||
     effectiveArenaBackend.length > 0 ||
     cpuBridgeBuildDurationMs !== undefined ||
-    gpuDispatchDurationMs !== undefined ||
+    gpuDispatchEnqueueDurationMs !== undefined ||
     arenaRuntime.unavailableReason ||
     arenaRuntime.skippedReason ||
     arenaRuntime.fallbackReason;
@@ -345,7 +347,7 @@ function capturePresentationState(capture = {}) {
 }
 
 function visibleArenaBackend(capture = {}) {
-  return visibleGpuDispatchDurationMs(capture) === undefined ? "gpu-unavailable" : "gpu";
+  return visibleGpuDispatchEnqueueDurationMs(capture) === undefined ? "gpu-unavailable" : "gpu";
 }
 
 function arenaRuntimeEvidence(capture = {}) {
@@ -364,14 +366,15 @@ function visibleCpuBuildDurationMs(capture = {}) {
   return finiteNumber(heat?.cpu?.buildDurationMs);
 }
 
-function visibleGpuDispatchDurationMs(capture = {}) {
+function visibleGpuDispatchEnqueueDurationMs(capture = {}) {
   const arenaRuntime = arenaRuntimeEvidence(capture);
-  const runtimeDispatchDurationMs = finiteNumber(arenaRuntime?.gpuDispatchDurationMs);
-  if (runtimeDispatchDurationMs !== undefined) {
-    return runtimeDispatchDurationMs;
+  const runtimeDispatchEnqueueDurationMs =
+    finiteNumber(arenaRuntime?.gpuDispatchEnqueueDurationMs) ?? finiteNumber(arenaRuntime?.gpuDispatchDurationMs);
+  if (runtimeDispatchEnqueueDurationMs !== undefined) {
+    return runtimeDispatchEnqueueDurationMs;
   }
   const heat = capture?.pageEvidence?.tileLocal?.budgetDiagnostics?.heat;
-  return finiteNumber(heat?.gpu?.dispatchDurationMs);
+  return finiteNumber(heat?.gpu?.dispatchEnqueueDurationMs) ?? finiteNumber(heat?.gpu?.dispatchDurationMs);
 }
 
 function summarizeArtifactMovement({ plate, visible } = {}) {

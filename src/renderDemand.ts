@@ -13,6 +13,7 @@ export interface RenderDemandSignals {
 export interface TileLocalCompositorDispatchSignals {
   readonly needsDispatch: boolean;
   readonly activeInput: boolean;
+  readonly allowActiveInputDispatch?: boolean;
   readonly pendingGpuSort: boolean;
   readonly pendingAlphaDensity: boolean;
 }
@@ -44,6 +45,9 @@ export function shouldContinueRendering(signals: RenderDemandSignals): boolean {
 }
 
 export function shouldDispatchTileLocalCompositor(signals: TileLocalCompositorDispatchSignals): boolean {
+  if (signals.allowActiveInputDispatch === true) {
+    return signals.needsDispatch;
+  }
   return (
     signals.needsDispatch &&
     !signals.activeInput &&

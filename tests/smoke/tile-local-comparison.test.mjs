@@ -289,7 +289,7 @@ test("tile-local arena witness reports gpu-unavailable, current/fallback states,
 
   assert.equal(result.arenaBackend, "gpu-unavailable");
   assert.equal(result.cpuBuildDurationMs, 9314.7);
-  assert.equal(result.gpuDispatchDurationMs, undefined);
+  assert.equal(result.gpuDispatchEnqueueDurationMs, undefined);
   assert.deepEqual(result.presentation, {
     plate: "not-applicable",
     prepass: "fallback",
@@ -313,7 +313,7 @@ test("tile-local arena witness forwards arenaRuntime evidence into backend and s
           effectiveArenaBackend: "gpu",
           cpuBuildDurationMs: 24.37,
           cpuBridgeBuildDurationMs: 24.37,
-          gpuDispatchDurationMs: 0.84,
+          gpuDispatchEnqueueDurationMs: 0.84,
         },
       },
     }),
@@ -322,7 +322,7 @@ test("tile-local arena witness forwards arenaRuntime evidence into backend and s
   assert.equal(result.arenaBackend, "gpu");
   assert.equal(result.arenaState, "gpu-effective-with-cpu-bridge");
   assert.equal(result.cpuBuildDurationMs, 24.37);
-  assert.equal(result.gpuDispatchDurationMs, 0.84);
+  assert.equal(result.gpuDispatchEnqueueDurationMs, 0.84);
 });
 
 test("tile-local arena runtime state distinguishes CPU fallback, effective GPU bridge use, and blocked or unavailable states", () => {
@@ -342,7 +342,7 @@ test("tile-local arena runtime state distinguishes CPU fallback, effective GPU b
       requestedArenaBackend: "gpu",
       effectiveArenaBackend: "gpu",
       cpuBuildDurationMs: 24.37,
-      gpuDispatchDurationMs: 0.84,
+      gpuDispatchEnqueueDurationMs: 0.84,
     }),
     "gpu-effective-with-cpu-bridge"
   );
@@ -351,7 +351,7 @@ test("tile-local arena runtime state distinguishes CPU fallback, effective GPU b
     classifyArenaRuntimeState({
       requestedArenaBackend: "gpu",
       effectiveArenaBackend: "gpu",
-      gpuDispatchDurationMs: 0.84,
+      gpuDispatchEnqueueDurationMs: 0.84,
     }),
     "gpu-effective-without-cpu-bridge"
   );

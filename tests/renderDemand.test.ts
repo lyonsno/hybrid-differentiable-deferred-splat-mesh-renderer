@@ -48,3 +48,18 @@ test("tile-local compositor dispatch waits until camera-dependent work has settl
   assert.equal(shouldDispatchTileLocalCompositor({ ...settled, pendingGpuSort: true }), false);
   assert.equal(shouldDispatchTileLocalCompositor({ ...settled, pendingAlphaDensity: true }), false);
 });
+
+test("GPU-backed tile-local compositor may refresh during active camera input", () => {
+  const activeGpuInput = {
+    needsDispatch: true,
+    activeInput: true,
+    pendingGpuSort: false,
+    pendingAlphaDensity: false,
+    allowActiveInputDispatch: true,
+  };
+
+  assert.equal(shouldDispatchTileLocalCompositor(activeGpuInput), true);
+  assert.equal(shouldDispatchTileLocalCompositor({ ...activeGpuInput, needsDispatch: false }), false);
+  assert.equal(shouldDispatchTileLocalCompositor({ ...activeGpuInput, pendingGpuSort: true }), true);
+  assert.equal(shouldDispatchTileLocalCompositor({ ...activeGpuInput, pendingAlphaDensity: true }), true);
+});
