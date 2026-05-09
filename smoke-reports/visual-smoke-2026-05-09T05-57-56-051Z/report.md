@@ -1,7 +1,7 @@
 # Visual Smoke Report
 
 - Status: PASS
-- Generated: 2026-05-09T05:46:41.586Z
+- Generated: 2026-05-09T05:57:56.053Z
 - URL: http://127.0.0.1:61622/?renderer=tile-local-visible&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu
 - Screenshot: `canvas.png`
 - Analysis JSON: `analysis.json`
@@ -11,8 +11,8 @@
 - Canvas PNG: 3456x1804
 - Nonblank: true
 - Changed pixels: 25261 / 6234624 (0.405%)
-- Average background delta: 3.02
-- Distinct colors: 12266
+- Average background delta: 3.01
+- Distinct colors: 12005
 
 ## Splat Evidence
 
@@ -667,14 +667,6 @@
 ```json
 {
   "consoleMessages": [
-    {
-      "type": "debug",
-      "text": "[vite] connecting..."
-    },
-    {
-      "type": "debug",
-      "text": "[vite] connected."
-    },
     {
       "type": "debug",
       "text": "[vite] connecting..."

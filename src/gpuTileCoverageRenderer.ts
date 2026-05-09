@@ -22,7 +22,6 @@ export interface GpuTileCoverageBuffers {
 export interface GpuTileCoveragePipelineSkeleton {
   readonly bindGroupLayout: GPUBindGroupLayout;
   readonly pipelineLayout: GPUPipelineLayout;
-  readonly projectBoundsPipeline: GPUComputePipeline;
   readonly clearTilesPipeline: GPUComputePipeline;
   readonly buildTileRefsPipeline: GPUComputePipeline;
   readonly compositeTilesPipeline: GPUComputePipeline;
@@ -71,7 +70,6 @@ export function createGpuTileCoveragePipelineSkeleton(
     label: "gpu_tile_coverage_pipeline_layout",
     bindGroupLayouts: [bindGroupLayout],
   });
-  const projectBoundsPipeline = createComputePipeline(device, shaderModule, pipelineLayout, "project_bounds");
   const clearTilesPipeline = createComputePipeline(device, shaderModule, pipelineLayout, "clear_tiles");
   const buildTileRefsPipeline = createComputePipeline(device, shaderModule, pipelineLayout, "build_tile_refs");
   const compositeTilesPipeline = createComputePipeline(device, shaderModule, pipelineLayout, "composite_tiles");
@@ -79,7 +77,6 @@ export function createGpuTileCoveragePipelineSkeleton(
   return {
     bindGroupLayout,
     pipelineLayout,
-    projectBoundsPipeline,
     clearTilesPipeline,
     buildTileRefsPipeline,
     compositeTilesPipeline,
@@ -103,7 +100,6 @@ export function createGpuTileCoveragePipelineSkeleton(
     },
     dispatch(pass: GPUComputePassEncoder, bindGroup: GPUBindGroup, plan: GpuTileCoveragePlan): GpuTileCoverageDispatchPlan {
       const dispatchPlan = getGpuTileCoverageDispatchPlan(plan);
-      dispatchStage(pass, projectBoundsPipeline, bindGroup, dispatchPlan.projectBounds);
       dispatchStage(pass, clearTilesPipeline, bindGroup, dispatchPlan.clearTiles);
       dispatchStage(pass, buildTileRefsPipeline, bindGroup, dispatchPlan.buildTileRefs);
       dispatchStage(pass, compositeTilesPipeline, bindGroup, dispatchPlan.compositeTiles);

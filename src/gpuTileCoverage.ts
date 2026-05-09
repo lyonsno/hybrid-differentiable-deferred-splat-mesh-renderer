@@ -75,7 +75,6 @@ export interface GpuTileCoverageDispatch {
 }
 
 export interface GpuTileCoverageDispatchPlan {
-  readonly projectBounds: GpuTileCoverageDispatch;
   readonly clearTiles: GpuTileCoverageDispatch;
   readonly buildTileRefs: GpuTileCoverageDispatch;
   readonly compositeTiles: GpuTileCoverageDispatch;
@@ -392,7 +391,6 @@ export function buildDeterministicGpuTileProjectionRetentionArena(
 
 export function getGpuTileCoverageDispatchPlan(plan: GpuTileCoveragePlan): GpuTileCoverageDispatchPlan {
   return {
-    projectBounds: linearDispatch(plan.splatCount),
     clearTiles: linearDispatch(plan.tileCount),
     buildTileRefs: linearDispatch(plan.splatCount),
     compositeTiles: {

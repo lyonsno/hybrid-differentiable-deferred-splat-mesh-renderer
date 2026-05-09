@@ -98,23 +98,6 @@ fn debug_heatmap_color(
   return vec4f(0.0, 0.0, 0.0, 1.0);
 }
 
-@compute @workgroup_size(64) fn project_bounds(@builtin(global_invocation_id) globalId: vec3u) {
-  let splatId = globalId.x;
-  if (splatId >= frame.splatCount) {
-    return;
-  }
-
-  let centerClip = frame.viewProj * vec4f(
-    positions[splatId * 3u],
-    positions[splatId * 3u + 1u],
-    positions[splatId * 3u + 2u],
-    1.0,
-  );
-  if (centerClip.w <= 0.0) {
-    return;
-  }
-}
-
 @compute @workgroup_size(64) fn clear_tiles(@builtin(global_invocation_id) globalId: vec3u) {
   let tileId = globalId.x;
   let tileCount = frame.tileGrid.x * frame.tileGrid.y;

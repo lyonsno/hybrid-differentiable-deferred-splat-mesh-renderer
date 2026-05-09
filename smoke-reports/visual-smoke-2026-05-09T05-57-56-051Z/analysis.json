@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-05-09T05:46:41.586Z",
+  "generatedAt": "2026-05-09T05:57:56.053Z",
   "url": "http://127.0.0.1:61622/?renderer=tile-local-visible&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu",
-  "screenshotPath": "smoke-reports/visual-smoke-2026-05-09T05-46-41-585Z/canvas.png",
-  "analysisPath": "smoke-reports/visual-smoke-2026-05-09T05-46-41-585Z/analysis.json",
-  "reportPath": "smoke-reports/visual-smoke-2026-05-09T05-46-41-585Z/report.md",
+  "screenshotPath": "smoke-reports/visual-smoke-2026-05-09T05-57-56-051Z/canvas.png",
+  "analysisPath": "smoke-reports/visual-smoke-2026-05-09T05-57-56-051Z/analysis.json",
+  "reportPath": "smoke-reports/visual-smoke-2026-05-09T05-57-56-051Z/report.md",
   "options": {
     "appRoot": ".",
     "host": "127.0.0.1",
@@ -565,13 +565,13 @@
       "b": 3,
       "a": 255
     },
-    "distinctColorCount": 12266,
+    "distinctColorCount": 12005,
     "changedPixels": 25261,
     "changedPixelRatio": 0.004051727898907777,
-    "averageDelta": 3.0160407963069416,
+    "averageDelta": 3.0093928679989146,
     "pixelDeltaThreshold": 12,
     "perceptualFingerprint": "01010101000000000101010100000000010101010000000001010105000000000000000000000000000000000000000000000000000000000000000000000000",
-    "bridgeBlockRatio": 0.18478260869565216,
+    "bridgeBlockRatio": 0.25,
     "nonblank": true
   },
   "classification": {
@@ -674,14 +674,6 @@
     ]
   },
   "consoleMessages": [
-    {
-      "type": "debug",
-      "text": "[vite] connecting..."
-    },
-    {
-      "type": "debug",
-      "text": "[vite] connected."
-    },
     {
       "type": "debug",
       "text": "[vite] connecting..."

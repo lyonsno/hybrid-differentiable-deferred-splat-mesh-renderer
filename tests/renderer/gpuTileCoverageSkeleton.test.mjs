@@ -94,7 +94,6 @@ test("GPU tile coverage dispatch plan separates bounds, list construction, and t
   const dispatch = getGpuTileCoverageDispatchPlan(plan);
 
   assert.deepEqual(dispatch, {
-    projectBounds: { x: 2, y: 1, z: 1 },
     clearTiles: { x: Math.ceil(plan.tileCount / GPU_TILE_COVERAGE_WORKGROUP_SIZE), y: 1, z: 1 },
     buildTileRefs: { x: 2, y: 1, z: 1 },
     compositeTiles: { x: plan.tileColumns, y: plan.tileRows, z: 1 },
@@ -186,7 +185,6 @@ test("GPU contributor arena compatibility check keeps CPU/reference ownership ex
 test("GPU tile coverage WGSL is a separate skeleton and does not mutate the live plate bridge", () => {
   const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
 
-  assert.match(shader, /@compute @workgroup_size\(64\)\s+fn project_bounds/);
   assert.match(shader, /@compute @workgroup_size\(64\)\s+fn clear_tiles/);
   assert.match(shader, /@compute @workgroup_size\(64\)\s+fn build_tile_refs/);
   assert.match(shader, /@compute @workgroup_size\(8,\s*8,\s*1\)\s+fn composite_tiles/);

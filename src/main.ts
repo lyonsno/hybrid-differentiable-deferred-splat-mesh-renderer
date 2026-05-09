@@ -1467,7 +1467,7 @@ function destroyTileLocalSceneState(state: TileLocalSceneState): void {
   state.tileBuildCountBuffer.destroy();
   state.tileScatterCursorBuffer.destroy();
   state.orderingKeyBuffer?.destroy();
-  state.orderingRanker?.paramsBuffer.destroy();
+  state.orderingRanker?.paramsBuffer?.destroy();
   state.outputTexture.destroy();
 }
 
