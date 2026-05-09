@@ -62,6 +62,22 @@ test("tile-local visible compositor consumes the retained tile header count with
   assert.match(source, /visibleCompositedRefLimit/);
 });
 
+test("GPU live tile-ref builder scatters a projected point footprint across every overlapped tile", () => {
+  const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+
+  assert.match(shader, /fn gpu_live_support_radius_px/);
+  assert.match(shader, /let minTileX =/);
+  assert.match(shader, /let maxTileX =/);
+  assert.match(shader, /let minTileY =/);
+  assert.match(shader, /let maxTileY =/);
+  assert.match(shader, /for\s*\(var tileY = minTileY; tileY <= maxTileY; tileY = tileY \+ 1u\)/);
+  assert.match(shader, /for\s*\(var tileX = minTileX; tileX <= maxTileX; tileX = tileX \+ 1u\)/);
+  assert.doesNotMatch(shader, /let firstTile = tileY \* frame\.tileGrid\.x \+ tileX;[\s\S]*tileRefs\[refIndex\] = vec4u\(splatId, splatId, firstTile, refIndex\);/);
+  assert.match(source, /estimatedGpuLiveProjectedTileRefs/);
+  assert.match(source, /projectedTileEntryCount: projectedRefs/);
+});
+
 test("tile-local texture presenter samples the offscreen tile-local output", () => {
   const source = readFileSync(new URL("../../src/tileLocalTexturePresenter.ts", import.meta.url), "utf8");
   const shader = readFileSync(new URL("../../src/shaders/tile_local_present.wgsl", import.meta.url), "utf8");

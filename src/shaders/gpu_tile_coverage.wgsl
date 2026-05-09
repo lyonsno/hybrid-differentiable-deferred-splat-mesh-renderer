@@ -45,6 +45,26 @@ fn projected_center_px(splatId: u32) -> vec2f {
   );
 }
 
+fn gpu_live_sigma_px() -> f32 {
+  return 10.0;
+}
+
+fn gpu_live_support_radius_px() -> f32 {
+  return gpu_live_sigma_px() * 3.0;
+}
+
+fn gpu_live_tile_center_px(tileX: u32, tileY: u32, tileSizePx: u32) -> vec2f {
+  let tileSize = f32(tileSizePx);
+  return vec2f((f32(tileX) + 0.5) * tileSize, (f32(tileY) + 0.5) * tileSize);
+}
+
+fn gpu_live_tile_coverage_weight(centerPx: vec2f, tileCenterPx: vec2f) -> f32 {
+  let sigma = gpu_live_sigma_px();
+  let delta = tileCenterPx - centerPx;
+  let distance2 = dot(delta, delta);
+  return exp(-0.5 * distance2 / max(sigma * sigma, 0.000001));
+}
+
 fn conic_pixel_weight(alphaParam: vec4f, conicParam: vec4f, pixelCenter: vec2f) -> f32 {
   let delta = pixelCenter - alphaParam.yz;
   let mahalanobis2 = conicParam.x * delta.x * delta.x
@@ -157,32 +177,45 @@ fn debug_heatmap_color(
   let maxTile = max(frame.tileGrid, vec2u(1u)) - vec2u(1u, 1u);
   let centerPx = projected_center_px(splatId);
   let tileSizePx = max(u32(frame.tileSizePx), 1u);
-  let tileX = min(u32(clamp(centerPx.x, 0.0, max(frame.viewport.x - 1.0, 0.0))) / tileSizePx, maxTile.x);
-  let tileY = min(u32(clamp(centerPx.y, 0.0, max(frame.viewport.y - 1.0, 0.0))) / tileSizePx, maxTile.y);
-  let firstTile = tileY * frame.tileGrid.x + tileX;
-  if (firstTile >= tile_count()) {
-    return;
-  }
   let tileCapacity = tile_ref_capacity_per_tile();
-  let projectedSlot = atomicAdd(&tileBuildCounts[firstTile], 1u);
-  if (projectedSlot >= tileCapacity) {
-    return;
-  }
-  let slot = atomicAdd(&tileScatterCursors[firstTile], 1u);
-  if (slot >= tileCapacity) {
-    return;
-  }
-  let refIndex = firstTile * tileCapacity + slot;
-  if (refIndex >= frame.maxTileRefs) {
-    return;
-  }
+  let support = gpu_live_support_radius_px();
+  let viewportMax = max(frame.viewport - vec2f(1.0, 1.0), vec2f(0.0, 0.0));
+  let minCenterPx = clamp(centerPx - vec2f(support, support), vec2f(0.0, 0.0), viewportMax);
+  let maxCenterPx = clamp(centerPx + vec2f(support, support), vec2f(0.0, 0.0), viewportMax);
+  let minTileX = min(u32(minCenterPx.x) / tileSizePx, maxTile.x);
+  let maxTileX = min(u32(maxCenterPx.x) / tileSizePx, maxTile.x);
+  let minTileY = min(u32(minCenterPx.y) / tileSizePx, maxTile.y);
+  let maxTileY = min(u32(maxCenterPx.y) / tileSizePx, maxTile.y);
   let orderingKey = splatId;
-  tileRefs[refIndex] = vec4u(splatId, splatId, firstTile, refIndex);
-  tileCoverageWeights[refIndex] = 1.0;
-  let gpuPointSigma = 10.0;
-  let inverseRadius2 = 1.0 / (gpuPointSigma * gpuPointSigma);
-  alphaParams[refIndex] = vec4f(0.35, centerPx.x, centerPx.y, f32(orderingKey));
-  alphaParams[refIndex + frame.maxTileRefs] = vec4f(inverseRadius2, 0.0, inverseRadius2, 0.0);
+  let sigma = gpu_live_sigma_px();
+  let inverseRadius2 = 1.0 / (sigma * sigma);
+  for (var tileY = minTileY; tileY <= maxTileY; tileY = tileY + 1u) {
+    for (var tileX = minTileX; tileX <= maxTileX; tileX = tileX + 1u) {
+      let tileId = tileY * frame.tileGrid.x + tileX;
+      if (tileId >= tile_count()) {
+        continue;
+      }
+      let projectedSlot = atomicAdd(&tileBuildCounts[tileId], 1u);
+      if (projectedSlot >= tileCapacity) {
+        continue;
+      }
+      let slot = atomicAdd(&tileScatterCursors[tileId], 1u);
+      if (slot >= tileCapacity) {
+        continue;
+      }
+      let refIndex = tileId * tileCapacity + slot;
+      if (refIndex >= frame.maxTileRefs) {
+        continue;
+      }
+      tileRefs[refIndex] = vec4u(splatId, splatId, tileId, refIndex);
+      tileCoverageWeights[refIndex] = gpu_live_tile_coverage_weight(
+        centerPx,
+        gpu_live_tile_center_px(tileX, tileY, tileSizePx)
+      );
+      alphaParams[refIndex] = vec4f(0.35, centerPx.x, centerPx.y, f32(orderingKey));
+      alphaParams[refIndex + frame.maxTileRefs] = vec4f(inverseRadius2, 0.0, inverseRadius2, 0.0);
+    }
+  }
 }
 
 @compute @workgroup_size(8, 8, 1) fn composite_tiles(@builtin(global_invocation_id) globalId: vec3u) {

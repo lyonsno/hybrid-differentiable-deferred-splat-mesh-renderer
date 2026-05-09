@@ -133,6 +133,8 @@ const TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES = 1;
 const TILE_LOCAL_PROVISIONAL_MAX_SPLATS = 150_000;
 const TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES = 20_000_000;
 const TILE_LOCAL_UNSAFE = selectedTileLocalUnsafeMode();
+const GPU_LIVE_POINT_SIGMA_PX = 10;
+const GPU_LIVE_POINT_SUPPORT_RADIUS_PX = GPU_LIVE_POINT_SIGMA_PX * 3;
 
 interface ActiveSplatScene {
   attributes: SplatAttributes;
@@ -953,7 +955,7 @@ function createGpuArenaTileLocalSceneState(
   const diagnostics = summarizeTileLocalDiagnostics({
     debugMode: TILE_LOCAL_DEBUG_MODE,
     plan,
-    tileEntryCount: attributes.count,
+    tileEntryCount: tileRefCustody.retainedTileEntryCount,
     tileHeaders: tileHeaderData,
     tileRefCustody,
     retentionAudit,
@@ -988,7 +990,7 @@ function createGpuArenaTileLocalSceneState(
     tileRefShapeParams: new Float32Array(0),
     outputTexture,
     outputView,
-    tileEntryCount: attributes.count,
+    tileEntryCount: tileRefCustody.retainedTileEntryCount,
     tileRefCustody,
     retentionAudit,
     budgetDiagnostics,
@@ -1260,20 +1262,32 @@ function gpuLiveEffectiveRefsPerTile(plan: GpuTileCoveragePlan): number {
   return Math.max(1, Math.floor(plan.maxTileRefs / Math.max(plan.tileCount, 1)));
 }
 
+function estimatedGpuLiveProjectedTileRefs(plan: GpuTileCoveragePlan, splatCount: number): number {
+  const tileSizePx = Math.max(1, plan.tileSizePx);
+  const footprintWidthPx = GPU_LIVE_POINT_SUPPORT_RADIUS_PX * 2;
+  const tilesPerAxis = Math.max(1, Math.ceil(footprintWidthPx / tileSizePx) + 1);
+  const tilesPerSplat = Math.min(plan.tileCount, tilesPerAxis * tilesPerAxis);
+  return Math.max(0, Math.trunc(splatCount * tilesPerSplat));
+}
+
 function estimatedGpuLiveTileRefCustody(
   plan: GpuTileCoveragePlan,
   splatCount: number
 ): TileRefCustodySummary {
   const effectiveRefsPerTile = gpuLiveEffectiveRefsPerTile(plan);
+  const projectedRefs = estimatedGpuLiveProjectedTileRefs(plan, splatCount);
+  const retainedRefs = Math.min(projectedRefs, plan.maxTileRefs);
+  const droppedRefs = Math.max(0, projectedRefs - retainedRefs);
+  const capTouchedTileCount = droppedRefs > 0 ? plan.tileCount : 0;
   return {
-    projectedTileEntryCount: splatCount,
-    retainedTileEntryCount: Math.min(splatCount, plan.maxTileRefs),
-    evictedTileEntryCount: 0,
-    cappedTileCount: 0,
-    saturatedRetainedTileCount: 0,
-    maxProjectedRefsPerTile: effectiveRefsPerTile,
+    projectedTileEntryCount: projectedRefs,
+    retainedTileEntryCount: retainedRefs,
+    evictedTileEntryCount: droppedRefs,
+    cappedTileCount: capTouchedTileCount,
+    saturatedRetainedTileCount: capTouchedTileCount,
+    maxProjectedRefsPerTile: Math.min(projectedRefs, splatCount),
     maxRetainedRefsPerTile: effectiveRefsPerTile,
-    headerRefCount: Math.min(splatCount, plan.maxTileRefs),
+    headerRefCount: retainedRefs,
     headerAccountingMatches: true,
   };
 }
@@ -1283,27 +1297,38 @@ function estimatedGpuLiveBudgetDiagnostics(
   splatCount: number
 ): TileLocalPrepassBudgetDiagnostics {
   const bandCounter = emptyTileLocalBudgetBandCounter();
-  const retainedRefs = Math.min(splatCount, plan.maxTileRefs);
+  const projectedRefs = estimatedGpuLiveProjectedTileRefs(plan, splatCount);
+  const retainedRefs = Math.min(projectedRefs, plan.maxTileRefs);
+  const droppedRefs = Math.max(0, projectedRefs - retainedRefs);
   const effectiveRefsPerTile = gpuLiveEffectiveRefsPerTile(plan);
+  const capTouchedTileCount = droppedRefs > 0 ? plan.tileCount : 0;
   return {
     version: 1,
     arenaRefs: {
-      projected: splatCount,
+      projected: projectedRefs,
       retained: retainedRefs,
-      dropped: 0,
-      cappedTileCount: 0,
-      saturatedRetainedTileCount: 0,
-      maxProjectedRefsPerTile: effectiveRefsPerTile,
+      dropped: droppedRefs,
+      cappedTileCount: capTouchedTileCount,
+      saturatedRetainedTileCount: capTouchedTileCount,
+      maxProjectedRefsPerTile: Math.min(projectedRefs, splatCount),
       maxRetainedRefsPerTile: effectiveRefsPerTile,
     },
-    overflowReasons: [],
+    overflowReasons: droppedRefs > 0
+      ? [{
+          reason: "projected-ref-budget",
+          projectedRefs,
+          retainedRefs,
+          droppedRefs,
+          maxProjectedRefs: plan.maxTileRefs,
+        }]
+      : [],
     capPressure: {
       version: 1,
-      classification: "within-cap",
+      classification: droppedRefs > 0 ? "over-cap" : "within-cap",
       refs: {
-        projected: splatCount,
+        projected: projectedRefs,
         retained: retainedRefs,
-        dropped: 0,
+        dropped: droppedRefs,
         maxRefsPerTile: effectiveRefsPerTile,
         tileCount: plan.tileCount,
       },
@@ -1324,9 +1349,9 @@ function estimatedGpuLiveBudgetDiagnostics(
     droppedBands: { front: bandCounter, middle: bandCounter, back: bandCounter },
     heat: {
       cpu: {
-        projectedRefs: 0,
-        projectedRefsPerTile: 0,
-        projectedToRetainedRatio: 0,
+        projectedRefs,
+        projectedRefsPerTile: plan.tileCount > 0 ? projectedRefs / plan.tileCount : 0,
+        projectedToRetainedRatio: retainedRefs > 0 ? projectedRefs / retainedRefs : 0,
         buildDurationMs: 0,
       },
       gpu: {
