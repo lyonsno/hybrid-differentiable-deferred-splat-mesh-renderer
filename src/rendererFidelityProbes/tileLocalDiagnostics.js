@@ -7,14 +7,27 @@ export function summarizeTileLocalDiagnostics({
   retentionAudit,
   tileCoverageWeights,
   alphaParamData,
+  sourceOpacities,
 } = {}) {
   const maxTileRefs = positiveInteger(plan?.maxTileRefs, "plan.maxTileRefs");
   const tileCount = positiveInteger(plan?.tileColumns, "plan.tileColumns") *
     positiveInteger(plan?.tileRows, "plan.tileRows");
   const refLimit = Math.min(nonNegativeInteger(tileEntryCount, "tileEntryCount"), maxTileRefs);
-  const tileRefs = summarizeTileRefs(tileHeaders, tileCount);
+  const observedTileRefs = summarizeTileRefs(tileHeaders, tileCount);
+  const tileRefs = observedTileRefs.total > 0
+    ? observedTileRefs
+    : summarizeEstimatedTileRefs(tileRefCustody, tileCount);
   const coverageWeight = summarizeFloatRange(tileCoverageWeights, refLimit);
-  const alpha = summarizeAlpha(alphaParamData, tileHeaders, tileCount, refLimit, maxTileRefs, tileCoverageWeights);
+  const alpha = summarizeAlpha({
+    alphaParamData,
+    sourceOpacities,
+    tileHeaders,
+    tileCount,
+    refLimit,
+    maxTileRefs,
+    tileCoverageWeights,
+    tileRefs,
+  });
   const conicShape = summarizeConicShape(alphaParamData, refLimit, maxTileRefs);
 
   return {
@@ -133,6 +146,30 @@ function summarizeTileRefs(tileHeaders, tileCount) {
   };
 }
 
+function summarizeEstimatedTileRefs(tileRefCustody, tileCount) {
+  const total = nonNegativeFiniteInteger(tileRefCustody?.headerRefCount ?? tileRefCustody?.retainedTileEntryCount);
+  const maxPerTile = nonNegativeFiniteInteger(
+    tileRefCustody?.maxRetainedRefsPerTile ?? tileRefCustody?.maxProjectedRefsPerTile
+  );
+  if (total <= 0 || maxPerTile <= 0) {
+    return {
+      total: 0,
+      nonEmptyTiles: 0,
+      maxPerTile: 0,
+      averagePerNonEmptyTile: 0,
+      density: 0,
+    };
+  }
+  const nonEmptyTiles = Math.min(tileCount, Math.max(1, Math.ceil(total / maxPerTile)));
+  return {
+    total,
+    nonEmptyTiles,
+    maxPerTile,
+    averagePerNonEmptyTile: round(total / nonEmptyTiles),
+    density: tileCount > 0 ? round(nonEmptyTiles / tileCount) : 0,
+  };
+}
+
 function summarizeFloatRange(values, count) {
   let min = Number.POSITIVE_INFINITY;
   let max = Number.NEGATIVE_INFINITY;
@@ -158,7 +195,16 @@ function nonNegativeFiniteNumber(value) {
   return Number.isFinite(value) && value >= 0 ? round(value) : 0;
 }
 
-function summarizeAlpha(alphaParamData, tileHeaders, tileCount, refLimit, maxTileRefs, tileCoverageWeights) {
+function summarizeAlpha({
+  alphaParamData,
+  sourceOpacities,
+  tileHeaders,
+  tileCount,
+  refLimit,
+  maxTileRefs,
+  tileCoverageWeights,
+  tileRefs,
+}) {
   let maxSourceOpacity = 0;
   let sourceOpacitySum = 0;
   let sourceOpacityCount = 0;
@@ -167,6 +213,17 @@ function summarizeAlpha(alphaParamData, tileHeaders, tileCount, refLimit, maxTil
     maxSourceOpacity = Math.max(maxSourceOpacity, opacity);
     sourceOpacitySum += opacity;
     sourceOpacityCount += 1;
+  }
+  if (maxSourceOpacity <= 0 && (sourceOpacities?.length ?? 0) > 0) {
+    maxSourceOpacity = 0;
+    sourceOpacitySum = 0;
+    sourceOpacityCount = 0;
+    for (let index = 0; index < sourceOpacities.length; index += 1) {
+      const opacity = clamp01(sourceOpacities[index] ?? 0);
+      maxSourceOpacity = Math.max(maxSourceOpacity, opacity);
+      sourceOpacitySum += opacity;
+      sourceOpacityCount += 1;
+    }
   }
 
   let estimatedMaxAccumulatedAlpha = 0;
@@ -185,6 +242,10 @@ function summarizeAlpha(alphaParamData, tileHeaders, tileCount, refLimit, maxTil
     }
     estimatedMinTransmittance = Math.min(estimatedMinTransmittance, transmittance);
     estimatedMaxAccumulatedAlpha = Math.max(estimatedMaxAccumulatedAlpha, 1 - transmittance);
+  }
+  if (estimatedMaxAccumulatedAlpha <= 0 && tileRefs.total > 0 && maxSourceOpacity > 0) {
+    estimatedMaxAccumulatedAlpha = maxSourceOpacity;
+    estimatedMinTransmittance = 1 - maxSourceOpacity;
   }
 
   return {

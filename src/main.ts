@@ -171,6 +171,7 @@ interface TileLocalSceneState {
   orderingRanksNeedDispatch: boolean;
   alphaParamBuffer: GPUBuffer;
   alphaParamData: Float32Array;
+  sourceOpacities: Float32Array;
   tileRefShapeParams: Float32Array;
   outputTexture: GPUTexture;
   outputView: GPUTextureView;
@@ -830,6 +831,7 @@ function createTileLocalSceneState(
       device,
       attributes,
       buffers,
+      effectiveOpacities,
       viewMatrix,
       viewProj,
       viewportWidth,
@@ -855,6 +857,7 @@ function createGpuArenaTileLocalSceneState(
   device: GPUDevice,
   attributes: SplatAttributes,
   buffers: SplatGpuBuffers,
+  effectiveOpacities: Float32Array,
   viewMatrix: Float32Array,
   viewProj: Float32Array,
   viewportWidth: number,
@@ -950,6 +953,7 @@ function createGpuArenaTileLocalSceneState(
     retentionAudit,
     tileCoverageWeights: tileCoverageWeightData,
     alphaParamData,
+    sourceOpacities: effectiveOpacities,
   });
 
   return {
@@ -974,6 +978,7 @@ function createGpuArenaTileLocalSceneState(
     orderingRanksNeedDispatch: false,
     alphaParamBuffer,
     alphaParamData,
+    sourceOpacities: effectiveOpacities,
     tileRefShapeParams: new Float32Array(0),
     outputTexture,
     outputView,
@@ -1176,6 +1181,7 @@ function createCpuTileLocalSceneState(
     orderingRanksNeedDispatch: true,
     alphaParamBuffer,
     alphaParamData,
+    sourceOpacities: effectiveOpacities,
     tileRefShapeParams: legacyProjection?.tileRefShapeParams ?? bridge.tileRefShapeParams,
     outputTexture,
     outputView,
@@ -1195,6 +1201,7 @@ function createCpuTileLocalSceneState(
       retentionAudit: bridge.retentionAudit,
       tileCoverageWeights: legacyProjection?.tileCoverageWeights ?? bridge.tileCoverageWeights,
       alphaParamData,
+      sourceOpacities: effectiveOpacities,
     }),
     arenaBackend: gpuArenaRuntime ? "gpu" : "cpu",
     gpuArenaRuntime,
@@ -1659,6 +1666,7 @@ function refreshTileLocalDiagnostics(state: TileLocalSceneState): TileLocalDiagn
     retentionAudit: state.retentionAudit,
     tileCoverageWeights: state.tileCoverageWeightData,
     alphaParamData: state.alphaParamData,
+    sourceOpacities: state.sourceOpacities,
   });
   return state.diagnostics;
 }

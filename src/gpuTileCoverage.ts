@@ -454,9 +454,9 @@ export function writeGpuTileCoverageFrameUniforms(
   target[16] = plan.viewportWidth;
   target[17] = plan.viewportHeight;
   target[18] = plan.tileSizePx;
+  target[19] = GPU_TILE_COVERAGE_DEBUG_MODE_CODES[debugMode];
 
   const targetU32 = new Uint32Array(target.buffer, target.byteOffset, target.length);
-  targetU32[19] = GPU_TILE_COVERAGE_DEBUG_MODE_CODES[debugMode];
   targetU32[20] = plan.tileColumns;
   targetU32[21] = plan.tileRows;
   targetU32[22] = plan.splatCount;

@@ -10,6 +10,7 @@ export interface TileLocalDiagnosticSummaryInput {
   readonly retentionAudit?: TileRetentionAudit;
   readonly tileCoverageWeights: Float32Array;
   readonly alphaParamData: Float32Array;
+  readonly sourceOpacities?: Float32Array;
 }
 
 export interface TileLocalDiagnosticSummary {

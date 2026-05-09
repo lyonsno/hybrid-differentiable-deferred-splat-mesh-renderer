@@ -153,7 +153,7 @@ export function extractTileLocalPageMetrics(pageEvidence = {}) {
     },
     tileLocal: {
       ...tileLocal,
-      refs: finiteNumber(tileLocal.refs) ?? parsedGrid.refs,
+      refs: positiveRefCount(tileLocal.refs) ?? parsedGrid.refs ?? positiveRefCount(tileLocal.allocatedRefs) ?? 0,
       tileColumns: finiteNumber(tileLocal.tileColumns) ?? parsedGrid.tileColumns,
       tileRows: finiteNumber(tileLocal.tileRows) ?? parsedGrid.tileRows,
       freshness,
@@ -522,6 +522,11 @@ function finiteNumber(value) {
   }
   const number = Number(value);
   return Number.isFinite(number) ? number : undefined;
+}
+
+function positiveRefCount(value) {
+  const number = finiteNumber(value);
+  return number !== undefined && number > 0 ? number : undefined;
 }
 
 function optionalString(value) {

@@ -186,6 +186,30 @@ test("tile-local comparison does not coerce absent skipped-ref evidence to zero"
   assert.equal(metrics.tileLocal.budget.skipReason, undefined);
 });
 
+test("tile-local comparison treats GPU-allocated refs as positive evidence when compact diagnostics are stale", () => {
+  const pageEvidence = {
+    ready: true,
+    rendererLabel: "tile-local-visible-debug-coverage-weight",
+    statsText:
+      "3456x1804 | 120 fps | renderer: tile-local-visible-debug-coverage-weight | tile-local: 216x113 tiles/94406 refs",
+    canvas: { width: 3456, height: 1804, clientWidth: 1728, clientHeight: 902 },
+    tileLocal: {
+      refs: 0,
+      allocatedRefs: 94406,
+      tileColumns: 216,
+      tileRows: 113,
+      freshness: { status: "current" },
+    },
+  };
+
+  const metrics = extractTileLocalPageMetrics(pageEvidence);
+  assert.equal(metrics.tileLocal.refs, 94406);
+  assert.equal(
+    isVisualSmokeCaptureReady(pageEvidence, { expectedRendererLabel: "tile-local-visible-debug-coverage-weight" }),
+    true
+  );
+});
+
 test("tile-local comparison catches visible mode falling back to the plate renderer", () => {
   const result = classifyTileLocalComparison({
     captures: [

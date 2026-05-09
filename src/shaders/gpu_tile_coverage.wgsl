@@ -2,18 +2,18 @@ struct FrameUniforms {
   viewProj: mat4x4f,
   viewport: vec2f,
   tileSizePx: f32,
-  debugMode: u32,
+  debugMode: f32,
   tileGrid: vec2u,
   splatCount: u32,
   maxTileRefs: u32,
 };
 
-const DEBUG_MODE_FINAL_COLOR = 0u;
-const DEBUG_MODE_COVERAGE_WEIGHT = 1u;
-const DEBUG_MODE_ACCUMULATED_ALPHA = 2u;
-const DEBUG_MODE_TRANSMITTANCE = 3u;
-const DEBUG_MODE_TILE_REF_COUNT = 4u;
-const DEBUG_MODE_CONIC_SHAPE = 5u;
+const DEBUG_MODE_FINAL_COLOR = 0.0;
+const DEBUG_MODE_COVERAGE_WEIGHT = 1.0;
+const DEBUG_MODE_ACCUMULATED_ALPHA = 2.0;
+const DEBUG_MODE_TRANSMITTANCE = 3.0;
+const DEBUG_MODE_TILE_REF_COUNT = 4.0;
+const DEBUG_MODE_CONIC_SHAPE = 5.0;
 
 @group(0) @binding(0) var<uniform> frame: FrameUniforms;
 @group(0) @binding(1) var<storage, read> positions: array<f32>;
@@ -65,7 +65,7 @@ fn inverse_conic_radii(conicParam: vec4f) -> vec2f {
 }
 
 fn debug_heatmap_color(
-  debugMode: u32,
+  debugMode: f32,
   coverageWeightSum: f32,
   accumulatedAlpha: f32,
   remainingTransmission: f32,
@@ -219,7 +219,7 @@ fn debug_heatmap_color(
       coverageWeightSum,
       accumulatedAlpha,
       remainingTransmission,
-      header.y,
+      refLimit,
       maxMajorRadiusPx,
       minMinorRadiusPx
     )

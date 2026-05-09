@@ -23,10 +23,10 @@ test("GPU tile coverage uniforms carry an explicit debug heatmap mode without ch
   const viewProj = Float32Array.from({ length: 16 }, (_, index) => index + 1);
 
   writeGpuTileCoverageFrameUniforms(target, viewProj, plan);
-  assert.equal(new Uint32Array(target.buffer)[19], GPU_TILE_COVERAGE_DEBUG_MODE_CODES["final-color"]);
+  assert.equal(target[19], GPU_TILE_COVERAGE_DEBUG_MODE_CODES["final-color"]);
 
   writeGpuTileCoverageFrameUniforms(target, viewProj, plan, "transmittance");
-  assert.equal(new Uint32Array(target.buffer)[19], GPU_TILE_COVERAGE_DEBUG_MODE_CODES.transmittance);
+  assert.equal(target[19], GPU_TILE_COVERAGE_DEBUG_MODE_CODES.transmittance);
 });
 
 test("tile-local diagnostic summary exports coverage, alpha/transmittance, ref density, and conic shape", () => {
@@ -90,10 +90,45 @@ test("tile-local diagnostic summary exports coverage, alpha/transmittance, ref d
   assert.equal(summary.conicShape.minMinorRadiusPx, 0.5);
 });
 
+test("tile-local diagnostic summary uses GPU custody and opacity estimates when CPU tile arrays are absent", () => {
+  const summary = summarizeTileLocalDiagnostics({
+    debugMode: "accumulated-alpha",
+    plan: {
+      tileColumns: 4,
+      tileRows: 2,
+      tileSizePx: 16,
+      maxTileRefs: 2048,
+    },
+    tileEntryCount: 512,
+    tileHeaders: new Uint32Array(4 * 4 * 2),
+    tileRefCustody: {
+      projectedTileEntryCount: 512,
+      retainedTileEntryCount: 512,
+      evictedTileEntryCount: 0,
+      cappedTileCount: 0,
+      saturatedRetainedTileCount: 0,
+      maxProjectedRefsPerTile: 64,
+      maxRetainedRefsPerTile: 64,
+      headerRefCount: 512,
+      headerAccountingMatches: true,
+    },
+    tileCoverageWeights: new Float32Array(0),
+    alphaParamData: new Float32Array(8),
+    sourceOpacities: Float32Array.from([0.1, 0.35, 0.7]),
+  });
+
+  assert.equal(summary.tileRefs.total, 512);
+  assert.equal(summary.tileRefs.nonEmptyTiles, 8);
+  assert.equal(summary.tileRefs.maxPerTile, 64);
+  assert.equal(summary.alpha.maxSourceOpacity, 0.7);
+  assert(summary.alpha.estimatedMaxAccumulatedAlpha > 0);
+  assert(summary.alpha.estimatedMinTransmittance < 1);
+});
+
 test("tile-local diagnostic shader branches are debug-only and preserve final color as mode zero", () => {
   const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
 
-  assert.match(shader, /debugMode:\s*u32/);
+  assert.match(shader, /debugMode:\s*f32/);
   assert.match(shader, /DEBUG_MODE_FINAL_COLOR/);
   assert.match(shader, /DEBUG_MODE_COVERAGE_WEIGHT/);
   assert.match(shader, /DEBUG_MODE_ACCUMULATED_ALPHA/);

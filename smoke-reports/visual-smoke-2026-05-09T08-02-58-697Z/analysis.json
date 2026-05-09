@@ -1,0 +1,3559 @@
+{
+  "generatedAt": "2026-05-09T08:02:58.698Z",
+  "baseUrl": "http://127.0.0.1:61622/?renderer=tile-local-visible&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu",
+  "analysisPath": "smoke-reports/visual-smoke-2026-05-09T08-02-58-697Z/analysis.json",
+  "reportPath": "smoke-reports/visual-smoke-2026-05-09T08-02-58-697Z/report.md",
+  "options": {
+    "appRoot": ".",
+    "host": "127.0.0.1",
+    "url": "http://127.0.0.1:61622/?renderer=tile-local-visible&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu",
+    "requireRealSplat": true,
+    "headless": true,
+    "browserChannel": "chrome",
+    "viewport": {
+      "width": 1728,
+      "height": 902
+    },
+    "deviceScaleFactor": 2,
+    "timeoutMs": 45000,
+    "settleMs": 1500,
+    "imageThresholds": {},
+    "tileLocalComparison": false,
+    "tileLocalDiagnostics": true,
+    "staticDessertWitness": false
+  },
+  "plan": [
+    {
+      "id": "coverage-weight",
+      "title": "Coverage weight heatmap",
+      "expectedRendererLabel": "tile-local-visible-debug-coverage-weight",
+      "url": "http://127.0.0.1:61622/?renderer=tile-local-visible&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&tileDebug=coverage-weight"
+    },
+    {
+      "id": "accumulated-alpha",
+      "title": "Accumulated alpha heatmap",
+      "expectedRendererLabel": "tile-local-visible-debug-accumulated-alpha",
+      "url": "http://127.0.0.1:61622/?renderer=tile-local-visible&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&tileDebug=accumulated-alpha"
+    },
+    {
+      "id": "transmittance",
+      "title": "Transmittance heatmap",
+      "expectedRendererLabel": "tile-local-visible-debug-transmittance",
+      "url": "http://127.0.0.1:61622/?renderer=tile-local-visible&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&tileDebug=transmittance"
+    },
+    {
+      "id": "tile-ref-count",
+      "title": "Tile-ref density heatmap",
+      "expectedRendererLabel": "tile-local-visible-debug-tile-ref-count",
+      "url": "http://127.0.0.1:61622/?renderer=tile-local-visible&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&tileDebug=tile-ref-count"
+    },
+    {
+      "id": "conic-shape",
+      "title": "Conic major/minor shape heatmap",
+      "expectedRendererLabel": "tile-local-visible-debug-conic-shape",
+      "url": "http://127.0.0.1:61622/?renderer=tile-local-visible&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&tileDebug=conic-shape"
+    }
+  ],
+  "captures": [
+    {
+      "id": "coverage-weight",
+      "title": "Coverage weight heatmap",
+      "expectedRendererLabel": "tile-local-visible-debug-coverage-weight",
+      "url": "http://127.0.0.1:61622/?renderer=tile-local-visible&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&tileDebug=coverage-weight",
+      "screenshotPath": "smoke-reports/visual-smoke-2026-05-09T08-02-58-697Z/coverage-weight.png",
+      "pageEvidence": {
+        "ready": true,
+        "sourceKind": "scaniverse_ply",
+        "realScaniverse": true,
+        "realSplatEvidence": true,
+        "synthetic": false,
+        "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+        "splatCount": 94406,
+        "sortedIdCount": 94406,
+        "sortBackend": "gpu-bitonic-cpu-depth-keys",
+        "boundsRadius": 0.22154541313648224,
+        "rendererLabel": "tile-local-visible-debug-coverage-weight",
+        "fps": 0,
+        "tileLocalStatus": "current",
+        "tileLocalDisabledReason": null,
+        "arenaRuntime": {
+          "requestedArenaBackend": "gpu",
+          "effectiveArenaBackend": "gpu",
+          "cpuBuildDurationMs": 0,
+          "gpuDispatchEnqueueDurationMs": 0
+        },
+        "tileLocal": {
+          "status": "current",
+          "refs": 94406,
+          "allocatedRefs": 94406,
+          "tileColumns": 216,
+          "tileRows": 113,
+          "orderingBackend": "gpu-sorted-index-rank-inversion",
+          "debugMode": "coverage-weight",
+          "visibleCompositedRefLimit": 256,
+          "freshness": {
+            "status": "current",
+            "cachedFrameAgeMs": 0,
+            "cachedFrame": 20,
+            "currentFrameSignature": "tile-local@5f2a0c37",
+            "cachedFrameSignature": "tile-local@5f2a0c37"
+          },
+          "budget": {
+            "status": "current",
+            "tileSizePx": 16,
+            "maxRefsPerTile": 256,
+            "currentViewportWidth": 3456,
+            "currentViewportHeight": 1804,
+            "currentTileColumns": 216,
+            "currentTileRows": 113,
+            "maxProjectedRefs": 20000000,
+            "overflowReasons": []
+          },
+          "budgetDiagnostics": {
+            "version": 1,
+            "arenaRefs": {
+              "projected": 94406,
+              "retained": 94406,
+              "dropped": 0,
+              "cappedTileCount": 0,
+              "saturatedRetainedTileCount": 0,
+              "maxProjectedRefsPerTile": 256,
+              "maxRetainedRefsPerTile": 256
+            },
+            "overflowReasons": [],
+            "capPressure": {
+              "version": 1,
+              "classification": "within-cap",
+              "refs": {
+                "projected": 94406,
+                "retained": 94406,
+                "dropped": 0,
+                "maxRefsPerTile": 256,
+                "tileCount": 24408
+              },
+              "retainedBands": {
+                "front": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                },
+                "middle": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                },
+                "back": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                }
+              },
+              "droppedBands": {
+                "front": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                },
+                "middle": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                },
+                "back": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                }
+              },
+              "overflowReasons": {},
+              "lossSignals": {
+                "foregroundDroppedRefs": 0,
+                "behindSurfaceDroppedRefs": 0,
+                "policyReserveDisplacedRefs": 0,
+                "highCoverageDroppedRefs": 0,
+                "highRetentionDroppedRefs": 0,
+                "highOcclusionDroppedRefs": 0
+              },
+              "policyHooks": []
+            },
+            "retainedBands": {
+              "front": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              },
+              "middle": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              },
+              "back": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              }
+            },
+            "droppedBands": {
+              "front": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              },
+              "middle": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              },
+              "back": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              }
+            },
+            "heat": {
+              "cpu": {
+                "projectedRefs": 0,
+                "projectedRefsPerTile": 0,
+                "projectedToRetainedRatio": 0,
+                "buildDurationMs": 0
+              },
+              "gpu": {
+                "retainedRefs": 94406,
+                "retainedRefBufferBytes": 99975168,
+                "coverageWeightBufferBytes": 24993792,
+                "alphaParamBufferBytes": 199950336,
+                "orderingKeyBufferBytes": 24993792
+              }
+            }
+          },
+          "diagnostics": {
+            "version": 1,
+            "debugMode": "coverage-weight",
+            "tileGrid": {
+              "columns": 216,
+              "rows": 113,
+              "tileSizePx": 16
+            },
+            "tileRefs": {
+              "total": 94406,
+              "nonEmptyTiles": 369,
+              "maxPerTile": 256,
+              "averagePerNonEmptyTile": 255.842818,
+              "density": 0.015118
+            },
+            "tileRefCustody": {
+              "projectedTileEntryCount": 94406,
+              "retainedTileEntryCount": 94406,
+              "evictedTileEntryCount": 0,
+              "cappedTileCount": 0,
+              "saturatedRetainedTileCount": 0,
+              "maxProjectedRefsPerTile": 256,
+              "maxRetainedRefsPerTile": 256,
+              "headerRefCount": 94406,
+              "headerAccountingMatches": true
+            },
+            "retentionAudit": {
+              "fullFrame": {
+                "region": "gpu-live-estimate",
+                "tileCount": 0,
+                "cappedTileCount": 0,
+                "projectedTileEntryCount": 0,
+                "currentRetainedEntryCount": 0,
+                "legacyRetainedEntryCount": 0,
+                "addedByPolicyCount": 0,
+                "droppedByPolicyCount": 0,
+                "addedRetentionWeightSum": 0,
+                "droppedRetentionWeightSum": 0,
+                "addedOcclusionWeightSum": 0,
+                "droppedOcclusionWeightSum": 0,
+                "addedByPolicySamples": [],
+                "droppedByPolicySamples": []
+              },
+              "regions": {
+                "porousBody": {
+                  "region": "gpu-live-estimate",
+                  "tileCount": 0,
+                  "cappedTileCount": 0,
+                  "projectedTileEntryCount": 0,
+                  "currentRetainedEntryCount": 0,
+                  "legacyRetainedEntryCount": 0,
+                  "addedByPolicyCount": 0,
+                  "droppedByPolicyCount": 0,
+                  "addedRetentionWeightSum": 0,
+                  "droppedRetentionWeightSum": 0,
+                  "addedOcclusionWeightSum": 0,
+                  "droppedOcclusionWeightSum": 0,
+                  "addedByPolicySamples": [],
+                  "droppedByPolicySamples": []
+                },
+                "centerLeakBand": {
+                  "region": "gpu-live-estimate",
+                  "tileCount": 0,
+                  "cappedTileCount": 0,
+                  "projectedTileEntryCount": 0,
+                  "currentRetainedEntryCount": 0,
+                  "legacyRetainedEntryCount": 0,
+                  "addedByPolicyCount": 0,
+                  "droppedByPolicyCount": 0,
+                  "addedRetentionWeightSum": 0,
+                  "droppedRetentionWeightSum": 0,
+                  "addedOcclusionWeightSum": 0,
+                  "droppedOcclusionWeightSum": 0,
+                  "addedByPolicySamples": [],
+                  "droppedByPolicySamples": []
+                }
+              }
+            },
+            "coverageWeight": {
+              "min": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "alpha": {
+              "maxSourceOpacity": 1,
+              "meanSourceOpacity": 0.269004,
+              "estimatedMaxAccumulatedAlpha": 1,
+              "estimatedMinTransmittance": 0,
+              "alphaParamRefs": 6248448
+            },
+            "conicShape": {
+              "maxMajorRadiusPx": 1,
+              "minMinorRadiusPx": 1,
+              "maxAnisotropyRatio": 1
+            }
+          }
+        },
+        "tileLocalDiagnostics": {
+          "version": 1,
+          "debugMode": "coverage-weight",
+          "tileGrid": {
+            "columns": 216,
+            "rows": 113,
+            "tileSizePx": 16
+          },
+          "tileRefs": {
+            "total": 94406,
+            "nonEmptyTiles": 369,
+            "maxPerTile": 256,
+            "averagePerNonEmptyTile": 255.842818,
+            "density": 0.015118
+          },
+          "tileRefCustody": {
+            "projectedTileEntryCount": 94406,
+            "retainedTileEntryCount": 94406,
+            "evictedTileEntryCount": 0,
+            "cappedTileCount": 0,
+            "saturatedRetainedTileCount": 0,
+            "maxProjectedRefsPerTile": 256,
+            "maxRetainedRefsPerTile": 256,
+            "headerRefCount": 94406,
+            "headerAccountingMatches": true
+          },
+          "retentionAudit": {
+            "fullFrame": {
+              "region": "gpu-live-estimate",
+              "tileCount": 0,
+              "cappedTileCount": 0,
+              "projectedTileEntryCount": 0,
+              "currentRetainedEntryCount": 0,
+              "legacyRetainedEntryCount": 0,
+              "addedByPolicyCount": 0,
+              "droppedByPolicyCount": 0,
+              "addedRetentionWeightSum": 0,
+              "droppedRetentionWeightSum": 0,
+              "addedOcclusionWeightSum": 0,
+              "droppedOcclusionWeightSum": 0,
+              "addedByPolicySamples": [],
+              "droppedByPolicySamples": []
+            },
+            "regions": {
+              "porousBody": {
+                "region": "gpu-live-estimate",
+                "tileCount": 0,
+                "cappedTileCount": 0,
+                "projectedTileEntryCount": 0,
+                "currentRetainedEntryCount": 0,
+                "legacyRetainedEntryCount": 0,
+                "addedByPolicyCount": 0,
+                "droppedByPolicyCount": 0,
+                "addedRetentionWeightSum": 0,
+                "droppedRetentionWeightSum": 0,
+                "addedOcclusionWeightSum": 0,
+                "droppedOcclusionWeightSum": 0,
+                "addedByPolicySamples": [],
+                "droppedByPolicySamples": []
+              },
+              "centerLeakBand": {
+                "region": "gpu-live-estimate",
+                "tileCount": 0,
+                "cappedTileCount": 0,
+                "projectedTileEntryCount": 0,
+                "currentRetainedEntryCount": 0,
+                "legacyRetainedEntryCount": 0,
+                "addedByPolicyCount": 0,
+                "droppedByPolicyCount": 0,
+                "addedRetentionWeightSum": 0,
+                "droppedRetentionWeightSum": 0,
+                "addedOcclusionWeightSum": 0,
+                "droppedOcclusionWeightSum": 0,
+                "addedByPolicySamples": [],
+                "droppedByPolicySamples": []
+              }
+            }
+          },
+          "coverageWeight": {
+            "min": 0,
+            "max": 0,
+            "mean": 0
+          },
+          "alpha": {
+            "maxSourceOpacity": 1,
+            "meanSourceOpacity": 0.269004,
+            "estimatedMaxAccumulatedAlpha": 1,
+            "estimatedMinTransmittance": 0,
+            "alphaParamRefs": 6248448
+          },
+          "conicShape": {
+            "maxMajorRadiusPx": 1,
+            "minMinorRadiusPx": 1,
+            "maxAnisotropyRatio": 1
+          }
+        },
+        "witness": {
+          "field": {
+            "scaleSpace": "log",
+            "rotationOrder": "wxyz",
+            "opacitySpace": "unit",
+            "colorSpace": "sh_dc_rgb"
+          },
+          "projection": {
+            "projectionMode": "jacobian-covariance",
+            "maxAnisotropyRatio": 66.95086118888399,
+            "suspiciousSplatCount": 1296,
+            "sampleOriginalIds": [
+              89,
+              91,
+              102,
+              103,
+              104,
+              238,
+              256,
+              453
+            ],
+            "fieldMaxAnisotropyRatio": 190.56626845863002,
+            "fieldSuspiciousSplatCount": 8398,
+            "rotationOrderComparison": {
+              "wxyz": {
+                "rotationOrder": "wxyz",
+                "maxProjectedAnisotropyRatio": 66.95086118888399,
+                "suspiciousProjectedSplatCount": 1296,
+                "projectedSplatCount": 94406,
+                "sampleOriginalIds": [
+                  89,
+                  91,
+                  102,
+                  103,
+                  104,
+                  238,
+                  256,
+                  453
+                ]
+              },
+              "xyzw": {
+                "rotationOrder": "xyzw",
+                "maxProjectedAnisotropyRatio": 67.19421246302099,
+                "suspiciousProjectedSplatCount": 1956,
+                "projectedSplatCount": 94406,
+                "sampleOriginalIds": [
+                  87,
+                  93,
+                  131,
+                  250,
+                  463,
+                  549,
+                  632,
+                  692
+                ]
+              }
+            },
+            "footprint": {
+              "maxMajorRadiusPx": 63.902305989394925,
+              "maxMinorRadiusPx": 28.325444655104484,
+              "maxAreaPx": 4855.886492845365,
+              "areaCapPx": 15586.56,
+              "majorRadiusCapPx": 586.3000000000001,
+              "highEnergySplatCount": 0,
+              "projectedSplatCount": 94406,
+              "sampleOriginalIds": []
+            },
+            "cropSupport": {
+              "rimBand": {
+                "crop": {
+                  "x": 390,
+                  "y": 322,
+                  "width": 500,
+                  "height": 115
+                },
+                "projectedCenterCount": 11587,
+                "projectedSupportCount": 15199,
+                "nearFloorMinorCount": 6034,
+                "maxMajorRadiusPx": 59.6566631686253,
+                "medianMajorRadiusPx": 4.498520509996828,
+                "medianMinorRadiusPx": 1.9637027988624436,
+                "supportAreaPxSum": 1171962.0681098565,
+                "sampleOriginalIds": [
+                  417,
+                  430,
+                  432,
+                  479,
+                  481,
+                  496,
+                  499,
+                  501,
+                  510,
+                  514,
+                  534,
+                  535
+                ]
+              },
+              "porousBody": {
+                "crop": {
+                  "x": 520,
+                  "y": 270,
+                  "width": 260,
+                  "height": 150
+                },
+                "projectedCenterCount": 0,
+                "projectedSupportCount": 118,
+                "nearFloorMinorCount": 1,
+                "maxMajorRadiusPx": 59.6566631686253,
+                "medianMajorRadiusPx": 13.919035269286088,
+                "medianMinorRadiusPx": 5.404866675092395,
+                "supportAreaPxSum": 56840.968738749834,
+                "sampleOriginalIds": [
+                  908,
+                  957,
+                  1753,
+                  1788,
+                  2499,
+                  3362,
+                  6805,
+                  8219,
+                  9626,
+                  10667,
+                  10669,
+                  10805
+                ]
+              }
+            }
+          },
+          "slab": {
+            "statusCounts": {
+              "axis-crosses-near-plane": 0,
+              "pathological-footprint": 0,
+              "accepted": 94406
+            },
+            "maxMajorRadiusPx": 0,
+            "footprintCapPx": 0.65,
+            "sampleOriginalIds": []
+          },
+          "alpha": {
+            "alphaEnergyPolicy": "bounded-footprint-energy-cap",
+            "nearPlaneAlphaFade": {
+              "startNdc": 0,
+              "endNdc": 0.08
+            },
+            "compositing": "straight-source-over",
+            "ambiguousOverlapCount": 0,
+            "overlapDensity": {
+              "accountingMode": "coverage-aware",
+              "tileSizePx": 48,
+              "alphaMassCap": 1728,
+              "maxTileAlphaMass": 279947.0269129486,
+              "maxTileSplatCount": 13824,
+              "hotTileCount": 33,
+              "tileEntryCount": 212317,
+              "maxSplatCoveredTileCount": 36,
+              "maxCenterTileDroppedCoverageFraction": 1,
+              "sampleOriginalIds": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7
+              ]
+            }
+          },
+          "sort": {
+            "backend": "gpu-bitonic-cpu-depth-keys",
+            "sortedIdCount": 94406
+          },
+          "source": {
+            "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+            "splatCount": 94406,
+            "sortedSampleOriginalIds": []
+          }
+        },
+        "statsText": "3456×1804 | 0 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-debug-coverage-weight | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 94,406 splats/125 tiles | tile-local: 216x113 tiles/94406 refs | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | tile-order: gpu-sorted-index-rank-inversion | tile-debug: coverage-weight | arena requested: gpu | arena effective: gpu | arena CPU bridge build: 0.000ms | arena GPU dispatch enqueue: 0.000ms | render: 0.16ms",
+        "title": "Deferred Splat+Mesh Renderer",
+        "bodyText": "3456×1804 | 0 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-debug-coverage-weight | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 94,406 splats/125 tiles | tile-local: 216x113 tiles/94406 refs | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | tile-order: gpu-sorted-index-rank-inversion | tile-debug: coverage-weight | arena requested: gpu | arena effective: gpu | arena CPU bridge build: 0.000ms | arena GPU dispatch enqueue: 0.000ms | render: 0.16ms",
+        "canvas": {
+          "width": 3456,
+          "height": 1804,
+          "clientWidth": 1728,
+          "clientHeight": 902
+        }
+      },
+      "imageAnalysis": {
+        "width": 3456,
+        "height": 1804,
+        "totalPixels": 6234624,
+        "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 255,
+          "a": 255
+        },
+        "distinctColorCount": 626,
+        "changedPixels": 159546,
+        "changedPixelRatio": 0.025590316272480908,
+        "averageDelta": 5.311098365096711,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "00000000000000000000000000000000000000000000000000000007060000000000000d10000000000000000000000000000000000000000000000000000000",
+        "bridgeBlockRatio": 0.8142857142857143,
+        "nonblank": true
+      },
+      "classification": {
+        "nonblank": true,
+        "realSplatEvidence": true,
+        "closeable": true,
+        "harnessPassed": true,
+        "sourceKind": "scaniverse_ply",
+        "splatCount": 94406,
+        "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+        "summary": "PASS: nonblank scaniverse_ply capture with 94406 splats from /smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json.",
+        "reasons": []
+      },
+      "witnessDiagnostics": {
+        "consumedContracts": {
+          "fieldAutopsy": "66b4ea26e5d81ac614f4452b8d21308c4e432e1a",
+          "slabSentinel": "ca96409",
+          "conicReckoner": "f9e3498c00d44f2bb70eba1013f11c2f39b1aff1",
+          "alphaLedger": "0474666"
+        },
+        "thresholdPolicy": "witness-only; does not alter visual smoke pass/fail thresholds",
+        "smokeClassification": {
+          "nonblank": true,
+          "realSplatEvidence": true,
+          "closeable": true,
+          "harnessPassed": true,
+          "sourceKind": "scaniverse_ply",
+          "splatCount": 94406,
+          "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+          "summary": "PASS: nonblank scaniverse_ply capture with 94406 splats from /smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json.",
+          "reasons": []
+        },
+        "imageSummary": {
+          "nonblank": true,
+          "changedPixelRatio": 0.025590316272480908
+        },
+        "findings": [
+          {
+            "kind": "projection-anisotropy",
+            "owner": "conic-reckoner",
+            "severity": "suspect",
+            "summary": "Projection anisotropy witness found ratio 66.95 across 1296 splats; route to conic-reckoner after field metadata is canonical.",
+            "evidence": {
+              "maxAnisotropyRatio": 66.95086118888399,
+              "suspiciousSplatCount": 1296,
+              "sampleOriginalIds": [
+                89,
+                91,
+                102,
+                103,
+                104,
+                238,
+                256,
+                453
+              ],
+              "footprint": {
+                "maxMajorRadiusPx": 63.902305989394925,
+                "maxMinorRadiusPx": 28.325444655104484,
+                "maxAreaPx": 4855.886492845365,
+                "areaCapPx": 15586.56,
+                "majorRadiusCapPx": 586.3000000000001,
+                "highEnergySplatCount": 0,
+                "projectedSplatCount": 94406,
+                "sampleOriginalIds": []
+              }
+            }
+          },
+          {
+            "kind": "compositing-ambiguous",
+            "owner": "alpha-ledger",
+            "severity": "suspect",
+            "summary": "Alpha density witness found 33 hot tiles with max mass 279947.03.",
+            "evidence": {
+              "alphaEnergyPolicy": "bounded-footprint-energy-cap",
+              "nearPlaneAlphaFade": {
+                "startNdc": 0,
+                "endNdc": 0.08
+              },
+              "compositing": "straight-source-over",
+              "ambiguousOverlapCount": 0,
+              "overlapDensity": {
+                "tileSizePx": 48,
+                "alphaMassCap": 1728,
+                "maxTileAlphaMass": 279947.0269129486,
+                "maxTileSplatCount": 13824,
+                "hotTileCount": 33,
+                "sampleOriginalIds": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "consoleMessages": [
+        {
+          "type": "debug",
+          "text": "[vite] connecting..."
+        },
+        {
+          "type": "debug",
+          "text": "[vite] connected."
+        }
+      ],
+      "pageErrors": []
+    },
+    {
+      "id": "accumulated-alpha",
+      "title": "Accumulated alpha heatmap",
+      "expectedRendererLabel": "tile-local-visible-debug-accumulated-alpha",
+      "url": "http://127.0.0.1:61622/?renderer=tile-local-visible&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&tileDebug=accumulated-alpha",
+      "screenshotPath": "smoke-reports/visual-smoke-2026-05-09T08-02-58-697Z/accumulated-alpha.png",
+      "pageEvidence": {
+        "ready": true,
+        "sourceKind": "scaniverse_ply",
+        "realScaniverse": true,
+        "realSplatEvidence": true,
+        "synthetic": false,
+        "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+        "splatCount": 94406,
+        "sortedIdCount": 94406,
+        "sortBackend": "gpu-bitonic-cpu-depth-keys",
+        "boundsRadius": 0.22154541313648224,
+        "rendererLabel": "tile-local-visible-debug-accumulated-alpha",
+        "fps": 0,
+        "tileLocalStatus": "current",
+        "tileLocalDisabledReason": null,
+        "arenaRuntime": {
+          "requestedArenaBackend": "gpu",
+          "effectiveArenaBackend": "gpu",
+          "cpuBuildDurationMs": 0,
+          "gpuDispatchEnqueueDurationMs": 0
+        },
+        "tileLocal": {
+          "status": "current",
+          "refs": 94406,
+          "allocatedRefs": 94406,
+          "tileColumns": 216,
+          "tileRows": 113,
+          "orderingBackend": "gpu-sorted-index-rank-inversion",
+          "debugMode": "accumulated-alpha",
+          "visibleCompositedRefLimit": 256,
+          "freshness": {
+            "status": "current",
+            "cachedFrameAgeMs": 0,
+            "cachedFrame": 21,
+            "currentFrameSignature": "tile-local@5f2a0c37",
+            "cachedFrameSignature": "tile-local@5f2a0c37"
+          },
+          "budget": {
+            "status": "current",
+            "tileSizePx": 16,
+            "maxRefsPerTile": 256,
+            "currentViewportWidth": 3456,
+            "currentViewportHeight": 1804,
+            "currentTileColumns": 216,
+            "currentTileRows": 113,
+            "maxProjectedRefs": 20000000,
+            "overflowReasons": []
+          },
+          "budgetDiagnostics": {
+            "version": 1,
+            "arenaRefs": {
+              "projected": 94406,
+              "retained": 94406,
+              "dropped": 0,
+              "cappedTileCount": 0,
+              "saturatedRetainedTileCount": 0,
+              "maxProjectedRefsPerTile": 256,
+              "maxRetainedRefsPerTile": 256
+            },
+            "overflowReasons": [],
+            "capPressure": {
+              "version": 1,
+              "classification": "within-cap",
+              "refs": {
+                "projected": 94406,
+                "retained": 94406,
+                "dropped": 0,
+                "maxRefsPerTile": 256,
+                "tileCount": 24408
+              },
+              "retainedBands": {
+                "front": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                },
+                "middle": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                },
+                "back": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                }
+              },
+              "droppedBands": {
+                "front": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                },
+                "middle": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                },
+                "back": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                }
+              },
+              "overflowReasons": {},
+              "lossSignals": {
+                "foregroundDroppedRefs": 0,
+                "behindSurfaceDroppedRefs": 0,
+                "policyReserveDisplacedRefs": 0,
+                "highCoverageDroppedRefs": 0,
+                "highRetentionDroppedRefs": 0,
+                "highOcclusionDroppedRefs": 0
+              },
+              "policyHooks": []
+            },
+            "retainedBands": {
+              "front": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              },
+              "middle": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              },
+              "back": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              }
+            },
+            "droppedBands": {
+              "front": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              },
+              "middle": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              },
+              "back": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              }
+            },
+            "heat": {
+              "cpu": {
+                "projectedRefs": 0,
+                "projectedRefsPerTile": 0,
+                "projectedToRetainedRatio": 0,
+                "buildDurationMs": 0
+              },
+              "gpu": {
+                "retainedRefs": 94406,
+                "retainedRefBufferBytes": 99975168,
+                "coverageWeightBufferBytes": 24993792,
+                "alphaParamBufferBytes": 199950336,
+                "orderingKeyBufferBytes": 24993792
+              }
+            }
+          },
+          "diagnostics": {
+            "version": 1,
+            "debugMode": "accumulated-alpha",
+            "tileGrid": {
+              "columns": 216,
+              "rows": 113,
+              "tileSizePx": 16
+            },
+            "tileRefs": {
+              "total": 94406,
+              "nonEmptyTiles": 369,
+              "maxPerTile": 256,
+              "averagePerNonEmptyTile": 255.842818,
+              "density": 0.015118
+            },
+            "tileRefCustody": {
+              "projectedTileEntryCount": 94406,
+              "retainedTileEntryCount": 94406,
+              "evictedTileEntryCount": 0,
+              "cappedTileCount": 0,
+              "saturatedRetainedTileCount": 0,
+              "maxProjectedRefsPerTile": 256,
+              "maxRetainedRefsPerTile": 256,
+              "headerRefCount": 94406,
+              "headerAccountingMatches": true
+            },
+            "retentionAudit": {
+              "fullFrame": {
+                "region": "gpu-live-estimate",
+                "tileCount": 0,
+                "cappedTileCount": 0,
+                "projectedTileEntryCount": 0,
+                "currentRetainedEntryCount": 0,
+                "legacyRetainedEntryCount": 0,
+                "addedByPolicyCount": 0,
+                "droppedByPolicyCount": 0,
+                "addedRetentionWeightSum": 0,
+                "droppedRetentionWeightSum": 0,
+                "addedOcclusionWeightSum": 0,
+                "droppedOcclusionWeightSum": 0,
+                "addedByPolicySamples": [],
+                "droppedByPolicySamples": []
+              },
+              "regions": {
+                "porousBody": {
+                  "region": "gpu-live-estimate",
+                  "tileCount": 0,
+                  "cappedTileCount": 0,
+                  "projectedTileEntryCount": 0,
+                  "currentRetainedEntryCount": 0,
+                  "legacyRetainedEntryCount": 0,
+                  "addedByPolicyCount": 0,
+                  "droppedByPolicyCount": 0,
+                  "addedRetentionWeightSum": 0,
+                  "droppedRetentionWeightSum": 0,
+                  "addedOcclusionWeightSum": 0,
+                  "droppedOcclusionWeightSum": 0,
+                  "addedByPolicySamples": [],
+                  "droppedByPolicySamples": []
+                },
+                "centerLeakBand": {
+                  "region": "gpu-live-estimate",
+                  "tileCount": 0,
+                  "cappedTileCount": 0,
+                  "projectedTileEntryCount": 0,
+                  "currentRetainedEntryCount": 0,
+                  "legacyRetainedEntryCount": 0,
+                  "addedByPolicyCount": 0,
+                  "droppedByPolicyCount": 0,
+                  "addedRetentionWeightSum": 0,
+                  "droppedRetentionWeightSum": 0,
+                  "addedOcclusionWeightSum": 0,
+                  "droppedOcclusionWeightSum": 0,
+                  "addedByPolicySamples": [],
+                  "droppedByPolicySamples": []
+                }
+              }
+            },
+            "coverageWeight": {
+              "min": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "alpha": {
+              "maxSourceOpacity": 1,
+              "meanSourceOpacity": 0.269004,
+              "estimatedMaxAccumulatedAlpha": 1,
+              "estimatedMinTransmittance": 0,
+              "alphaParamRefs": 6248448
+            },
+            "conicShape": {
+              "maxMajorRadiusPx": 1,
+              "minMinorRadiusPx": 1,
+              "maxAnisotropyRatio": 1
+            }
+          }
+        },
+        "tileLocalDiagnostics": {
+          "version": 1,
+          "debugMode": "accumulated-alpha",
+          "tileGrid": {
+            "columns": 216,
+            "rows": 113,
+            "tileSizePx": 16
+          },
+          "tileRefs": {
+            "total": 94406,
+            "nonEmptyTiles": 369,
+            "maxPerTile": 256,
+            "averagePerNonEmptyTile": 255.842818,
+            "density": 0.015118
+          },
+          "tileRefCustody": {
+            "projectedTileEntryCount": 94406,
+            "retainedTileEntryCount": 94406,
+            "evictedTileEntryCount": 0,
+            "cappedTileCount": 0,
+            "saturatedRetainedTileCount": 0,
+            "maxProjectedRefsPerTile": 256,
+            "maxRetainedRefsPerTile": 256,
+            "headerRefCount": 94406,
+            "headerAccountingMatches": true
+          },
+          "retentionAudit": {
+            "fullFrame": {
+              "region": "gpu-live-estimate",
+              "tileCount": 0,
+              "cappedTileCount": 0,
+              "projectedTileEntryCount": 0,
+              "currentRetainedEntryCount": 0,
+              "legacyRetainedEntryCount": 0,
+              "addedByPolicyCount": 0,
+              "droppedByPolicyCount": 0,
+              "addedRetentionWeightSum": 0,
+              "droppedRetentionWeightSum": 0,
+              "addedOcclusionWeightSum": 0,
+              "droppedOcclusionWeightSum": 0,
+              "addedByPolicySamples": [],
+              "droppedByPolicySamples": []
+            },
+            "regions": {
+              "porousBody": {
+                "region": "gpu-live-estimate",
+                "tileCount": 0,
+                "cappedTileCount": 0,
+                "projectedTileEntryCount": 0,
+                "currentRetainedEntryCount": 0,
+                "legacyRetainedEntryCount": 0,
+                "addedByPolicyCount": 0,
+                "droppedByPolicyCount": 0,
+                "addedRetentionWeightSum": 0,
+                "droppedRetentionWeightSum": 0,
+                "addedOcclusionWeightSum": 0,
+                "droppedOcclusionWeightSum": 0,
+                "addedByPolicySamples": [],
+                "droppedByPolicySamples": []
+              },
+              "centerLeakBand": {
+                "region": "gpu-live-estimate",
+                "tileCount": 0,
+                "cappedTileCount": 0,
+                "projectedTileEntryCount": 0,
+                "currentRetainedEntryCount": 0,
+                "legacyRetainedEntryCount": 0,
+                "addedByPolicyCount": 0,
+                "droppedByPolicyCount": 0,
+                "addedRetentionWeightSum": 0,
+                "droppedRetentionWeightSum": 0,
+                "addedOcclusionWeightSum": 0,
+                "droppedOcclusionWeightSum": 0,
+                "addedByPolicySamples": [],
+                "droppedByPolicySamples": []
+              }
+            }
+          },
+          "coverageWeight": {
+            "min": 0,
+            "max": 0,
+            "mean": 0
+          },
+          "alpha": {
+            "maxSourceOpacity": 1,
+            "meanSourceOpacity": 0.269004,
+            "estimatedMaxAccumulatedAlpha": 1,
+            "estimatedMinTransmittance": 0,
+            "alphaParamRefs": 6248448
+          },
+          "conicShape": {
+            "maxMajorRadiusPx": 1,
+            "minMinorRadiusPx": 1,
+            "maxAnisotropyRatio": 1
+          }
+        },
+        "witness": {
+          "field": {
+            "scaleSpace": "log",
+            "rotationOrder": "wxyz",
+            "opacitySpace": "unit",
+            "colorSpace": "sh_dc_rgb"
+          },
+          "projection": {
+            "projectionMode": "jacobian-covariance",
+            "maxAnisotropyRatio": 66.95086118888399,
+            "suspiciousSplatCount": 1296,
+            "sampleOriginalIds": [
+              89,
+              91,
+              102,
+              103,
+              104,
+              238,
+              256,
+              453
+            ],
+            "fieldMaxAnisotropyRatio": 190.56626845863002,
+            "fieldSuspiciousSplatCount": 8398,
+            "rotationOrderComparison": {
+              "wxyz": {
+                "rotationOrder": "wxyz",
+                "maxProjectedAnisotropyRatio": 66.95086118888399,
+                "suspiciousProjectedSplatCount": 1296,
+                "projectedSplatCount": 94406,
+                "sampleOriginalIds": [
+                  89,
+                  91,
+                  102,
+                  103,
+                  104,
+                  238,
+                  256,
+                  453
+                ]
+              },
+              "xyzw": {
+                "rotationOrder": "xyzw",
+                "maxProjectedAnisotropyRatio": 67.19421246302099,
+                "suspiciousProjectedSplatCount": 1956,
+                "projectedSplatCount": 94406,
+                "sampleOriginalIds": [
+                  87,
+                  93,
+                  131,
+                  250,
+                  463,
+                  549,
+                  632,
+                  692
+                ]
+              }
+            },
+            "footprint": {
+              "maxMajorRadiusPx": 63.902305989394925,
+              "maxMinorRadiusPx": 28.325444655104484,
+              "maxAreaPx": 4855.886492845365,
+              "areaCapPx": 15586.56,
+              "majorRadiusCapPx": 586.3000000000001,
+              "highEnergySplatCount": 0,
+              "projectedSplatCount": 94406,
+              "sampleOriginalIds": []
+            },
+            "cropSupport": {
+              "rimBand": {
+                "crop": {
+                  "x": 390,
+                  "y": 322,
+                  "width": 500,
+                  "height": 115
+                },
+                "projectedCenterCount": 11587,
+                "projectedSupportCount": 15199,
+                "nearFloorMinorCount": 6034,
+                "maxMajorRadiusPx": 59.6566631686253,
+                "medianMajorRadiusPx": 4.498520509996828,
+                "medianMinorRadiusPx": 1.9637027988624436,
+                "supportAreaPxSum": 1171962.0681098565,
+                "sampleOriginalIds": [
+                  417,
+                  430,
+                  432,
+                  479,
+                  481,
+                  496,
+                  499,
+                  501,
+                  510,
+                  514,
+                  534,
+                  535
+                ]
+              },
+              "porousBody": {
+                "crop": {
+                  "x": 520,
+                  "y": 270,
+                  "width": 260,
+                  "height": 150
+                },
+                "projectedCenterCount": 0,
+                "projectedSupportCount": 118,
+                "nearFloorMinorCount": 1,
+                "maxMajorRadiusPx": 59.6566631686253,
+                "medianMajorRadiusPx": 13.919035269286088,
+                "medianMinorRadiusPx": 5.404866675092395,
+                "supportAreaPxSum": 56840.968738749834,
+                "sampleOriginalIds": [
+                  908,
+                  957,
+                  1753,
+                  1788,
+                  2499,
+                  3362,
+                  6805,
+                  8219,
+                  9626,
+                  10667,
+                  10669,
+                  10805
+                ]
+              }
+            }
+          },
+          "slab": {
+            "statusCounts": {
+              "axis-crosses-near-plane": 0,
+              "pathological-footprint": 0,
+              "accepted": 94406
+            },
+            "maxMajorRadiusPx": 0,
+            "footprintCapPx": 0.65,
+            "sampleOriginalIds": []
+          },
+          "alpha": {
+            "alphaEnergyPolicy": "bounded-footprint-energy-cap",
+            "nearPlaneAlphaFade": {
+              "startNdc": 0,
+              "endNdc": 0.08
+            },
+            "compositing": "straight-source-over",
+            "ambiguousOverlapCount": 0,
+            "overlapDensity": {
+              "accountingMode": "coverage-aware",
+              "tileSizePx": 48,
+              "alphaMassCap": 1728,
+              "maxTileAlphaMass": 279947.0269129486,
+              "maxTileSplatCount": 13824,
+              "hotTileCount": 33,
+              "tileEntryCount": 212317,
+              "maxSplatCoveredTileCount": 36,
+              "maxCenterTileDroppedCoverageFraction": 1,
+              "sampleOriginalIds": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7
+              ]
+            }
+          },
+          "sort": {
+            "backend": "gpu-bitonic-cpu-depth-keys",
+            "sortedIdCount": 94406
+          },
+          "source": {
+            "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+            "splatCount": 94406,
+            "sortedSampleOriginalIds": []
+          }
+        },
+        "statsText": "3456×1804 | 0 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-debug-accumulated-alpha | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 94,406 splats/125 tiles | tile-local: 216x113 tiles/94406 refs | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | tile-order: gpu-sorted-index-rank-inversion | tile-debug: accumulated-alpha | arena requested: gpu | arena effective: gpu | arena CPU bridge build: 0.000ms | arena GPU dispatch enqueue: 0.000ms | render: 0.19ms",
+        "title": "Deferred Splat+Mesh Renderer",
+        "bodyText": "3456×1804 | 0 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-debug-accumulated-alpha | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 94,406 splats/125 tiles | tile-local: 216x113 tiles/94406 refs | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | tile-order: gpu-sorted-index-rank-inversion | tile-debug: accumulated-alpha | arena requested: gpu | arena effective: gpu | arena CPU bridge build: 0.000ms | arena GPU dispatch enqueue: 0.000ms | render: 0.19ms",
+        "canvas": {
+          "width": 3456,
+          "height": 1804,
+          "clientWidth": 1728,
+          "clientHeight": 902
+        }
+      },
+      "imageAnalysis": {
+        "width": 3456,
+        "height": 1804,
+        "totalPixels": 6234624,
+        "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 255
+        },
+        "distinctColorCount": 256,
+        "changedPixels": 158629,
+        "changedPixelRatio": 0.02544323442760943,
+        "averageDelta": 6.061538274000164,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "00000000000000000000000000000000000000000000000000000008070000000000000f13000000000000000000000000000000000000000000000000000000",
+        "bridgeBlockRatio": 0.7464114832535885,
+        "nonblank": true
+      },
+      "classification": {
+        "nonblank": true,
+        "realSplatEvidence": true,
+        "closeable": true,
+        "harnessPassed": true,
+        "sourceKind": "scaniverse_ply",
+        "splatCount": 94406,
+        "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+        "summary": "PASS: nonblank scaniverse_ply capture with 94406 splats from /smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json.",
+        "reasons": []
+      },
+      "witnessDiagnostics": {
+        "consumedContracts": {
+          "fieldAutopsy": "66b4ea26e5d81ac614f4452b8d21308c4e432e1a",
+          "slabSentinel": "ca96409",
+          "conicReckoner": "f9e3498c00d44f2bb70eba1013f11c2f39b1aff1",
+          "alphaLedger": "0474666"
+        },
+        "thresholdPolicy": "witness-only; does not alter visual smoke pass/fail thresholds",
+        "smokeClassification": {
+          "nonblank": true,
+          "realSplatEvidence": true,
+          "closeable": true,
+          "harnessPassed": true,
+          "sourceKind": "scaniverse_ply",
+          "splatCount": 94406,
+          "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+          "summary": "PASS: nonblank scaniverse_ply capture with 94406 splats from /smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json.",
+          "reasons": []
+        },
+        "imageSummary": {
+          "nonblank": true,
+          "changedPixelRatio": 0.02544323442760943
+        },
+        "findings": [
+          {
+            "kind": "projection-anisotropy",
+            "owner": "conic-reckoner",
+            "severity": "suspect",
+            "summary": "Projection anisotropy witness found ratio 66.95 across 1296 splats; route to conic-reckoner after field metadata is canonical.",
+            "evidence": {
+              "maxAnisotropyRatio": 66.95086118888399,
+              "suspiciousSplatCount": 1296,
+              "sampleOriginalIds": [
+                89,
+                91,
+                102,
+                103,
+                104,
+                238,
+                256,
+                453
+              ],
+              "footprint": {
+                "maxMajorRadiusPx": 63.902305989394925,
+                "maxMinorRadiusPx": 28.325444655104484,
+                "maxAreaPx": 4855.886492845365,
+                "areaCapPx": 15586.56,
+                "majorRadiusCapPx": 586.3000000000001,
+                "highEnergySplatCount": 0,
+                "projectedSplatCount": 94406,
+                "sampleOriginalIds": []
+              }
+            }
+          },
+          {
+            "kind": "compositing-ambiguous",
+            "owner": "alpha-ledger",
+            "severity": "suspect",
+            "summary": "Alpha density witness found 33 hot tiles with max mass 279947.03.",
+            "evidence": {
+              "alphaEnergyPolicy": "bounded-footprint-energy-cap",
+              "nearPlaneAlphaFade": {
+                "startNdc": 0,
+                "endNdc": 0.08
+              },
+              "compositing": "straight-source-over",
+              "ambiguousOverlapCount": 0,
+              "overlapDensity": {
+                "tileSizePx": 48,
+                "alphaMassCap": 1728,
+                "maxTileAlphaMass": 279947.0269129486,
+                "maxTileSplatCount": 13824,
+                "hotTileCount": 33,
+                "sampleOriginalIds": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "consoleMessages": [
+        {
+          "type": "debug",
+          "text": "[vite] connecting..."
+        },
+        {
+          "type": "debug",
+          "text": "[vite] connected."
+        }
+      ],
+      "pageErrors": []
+    },
+    {
+      "id": "transmittance",
+      "title": "Transmittance heatmap",
+      "expectedRendererLabel": "tile-local-visible-debug-transmittance",
+      "url": "http://127.0.0.1:61622/?renderer=tile-local-visible&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&tileDebug=transmittance",
+      "screenshotPath": "smoke-reports/visual-smoke-2026-05-09T08-02-58-697Z/transmittance.png",
+      "pageEvidence": {
+        "ready": true,
+        "sourceKind": "scaniverse_ply",
+        "realScaniverse": true,
+        "realSplatEvidence": true,
+        "synthetic": false,
+        "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+        "splatCount": 94406,
+        "sortedIdCount": 94406,
+        "sortBackend": "gpu-bitonic-cpu-depth-keys",
+        "boundsRadius": 0.22154541313648224,
+        "rendererLabel": "tile-local-visible-debug-transmittance",
+        "fps": 0,
+        "tileLocalStatus": "current",
+        "tileLocalDisabledReason": null,
+        "arenaRuntime": {
+          "requestedArenaBackend": "gpu",
+          "effectiveArenaBackend": "gpu",
+          "cpuBuildDurationMs": 0,
+          "gpuDispatchEnqueueDurationMs": 0
+        },
+        "tileLocal": {
+          "status": "current",
+          "refs": 94406,
+          "allocatedRefs": 94406,
+          "tileColumns": 216,
+          "tileRows": 113,
+          "orderingBackend": "gpu-sorted-index-rank-inversion",
+          "debugMode": "transmittance",
+          "visibleCompositedRefLimit": 256,
+          "freshness": {
+            "status": "current",
+            "cachedFrameAgeMs": 0,
+            "cachedFrame": 21,
+            "currentFrameSignature": "tile-local@5f2a0c37",
+            "cachedFrameSignature": "tile-local@5f2a0c37"
+          },
+          "budget": {
+            "status": "current",
+            "tileSizePx": 16,
+            "maxRefsPerTile": 256,
+            "currentViewportWidth": 3456,
+            "currentViewportHeight": 1804,
+            "currentTileColumns": 216,
+            "currentTileRows": 113,
+            "maxProjectedRefs": 20000000,
+            "overflowReasons": []
+          },
+          "budgetDiagnostics": {
+            "version": 1,
+            "arenaRefs": {
+              "projected": 94406,
+              "retained": 94406,
+              "dropped": 0,
+              "cappedTileCount": 0,
+              "saturatedRetainedTileCount": 0,
+              "maxProjectedRefsPerTile": 256,
+              "maxRetainedRefsPerTile": 256
+            },
+            "overflowReasons": [],
+            "capPressure": {
+              "version": 1,
+              "classification": "within-cap",
+              "refs": {
+                "projected": 94406,
+                "retained": 94406,
+                "dropped": 0,
+                "maxRefsPerTile": 256,
+                "tileCount": 24408
+              },
+              "retainedBands": {
+                "front": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                },
+                "middle": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                },
+                "back": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                }
+              },
+              "droppedBands": {
+                "front": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                },
+                "middle": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                },
+                "back": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                }
+              },
+              "overflowReasons": {},
+              "lossSignals": {
+                "foregroundDroppedRefs": 0,
+                "behindSurfaceDroppedRefs": 0,
+                "policyReserveDisplacedRefs": 0,
+                "highCoverageDroppedRefs": 0,
+                "highRetentionDroppedRefs": 0,
+                "highOcclusionDroppedRefs": 0
+              },
+              "policyHooks": []
+            },
+            "retainedBands": {
+              "front": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              },
+              "middle": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              },
+              "back": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              }
+            },
+            "droppedBands": {
+              "front": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              },
+              "middle": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              },
+              "back": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              }
+            },
+            "heat": {
+              "cpu": {
+                "projectedRefs": 0,
+                "projectedRefsPerTile": 0,
+                "projectedToRetainedRatio": 0,
+                "buildDurationMs": 0
+              },
+              "gpu": {
+                "retainedRefs": 94406,
+                "retainedRefBufferBytes": 99975168,
+                "coverageWeightBufferBytes": 24993792,
+                "alphaParamBufferBytes": 199950336,
+                "orderingKeyBufferBytes": 24993792
+              }
+            }
+          },
+          "diagnostics": {
+            "version": 1,
+            "debugMode": "transmittance",
+            "tileGrid": {
+              "columns": 216,
+              "rows": 113,
+              "tileSizePx": 16
+            },
+            "tileRefs": {
+              "total": 94406,
+              "nonEmptyTiles": 369,
+              "maxPerTile": 256,
+              "averagePerNonEmptyTile": 255.842818,
+              "density": 0.015118
+            },
+            "tileRefCustody": {
+              "projectedTileEntryCount": 94406,
+              "retainedTileEntryCount": 94406,
+              "evictedTileEntryCount": 0,
+              "cappedTileCount": 0,
+              "saturatedRetainedTileCount": 0,
+              "maxProjectedRefsPerTile": 256,
+              "maxRetainedRefsPerTile": 256,
+              "headerRefCount": 94406,
+              "headerAccountingMatches": true
+            },
+            "retentionAudit": {
+              "fullFrame": {
+                "region": "gpu-live-estimate",
+                "tileCount": 0,
+                "cappedTileCount": 0,
+                "projectedTileEntryCount": 0,
+                "currentRetainedEntryCount": 0,
+                "legacyRetainedEntryCount": 0,
+                "addedByPolicyCount": 0,
+                "droppedByPolicyCount": 0,
+                "addedRetentionWeightSum": 0,
+                "droppedRetentionWeightSum": 0,
+                "addedOcclusionWeightSum": 0,
+                "droppedOcclusionWeightSum": 0,
+                "addedByPolicySamples": [],
+                "droppedByPolicySamples": []
+              },
+              "regions": {
+                "porousBody": {
+                  "region": "gpu-live-estimate",
+                  "tileCount": 0,
+                  "cappedTileCount": 0,
+                  "projectedTileEntryCount": 0,
+                  "currentRetainedEntryCount": 0,
+                  "legacyRetainedEntryCount": 0,
+                  "addedByPolicyCount": 0,
+                  "droppedByPolicyCount": 0,
+                  "addedRetentionWeightSum": 0,
+                  "droppedRetentionWeightSum": 0,
+                  "addedOcclusionWeightSum": 0,
+                  "droppedOcclusionWeightSum": 0,
+                  "addedByPolicySamples": [],
+                  "droppedByPolicySamples": []
+                },
+                "centerLeakBand": {
+                  "region": "gpu-live-estimate",
+                  "tileCount": 0,
+                  "cappedTileCount": 0,
+                  "projectedTileEntryCount": 0,
+                  "currentRetainedEntryCount": 0,
+                  "legacyRetainedEntryCount": 0,
+                  "addedByPolicyCount": 0,
+                  "droppedByPolicyCount": 0,
+                  "addedRetentionWeightSum": 0,
+                  "droppedRetentionWeightSum": 0,
+                  "addedOcclusionWeightSum": 0,
+                  "droppedOcclusionWeightSum": 0,
+                  "addedByPolicySamples": [],
+                  "droppedByPolicySamples": []
+                }
+              }
+            },
+            "coverageWeight": {
+              "min": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "alpha": {
+              "maxSourceOpacity": 1,
+              "meanSourceOpacity": 0.269004,
+              "estimatedMaxAccumulatedAlpha": 1,
+              "estimatedMinTransmittance": 0,
+              "alphaParamRefs": 6248448
+            },
+            "conicShape": {
+              "maxMajorRadiusPx": 1,
+              "minMinorRadiusPx": 1,
+              "maxAnisotropyRatio": 1
+            }
+          }
+        },
+        "tileLocalDiagnostics": {
+          "version": 1,
+          "debugMode": "transmittance",
+          "tileGrid": {
+            "columns": 216,
+            "rows": 113,
+            "tileSizePx": 16
+          },
+          "tileRefs": {
+            "total": 94406,
+            "nonEmptyTiles": 369,
+            "maxPerTile": 256,
+            "averagePerNonEmptyTile": 255.842818,
+            "density": 0.015118
+          },
+          "tileRefCustody": {
+            "projectedTileEntryCount": 94406,
+            "retainedTileEntryCount": 94406,
+            "evictedTileEntryCount": 0,
+            "cappedTileCount": 0,
+            "saturatedRetainedTileCount": 0,
+            "maxProjectedRefsPerTile": 256,
+            "maxRetainedRefsPerTile": 256,
+            "headerRefCount": 94406,
+            "headerAccountingMatches": true
+          },
+          "retentionAudit": {
+            "fullFrame": {
+              "region": "gpu-live-estimate",
+              "tileCount": 0,
+              "cappedTileCount": 0,
+              "projectedTileEntryCount": 0,
+              "currentRetainedEntryCount": 0,
+              "legacyRetainedEntryCount": 0,
+              "addedByPolicyCount": 0,
+              "droppedByPolicyCount": 0,
+              "addedRetentionWeightSum": 0,
+              "droppedRetentionWeightSum": 0,
+              "addedOcclusionWeightSum": 0,
+              "droppedOcclusionWeightSum": 0,
+              "addedByPolicySamples": [],
+              "droppedByPolicySamples": []
+            },
+            "regions": {
+              "porousBody": {
+                "region": "gpu-live-estimate",
+                "tileCount": 0,
+                "cappedTileCount": 0,
+                "projectedTileEntryCount": 0,
+                "currentRetainedEntryCount": 0,
+                "legacyRetainedEntryCount": 0,
+                "addedByPolicyCount": 0,
+                "droppedByPolicyCount": 0,
+                "addedRetentionWeightSum": 0,
+                "droppedRetentionWeightSum": 0,
+                "addedOcclusionWeightSum": 0,
+                "droppedOcclusionWeightSum": 0,
+                "addedByPolicySamples": [],
+                "droppedByPolicySamples": []
+              },
+              "centerLeakBand": {
+                "region": "gpu-live-estimate",
+                "tileCount": 0,
+                "cappedTileCount": 0,
+                "projectedTileEntryCount": 0,
+                "currentRetainedEntryCount": 0,
+                "legacyRetainedEntryCount": 0,
+                "addedByPolicyCount": 0,
+                "droppedByPolicyCount": 0,
+                "addedRetentionWeightSum": 0,
+                "droppedRetentionWeightSum": 0,
+                "addedOcclusionWeightSum": 0,
+                "droppedOcclusionWeightSum": 0,
+                "addedByPolicySamples": [],
+                "droppedByPolicySamples": []
+              }
+            }
+          },
+          "coverageWeight": {
+            "min": 0,
+            "max": 0,
+            "mean": 0
+          },
+          "alpha": {
+            "maxSourceOpacity": 1,
+            "meanSourceOpacity": 0.269004,
+            "estimatedMaxAccumulatedAlpha": 1,
+            "estimatedMinTransmittance": 0,
+            "alphaParamRefs": 6248448
+          },
+          "conicShape": {
+            "maxMajorRadiusPx": 1,
+            "minMinorRadiusPx": 1,
+            "maxAnisotropyRatio": 1
+          }
+        },
+        "witness": {
+          "field": {
+            "scaleSpace": "log",
+            "rotationOrder": "wxyz",
+            "opacitySpace": "unit",
+            "colorSpace": "sh_dc_rgb"
+          },
+          "projection": {
+            "projectionMode": "jacobian-covariance",
+            "maxAnisotropyRatio": 66.95086118888399,
+            "suspiciousSplatCount": 1296,
+            "sampleOriginalIds": [
+              89,
+              91,
+              102,
+              103,
+              104,
+              238,
+              256,
+              453
+            ],
+            "fieldMaxAnisotropyRatio": 190.56626845863002,
+            "fieldSuspiciousSplatCount": 8398,
+            "rotationOrderComparison": {
+              "wxyz": {
+                "rotationOrder": "wxyz",
+                "maxProjectedAnisotropyRatio": 66.95086118888399,
+                "suspiciousProjectedSplatCount": 1296,
+                "projectedSplatCount": 94406,
+                "sampleOriginalIds": [
+                  89,
+                  91,
+                  102,
+                  103,
+                  104,
+                  238,
+                  256,
+                  453
+                ]
+              },
+              "xyzw": {
+                "rotationOrder": "xyzw",
+                "maxProjectedAnisotropyRatio": 67.19421246302099,
+                "suspiciousProjectedSplatCount": 1956,
+                "projectedSplatCount": 94406,
+                "sampleOriginalIds": [
+                  87,
+                  93,
+                  131,
+                  250,
+                  463,
+                  549,
+                  632,
+                  692
+                ]
+              }
+            },
+            "footprint": {
+              "maxMajorRadiusPx": 63.902305989394925,
+              "maxMinorRadiusPx": 28.325444655104484,
+              "maxAreaPx": 4855.886492845365,
+              "areaCapPx": 15586.56,
+              "majorRadiusCapPx": 586.3000000000001,
+              "highEnergySplatCount": 0,
+              "projectedSplatCount": 94406,
+              "sampleOriginalIds": []
+            },
+            "cropSupport": {
+              "rimBand": {
+                "crop": {
+                  "x": 390,
+                  "y": 322,
+                  "width": 500,
+                  "height": 115
+                },
+                "projectedCenterCount": 11587,
+                "projectedSupportCount": 15199,
+                "nearFloorMinorCount": 6034,
+                "maxMajorRadiusPx": 59.6566631686253,
+                "medianMajorRadiusPx": 4.498520509996828,
+                "medianMinorRadiusPx": 1.9637027988624436,
+                "supportAreaPxSum": 1171962.0681098565,
+                "sampleOriginalIds": [
+                  417,
+                  430,
+                  432,
+                  479,
+                  481,
+                  496,
+                  499,
+                  501,
+                  510,
+                  514,
+                  534,
+                  535
+                ]
+              },
+              "porousBody": {
+                "crop": {
+                  "x": 520,
+                  "y": 270,
+                  "width": 260,
+                  "height": 150
+                },
+                "projectedCenterCount": 0,
+                "projectedSupportCount": 118,
+                "nearFloorMinorCount": 1,
+                "maxMajorRadiusPx": 59.6566631686253,
+                "medianMajorRadiusPx": 13.919035269286088,
+                "medianMinorRadiusPx": 5.404866675092395,
+                "supportAreaPxSum": 56840.968738749834,
+                "sampleOriginalIds": [
+                  908,
+                  957,
+                  1753,
+                  1788,
+                  2499,
+                  3362,
+                  6805,
+                  8219,
+                  9626,
+                  10667,
+                  10669,
+                  10805
+                ]
+              }
+            }
+          },
+          "slab": {
+            "statusCounts": {
+              "axis-crosses-near-plane": 0,
+              "pathological-footprint": 0,
+              "accepted": 94406
+            },
+            "maxMajorRadiusPx": 0,
+            "footprintCapPx": 0.65,
+            "sampleOriginalIds": []
+          },
+          "alpha": {
+            "alphaEnergyPolicy": "bounded-footprint-energy-cap",
+            "nearPlaneAlphaFade": {
+              "startNdc": 0,
+              "endNdc": 0.08
+            },
+            "compositing": "straight-source-over",
+            "ambiguousOverlapCount": 0,
+            "overlapDensity": {
+              "accountingMode": "coverage-aware",
+              "tileSizePx": 48,
+              "alphaMassCap": 1728,
+              "maxTileAlphaMass": 279947.0269129486,
+              "maxTileSplatCount": 13824,
+              "hotTileCount": 33,
+              "tileEntryCount": 212317,
+              "maxSplatCoveredTileCount": 36,
+              "maxCenterTileDroppedCoverageFraction": 1,
+              "sampleOriginalIds": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7
+              ]
+            }
+          },
+          "sort": {
+            "backend": "gpu-bitonic-cpu-depth-keys",
+            "sortedIdCount": 94406
+          },
+          "source": {
+            "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+            "splatCount": 94406,
+            "sortedSampleOriginalIds": []
+          }
+        },
+        "statsText": "3456×1804 | 0 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-debug-transmittance | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 94,406 splats/125 tiles | tile-local: 216x113 tiles/94406 refs | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | tile-order: gpu-sorted-index-rank-inversion | tile-debug: transmittance | arena requested: gpu | arena effective: gpu | arena CPU bridge build: 0.000ms | arena GPU dispatch enqueue: 0.000ms | render: 0.17ms",
+        "title": "Deferred Splat+Mesh Renderer",
+        "bodyText": "3456×1804 | 0 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-debug-transmittance | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 94,406 splats/125 tiles | tile-local: 216x113 tiles/94406 refs | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | tile-order: gpu-sorted-index-rank-inversion | tile-debug: transmittance | arena requested: gpu | arena effective: gpu | arena CPU bridge build: 0.000ms | arena GPU dispatch enqueue: 0.000ms | render: 0.17ms",
+        "canvas": {
+          "width": 3456,
+          "height": 1804,
+          "clientWidth": 1728,
+          "clientHeight": 902
+        }
+      },
+      "imageAnalysis": {
+        "width": 3456,
+        "height": 1804,
+        "totalPixels": 6234624,
+        "backgroundColor": {
+          "r": 255,
+          "g": 255,
+          "b": 0,
+          "a": 255
+        },
+        "distinctColorCount": 509,
+        "changedPixels": 158629,
+        "changedPixelRatio": 0.02544323442760943,
+        "averageDelta": 6.0617669966941365,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "00000000000000000000000000000000000000000000000000000008070000000000000f13000000000000000000000000000000000000000000000000000000",
+        "bridgeBlockRatio": 0.7464114832535885,
+        "nonblank": true
+      },
+      "classification": {
+        "nonblank": true,
+        "realSplatEvidence": true,
+        "closeable": true,
+        "harnessPassed": true,
+        "sourceKind": "scaniverse_ply",
+        "splatCount": 94406,
+        "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+        "summary": "PASS: nonblank scaniverse_ply capture with 94406 splats from /smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json.",
+        "reasons": []
+      },
+      "witnessDiagnostics": {
+        "consumedContracts": {
+          "fieldAutopsy": "66b4ea26e5d81ac614f4452b8d21308c4e432e1a",
+          "slabSentinel": "ca96409",
+          "conicReckoner": "f9e3498c00d44f2bb70eba1013f11c2f39b1aff1",
+          "alphaLedger": "0474666"
+        },
+        "thresholdPolicy": "witness-only; does not alter visual smoke pass/fail thresholds",
+        "smokeClassification": {
+          "nonblank": true,
+          "realSplatEvidence": true,
+          "closeable": true,
+          "harnessPassed": true,
+          "sourceKind": "scaniverse_ply",
+          "splatCount": 94406,
+          "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+          "summary": "PASS: nonblank scaniverse_ply capture with 94406 splats from /smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json.",
+          "reasons": []
+        },
+        "imageSummary": {
+          "nonblank": true,
+          "changedPixelRatio": 0.02544323442760943
+        },
+        "findings": [
+          {
+            "kind": "projection-anisotropy",
+            "owner": "conic-reckoner",
+            "severity": "suspect",
+            "summary": "Projection anisotropy witness found ratio 66.95 across 1296 splats; route to conic-reckoner after field metadata is canonical.",
+            "evidence": {
+              "maxAnisotropyRatio": 66.95086118888399,
+              "suspiciousSplatCount": 1296,
+              "sampleOriginalIds": [
+                89,
+                91,
+                102,
+                103,
+                104,
+                238,
+                256,
+                453
+              ],
+              "footprint": {
+                "maxMajorRadiusPx": 63.902305989394925,
+                "maxMinorRadiusPx": 28.325444655104484,
+                "maxAreaPx": 4855.886492845365,
+                "areaCapPx": 15586.56,
+                "majorRadiusCapPx": 586.3000000000001,
+                "highEnergySplatCount": 0,
+                "projectedSplatCount": 94406,
+                "sampleOriginalIds": []
+              }
+            }
+          },
+          {
+            "kind": "compositing-ambiguous",
+            "owner": "alpha-ledger",
+            "severity": "suspect",
+            "summary": "Alpha density witness found 33 hot tiles with max mass 279947.03.",
+            "evidence": {
+              "alphaEnergyPolicy": "bounded-footprint-energy-cap",
+              "nearPlaneAlphaFade": {
+                "startNdc": 0,
+                "endNdc": 0.08
+              },
+              "compositing": "straight-source-over",
+              "ambiguousOverlapCount": 0,
+              "overlapDensity": {
+                "tileSizePx": 48,
+                "alphaMassCap": 1728,
+                "maxTileAlphaMass": 279947.0269129486,
+                "maxTileSplatCount": 13824,
+                "hotTileCount": 33,
+                "sampleOriginalIds": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "consoleMessages": [
+        {
+          "type": "debug",
+          "text": "[vite] connecting..."
+        },
+        {
+          "type": "debug",
+          "text": "[vite] connected."
+        }
+      ],
+      "pageErrors": []
+    },
+    {
+      "id": "tile-ref-count",
+      "title": "Tile-ref density heatmap",
+      "expectedRendererLabel": "tile-local-visible-debug-tile-ref-count",
+      "url": "http://127.0.0.1:61622/?renderer=tile-local-visible&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&tileDebug=tile-ref-count",
+      "screenshotPath": "smoke-reports/visual-smoke-2026-05-09T08-02-58-697Z/tile-ref-count.png",
+      "pageEvidence": {
+        "ready": true,
+        "sourceKind": "scaniverse_ply",
+        "realScaniverse": true,
+        "realSplatEvidence": true,
+        "synthetic": false,
+        "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+        "splatCount": 94406,
+        "sortedIdCount": 94406,
+        "sortBackend": "gpu-bitonic-cpu-depth-keys",
+        "boundsRadius": 0.22154541313648224,
+        "rendererLabel": "tile-local-visible-debug-tile-ref-count",
+        "fps": 0,
+        "tileLocalStatus": "current",
+        "tileLocalDisabledReason": null,
+        "arenaRuntime": {
+          "requestedArenaBackend": "gpu",
+          "effectiveArenaBackend": "gpu",
+          "cpuBuildDurationMs": 0,
+          "gpuDispatchEnqueueDurationMs": 0
+        },
+        "tileLocal": {
+          "status": "current",
+          "refs": 94406,
+          "allocatedRefs": 94406,
+          "tileColumns": 216,
+          "tileRows": 113,
+          "orderingBackend": "gpu-sorted-index-rank-inversion",
+          "debugMode": "tile-ref-count",
+          "visibleCompositedRefLimit": 256,
+          "freshness": {
+            "status": "current",
+            "cachedFrameAgeMs": 0,
+            "cachedFrame": 21,
+            "currentFrameSignature": "tile-local@5f2a0c37",
+            "cachedFrameSignature": "tile-local@5f2a0c37"
+          },
+          "budget": {
+            "status": "current",
+            "tileSizePx": 16,
+            "maxRefsPerTile": 256,
+            "currentViewportWidth": 3456,
+            "currentViewportHeight": 1804,
+            "currentTileColumns": 216,
+            "currentTileRows": 113,
+            "maxProjectedRefs": 20000000,
+            "overflowReasons": []
+          },
+          "budgetDiagnostics": {
+            "version": 1,
+            "arenaRefs": {
+              "projected": 94406,
+              "retained": 94406,
+              "dropped": 0,
+              "cappedTileCount": 0,
+              "saturatedRetainedTileCount": 0,
+              "maxProjectedRefsPerTile": 256,
+              "maxRetainedRefsPerTile": 256
+            },
+            "overflowReasons": [],
+            "capPressure": {
+              "version": 1,
+              "classification": "within-cap",
+              "refs": {
+                "projected": 94406,
+                "retained": 94406,
+                "dropped": 0,
+                "maxRefsPerTile": 256,
+                "tileCount": 24408
+              },
+              "retainedBands": {
+                "front": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                },
+                "middle": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                },
+                "back": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                }
+              },
+              "droppedBands": {
+                "front": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                },
+                "middle": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                },
+                "back": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                }
+              },
+              "overflowReasons": {},
+              "lossSignals": {
+                "foregroundDroppedRefs": 0,
+                "behindSurfaceDroppedRefs": 0,
+                "policyReserveDisplacedRefs": 0,
+                "highCoverageDroppedRefs": 0,
+                "highRetentionDroppedRefs": 0,
+                "highOcclusionDroppedRefs": 0
+              },
+              "policyHooks": []
+            },
+            "retainedBands": {
+              "front": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              },
+              "middle": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              },
+              "back": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              }
+            },
+            "droppedBands": {
+              "front": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              },
+              "middle": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              },
+              "back": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              }
+            },
+            "heat": {
+              "cpu": {
+                "projectedRefs": 0,
+                "projectedRefsPerTile": 0,
+                "projectedToRetainedRatio": 0,
+                "buildDurationMs": 0
+              },
+              "gpu": {
+                "retainedRefs": 94406,
+                "retainedRefBufferBytes": 99975168,
+                "coverageWeightBufferBytes": 24993792,
+                "alphaParamBufferBytes": 199950336,
+                "orderingKeyBufferBytes": 24993792
+              }
+            }
+          },
+          "diagnostics": {
+            "version": 1,
+            "debugMode": "tile-ref-count",
+            "tileGrid": {
+              "columns": 216,
+              "rows": 113,
+              "tileSizePx": 16
+            },
+            "tileRefs": {
+              "total": 94406,
+              "nonEmptyTiles": 369,
+              "maxPerTile": 256,
+              "averagePerNonEmptyTile": 255.842818,
+              "density": 0.015118
+            },
+            "tileRefCustody": {
+              "projectedTileEntryCount": 94406,
+              "retainedTileEntryCount": 94406,
+              "evictedTileEntryCount": 0,
+              "cappedTileCount": 0,
+              "saturatedRetainedTileCount": 0,
+              "maxProjectedRefsPerTile": 256,
+              "maxRetainedRefsPerTile": 256,
+              "headerRefCount": 94406,
+              "headerAccountingMatches": true
+            },
+            "retentionAudit": {
+              "fullFrame": {
+                "region": "gpu-live-estimate",
+                "tileCount": 0,
+                "cappedTileCount": 0,
+                "projectedTileEntryCount": 0,
+                "currentRetainedEntryCount": 0,
+                "legacyRetainedEntryCount": 0,
+                "addedByPolicyCount": 0,
+                "droppedByPolicyCount": 0,
+                "addedRetentionWeightSum": 0,
+                "droppedRetentionWeightSum": 0,
+                "addedOcclusionWeightSum": 0,
+                "droppedOcclusionWeightSum": 0,
+                "addedByPolicySamples": [],
+                "droppedByPolicySamples": []
+              },
+              "regions": {
+                "porousBody": {
+                  "region": "gpu-live-estimate",
+                  "tileCount": 0,
+                  "cappedTileCount": 0,
+                  "projectedTileEntryCount": 0,
+                  "currentRetainedEntryCount": 0,
+                  "legacyRetainedEntryCount": 0,
+                  "addedByPolicyCount": 0,
+                  "droppedByPolicyCount": 0,
+                  "addedRetentionWeightSum": 0,
+                  "droppedRetentionWeightSum": 0,
+                  "addedOcclusionWeightSum": 0,
+                  "droppedOcclusionWeightSum": 0,
+                  "addedByPolicySamples": [],
+                  "droppedByPolicySamples": []
+                },
+                "centerLeakBand": {
+                  "region": "gpu-live-estimate",
+                  "tileCount": 0,
+                  "cappedTileCount": 0,
+                  "projectedTileEntryCount": 0,
+                  "currentRetainedEntryCount": 0,
+                  "legacyRetainedEntryCount": 0,
+                  "addedByPolicyCount": 0,
+                  "droppedByPolicyCount": 0,
+                  "addedRetentionWeightSum": 0,
+                  "droppedRetentionWeightSum": 0,
+                  "addedOcclusionWeightSum": 0,
+                  "droppedOcclusionWeightSum": 0,
+                  "addedByPolicySamples": [],
+                  "droppedByPolicySamples": []
+                }
+              }
+            },
+            "coverageWeight": {
+              "min": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "alpha": {
+              "maxSourceOpacity": 1,
+              "meanSourceOpacity": 0.269004,
+              "estimatedMaxAccumulatedAlpha": 1,
+              "estimatedMinTransmittance": 0,
+              "alphaParamRefs": 6248448
+            },
+            "conicShape": {
+              "maxMajorRadiusPx": 1,
+              "minMinorRadiusPx": 1,
+              "maxAnisotropyRatio": 1
+            }
+          }
+        },
+        "tileLocalDiagnostics": {
+          "version": 1,
+          "debugMode": "tile-ref-count",
+          "tileGrid": {
+            "columns": 216,
+            "rows": 113,
+            "tileSizePx": 16
+          },
+          "tileRefs": {
+            "total": 94406,
+            "nonEmptyTiles": 369,
+            "maxPerTile": 256,
+            "averagePerNonEmptyTile": 255.842818,
+            "density": 0.015118
+          },
+          "tileRefCustody": {
+            "projectedTileEntryCount": 94406,
+            "retainedTileEntryCount": 94406,
+            "evictedTileEntryCount": 0,
+            "cappedTileCount": 0,
+            "saturatedRetainedTileCount": 0,
+            "maxProjectedRefsPerTile": 256,
+            "maxRetainedRefsPerTile": 256,
+            "headerRefCount": 94406,
+            "headerAccountingMatches": true
+          },
+          "retentionAudit": {
+            "fullFrame": {
+              "region": "gpu-live-estimate",
+              "tileCount": 0,
+              "cappedTileCount": 0,
+              "projectedTileEntryCount": 0,
+              "currentRetainedEntryCount": 0,
+              "legacyRetainedEntryCount": 0,
+              "addedByPolicyCount": 0,
+              "droppedByPolicyCount": 0,
+              "addedRetentionWeightSum": 0,
+              "droppedRetentionWeightSum": 0,
+              "addedOcclusionWeightSum": 0,
+              "droppedOcclusionWeightSum": 0,
+              "addedByPolicySamples": [],
+              "droppedByPolicySamples": []
+            },
+            "regions": {
+              "porousBody": {
+                "region": "gpu-live-estimate",
+                "tileCount": 0,
+                "cappedTileCount": 0,
+                "projectedTileEntryCount": 0,
+                "currentRetainedEntryCount": 0,
+                "legacyRetainedEntryCount": 0,
+                "addedByPolicyCount": 0,
+                "droppedByPolicyCount": 0,
+                "addedRetentionWeightSum": 0,
+                "droppedRetentionWeightSum": 0,
+                "addedOcclusionWeightSum": 0,
+                "droppedOcclusionWeightSum": 0,
+                "addedByPolicySamples": [],
+                "droppedByPolicySamples": []
+              },
+              "centerLeakBand": {
+                "region": "gpu-live-estimate",
+                "tileCount": 0,
+                "cappedTileCount": 0,
+                "projectedTileEntryCount": 0,
+                "currentRetainedEntryCount": 0,
+                "legacyRetainedEntryCount": 0,
+                "addedByPolicyCount": 0,
+                "droppedByPolicyCount": 0,
+                "addedRetentionWeightSum": 0,
+                "droppedRetentionWeightSum": 0,
+                "addedOcclusionWeightSum": 0,
+                "droppedOcclusionWeightSum": 0,
+                "addedByPolicySamples": [],
+                "droppedByPolicySamples": []
+              }
+            }
+          },
+          "coverageWeight": {
+            "min": 0,
+            "max": 0,
+            "mean": 0
+          },
+          "alpha": {
+            "maxSourceOpacity": 1,
+            "meanSourceOpacity": 0.269004,
+            "estimatedMaxAccumulatedAlpha": 1,
+            "estimatedMinTransmittance": 0,
+            "alphaParamRefs": 6248448
+          },
+          "conicShape": {
+            "maxMajorRadiusPx": 1,
+            "minMinorRadiusPx": 1,
+            "maxAnisotropyRatio": 1
+          }
+        },
+        "witness": {
+          "field": {
+            "scaleSpace": "log",
+            "rotationOrder": "wxyz",
+            "opacitySpace": "unit",
+            "colorSpace": "sh_dc_rgb"
+          },
+          "projection": {
+            "projectionMode": "jacobian-covariance",
+            "maxAnisotropyRatio": 66.95086118888399,
+            "suspiciousSplatCount": 1296,
+            "sampleOriginalIds": [
+              89,
+              91,
+              102,
+              103,
+              104,
+              238,
+              256,
+              453
+            ],
+            "fieldMaxAnisotropyRatio": 190.56626845863002,
+            "fieldSuspiciousSplatCount": 8398,
+            "rotationOrderComparison": {
+              "wxyz": {
+                "rotationOrder": "wxyz",
+                "maxProjectedAnisotropyRatio": 66.95086118888399,
+                "suspiciousProjectedSplatCount": 1296,
+                "projectedSplatCount": 94406,
+                "sampleOriginalIds": [
+                  89,
+                  91,
+                  102,
+                  103,
+                  104,
+                  238,
+                  256,
+                  453
+                ]
+              },
+              "xyzw": {
+                "rotationOrder": "xyzw",
+                "maxProjectedAnisotropyRatio": 67.19421246302099,
+                "suspiciousProjectedSplatCount": 1956,
+                "projectedSplatCount": 94406,
+                "sampleOriginalIds": [
+                  87,
+                  93,
+                  131,
+                  250,
+                  463,
+                  549,
+                  632,
+                  692
+                ]
+              }
+            },
+            "footprint": {
+              "maxMajorRadiusPx": 63.902305989394925,
+              "maxMinorRadiusPx": 28.325444655104484,
+              "maxAreaPx": 4855.886492845365,
+              "areaCapPx": 15586.56,
+              "majorRadiusCapPx": 586.3000000000001,
+              "highEnergySplatCount": 0,
+              "projectedSplatCount": 94406,
+              "sampleOriginalIds": []
+            },
+            "cropSupport": {
+              "rimBand": {
+                "crop": {
+                  "x": 390,
+                  "y": 322,
+                  "width": 500,
+                  "height": 115
+                },
+                "projectedCenterCount": 11587,
+                "projectedSupportCount": 15199,
+                "nearFloorMinorCount": 6034,
+                "maxMajorRadiusPx": 59.6566631686253,
+                "medianMajorRadiusPx": 4.498520509996828,
+                "medianMinorRadiusPx": 1.9637027988624436,
+                "supportAreaPxSum": 1171962.0681098565,
+                "sampleOriginalIds": [
+                  417,
+                  430,
+                  432,
+                  479,
+                  481,
+                  496,
+                  499,
+                  501,
+                  510,
+                  514,
+                  534,
+                  535
+                ]
+              },
+              "porousBody": {
+                "crop": {
+                  "x": 520,
+                  "y": 270,
+                  "width": 260,
+                  "height": 150
+                },
+                "projectedCenterCount": 0,
+                "projectedSupportCount": 118,
+                "nearFloorMinorCount": 1,
+                "maxMajorRadiusPx": 59.6566631686253,
+                "medianMajorRadiusPx": 13.919035269286088,
+                "medianMinorRadiusPx": 5.404866675092395,
+                "supportAreaPxSum": 56840.968738749834,
+                "sampleOriginalIds": [
+                  908,
+                  957,
+                  1753,
+                  1788,
+                  2499,
+                  3362,
+                  6805,
+                  8219,
+                  9626,
+                  10667,
+                  10669,
+                  10805
+                ]
+              }
+            }
+          },
+          "slab": {
+            "statusCounts": {
+              "axis-crosses-near-plane": 0,
+              "pathological-footprint": 0,
+              "accepted": 94406
+            },
+            "maxMajorRadiusPx": 0,
+            "footprintCapPx": 0.65,
+            "sampleOriginalIds": []
+          },
+          "alpha": {
+            "alphaEnergyPolicy": "bounded-footprint-energy-cap",
+            "nearPlaneAlphaFade": {
+              "startNdc": 0,
+              "endNdc": 0.08
+            },
+            "compositing": "straight-source-over",
+            "ambiguousOverlapCount": 0,
+            "overlapDensity": {
+              "accountingMode": "coverage-aware",
+              "tileSizePx": 48,
+              "alphaMassCap": 1728,
+              "maxTileAlphaMass": 279947.0269129486,
+              "maxTileSplatCount": 13824,
+              "hotTileCount": 33,
+              "tileEntryCount": 212317,
+              "maxSplatCoveredTileCount": 36,
+              "maxCenterTileDroppedCoverageFraction": 1,
+              "sampleOriginalIds": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7
+              ]
+            }
+          },
+          "sort": {
+            "backend": "gpu-bitonic-cpu-depth-keys",
+            "sortedIdCount": 94406
+          },
+          "source": {
+            "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+            "splatCount": 94406,
+            "sortedSampleOriginalIds": []
+          }
+        },
+        "statsText": "3456×1804 | 0 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-debug-tile-ref-count | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 94,406 splats/125 tiles | tile-local: 216x113 tiles/94406 refs | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | tile-order: gpu-sorted-index-rank-inversion | tile-debug: tile-ref-count | arena requested: gpu | arena effective: gpu | arena CPU bridge build: 0.000ms | arena GPU dispatch enqueue: 0.000ms | render: 0.16ms",
+        "title": "Deferred Splat+Mesh Renderer",
+        "bodyText": "3456×1804 | 0 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-debug-tile-ref-count | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 94,406 splats/125 tiles | tile-local: 216x113 tiles/94406 refs | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | tile-order: gpu-sorted-index-rank-inversion | tile-debug: tile-ref-count | arena requested: gpu | arena effective: gpu | arena CPU bridge build: 0.000ms | arena GPU dispatch enqueue: 0.000ms | render: 0.16ms",
+        "canvas": {
+          "width": 3456,
+          "height": 1804,
+          "clientWidth": 1728,
+          "clientHeight": 902
+        }
+      },
+      "imageAnalysis": {
+        "width": 3456,
+        "height": 1804,
+        "totalPixels": 6234624,
+        "backgroundColor": {
+          "r": 0,
+          "g": 255,
+          "b": 38,
+          "a": 255
+        },
+        "distinctColorCount": 26,
+        "changedPixels": 155136,
+        "changedPixelRatio": 0.024882976102488297,
+        "averageDelta": 3.8888204538610127,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "0000000000000000000000000000000000000000000000000000000505000000000000090c000000000000000000000000000000000000000000000000000000",
+        "bridgeBlockRatio": 1,
+        "nonblank": true
+      },
+      "classification": {
+        "nonblank": true,
+        "realSplatEvidence": true,
+        "closeable": true,
+        "harnessPassed": true,
+        "sourceKind": "scaniverse_ply",
+        "splatCount": 94406,
+        "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+        "summary": "PASS: nonblank scaniverse_ply capture with 94406 splats from /smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json.",
+        "reasons": []
+      },
+      "witnessDiagnostics": {
+        "consumedContracts": {
+          "fieldAutopsy": "66b4ea26e5d81ac614f4452b8d21308c4e432e1a",
+          "slabSentinel": "ca96409",
+          "conicReckoner": "f9e3498c00d44f2bb70eba1013f11c2f39b1aff1",
+          "alphaLedger": "0474666"
+        },
+        "thresholdPolicy": "witness-only; does not alter visual smoke pass/fail thresholds",
+        "smokeClassification": {
+          "nonblank": true,
+          "realSplatEvidence": true,
+          "closeable": true,
+          "harnessPassed": true,
+          "sourceKind": "scaniverse_ply",
+          "splatCount": 94406,
+          "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+          "summary": "PASS: nonblank scaniverse_ply capture with 94406 splats from /smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json.",
+          "reasons": []
+        },
+        "imageSummary": {
+          "nonblank": true,
+          "changedPixelRatio": 0.024882976102488297
+        },
+        "findings": [
+          {
+            "kind": "projection-anisotropy",
+            "owner": "conic-reckoner",
+            "severity": "suspect",
+            "summary": "Projection anisotropy witness found ratio 66.95 across 1296 splats; route to conic-reckoner after field metadata is canonical.",
+            "evidence": {
+              "maxAnisotropyRatio": 66.95086118888399,
+              "suspiciousSplatCount": 1296,
+              "sampleOriginalIds": [
+                89,
+                91,
+                102,
+                103,
+                104,
+                238,
+                256,
+                453
+              ],
+              "footprint": {
+                "maxMajorRadiusPx": 63.902305989394925,
+                "maxMinorRadiusPx": 28.325444655104484,
+                "maxAreaPx": 4855.886492845365,
+                "areaCapPx": 15586.56,
+                "majorRadiusCapPx": 586.3000000000001,
+                "highEnergySplatCount": 0,
+                "projectedSplatCount": 94406,
+                "sampleOriginalIds": []
+              }
+            }
+          },
+          {
+            "kind": "compositing-ambiguous",
+            "owner": "alpha-ledger",
+            "severity": "suspect",
+            "summary": "Alpha density witness found 33 hot tiles with max mass 279947.03.",
+            "evidence": {
+              "alphaEnergyPolicy": "bounded-footprint-energy-cap",
+              "nearPlaneAlphaFade": {
+                "startNdc": 0,
+                "endNdc": 0.08
+              },
+              "compositing": "straight-source-over",
+              "ambiguousOverlapCount": 0,
+              "overlapDensity": {
+                "tileSizePx": 48,
+                "alphaMassCap": 1728,
+                "maxTileAlphaMass": 279947.0269129486,
+                "maxTileSplatCount": 13824,
+                "hotTileCount": 33,
+                "sampleOriginalIds": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "consoleMessages": [
+        {
+          "type": "debug",
+          "text": "[vite] connecting..."
+        },
+        {
+          "type": "debug",
+          "text": "[vite] connected."
+        }
+      ],
+      "pageErrors": []
+    },
+    {
+      "id": "conic-shape",
+      "title": "Conic major/minor shape heatmap",
+      "expectedRendererLabel": "tile-local-visible-debug-conic-shape",
+      "url": "http://127.0.0.1:61622/?renderer=tile-local-visible&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&tileDebug=conic-shape",
+      "screenshotPath": "smoke-reports/visual-smoke-2026-05-09T08-02-58-697Z/conic-shape.png",
+      "pageEvidence": {
+        "ready": true,
+        "sourceKind": "scaniverse_ply",
+        "realScaniverse": true,
+        "realSplatEvidence": true,
+        "synthetic": false,
+        "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+        "splatCount": 94406,
+        "sortedIdCount": 94406,
+        "sortBackend": "gpu-bitonic-cpu-depth-keys",
+        "boundsRadius": 0.22154541313648224,
+        "rendererLabel": "tile-local-visible-debug-conic-shape",
+        "fps": 0,
+        "tileLocalStatus": "current",
+        "tileLocalDisabledReason": null,
+        "arenaRuntime": {
+          "requestedArenaBackend": "gpu",
+          "effectiveArenaBackend": "gpu",
+          "cpuBuildDurationMs": 0,
+          "gpuDispatchEnqueueDurationMs": 0
+        },
+        "tileLocal": {
+          "status": "current",
+          "refs": 94406,
+          "allocatedRefs": 94406,
+          "tileColumns": 216,
+          "tileRows": 113,
+          "orderingBackend": "gpu-sorted-index-rank-inversion",
+          "debugMode": "conic-shape",
+          "visibleCompositedRefLimit": 256,
+          "freshness": {
+            "status": "current",
+            "cachedFrameAgeMs": 0,
+            "cachedFrame": 20,
+            "currentFrameSignature": "tile-local@5f2a0c37",
+            "cachedFrameSignature": "tile-local@5f2a0c37"
+          },
+          "budget": {
+            "status": "current",
+            "tileSizePx": 16,
+            "maxRefsPerTile": 256,
+            "currentViewportWidth": 3456,
+            "currentViewportHeight": 1804,
+            "currentTileColumns": 216,
+            "currentTileRows": 113,
+            "maxProjectedRefs": 20000000,
+            "overflowReasons": []
+          },
+          "budgetDiagnostics": {
+            "version": 1,
+            "arenaRefs": {
+              "projected": 94406,
+              "retained": 94406,
+              "dropped": 0,
+              "cappedTileCount": 0,
+              "saturatedRetainedTileCount": 0,
+              "maxProjectedRefsPerTile": 256,
+              "maxRetainedRefsPerTile": 256
+            },
+            "overflowReasons": [],
+            "capPressure": {
+              "version": 1,
+              "classification": "within-cap",
+              "refs": {
+                "projected": 94406,
+                "retained": 94406,
+                "dropped": 0,
+                "maxRefsPerTile": 256,
+                "tileCount": 24408
+              },
+              "retainedBands": {
+                "front": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                },
+                "middle": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                },
+                "back": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                }
+              },
+              "droppedBands": {
+                "front": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                },
+                "middle": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                },
+                "back": {
+                  "total": 0,
+                  "coverageHigh": 0,
+                  "coverageMedium": 0,
+                  "coverageLow": 0
+                }
+              },
+              "overflowReasons": {},
+              "lossSignals": {
+                "foregroundDroppedRefs": 0,
+                "behindSurfaceDroppedRefs": 0,
+                "policyReserveDisplacedRefs": 0,
+                "highCoverageDroppedRefs": 0,
+                "highRetentionDroppedRefs": 0,
+                "highOcclusionDroppedRefs": 0
+              },
+              "policyHooks": []
+            },
+            "retainedBands": {
+              "front": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              },
+              "middle": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              },
+              "back": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              }
+            },
+            "droppedBands": {
+              "front": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              },
+              "middle": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              },
+              "back": {
+                "total": 0,
+                "coverageHigh": 0,
+                "coverageMedium": 0,
+                "coverageLow": 0
+              }
+            },
+            "heat": {
+              "cpu": {
+                "projectedRefs": 0,
+                "projectedRefsPerTile": 0,
+                "projectedToRetainedRatio": 0,
+                "buildDurationMs": 0
+              },
+              "gpu": {
+                "retainedRefs": 94406,
+                "retainedRefBufferBytes": 99975168,
+                "coverageWeightBufferBytes": 24993792,
+                "alphaParamBufferBytes": 199950336,
+                "orderingKeyBufferBytes": 24993792
+              }
+            }
+          },
+          "diagnostics": {
+            "version": 1,
+            "debugMode": "conic-shape",
+            "tileGrid": {
+              "columns": 216,
+              "rows": 113,
+              "tileSizePx": 16
+            },
+            "tileRefs": {
+              "total": 94406,
+              "nonEmptyTiles": 369,
+              "maxPerTile": 256,
+              "averagePerNonEmptyTile": 255.842818,
+              "density": 0.015118
+            },
+            "tileRefCustody": {
+              "projectedTileEntryCount": 94406,
+              "retainedTileEntryCount": 94406,
+              "evictedTileEntryCount": 0,
+              "cappedTileCount": 0,
+              "saturatedRetainedTileCount": 0,
+              "maxProjectedRefsPerTile": 256,
+              "maxRetainedRefsPerTile": 256,
+              "headerRefCount": 94406,
+              "headerAccountingMatches": true
+            },
+            "retentionAudit": {
+              "fullFrame": {
+                "region": "gpu-live-estimate",
+                "tileCount": 0,
+                "cappedTileCount": 0,
+                "projectedTileEntryCount": 0,
+                "currentRetainedEntryCount": 0,
+                "legacyRetainedEntryCount": 0,
+                "addedByPolicyCount": 0,
+                "droppedByPolicyCount": 0,
+                "addedRetentionWeightSum": 0,
+                "droppedRetentionWeightSum": 0,
+                "addedOcclusionWeightSum": 0,
+                "droppedOcclusionWeightSum": 0,
+                "addedByPolicySamples": [],
+                "droppedByPolicySamples": []
+              },
+              "regions": {
+                "porousBody": {
+                  "region": "gpu-live-estimate",
+                  "tileCount": 0,
+                  "cappedTileCount": 0,
+                  "projectedTileEntryCount": 0,
+                  "currentRetainedEntryCount": 0,
+                  "legacyRetainedEntryCount": 0,
+                  "addedByPolicyCount": 0,
+                  "droppedByPolicyCount": 0,
+                  "addedRetentionWeightSum": 0,
+                  "droppedRetentionWeightSum": 0,
+                  "addedOcclusionWeightSum": 0,
+                  "droppedOcclusionWeightSum": 0,
+                  "addedByPolicySamples": [],
+                  "droppedByPolicySamples": []
+                },
+                "centerLeakBand": {
+                  "region": "gpu-live-estimate",
+                  "tileCount": 0,
+                  "cappedTileCount": 0,
+                  "projectedTileEntryCount": 0,
+                  "currentRetainedEntryCount": 0,
+                  "legacyRetainedEntryCount": 0,
+                  "addedByPolicyCount": 0,
+                  "droppedByPolicyCount": 0,
+                  "addedRetentionWeightSum": 0,
+                  "droppedRetentionWeightSum": 0,
+                  "addedOcclusionWeightSum": 0,
+                  "droppedOcclusionWeightSum": 0,
+                  "addedByPolicySamples": [],
+                  "droppedByPolicySamples": []
+                }
+              }
+            },
+            "coverageWeight": {
+              "min": 0,
+              "max": 0,
+              "mean": 0
+            },
+            "alpha": {
+              "maxSourceOpacity": 1,
+              "meanSourceOpacity": 0.269004,
+              "estimatedMaxAccumulatedAlpha": 1,
+              "estimatedMinTransmittance": 0,
+              "alphaParamRefs": 6248448
+            },
+            "conicShape": {
+              "maxMajorRadiusPx": 1,
+              "minMinorRadiusPx": 1,
+              "maxAnisotropyRatio": 1
+            }
+          }
+        },
+        "tileLocalDiagnostics": {
+          "version": 1,
+          "debugMode": "conic-shape",
+          "tileGrid": {
+            "columns": 216,
+            "rows": 113,
+            "tileSizePx": 16
+          },
+          "tileRefs": {
+            "total": 94406,
+            "nonEmptyTiles": 369,
+            "maxPerTile": 256,
+            "averagePerNonEmptyTile": 255.842818,
+            "density": 0.015118
+          },
+          "tileRefCustody": {
+            "projectedTileEntryCount": 94406,
+            "retainedTileEntryCount": 94406,
+            "evictedTileEntryCount": 0,
+            "cappedTileCount": 0,
+            "saturatedRetainedTileCount": 0,
+            "maxProjectedRefsPerTile": 256,
+            "maxRetainedRefsPerTile": 256,
+            "headerRefCount": 94406,
+            "headerAccountingMatches": true
+          },
+          "retentionAudit": {
+            "fullFrame": {
+              "region": "gpu-live-estimate",
+              "tileCount": 0,
+              "cappedTileCount": 0,
+              "projectedTileEntryCount": 0,
+              "currentRetainedEntryCount": 0,
+              "legacyRetainedEntryCount": 0,
+              "addedByPolicyCount": 0,
+              "droppedByPolicyCount": 0,
+              "addedRetentionWeightSum": 0,
+              "droppedRetentionWeightSum": 0,
+              "addedOcclusionWeightSum": 0,
+              "droppedOcclusionWeightSum": 0,
+              "addedByPolicySamples": [],
+              "droppedByPolicySamples": []
+            },
+            "regions": {
+              "porousBody": {
+                "region": "gpu-live-estimate",
+                "tileCount": 0,
+                "cappedTileCount": 0,
+                "projectedTileEntryCount": 0,
+                "currentRetainedEntryCount": 0,
+                "legacyRetainedEntryCount": 0,
+                "addedByPolicyCount": 0,
+                "droppedByPolicyCount": 0,
+                "addedRetentionWeightSum": 0,
+                "droppedRetentionWeightSum": 0,
+                "addedOcclusionWeightSum": 0,
+                "droppedOcclusionWeightSum": 0,
+                "addedByPolicySamples": [],
+                "droppedByPolicySamples": []
+              },
+              "centerLeakBand": {
+                "region": "gpu-live-estimate",
+                "tileCount": 0,
+                "cappedTileCount": 0,
+                "projectedTileEntryCount": 0,
+                "currentRetainedEntryCount": 0,
+                "legacyRetainedEntryCount": 0,
+                "addedByPolicyCount": 0,
+                "droppedByPolicyCount": 0,
+                "addedRetentionWeightSum": 0,
+                "droppedRetentionWeightSum": 0,
+                "addedOcclusionWeightSum": 0,
+                "droppedOcclusionWeightSum": 0,
+                "addedByPolicySamples": [],
+                "droppedByPolicySamples": []
+              }
+            }
+          },
+          "coverageWeight": {
+            "min": 0,
+            "max": 0,
+            "mean": 0
+          },
+          "alpha": {
+            "maxSourceOpacity": 1,
+            "meanSourceOpacity": 0.269004,
+            "estimatedMaxAccumulatedAlpha": 1,
+            "estimatedMinTransmittance": 0,
+            "alphaParamRefs": 6248448
+          },
+          "conicShape": {
+            "maxMajorRadiusPx": 1,
+            "minMinorRadiusPx": 1,
+            "maxAnisotropyRatio": 1
+          }
+        },
+        "witness": {
+          "field": {
+            "scaleSpace": "log",
+            "rotationOrder": "wxyz",
+            "opacitySpace": "unit",
+            "colorSpace": "sh_dc_rgb"
+          },
+          "projection": {
+            "projectionMode": "jacobian-covariance",
+            "maxAnisotropyRatio": 66.95086118888399,
+            "suspiciousSplatCount": 1296,
+            "sampleOriginalIds": [
+              89,
+              91,
+              102,
+              103,
+              104,
+              238,
+              256,
+              453
+            ],
+            "fieldMaxAnisotropyRatio": 190.56626845863002,
+            "fieldSuspiciousSplatCount": 8398,
+            "rotationOrderComparison": {
+              "wxyz": {
+                "rotationOrder": "wxyz",
+                "maxProjectedAnisotropyRatio": 66.95086118888399,
+                "suspiciousProjectedSplatCount": 1296,
+                "projectedSplatCount": 94406,
+                "sampleOriginalIds": [
+                  89,
+                  91,
+                  102,
+                  103,
+                  104,
+                  238,
+                  256,
+                  453
+                ]
+              },
+              "xyzw": {
+                "rotationOrder": "xyzw",
+                "maxProjectedAnisotropyRatio": 67.19421246302099,
+                "suspiciousProjectedSplatCount": 1956,
+                "projectedSplatCount": 94406,
+                "sampleOriginalIds": [
+                  87,
+                  93,
+                  131,
+                  250,
+                  463,
+                  549,
+                  632,
+                  692
+                ]
+              }
+            },
+            "footprint": {
+              "maxMajorRadiusPx": 63.902305989394925,
+              "maxMinorRadiusPx": 28.325444655104484,
+              "maxAreaPx": 4855.886492845365,
+              "areaCapPx": 15586.56,
+              "majorRadiusCapPx": 586.3000000000001,
+              "highEnergySplatCount": 0,
+              "projectedSplatCount": 94406,
+              "sampleOriginalIds": []
+            },
+            "cropSupport": {
+              "rimBand": {
+                "crop": {
+                  "x": 390,
+                  "y": 322,
+                  "width": 500,
+                  "height": 115
+                },
+                "projectedCenterCount": 11587,
+                "projectedSupportCount": 15199,
+                "nearFloorMinorCount": 6034,
+                "maxMajorRadiusPx": 59.6566631686253,
+                "medianMajorRadiusPx": 4.498520509996828,
+                "medianMinorRadiusPx": 1.9637027988624436,
+                "supportAreaPxSum": 1171962.0681098565,
+                "sampleOriginalIds": [
+                  417,
+                  430,
+                  432,
+                  479,
+                  481,
+                  496,
+                  499,
+                  501,
+                  510,
+                  514,
+                  534,
+                  535
+                ]
+              },
+              "porousBody": {
+                "crop": {
+                  "x": 520,
+                  "y": 270,
+                  "width": 260,
+                  "height": 150
+                },
+                "projectedCenterCount": 0,
+                "projectedSupportCount": 118,
+                "nearFloorMinorCount": 1,
+                "maxMajorRadiusPx": 59.6566631686253,
+                "medianMajorRadiusPx": 13.919035269286088,
+                "medianMinorRadiusPx": 5.404866675092395,
+                "supportAreaPxSum": 56840.968738749834,
+                "sampleOriginalIds": [
+                  908,
+                  957,
+                  1753,
+                  1788,
+                  2499,
+                  3362,
+                  6805,
+                  8219,
+                  9626,
+                  10667,
+                  10669,
+                  10805
+                ]
+              }
+            }
+          },
+          "slab": {
+            "statusCounts": {
+              "axis-crosses-near-plane": 0,
+              "pathological-footprint": 0,
+              "accepted": 94406
+            },
+            "maxMajorRadiusPx": 0,
+            "footprintCapPx": 0.65,
+            "sampleOriginalIds": []
+          },
+          "alpha": {
+            "alphaEnergyPolicy": "bounded-footprint-energy-cap",
+            "nearPlaneAlphaFade": {
+              "startNdc": 0,
+              "endNdc": 0.08
+            },
+            "compositing": "straight-source-over",
+            "ambiguousOverlapCount": 0,
+            "overlapDensity": {
+              "accountingMode": "coverage-aware",
+              "tileSizePx": 48,
+              "alphaMassCap": 1728,
+              "maxTileAlphaMass": 279947.0269129486,
+              "maxTileSplatCount": 13824,
+              "hotTileCount": 33,
+              "tileEntryCount": 212317,
+              "maxSplatCoveredTileCount": 36,
+              "maxCenterTileDroppedCoverageFraction": 1,
+              "sampleOriginalIds": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7
+              ]
+            }
+          },
+          "sort": {
+            "backend": "gpu-bitonic-cpu-depth-keys",
+            "sortedIdCount": 94406
+          },
+          "source": {
+            "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+            "splatCount": 94406,
+            "sortedSampleOriginalIds": []
+          }
+        },
+        "statsText": "3456×1804 | 0 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-debug-conic-shape | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 94,406 splats/125 tiles | tile-local: 216x113 tiles/94406 refs | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | tile-order: gpu-sorted-index-rank-inversion | tile-debug: conic-shape | arena requested: gpu | arena effective: gpu | arena CPU bridge build: 0.000ms | arena GPU dispatch enqueue: 0.000ms | render: 0.17ms",
+        "title": "Deferred Splat+Mesh Renderer",
+        "bodyText": "3456×1804 | 0 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-debug-conic-shape | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 94,406 splats/125 tiles | tile-local: 216x113 tiles/94406 refs | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | tile-order: gpu-sorted-index-rank-inversion | tile-debug: conic-shape | arena requested: gpu | arena effective: gpu | arena CPU bridge build: 0.000ms | arena GPU dispatch enqueue: 0.000ms | render: 0.17ms",
+        "canvas": {
+          "width": 3456,
+          "height": 1804,
+          "clientWidth": 1728,
+          "clientHeight": 902
+        }
+      },
+      "imageAnalysis": {
+        "width": 3456,
+        "height": 1804,
+        "totalPixels": 6234624,
+        "backgroundColor": {
+          "r": 0,
+          "g": 255,
+          "b": 0,
+          "a": 255
+        },
+        "distinctColorCount": 2,
+        "changedPixels": 161280,
+        "changedPixelRatio": 0.025868440502586843,
+        "averageDelta": 0.7588075880763939,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "00000000000000000000000000000000000000000000000000000001010000000000000202000000000000000000000000000000000000000000000000000000",
+        "bridgeBlockRatio": 1,
+        "nonblank": true
+      },
+      "classification": {
+        "nonblank": true,
+        "realSplatEvidence": true,
+        "closeable": true,
+        "harnessPassed": true,
+        "sourceKind": "scaniverse_ply",
+        "splatCount": 94406,
+        "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+        "summary": "PASS: nonblank scaniverse_ply capture with 94406 splats from /smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json.",
+        "reasons": []
+      },
+      "witnessDiagnostics": {
+        "consumedContracts": {
+          "fieldAutopsy": "66b4ea26e5d81ac614f4452b8d21308c4e432e1a",
+          "slabSentinel": "ca96409",
+          "conicReckoner": "f9e3498c00d44f2bb70eba1013f11c2f39b1aff1",
+          "alphaLedger": "0474666"
+        },
+        "thresholdPolicy": "witness-only; does not alter visual smoke pass/fail thresholds",
+        "smokeClassification": {
+          "nonblank": true,
+          "realSplatEvidence": true,
+          "closeable": true,
+          "harnessPassed": true,
+          "sourceKind": "scaniverse_ply",
+          "splatCount": 94406,
+          "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+          "summary": "PASS: nonblank scaniverse_ply capture with 94406 splats from /smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json.",
+          "reasons": []
+        },
+        "imageSummary": {
+          "nonblank": true,
+          "changedPixelRatio": 0.025868440502586843
+        },
+        "findings": [
+          {
+            "kind": "projection-anisotropy",
+            "owner": "conic-reckoner",
+            "severity": "suspect",
+            "summary": "Projection anisotropy witness found ratio 66.95 across 1296 splats; route to conic-reckoner after field metadata is canonical.",
+            "evidence": {
+              "maxAnisotropyRatio": 66.95086118888399,
+              "suspiciousSplatCount": 1296,
+              "sampleOriginalIds": [
+                89,
+                91,
+                102,
+                103,
+                104,
+                238,
+                256,
+                453
+              ],
+              "footprint": {
+                "maxMajorRadiusPx": 63.902305989394925,
+                "maxMinorRadiusPx": 28.325444655104484,
+                "maxAreaPx": 4855.886492845365,
+                "areaCapPx": 15586.56,
+                "majorRadiusCapPx": 586.3000000000001,
+                "highEnergySplatCount": 0,
+                "projectedSplatCount": 94406,
+                "sampleOriginalIds": []
+              }
+            }
+          },
+          {
+            "kind": "compositing-ambiguous",
+            "owner": "alpha-ledger",
+            "severity": "suspect",
+            "summary": "Alpha density witness found 33 hot tiles with max mass 279947.03.",
+            "evidence": {
+              "alphaEnergyPolicy": "bounded-footprint-energy-cap",
+              "nearPlaneAlphaFade": {
+                "startNdc": 0,
+                "endNdc": 0.08
+              },
+              "compositing": "straight-source-over",
+              "ambiguousOverlapCount": 0,
+              "overlapDensity": {
+                "tileSizePx": 48,
+                "alphaMassCap": 1728,
+                "maxTileAlphaMass": 279947.0269129486,
+                "maxTileSplatCount": 13824,
+                "hotTileCount": 33,
+                "sampleOriginalIds": [
+                  0,
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "consoleMessages": [
+        {
+          "type": "debug",
+          "text": "[vite] connecting..."
+        },
+        {
+          "type": "debug",
+          "text": "[vite] connected."
+        }
+      ],
+      "pageErrors": []
+    }
+  ],
+  "classification": {
+    "closeable": true,
+    "summary": {
+      "status": "PASS",
+      "text": "PASS: tile-local diagnostics expose alpha/transmittance and tile-ref density with compact evidence."
+    },
+    "metrics": {
+      "requiredModesPresent": true,
+      "totalTileRefs": 94406,
+      "maxTileRefsPerTile": 256,
+      "estimatedMaxAccumulatedAlpha": 1,
+      "estimatedMinTransmittance": 0,
+      "presentationStatus": "current",
+      "overflowReasons": [],
+      "projectedArenaRefs": 94406,
+      "retainedArenaRefs": 94406,
+      "droppedArenaRefs": 0,
+      "cpuProjectedRefsPerTile": 0,
+      "cpuBuildDurationMs": 0,
+      "arenaRuntime": {
+        "requestedArenaBackend": "gpu",
+        "effectiveArenaBackend": "gpu",
+        "cpuBuildDurationMs": 0,
+        "gpuDispatchEnqueueDurationMs": 0
+      },
+      "gpuRetainedRefBufferBytes": 99975168,
+      "gpuAlphaParamBufferBytes": 199950336
+    },
+    "findings": []
+  }
+}
