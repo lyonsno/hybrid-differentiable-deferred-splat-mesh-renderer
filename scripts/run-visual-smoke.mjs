@@ -10,6 +10,7 @@ import {
   classifyTileLocalComparison,
   extractTileLocalPageMetrics,
   isVisualSmokeCaptureReady,
+  classifyArenaRuntimeState,
 } from "./visual-smoke/tile-local-comparison.mjs";
 import {
   buildTileLocalDiagnosticPlan,
@@ -502,7 +503,10 @@ ${result.captures
 - Prepass tile refs: ${metrics.tileRefs.prepass}
 - Visible tile refs: ${metrics.tileRefs.visible}
 - Arena backend: ${metrics.arenaBackend}
-- CPU build duration ms: ${metrics.cpuBuildDurationMs ?? "not reported"}
+- Arena state: ${metrics.arenaState}
+- Arena requested backend: ${metrics.arenaRuntime?.requestedArenaBackend || "not reported"}
+- Arena effective backend: ${metrics.arenaRuntime?.effectiveArenaBackend || "not reported"}
+- CPU bridge build duration ms: ${metrics.cpuBuildDurationMs ?? "not reported"}
 - GPU dispatch duration ms: ${metrics.gpuDispatchDurationMs ?? "gpu-unavailable"}
 - Plate presentation state: ${metrics.presentation?.plate || "not-applicable"}
 - Silent prepass presentation state: ${metrics.presentation?.prepass || "not-applicable"}
@@ -557,10 +561,11 @@ ${result.captures
 - Dropped arena refs: ${metrics.droppedArenaRefs}
 - Overflow reasons: ${metrics.overflowReasons?.length ? metrics.overflowReasons.join(", ") : "none"}
 - Tile-local CPU projected refs per tile: ${metrics.cpuProjectedRefsPerTile}
-- Tile-local CPU build duration ms: ${metrics.cpuBuildDurationMs}
+- Tile-local CPU bridge build duration ms: ${metrics.cpuBuildDurationMs}
 - Arena requested backend: ${metrics.arenaRuntime?.requestedArenaBackend || "not reported"}
 - Arena effective backend: ${metrics.arenaRuntime?.effectiveArenaBackend || "not reported"}
-- Arena CPU build duration ms: ${metrics.arenaRuntime?.cpuBuildDurationMs ?? "not reported"}
+- Arena state: ${classifyArenaRuntimeState(metrics.arenaRuntime)}
+- Arena CPU bridge build duration ms: ${metrics.arenaRuntime?.cpuBuildDurationMs ?? "not reported"}
 - Arena GPU dispatch duration ms: ${metrics.arenaRuntime?.gpuDispatchDurationMs ?? "not reported"}
 - Unavailable reason: ${metrics.arenaRuntime?.unavailableReason || "not reported"}
 - Skipped reason: ${metrics.arenaRuntime?.skippedReason || "not reported"}
@@ -688,6 +693,7 @@ function formatMetricRatio(value) {
 function printTileLocalComparisonSummary(result) {
   console.log(result.classification.summary.text);
   console.log(`report: ${result.reportPath}`);
+  console.log(`arena state: ${result.classification.metrics.arenaState}`);
   for (const capture of result.captures) {
     console.log(`${capture.id}: ${capture.screenshotPath}`);
   }
@@ -696,6 +702,7 @@ function printTileLocalComparisonSummary(result) {
 function printTileLocalDiagnosticsSummary(result) {
   console.log(result.classification.summary.text);
   console.log(`report: ${result.reportPath}`);
+  console.log(`arena state: ${classifyArenaRuntimeState(result.classification.metrics.arenaRuntime)}`);
   for (const capture of result.captures) {
     console.log(`${capture.id}: ${capture.screenshotPath}`);
   }

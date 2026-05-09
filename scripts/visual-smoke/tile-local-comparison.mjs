@@ -175,6 +175,7 @@ export function summarizeTileLocalArenaWitness({
   prepass,
   visible,
 } = {}) {
+  const visibleArenaRuntime = arenaRuntimeEvidence(visible);
   const presentation = {
     plate: capturePresentationState(plate),
     prepass: capturePresentationState(prepass),
@@ -182,11 +183,68 @@ export function summarizeTileLocalArenaWitness({
   };
   return {
     arenaBackend: visibleArenaBackend(visible),
+    arenaState: classifyArenaRuntimeState(visibleArenaRuntime),
     cpuBuildDurationMs: visibleCpuBuildDurationMs(visible),
     gpuDispatchDurationMs: visibleGpuDispatchDurationMs(visible),
+    arenaRuntime: visibleArenaRuntime,
     presentation,
     artifactMovement: summarizeArtifactMovement({ plate, visible }),
   };
+}
+
+export function classifyArenaRuntimeState(arenaRuntime = {}) {
+  const requestedArenaBackend = String(arenaRuntime.requestedArenaBackend ?? "").trim();
+  const effectiveArenaBackend = String(arenaRuntime.effectiveArenaBackend ?? "").trim();
+  const cpuBridgeBuildDurationMs =
+    finiteNumber(arenaRuntime.cpuBridgeBuildDurationMs) ?? finiteNumber(arenaRuntime.cpuBuildDurationMs);
+  const gpuDispatchDurationMs = finiteNumber(arenaRuntime.gpuDispatchDurationMs);
+  const hasExplicitEvidence =
+    requestedArenaBackend.length > 0 ||
+    effectiveArenaBackend.length > 0 ||
+    cpuBridgeBuildDurationMs !== undefined ||
+    gpuDispatchDurationMs !== undefined ||
+    arenaRuntime.unavailableReason ||
+    arenaRuntime.skippedReason ||
+    arenaRuntime.fallbackReason;
+
+  if (!hasExplicitEvidence) {
+    return "not-reported";
+  }
+
+  const requestedGpu = requestedArenaBackend === "gpu";
+  const effectiveGpu = effectiveArenaBackend === "gpu";
+
+  if (requestedGpu) {
+    if (effectiveGpu) {
+      return cpuBridgeBuildDurationMs !== undefined
+        ? "gpu-effective-with-cpu-bridge"
+        : "gpu-effective-without-cpu-bridge";
+    }
+    if (arenaRuntime.fallbackReason || cpuBridgeBuildDurationMs !== undefined) {
+      return "gpu-requested-cpu-fallback";
+    }
+    if (arenaRuntime.skippedReason) {
+      return "gpu-blocked";
+    }
+    if (arenaRuntime.unavailableReason) {
+      return "gpu-unavailable";
+    }
+    return "gpu-requested-unknown";
+  }
+
+  if (effectiveGpu) {
+    return cpuBridgeBuildDurationMs !== undefined
+      ? "gpu-effective-with-cpu-bridge"
+      : "gpu-effective-without-cpu-bridge";
+  }
+
+  if (arenaRuntime.skippedReason) {
+    return "cpu-blocked";
+  }
+  if (arenaRuntime.unavailableReason) {
+    return "cpu-unavailable";
+  }
+  return "cpu";
 }
 
 export function isVisualSmokeCaptureReady(pageEvidence = {}, { expectedRendererLabel = "" } = {}) {
@@ -290,12 +348,28 @@ function visibleArenaBackend(capture = {}) {
   return visibleGpuDispatchDurationMs(capture) === undefined ? "gpu-unavailable" : "gpu";
 }
 
+function arenaRuntimeEvidence(capture = {}) {
+  const arenaRuntime = capture.pageEvidence?.arenaRuntime;
+  return arenaRuntime && typeof arenaRuntime === "object" ? arenaRuntime : {};
+}
+
 function visibleCpuBuildDurationMs(capture = {}) {
+  const arenaRuntime = arenaRuntimeEvidence(capture);
+  const runtimeBuildDurationMs =
+    finiteNumber(arenaRuntime?.cpuBridgeBuildDurationMs) ?? finiteNumber(arenaRuntime?.cpuBuildDurationMs);
+  if (runtimeBuildDurationMs !== undefined) {
+    return runtimeBuildDurationMs;
+  }
   const heat = capture?.pageEvidence?.tileLocal?.budgetDiagnostics?.heat;
   return finiteNumber(heat?.cpu?.buildDurationMs);
 }
 
 function visibleGpuDispatchDurationMs(capture = {}) {
+  const arenaRuntime = arenaRuntimeEvidence(capture);
+  const runtimeDispatchDurationMs = finiteNumber(arenaRuntime?.gpuDispatchDurationMs);
+  if (runtimeDispatchDurationMs !== undefined) {
+    return runtimeDispatchDurationMs;
+  }
   const heat = capture?.pageEvidence?.tileLocal?.budgetDiagnostics?.heat;
   return finiteNumber(heat?.gpu?.dispatchDurationMs);
 }

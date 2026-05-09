@@ -148,7 +148,8 @@ test("visual smoke CLI reports requested and effective arena backend fields", ()
 
   assert.match(source, /Arena requested backend:/);
   assert.match(source, /Arena effective backend:/);
-  assert.match(source, /CPU build duration ms:/);
+  assert.match(source, /Arena state:/);
+  assert.match(source, /CPU bridge build duration ms:/);
   assert.match(source, /GPU dispatch duration ms:/);
   assert.match(source, /Unavailable reason:/);
   assert.match(source, /Skipped reason:/);

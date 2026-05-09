@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  classifyArenaRuntimeState,
   buildTileLocalComparisonPlan,
   classifyTileLocalComparison,
   extractTileLocalPageMetrics,
@@ -296,6 +297,82 @@ test("tile-local arena witness reports gpu-unavailable, current/fallback states,
   });
   assert.equal(result.artifactMovement.status, "regressed");
   assert.match(result.artifactMovement.summary, /tile-cell\/block artifacts/i);
+});
+
+test("tile-local arena witness forwards arenaRuntime evidence into backend and state labels", () => {
+  const result = summarizeTileLocalArenaWitness({
+    visible: capture("tile-local-visible", {
+      rendererLabel: "tile-local-visible-gaussian-compositor",
+      fps: 41,
+      changedPixelRatio: 0.29,
+      imageFingerprint: "visible-gpu",
+      tileRefs: 22000,
+      pageEvidence: {
+        arenaRuntime: {
+          requestedArenaBackend: "gpu",
+          effectiveArenaBackend: "gpu",
+          cpuBuildDurationMs: 24.37,
+          cpuBridgeBuildDurationMs: 24.37,
+          gpuDispatchDurationMs: 0.84,
+        },
+      },
+    }),
+  });
+
+  assert.equal(result.arenaBackend, "gpu");
+  assert.equal(result.arenaState, "gpu-effective-with-cpu-bridge");
+  assert.equal(result.cpuBuildDurationMs, 24.37);
+  assert.equal(result.gpuDispatchDurationMs, 0.84);
+});
+
+test("tile-local arena runtime state distinguishes CPU fallback, effective GPU bridge use, and blocked or unavailable states", () => {
+  assert.equal(
+    classifyArenaRuntimeState({
+      requestedArenaBackend: "gpu",
+      effectiveArenaBackend: "cpu",
+      cpuBuildDurationMs: 24.37,
+      unavailableReason: "gpu contributor arena runtime not promoted",
+      fallbackReason: "requested gpu arena backend fell back to the CPU bridge",
+    }),
+    "gpu-requested-cpu-fallback"
+  );
+
+  assert.equal(
+    classifyArenaRuntimeState({
+      requestedArenaBackend: "gpu",
+      effectiveArenaBackend: "gpu",
+      cpuBuildDurationMs: 24.37,
+      gpuDispatchDurationMs: 0.84,
+    }),
+    "gpu-effective-with-cpu-bridge"
+  );
+
+  assert.equal(
+    classifyArenaRuntimeState({
+      requestedArenaBackend: "gpu",
+      effectiveArenaBackend: "gpu",
+      gpuDispatchDurationMs: 0.84,
+    }),
+    "gpu-effective-without-cpu-bridge"
+  );
+
+  assert.equal(
+    classifyArenaRuntimeState({
+      requestedArenaBackend: "gpu",
+      effectiveArenaBackend: "cpu",
+      skippedReason: "gpu arena runtime blocked by missing retained records",
+    }),
+    "gpu-blocked"
+  );
+
+  assert.equal(
+    classifyArenaRuntimeState({
+      requestedArenaBackend: "gpu",
+      effectiveArenaBackend: "cpu",
+      unavailableReason: "gpu contributor arena runtime unavailable",
+    }),
+    "gpu-unavailable"
+  );
 });
 
 function capture(id, overrides = {}) {
