@@ -45,6 +45,7 @@ export function buildGpuTileCoverageBridge(coverage, options = {}) {
     ? contributorArena.projectedContributors
     : normalizedContributorArena ? normalizedContributorArena.records : coverage.tileEntries;
   const projectedCountsByTile = countProjectedTileEntries(sourceTileEntries, tileCount);
+  const boundarySplatIds = identifyBoundarySplats(sourceTileEntries);
 
   for (const splat of coverage.splats) {
     splatsByIndex.set(splat.splatIndex, splat);
@@ -103,6 +104,7 @@ export function buildGpuTileCoverageBridge(coverage, options = {}) {
     tileColumns: coverage.tileColumns,
     tileRows: coverage.tileRows,
     maxRefsPerTile,
+    boundarySplatIds,
   });
 
   return {
@@ -134,6 +136,7 @@ export function buildTileLocalContributorArena(coverage, options = {}) {
   const maxRefsPerTile = resolveMaxRefsPerTile(options.maxRefsPerTile ?? coverage.maxRefsPerTile);
   const depthBandCount = resolveDepthBandCount(options.depthBandCount);
   const entries = [...coverage.tileEntries].sort(compareTileEntryOrder);
+  const boundarySplatIds = identifyBoundarySplats(entries);
   const tileHeaders = [];
   const contributors = [];
   const projectedContributors = [];
@@ -156,7 +159,7 @@ export function buildTileLocalContributorArena(coverage, options = {}) {
     const projectedIndexByKey = new Map(
       tileEntries.map((entry, index) => [tileEntryKey(entry), start + index])
     );
-    const selected = selectTileEntries(tileEntries, maxRefsPerTile);
+    const selected = selectTileEntries(tileEntries, maxRefsPerTile, boundarySplatIds);
     const legacySelectedKeys = new Set(tileEntries.slice(0, maxRefsPerTile).map(tileEntryKey));
     const selectedInCompositorOrder = [...selected].sort(compareContributorArenaOrder);
     const selectedByKey = new Map();
@@ -397,6 +400,7 @@ function countProjectedTileEntries(tileEntries, tileCount) {
 
 function retainTileEntries(tileEntries, maxRefsPerTile) {
   const entries = [...tileEntries].sort(compareTileEntryOrder);
+  const boundarySplatIds = identifyBoundarySplats(entries);
   const retained = [];
   let cursor = 0;
   while (cursor < entries.length) {
@@ -405,13 +409,13 @@ function retainTileEntries(tileEntries, maxRefsPerTile) {
     while (end < entries.length && entries[end].tileIndex === tileIndex) {
       end += 1;
     }
-    retained.push(...selectTileEntries(entries.slice(cursor, end), maxRefsPerTile));
+    retained.push(...selectTileEntries(entries.slice(cursor, end), maxRefsPerTile, boundarySplatIds));
     cursor = end;
   }
   return retained.sort(compareTileEntryOrder);
 }
 
-function summarizeRetentionAudit({ tileEntries, tileColumns, tileRows, maxRefsPerTile }) {
+function summarizeRetentionAudit({ tileEntries, tileColumns, tileRows, maxRefsPerTile, boundarySplatIds = null }) {
   const regions = {
     porousBody: createTileRegion({
       name: "porous-body",
@@ -449,12 +453,12 @@ function summarizeRetentionAudit({ tileEntries, tileColumns, tileRows, maxRefsPe
       end += 1;
     }
     const tileGroup = entries.slice(cursor, end);
-    accumulateRetentionAudit(summaries.fullFrame, tileGroup, maxRefsPerTile);
+    accumulateRetentionAudit(summaries.fullFrame, tileGroup, maxRefsPerTile, boundarySplatIds);
     if (tileInRegion(tileIndex, tileColumns, regions.porousBody)) {
-      accumulateRetentionAudit(summaries.regions.porousBody, tileGroup, maxRefsPerTile);
+      accumulateRetentionAudit(summaries.regions.porousBody, tileGroup, maxRefsPerTile, boundarySplatIds);
     }
     if (tileInRegion(tileIndex, tileColumns, regions.centerLeakBand)) {
-      accumulateRetentionAudit(summaries.regions.centerLeakBand, tileGroup, maxRefsPerTile);
+      accumulateRetentionAudit(summaries.regions.centerLeakBand, tileGroup, maxRefsPerTile, boundarySplatIds);
     }
     cursor = end;
   }
@@ -502,7 +506,7 @@ function createRetentionAuditSummary(region) {
   };
 }
 
-function accumulateRetentionAudit(summary, tileEntries, maxRefsPerTile) {
+function accumulateRetentionAudit(summary, tileEntries, maxRefsPerTile, boundarySplatIds = null) {
   if (tileEntries.length === 0) {
     return;
   }
@@ -512,7 +516,7 @@ function accumulateRetentionAudit(summary, tileEntries, maxRefsPerTile) {
     summary.cappedTileCount += 1;
   }
   const legacyRetained = tileEntries.slice(0, maxRefsPerTile);
-  const currentRetained = selectTileEntries(tileEntries, maxRefsPerTile);
+  const currentRetained = selectTileEntries(tileEntries, maxRefsPerTile, boundarySplatIds);
   const legacyKeys = new Set(legacyRetained.map(tileEntryKey));
   const currentKeys = new Set(currentRetained.map(tileEntryKey));
   summary.currentRetainedEntryCount += currentRetained.length;
@@ -558,15 +562,31 @@ function roundAuditNumber(value) {
   return Number.isFinite(value) ? Number(value.toFixed(6)) : 0;
 }
 
-function selectTileEntries(tileEntries, maxRefsPerTile) {
+function selectTileEntries(tileEntries, maxRefsPerTile, boundarySplatIds = null) {
   if (tileEntries.length <= maxRefsPerTile) {
     return tileEntries;
   }
   const selected = tileEntries.slice(0, maxRefsPerTile);
   const reserveCount = resolveRetentionReserveCount(tileEntries.length, maxRefsPerTile);
   const selectedKeys = new Set(selected.map(tileEntryKey));
+
+  // Boundary-continuity pass: ensure boundary splats (those appearing in
+  // multiple tiles) are preferentially retained. This prevents adjacent tiles
+  // from making divergent retention decisions on shared-surface splats.
+  if (boundarySplatIds && boundarySplatIds.size > 0) {
+    promoteBoundarySplats(selected, selectedKeys, tileEntries, boundarySplatIds, reserveCount);
+  }
+
   const retentionCandidates = selectRetentionCandidates(tileEntries, selectedKeys, reserveCount);
   const reservedKeys = new Set(retentionCandidates.map(({ entry }) => tileEntryKey(entry)));
+  // Also protect boundary splats that were promoted from being replaced.
+  if (boundarySplatIds) {
+    for (const entry of selected) {
+      if (boundarySplatIds.has(entry.splatIndex)) {
+        reservedKeys.add(tileEntryKey(entry));
+      }
+    }
+  }
 
   for (const { entry: candidate, comparePriority } of retentionCandidates) {
     const candidateKey = tileEntryKey(candidate);
@@ -584,6 +604,70 @@ function selectTileEntries(tileEntries, maxRefsPerTile) {
   }
 
   return selected.sort(compareTileEntryOrder);
+}
+
+function identifyBoundarySplats(sortedEntries) {
+  const tileCountBySplat = new Map();
+  for (const entry of sortedEntries) {
+    const existing = tileCountBySplat.get(entry.splatIndex);
+    if (existing === undefined) {
+      tileCountBySplat.set(entry.splatIndex, entry.tileIndex);
+    } else if (existing !== entry.tileIndex && existing !== -1) {
+      tileCountBySplat.set(entry.splatIndex, -1);
+    }
+  }
+  const boundaryIds = new Set();
+  for (const [splatIndex, marker] of tileCountBySplat) {
+    if (marker === -1) {
+      boundaryIds.add(splatIndex);
+    }
+  }
+  return boundaryIds;
+}
+
+function promoteBoundarySplats(selected, selectedKeys, tileEntries, boundarySplatIds, reserveCount) {
+  // Find boundary splats in this tile that aren't already selected.
+  const unselectedBoundary = [];
+  for (const entry of tileEntries) {
+    if (boundarySplatIds.has(entry.splatIndex) && !selectedKeys.has(tileEntryKey(entry))) {
+      unselectedBoundary.push(entry);
+    }
+  }
+  if (unselectedBoundary.length === 0) {
+    return;
+  }
+  // Sort boundary candidates by retention priority (best first).
+  unselectedBoundary.sort(compareRetentionPriority);
+
+  // Budget: use up to the full reserve count for boundary promotion.
+  const boundaryBudget = Math.max(1, reserveCount);
+  let promoted = 0;
+
+  for (const candidate of unselectedBoundary) {
+    if (promoted >= boundaryBudget) break;
+    const candidateKey = tileEntryKey(candidate);
+    // Find the weakest non-boundary entry in the selected set to replace.
+    let worstIndex = -1;
+    let worstRetention = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < selected.length; i++) {
+      if (boundarySplatIds.has(selected[i].splatIndex)) continue;
+      const w = readRetentionWeight(selected[i]);
+      if (w < worstRetention) {
+        worstRetention = w;
+        worstIndex = i;
+      }
+    }
+    if (worstIndex === -1) break;
+    // Only replace if the boundary candidate has comparable or better retention weight.
+    const candidateWeight = readRetentionWeight(candidate);
+    if (candidateWeight < worstRetention * 0.5) break;
+
+    const removedKey = tileEntryKey(selected[worstIndex]);
+    selected[worstIndex] = candidate;
+    selectedKeys.delete(removedKey);
+    selectedKeys.add(candidateKey);
+    promoted += 1;
+  }
 }
 
 function resolveRetentionReserveCount(projectedRefCount, maxRefsPerTile) {
