@@ -603,7 +603,7 @@ function selectGpuProjectionRetentionCandidates(
     readonly record: GpuTileContributorArenaProjectedContributor;
     readonly comparePriority: typeof compareGpuProjectionRetentionPriority;
   }[] = [];
-  const candidateKeys = new Set<string>();
+  const candidatePriorityKeys = new Set<string>();
   const cursors = new Array(pools.length).fill(0);
 
   while (candidates.length < reserveCount) {
@@ -614,11 +614,12 @@ function selectGpuProjectionRetentionCandidates(
         const record = pool[cursors[poolIndex]];
         cursors[poolIndex] += 1;
         const key = gpuProjectionRetentionRecordKey(record);
-        if (selectedKeys.has(key) || candidateKeys.has(key)) {
+        const priorityKey = `${poolIndex}:${key}`;
+        if (selectedKeys.has(key) || candidatePriorityKeys.has(priorityKey)) {
           continue;
         }
         candidates.push({ record, comparePriority: pools[poolIndex].comparePriority });
-        candidateKeys.add(key);
+        candidatePriorityKeys.add(priorityKey);
         added = true;
         break;
       }

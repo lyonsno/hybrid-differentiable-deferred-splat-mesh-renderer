@@ -14,6 +14,7 @@ import {
 } from "./camera.js";
 import { createStorageBuffer, createTexture2D, createUniformBuffer } from "./buffers.js";
 import {
+  buildDeterministicGpuTileProjectionRetentionArena,
   createGpuTileCoveragePlan,
   GPU_TILE_COVERAGE_FRAME_UNIFORM_BYTES,
   writeGpuTileCoverageFrameUniforms,
@@ -830,7 +831,7 @@ function createTileLocalSceneState(
   const bridgeBuildDurationMs = Math.max(0, performance.now() - bridgeBuildStartedAtMs);
   const prepassSignature = captureTileLocalPrepassBridgeSignature(bridgeInput);
   const gpuArenaRetainedAdapter = REQUESTED_ARENA_BACKEND === "gpu"
-    ? adaptGpuArenaRetainedContributors(bridge, effectiveOpacities)
+    ? adaptGpuArenaRetainedContributors(bridge, effectiveOpacities, buildDeterministicGpuTileProjectionRetentionArena)
     : null;
   const gpuArenaProjectedContributors = gpuArenaRetainedAdapter?.contributors ?? [];
   const requestedGpuArenaRuntime = gpuArenaProjectedContributors.length > 0;
