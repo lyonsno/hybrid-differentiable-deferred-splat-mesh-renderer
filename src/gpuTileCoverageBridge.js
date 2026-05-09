@@ -16,6 +16,7 @@ const CONTRIBUTOR_OVERFLOW_REASONS = Object.freeze({
   perTileRetainedCapMiddleBand: "perTileRetainedCapMiddleBand",
   perTileRetainedCapBehindSurfaceBand: "perTileRetainedCapBehindSurfaceBand",
 });
+const BOUNDARY_REPLACEMENT_RETENTION_RATIO = 2;
 
 export function buildGpuTileCoverageBridge(coverage, options = {}) {
   const tileCount = coverage.tileColumns * coverage.tileRows;
@@ -573,19 +574,18 @@ function selectTileEntries(tileEntries, maxRefsPerTile, boundarySplatIds = null)
   // Boundary-continuity pass: ensure boundary splats (those appearing in
   // multiple tiles) are preferentially retained. This prevents adjacent tiles
   // from making divergent retention decisions on shared-surface splats.
-  if (boundarySplatIds && boundarySplatIds.size > 0) {
-    promoteBoundarySplats(selected, selectedKeys, tileEntries, boundarySplatIds, reserveCount);
-  }
+  const promotedBoundaryKeys = boundarySplatIds && boundarySplatIds.size > 0
+    ? promoteBoundarySplats(selected, selectedKeys, tileEntries, boundarySplatIds, reserveCount)
+    : new Set();
 
-  const retentionCandidates = selectRetentionCandidates(tileEntries, selectedKeys, reserveCount);
+  const remainingReserveCount = Math.max(0, reserveCount - promotedBoundaryKeys.size);
+  const retentionCandidates = selectRetentionCandidates(tileEntries, selectedKeys, remainingReserveCount);
   const reservedKeys = new Set(retentionCandidates.map(({ entry }) => tileEntryKey(entry)));
-  // Also protect boundary splats that were promoted from being replaced.
-  if (boundarySplatIds) {
-    for (const entry of selected) {
-      if (boundarySplatIds.has(entry.splatIndex)) {
-        reservedKeys.add(tileEntryKey(entry));
-      }
-    }
+  // Protect only boundary splats that this pass promoted. Boundary splats that
+  // were already selected still compete with the existing retention/occlusion
+  // reserve policy.
+  for (const key of promotedBoundaryKeys) {
+    reservedKeys.add(key);
   }
 
   for (const { entry: candidate, comparePriority } of retentionCandidates) {
@@ -593,7 +593,10 @@ function selectTileEntries(tileEntries, maxRefsPerTile, boundarySplatIds = null)
     if (selectedKeys.has(candidateKey)) {
       continue;
     }
-    const replacementIndex = findReplacementIndex(selected, reservedKeys, comparePriority);
+    const replacementIndex = findReplacementIndex(selected, reservedKeys, comparePriority, candidate, boundarySplatIds);
+    if (replacementIndex === -1) {
+      continue;
+    }
     if (comparePriority(candidate, selected[replacementIndex]) > 0) {
       continue;
     }
@@ -626,6 +629,7 @@ function identifyBoundarySplats(sortedEntries) {
 }
 
 function promoteBoundarySplats(selected, selectedKeys, tileEntries, boundarySplatIds, reserveCount) {
+  const promotedKeys = new Set();
   // Find boundary splats in this tile that aren't already selected.
   const unselectedBoundary = [];
   for (const entry of tileEntries) {
@@ -634,7 +638,7 @@ function promoteBoundarySplats(selected, selectedKeys, tileEntries, boundarySpla
     }
   }
   if (unselectedBoundary.length === 0) {
-    return;
+    return promotedKeys;
   }
   // Sort boundary candidates by retention priority (best first).
   unselectedBoundary.sort(compareRetentionPriority);
@@ -666,8 +670,10 @@ function promoteBoundarySplats(selected, selectedKeys, tileEntries, boundarySpla
     selected[worstIndex] = candidate;
     selectedKeys.delete(removedKey);
     selectedKeys.add(candidateKey);
+    promotedKeys.add(candidateKey);
     promoted += 1;
   }
+  return promotedKeys;
 }
 
 function resolveRetentionReserveCount(projectedRefCount, maxRefsPerTile) {
@@ -714,10 +720,17 @@ function selectRetentionCandidates(tileEntries, selectedKeys, reserveCount) {
   return candidates;
 }
 
-function findReplacementIndex(selected, reservedKeys, comparePriority) {
+function findReplacementIndex(selected, reservedKeys, comparePriority, candidate = null, boundarySplatIds = null) {
   let replacementIndex = -1;
   for (let index = 0; index < selected.length; index += 1) {
     if (reservedKeys.has(tileEntryKey(selected[index]))) {
+      continue;
+    }
+    if (
+      candidate &&
+      boundarySplatIds?.has(selected[index].splatIndex) &&
+      readRetentionWeight(candidate) < readRetentionWeight(selected[index]) * BOUNDARY_REPLACEMENT_RETENTION_RATIO
+    ) {
       continue;
     }
     if (
@@ -727,7 +740,7 @@ function findReplacementIndex(selected, reservedKeys, comparePriority) {
       replacementIndex = index;
     }
   }
-  return replacementIndex === -1 ? selected.length - 1 : replacementIndex;
+  return replacementIndex;
 }
 
 function compareTileEntryOrder(left, right) {

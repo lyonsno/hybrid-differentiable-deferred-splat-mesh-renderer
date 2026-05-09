@@ -188,3 +188,81 @@ test("cap-pressure diagnostics report no boundary-divergent dropped refs after f
     );
   }
 });
+
+test("boundary continuity does not starve high-priority tile-exclusive pressure refs", () => {
+  const maxRefsPerTile = 8;
+  const coverage = buildBoundarySurfaceWithExclusivePressureCoverage({ maxRefsPerTile });
+  const bridge = buildGpuTileCoverageBridge(coverage, { maxRefsPerTile });
+  const retainedOriginalIds = [];
+  const retainedRefCount = bridge.tileHeaders[1];
+
+  for (let index = 0; index < retainedRefCount; index += 1) {
+    retainedOriginalIds.push(bridge.tileRefs[index * 4 + 1]);
+  }
+
+  const retainedPressureCount = retainedOriginalIds.filter((originalId) => originalId >= 900).length;
+  assert.ok(
+    retainedPressureCount >= 3,
+    `expected boundary repair to preserve pressure-ref reserve policy; retained ${retainedPressureCount} pressure refs: ` +
+    `[${retainedOriginalIds.join(",")}]`
+  );
+});
+
+function buildBoundarySurfaceWithExclusivePressureCoverage({ maxRefsPerTile }) {
+  const tileEntries = [];
+  const splats = [];
+
+  for (let index = 0; index < 12; index += 1) {
+    splats.push({
+      splatIndex: index,
+      originalId: 100 + index,
+      centerPx: [8, 8],
+      covariancePx: { xx: 16, xy: 0, yy: 16 },
+      tileBounds: { minTileX: 0, minTileY: 0, maxTileX: 1, maxTileY: 0 },
+    });
+    const entry = {
+      splatIndex: index,
+      originalId: 100 + index,
+      coverageWeight: 20 - index * 0.1,
+      retentionWeight: 0.2,
+      occlusionWeight: 0.2,
+      occlusionDensity: 0.01,
+    };
+    tileEntries.push({ ...entry, tileIndex: 0, tileX: 0, tileY: 0 });
+    tileEntries.push({ ...entry, tileIndex: 1, tileX: 1, tileY: 0 });
+  }
+
+  for (let index = 0; index < 4; index += 1) {
+    const splatIndex = 20 + index;
+    splats.push({
+      splatIndex,
+      originalId: 900 + index,
+      centerPx: [8, 8],
+      covariancePx: { xx: 16, xy: 0, yy: 16 },
+      tileBounds: { minTileX: 0, minTileY: 0, maxTileX: 0, maxTileY: 0 },
+    });
+    tileEntries.push({
+      tileIndex: 0,
+      tileX: 0,
+      tileY: 0,
+      splatIndex,
+      originalId: 900 + index,
+      coverageWeight: 0.1 + index * 0.01,
+      retentionWeight: 3 - index * 0.1,
+      occlusionWeight: 2 - index * 0.1,
+      occlusionDensity: 0.95 - index * 0.01,
+    });
+  }
+
+  return {
+    viewportWidth: 32,
+    viewportHeight: 16,
+    tileSizePx: 16,
+    tileColumns: 2,
+    tileRows: 1,
+    sourceSplatCount: 24,
+    splats,
+    tileEntries,
+    maxRefsPerTile,
+  };
+}
