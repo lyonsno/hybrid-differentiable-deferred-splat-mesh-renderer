@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   REAL_SCANIVERSE_SMOKE_ASSET_PATH,
+  applyRealScaniverseWitnessView,
   composeFirstSmokeViewProjection,
   configureCameraForSplatBounds,
   compareProjectedAnisotropyByRotationOrder,
@@ -75,6 +76,38 @@ test("real smoke camera framing targets the Scaniverse bounds", () => {
   assert.equal(camera.navigationScale, attributes.bounds.radius);
   assert.ok(camera.near > 0);
   assert.ok(camera.far > camera.distance);
+});
+
+test("dessert-close witness view zooms into the same real Scaniverse bounds deterministically", () => {
+  const camera = {
+    position: [0, 1, 3],
+    target: [0, 0, 0],
+    up: [0, 1, 0],
+    fovY: Math.PI / 3,
+    near: 0.01,
+    far: 100,
+    navigationScale: 1,
+    azimuth: 1,
+    elevation: 1,
+    distance: 3,
+    keys: new Set(),
+    mouse: { down: false, lastX: 0, lastY: 0 },
+  };
+
+  configureCameraForSplatBounds(camera, attributes.bounds);
+  const defaultDistance = camera.distance;
+  applyRealScaniverseWitnessView(camera, attributes.bounds, "dessert-close");
+
+  assert.equal(camera.azimuth, 0);
+  assert.equal(camera.elevation, 0.18);
+  assert.equal(camera.navigationScale, attributes.bounds.radius);
+  assert.ok(camera.distance < defaultDistance);
+  assert.ok(camera.distance > 0);
+  assert.deepEqual(camera.target, [
+    attributes.bounds.center[0],
+    attributes.bounds.center[1] - attributes.bounds.radius * 0.08,
+    attributes.bounds.center[2],
+  ]);
 });
 
 test("first-smoke presentation flips the viewer vertical axis", () => {

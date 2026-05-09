@@ -17,6 +17,10 @@ const ALPHA_DENSITY_GAUSSIAN_SUPPORT_SIGMA = 3;
 const ALPHA_DENSITY_COVERAGE_SAMPLES_PER_AXIS = 5;
 const STATIC_DESSERT_RIM_BAND_CROP = { x: 390, y: 322, width: 500, height: 115 } as const;
 const STATIC_DESSERT_POROUS_BODY_CROP = { x: 520, y: 270, width: 260, height: 150 } as const;
+const DESSERT_CLOSE_DISTANCE_SCALE = 1.25;
+const DESSERT_CLOSE_TARGET_Y_OFFSET = -0.08;
+
+export type RealScaniverseWitnessViewMode = "default" | "dessert-close";
 
 const VIEWER_VERTICAL_FLIP = new Float32Array([
   1, 0, 0, 0,
@@ -185,6 +189,31 @@ export function configureCameraForSplatBounds(camera: Camera, bounds: SplatBound
   camera.navigationScale = Math.max(bounds.radius, 0.1);
   camera.near = framing.near;
   camera.far = framing.far;
+  camera.azimuth = 0;
+  camera.elevation = 0.18;
+  positionCameraFromTarget(camera);
+}
+
+export function applyRealScaniverseWitnessView(
+  camera: Camera,
+  bounds: SplatBounds,
+  mode: RealScaniverseWitnessViewMode
+): void {
+  if (mode === "default") {
+    return;
+  }
+  if (mode !== "dessert-close") {
+    throw new Error(`Unknown real Scaniverse witness view: ${mode}`);
+  }
+
+  const radius = Math.max(bounds.radius, 0.001);
+  camera.target = [
+    bounds.center[0],
+    bounds.center[1] + radius * DESSERT_CLOSE_TARGET_Y_OFFSET,
+    bounds.center[2],
+  ];
+  camera.distance = radius * DESSERT_CLOSE_DISTANCE_SCALE;
+  camera.navigationScale = radius;
   camera.azimuth = 0;
   camera.elevation = 0.18;
   positionCameraFromTarget(camera);

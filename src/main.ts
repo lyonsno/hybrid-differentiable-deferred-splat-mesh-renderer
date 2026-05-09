@@ -66,6 +66,7 @@ import {
   REAL_SCANIVERSE_NEAR_FADE_START_NDC,
   REAL_SCANIVERSE_SMOKE_ASSET_PATH,
   REAL_SCANIVERSE_SPLAT_SCALE,
+  applyRealScaniverseWitnessView,
   composeFirstSmokeViewProjection,
   configureCameraForSplatBounds,
   createMeshSplatSmokeEvidence,
@@ -75,6 +76,7 @@ import {
   writeAlphaDensityCompensatedOpacities,
   type AlphaDensityAccountingMode,
   type AlphaDensityCompensationSummary,
+  type RealScaniverseWitnessViewMode,
 } from "./realSmokeScene.js";
 import {
   summarizeTileLocalDiagnostics,
@@ -123,6 +125,7 @@ const ALPHA_DENSITY_MODE = selectedAlphaDensityMode();
 const RENDERER_MODE = selectedRendererMode();
 const TILE_LOCAL_DEBUG_MODE = selectedTileLocalDebugMode();
 const REQUESTED_ARENA_BACKEND = selectedArenaBackend();
+const REAL_SCANIVERSE_WITNESS_VIEW = selectedRealScaniverseWitnessViewMode();
 const TILE_LOCAL_BUDGET_CONFIG = resolveTileLocalBudgetConfig(new URLSearchParams(window.location.search));
 const TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX = TILE_LOCAL_BUDGET_CONFIG.tileSizePx;
 const TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE = TILE_LOCAL_BUDGET_CONFIG.maxRefsPerTile;
@@ -274,6 +277,9 @@ async function main() {
   function replaceSplatScene(attributes: SplatAttributes, sceneAssetPath: string): void {
     const previous = activeScene;
     configureCameraForSplatBounds(cam, attributes.bounds);
+    if (shapeWitnessFixtureId === null) {
+      applyRealScaniverseWitnessView(cam, attributes.bounds, REAL_SCANIVERSE_WITNESS_VIEW);
+    }
     updateCamera(cam, 0);
     const initialView = getViewMatrix(cam);
     const initialViewportWidth = Math.max(canvas.clientWidth || canvas.width || 1, 1);
@@ -1541,6 +1547,12 @@ function selectedTileLocalDebugMode(): GpuTileCoverageDebugMode {
     default:
       return "final-color";
   }
+}
+
+function selectedRealScaniverseWitnessViewMode(): RealScaniverseWitnessViewMode {
+  const params = new URLSearchParams(window.location.search);
+  const requested = params.get("witnessView") ?? params.get("view");
+  return requested === "dessert-close" ? "dessert-close" : "default";
 }
 
 function selectedTileLocalUnsafeMode(): boolean {
