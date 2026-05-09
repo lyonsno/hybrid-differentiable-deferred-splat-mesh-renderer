@@ -46,6 +46,6 @@ test("main does not encode tile-local ordering ranks before a possible state reb
   );
   assert.match(
     source,
-    /if \(tileLocalState\.orderingRanksNeedDispatch\) \{[\s\S]*?encodeGpuOrderingRanks\(encoder, tileLocalState\.orderingRanker\)/
+    /if \(tileLocalState\.orderingRanksNeedDispatch && tileLocalState\.orderingRanker\) \{[\s\S]*?encodeGpuOrderingRanks\(encoder, tileLocalState\.orderingRanker\)/
   );
 });

@@ -37,7 +37,7 @@ test("tile-local visible shader composites ordered tile refs with sample-local c
   assert.match(shader, /if\s*\(tileCoverageWeight <= 0\.0\)\s*\{\s*continue;\s*\}/);
   assert.match(shader, /let pixelCoverageWeight = conic_pixel_weight\(alphaParam, conicParam, pixelCenter\)/);
   assert.match(shader, /1\.0\s*-\s*pow\(1\.0\s*-\s*sourceOpacity,\s*pixelCoverageWeight\)/);
-  assert.match(shader, /let orderingKey = orderingKeys\[splatId\]/);
+  assert.match(shader, /let orderingKey = splatId/);
   assert.match(shader, /conic_pixel_weight/);
   assert.match(shader, /mahalanobis2/);
   assert.match(shader, /exp\(-2\.0 \* mahalanobis2\)/);
@@ -56,7 +56,8 @@ test("tile-local visible compositor consumes the retained tile header count with
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
 
   assert.doesNotMatch(shader, /min\(header\.y,\s*32u\)/);
-  assert.match(shader, /let refLimit = min\(header\.y,\s*frame\.maxTileRefs\)/);
+  assert.match(shader, /let tileCapacity = tile_ref_capacity_per_tile\(\)/);
+  assert.match(shader, /let refLimit = min\(max\(header\.y,\s*gpuScatterCount\),\s*tileCapacity\)/);
   assert.match(source, /visible-compositor cap/);
   assert.match(source, /visibleCompositedRefLimit/);
 });

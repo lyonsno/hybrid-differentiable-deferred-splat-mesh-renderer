@@ -101,18 +101,18 @@ test("GPU tile coverage dispatch plan separates bounds, list construction, and t
   });
 });
 
-test("GPU tile coverage bindings consume provisional coverage, alpha, and ordering buffers separately", () => {
+test("GPU tile coverage bindings carry the live tile buffers inside WebGPU storage limits", () => {
   assert.deepEqual(GPU_TILE_COVERAGE_BINDINGS, {
     frame: 0,
     positions: 1,
     colors: 2,
-    projectedBounds: 4,
     tileHeaders: 5,
     tileRefs: 6,
     tileCoverageWeights: 7,
-    orderingKeys: 8,
-    alphaParams: 9,
-    outputColor: 10,
+    alphaParams: 8,
+    outputColor: 9,
+    tileBuildCounts: 10,
+    tileScatterCursors: 11,
   });
 });
 
@@ -191,8 +191,9 @@ test("GPU tile coverage WGSL is a separate skeleton and does not mutate the live
   assert.match(shader, /@compute @workgroup_size\(64\)\s+fn build_tile_refs/);
   assert.match(shader, /@compute @workgroup_size\(8,\s*8,\s*1\)\s+fn composite_tiles/);
   assert.match(shader, /var<storage, read_write> tileCoverageWeights/);
-  assert.match(shader, /var<storage, read> orderingKeys/);
-  assert.match(shader, /var<storage, read> alphaParams/);
+  assert.match(shader, /var<storage, read_write> alphaParams/);
+  assert.match(shader, /var<storage, read_write> tileBuildCounts: array<atomic<u32>>/);
+  assert.match(shader, /var<storage, read_write> tileScatterCursors: array<atomic<u32>>/);
   assert.match(shader, /fn conic_pixel_weight/);
   assert.match(shader, /alphaParams\[alphaParamIndex \+ frame\.maxTileRefs\]/);
   assert.doesNotMatch(shader, /var<storage, read> scales/);

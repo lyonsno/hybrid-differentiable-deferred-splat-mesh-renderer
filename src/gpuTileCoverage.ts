@@ -39,13 +39,13 @@ export const GPU_TILE_COVERAGE_BINDINGS = {
   frame: 0,
   positions: 1,
   colors: 2,
-  projectedBounds: 4,
   tileHeaders: 5,
   tileRefs: 6,
   tileCoverageWeights: 7,
-  orderingKeys: 8,
-  alphaParams: 9,
-  outputColor: 10,
+  alphaParams: 8,
+  outputColor: 9,
+  tileBuildCounts: 10,
+  tileScatterCursors: 11,
 } as const;
 
 export interface GpuTileCoveragePlanInput {

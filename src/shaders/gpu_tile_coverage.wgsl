@@ -18,13 +18,32 @@ const DEBUG_MODE_CONIC_SHAPE = 5u;
 @group(0) @binding(0) var<uniform> frame: FrameUniforms;
 @group(0) @binding(1) var<storage, read> positions: array<f32>;
 @group(0) @binding(2) var<storage, read> colors: array<f32>;
-@group(0) @binding(4) var<storage, read_write> projectedBounds: array<vec4u>;
 @group(0) @binding(5) var<storage, read_write> tileHeaders: array<vec4u>;
 @group(0) @binding(6) var<storage, read_write> tileRefs: array<vec4u>;
 @group(0) @binding(7) var<storage, read_write> tileCoverageWeights: array<f32>;
-@group(0) @binding(8) var<storage, read> orderingKeys: array<u32>;
-@group(0) @binding(9) var<storage, read> alphaParams: array<vec4f>;
-@group(0) @binding(10) var outputColor: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(8) var<storage, read_write> alphaParams: array<vec4f>;
+@group(0) @binding(9) var outputColor: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(10) var<storage, read_write> tileBuildCounts: array<atomic<u32>>;
+@group(0) @binding(11) var<storage, read_write> tileScatterCursors: array<atomic<u32>>;
+
+fn tile_count() -> u32 {
+  return max(frame.tileGrid.x * frame.tileGrid.y, 1u);
+}
+
+fn tile_ref_capacity_per_tile() -> u32 {
+  return max(frame.maxTileRefs / tile_count(), 1u);
+}
+
+fn projected_center_px(splatId: u32) -> vec2f {
+  let positionBase = splatId * 3u;
+  let center = vec3f(positions[positionBase], positions[positionBase + 1u], positions[positionBase + 2u]);
+  let centerClip = frame.viewProj * vec4f(center, 1.0);
+  let centerNdc = centerClip.xy / max(centerClip.w, 0.000001);
+  return vec2f(
+    (centerNdc.x * 0.5 + 0.5) * frame.viewport.x,
+    (1.0 - (centerNdc.y * 0.5 + 0.5)) * frame.viewport.y,
+  );
+}
 
 fn conic_pixel_weight(alphaParam: vec4f, conicParam: vec4f, pixelCenter: vec2f) -> f32 {
   let delta = pixelCenter - alphaParam.yz;
@@ -85,16 +104,15 @@ fn debug_heatmap_color(
     return;
   }
 
-  let positionBase = splatId * 3u;
-  let center = vec3f(positions[positionBase], positions[positionBase + 1u], positions[positionBase + 2u]);
-  let centerClip = frame.viewProj * vec4f(center, 1.0);
+  let centerClip = frame.viewProj * vec4f(
+    positions[splatId * 3u],
+    positions[splatId * 3u + 1u],
+    positions[splatId * 3u + 2u],
+    1.0,
+  );
   if (centerClip.w <= 0.0) {
-    projectedBounds[splatId] = vec4u(1u, 1u, 0u, 0u);
     return;
   }
-
-  let maxTile = max(frame.tileGrid, vec2u(1u)) - vec2u(1u, 1u);
-  projectedBounds[splatId] = vec4u(0u, 0u, maxTile.x, maxTile.y);
 }
 
 @compute @workgroup_size(64) fn clear_tiles(@builtin(global_invocation_id) globalId: vec3u) {
@@ -104,21 +122,56 @@ fn debug_heatmap_color(
     return;
   }
 
-  tileHeaders[tileId] = vec4u(0u, 0u, 0u, 0u);
+  let tileCapacity = tile_ref_capacity_per_tile();
+  atomicStore(&tileBuildCounts[tileId], 0u);
+  atomicStore(&tileScatterCursors[tileId], 0u);
+  tileHeaders[tileId] = vec4u(tileId * tileCapacity, 0u, 0u, 0u);
 }
 
 @compute @workgroup_size(64) fn build_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
   let splatId = globalId.x;
-  if (splatId >= frame.splatCount || splatId >= frame.maxTileRefs) {
+  if (splatId >= frame.splatCount) {
     return;
   }
 
-  let bounds = projectedBounds[splatId];
-  let firstTile = bounds.y * frame.tileGrid.x + bounds.x;
-  let orderingKey = orderingKeys[splatId];
-  let alphaParamIndex = min(splatId, frame.maxTileRefs - 1u);
-  tileRefs[splatId] = vec4u(splatId, firstTile, orderingKey, alphaParamIndex);
-  tileCoverageWeights[splatId] = 0.0;
+  let centerClip = frame.viewProj * vec4f(
+    positions[splatId * 3u],
+    positions[splatId * 3u + 1u],
+    positions[splatId * 3u + 2u],
+    1.0,
+  );
+  if (centerClip.w <= 0.0) {
+    return;
+  }
+  let maxTile = max(frame.tileGrid, vec2u(1u)) - vec2u(1u, 1u);
+  let centerPx = projected_center_px(splatId);
+  let tileSizePx = max(u32(frame.tileSizePx), 1u);
+  let tileX = min(u32(clamp(centerPx.x, 0.0, max(frame.viewport.x - 1.0, 0.0))) / tileSizePx, maxTile.x);
+  let tileY = min(u32(clamp(centerPx.y, 0.0, max(frame.viewport.y - 1.0, 0.0))) / tileSizePx, maxTile.y);
+  let firstTile = tileY * frame.tileGrid.x + tileX;
+  if (firstTile >= tile_count()) {
+    return;
+  }
+  let tileCapacity = tile_ref_capacity_per_tile();
+  let projectedSlot = atomicAdd(&tileBuildCounts[firstTile], 1u);
+  if (projectedSlot >= tileCapacity) {
+    return;
+  }
+  let slot = atomicAdd(&tileScatterCursors[firstTile], 1u);
+  if (slot >= tileCapacity) {
+    return;
+  }
+  let refIndex = firstTile * tileCapacity + slot;
+  if (refIndex >= frame.maxTileRefs) {
+    return;
+  }
+  let orderingKey = splatId;
+  tileRefs[refIndex] = vec4u(splatId, splatId, firstTile, refIndex);
+  tileCoverageWeights[refIndex] = 1.0;
+  let gpuPointSigma = 10.0;
+  let inverseRadius2 = 1.0 / (gpuPointSigma * gpuPointSigma);
+  alphaParams[refIndex] = vec4f(0.35, centerPx.x, centerPx.y, f32(orderingKey));
+  alphaParams[refIndex + frame.maxTileRefs] = vec4f(inverseRadius2, 0.0, inverseRadius2, 0.0);
 }
 
 @compute @workgroup_size(8, 8, 1) fn composite_tiles(@builtin(global_invocation_id) globalId: vec3u) {
@@ -134,7 +187,9 @@ fn debug_heatmap_color(
   let header = tileHeaders[tileId];
   let outputCoord = vec2i(globalId.xy);
   let pixelCenter = vec2f(f32(globalId.x) + 0.5, f32(globalId.y) + 0.5);
-  let refLimit = min(header.y, frame.maxTileRefs);
+  let tileCapacity = tile_ref_capacity_per_tile();
+  let gpuScatterCount = atomicLoad(&tileScatterCursors[tileId]);
+  let refLimit = min(max(header.y, gpuScatterCount), tileCapacity);
   var composedColor = vec3f(0.02, 0.02, 0.04);
   var remainingTransmission = 1.0;
   var coverageWeightSum = 0.0;

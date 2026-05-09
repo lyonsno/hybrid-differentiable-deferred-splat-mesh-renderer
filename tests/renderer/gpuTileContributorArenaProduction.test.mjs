@@ -163,6 +163,22 @@ test("GPU contributor arena runtime writes legacy compositor buffers for live co
   assert.match(mainSource, /adaptGpuArenaRetainedContributors/);
 });
 
+test("requested GPU arena live path does not build the CPU tile-local prepass first", () => {
+  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const gpuFactoryStart = mainSource.indexOf("function createGpuArenaTileLocalSceneState");
+  const cpuFactoryStart = mainSource.indexOf("function createCpuTileLocalSceneState");
+
+  assert.ok(gpuFactoryStart >= 0, "GPU arena path should have its own live scene-state factory");
+  assert.ok(cpuFactoryStart > gpuFactoryStart, "CPU bridge path should be a separate factory after the GPU path");
+
+  const gpuFactorySource = mainSource.slice(gpuFactoryStart, cpuFactoryStart);
+  assert.doesNotMatch(gpuFactorySource, /buildTileLocalPrepassBridge/);
+  assert.doesNotMatch(gpuFactorySource, /adaptGpuArenaRetainedContributors/);
+  assert.match(gpuFactorySource, /gpuLiveMaxTileRefs\(device, tileCount, attributes\.count\)/);
+  assert.match(mainSource, /maxStorageBufferBindingSize/);
+  assert.match(mainSource, /REQUESTED_ARENA_BACKEND === "gpu"[\s\S]*createGpuArenaTileLocalSceneState/);
+});
+
 function contributor(overrides) {
   return {
     splatIndex: 0,
