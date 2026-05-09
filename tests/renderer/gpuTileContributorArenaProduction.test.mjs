@@ -9,9 +9,11 @@ import {
   GPU_TILE_CONTRIBUTOR_ARENA_RECORD_UINT32_STRIDE,
   GPU_TILE_CONTRIBUTOR_ARENA_RECORD_BYTES,
   buildDeterministicGpuTileContributorArena,
+  buildDeterministicGpuTileProjectionRetentionArena,
   createGpuTileCoveragePlan,
   createGpuTileContributorArenaLayout,
 } from "../../node_modules/.cache/renderer-tests/src/gpuTileCoverage.js";
+import { buildTileLocalContributorArena } from "../../src/gpuTileCoverageBridge.js";
 
 const expectedRecordBytes =
   (GPU_TILE_CONTRIBUTOR_ARENA_RECORD_UINT32_STRIDE + GPU_TILE_CONTRIBUTOR_ARENA_RECORD_FLOAT32_STRIDE) *
@@ -89,6 +91,36 @@ test("GPU contributor arena builder fails loudly when projected contributors exc
   );
 });
 
+test("GPU-owned projection retention selects the CPU reference retained records under cap pressure", () => {
+  const cpuArena = buildTileLocalContributorArena(denseTileCoverage(), {
+    maxRefsPerTile: 4,
+    depthBandCount: 4,
+  });
+  const arena = buildDeterministicGpuTileProjectionRetentionArena({
+    tileCount: 1,
+    maxContributors: 8,
+    maxRefsPerTile: 4,
+    contributors: cpuArena.projectedContributors,
+  });
+  const cpuRetainedIds = cpuArena.contributors
+    .sort((left, right) => left.contributorIndex - right.contributorIndex)
+    .map((record) => record.originalId);
+  const cpuDroppedIds = cpuArena.projectedContributors
+    .filter((record) => !record.retained)
+    .map((record) => record.originalId);
+
+  assert.equal(arena.projectedContributorCount, 8);
+  assert.equal(arena.retainedContributorCount, 4);
+  assert.equal(arena.droppedContributorCount, 4);
+  assert.deepEqual(arena.retainedRecords.map((record) => record.originalId), cpuRetainedIds);
+  assert.deepEqual(arena.droppedRecords.map((record) => record.originalId), cpuDroppedIds);
+  assert.deepEqual([...arena.tileHeaderU32.slice(0, GPU_TILE_CONTRIBUTOR_ARENA_HEADER_UINT32_STRIDE)], [
+    0, 4, 8, 4, 1, 7, 0, 0,
+  ]);
+  assert.deepEqual([...arena.projectedCounts], [8]);
+  assert.deepEqual([...arena.retainedCounts], [4]);
+});
+
 test("GPU contributor arena WGSL has production count, prefix, and scatter stages rather than inert TODOs", () => {
   const shader = readFileSync(new URL("../../src/shaders/gpu_tile_contributor_arena.wgsl", import.meta.url), "utf8");
 
@@ -148,6 +180,69 @@ function contributor(overrides) {
     retentionWeight: 0.7,
     occlusionWeight: 0.6,
     ...overrides,
+  };
+}
+
+function denseTileCoverage() {
+  const surface = Array.from({ length: 6 }, (_, index) => ({
+    tileIndex: 0,
+    tileX: 0,
+    tileY: 0,
+    splatIndex: index,
+    originalId: 100 + index,
+    coverageWeight: 10 - index * 0.1,
+    retentionWeight: 0.35,
+    occlusionWeight: 0.35,
+    occlusionDensity: 0.08,
+    opacity: 0.08,
+    viewDepth: 0.3 + index * 0.01,
+    viewRank: 1 + index,
+  }));
+  const darkForeground = {
+    tileIndex: 0,
+    tileX: 0,
+    tileY: 0,
+    splatIndex: 6,
+    originalId: 800,
+    coverageWeight: 0.2,
+    retentionWeight: 0.004,
+    occlusionWeight: 0.19,
+    occlusionDensity: 0.95,
+    opacity: 0.95,
+    viewDepth: 0.18,
+    viewRank: 0,
+  };
+  const brightBehind = {
+    tileIndex: 0,
+    tileX: 0,
+    tileY: 0,
+    splatIndex: 7,
+    originalId: 900,
+    coverageWeight: 0.25,
+    retentionWeight: 1.05,
+    occlusionWeight: 0.15,
+    occlusionDensity: 0.6,
+    opacity: 0.6,
+    viewDepth: 0.62,
+    viewRank: 7,
+  };
+
+  return {
+    viewportWidth: 64,
+    viewportHeight: 64,
+    tileSizePx: 64,
+    tileColumns: 1,
+    tileRows: 1,
+    sourceSplatCount: 8,
+    splats: Array.from({ length: 8 }, (_, index) => ({
+      splatIndex: index,
+      originalId: index === 6 ? 800 : index === 7 ? 900 : 100 + index,
+      centerPx: [32, 32],
+      covariancePx: { xx: 16, xy: 0, yy: 16 },
+      tileBounds: { minTileX: 0, minTileY: 0, maxTileX: 0, maxTileY: 0 },
+    })),
+    tileEntries: [...surface, darkForeground, brightBehind],
+    maxRefsPerTile: 4,
   };
 }
 
