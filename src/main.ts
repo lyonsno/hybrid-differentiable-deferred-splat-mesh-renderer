@@ -193,6 +193,7 @@ interface ArenaRuntimeEvidence {
   requestedArenaBackend: "cpu" | "gpu";
   effectiveArenaBackend: "cpu" | "gpu";
   cpuBuildDurationMs?: number;
+  cpuBridgeBuildDurationMs?: number;
   gpuDispatchDurationMs?: number;
   unavailableReason?: string;
   skippedReason?: string;
@@ -705,7 +706,7 @@ async function main() {
     statsText += ` | arena requested: ${arenaRuntime.requestedArenaBackend}`;
     statsText += ` | arena effective: ${arenaRuntime.effectiveArenaBackend}`;
     if (arenaRuntime.cpuBuildDurationMs !== undefined) {
-      statsText += ` | arena CPU build: ${arenaRuntime.cpuBuildDurationMs.toFixed(3)}ms`;
+      statsText += ` | arena CPU bridge build: ${arenaRuntime.cpuBuildDurationMs.toFixed(3)}ms`;
     }
     if (arenaRuntime.gpuDispatchDurationMs !== undefined) {
       statsText += ` | arena GPU dispatch: ${arenaRuntime.gpuDispatchDurationMs.toFixed(3)}ms`;
@@ -1372,6 +1373,9 @@ function buildArenaRuntimeEvidence(
     requestedArenaBackend,
     effectiveArenaBackend,
     cpuBuildDurationMs: typeof cpuBuildDurationMs === "number" && Number.isFinite(cpuBuildDurationMs)
+      ? cpuBuildDurationMs
+      : undefined,
+    cpuBridgeBuildDurationMs: typeof cpuBuildDurationMs === "number" && Number.isFinite(cpuBuildDurationMs)
       ? cpuBuildDurationMs
       : undefined,
     gpuDispatchDurationMs: effectiveArenaBackend === "gpu" ? tileLocalState?.gpuDispatchDurationMs : undefined,
