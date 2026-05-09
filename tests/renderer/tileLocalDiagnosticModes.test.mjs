@@ -138,3 +138,15 @@ test("tile-local diagnostic shader branches are debug-only and preserve final co
   assert.match(shader, /if\s*\(frame\.debugMode\s*==\s*DEBUG_MODE_FINAL_COLOR\)/);
   assert.match(shader, /debug_heatmap_color/);
 });
+
+test("tile-local diagnostic shader uses detail-preserving heatmaps instead of binary saturated blobs", () => {
+  const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
+
+  assert.match(shader, /fn\s+diagnostic_log_heat/);
+  assert.match(shader, /fn\s+diagnostic_contour/);
+  assert.match(shader, /fn\s+tile_coord_stripe/);
+  assert.match(shader, /diagnostic_contour\(coverageWeightSum/);
+  assert.match(shader, /diagnostic_contour\(accumulatedAlpha/);
+  assert.match(shader, /diagnostic_contour\(remainingTransmission/);
+  assert.match(shader, /tile_coord_stripe\(pixelCenter/);
+});

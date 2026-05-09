@@ -64,6 +64,27 @@ fn inverse_conic_radii(conicParam: vec4f) -> vec2f {
   return vec2f(inverseSqrt(lambdaSmall), inverseSqrt(lambdaLarge));
 }
 
+fn diagnostic_log_heat(value: f32, scale: f32) -> f32 {
+  let positive = max(value, 0.0);
+  let positiveScale = max(scale, 1.0);
+  return clamp(log(1.0 + positive * positiveScale) / log(1.0 + positiveScale), 0.0, 1.0);
+}
+
+fn diagnostic_contour(value: f32, frequency: f32) -> f32 {
+  let phase = fract(max(value, 0.0) * max(frequency, 1.0));
+  let centered = abs(phase - 0.5);
+  return 1.0 - smoothstep(0.02, 0.12, centered);
+}
+
+fn tile_coord_stripe(pixelCenter: vec2f) -> f32 {
+  let tileSize = max(frame.tileSizePx, 1.0);
+  let local = fract(pixelCenter / tileSize);
+  let edgeDistance = min(min(local.x, 1.0 - local.x), min(local.y, 1.0 - local.y));
+  let edgeStripe = 1.0 - smoothstep(0.0, 0.08, edgeDistance);
+  let localRamp = fract(local.x * 0.67 + local.y * 0.37);
+  return max(edgeStripe, localRamp * 0.75);
+}
+
 fn debug_heatmap_color(
   debugMode: f32,
   coverageWeightSum: f32,
@@ -72,28 +93,35 @@ fn debug_heatmap_color(
   tileRefCount: u32,
   maxMajorRadiusPx: f32,
   minMinorRadiusPx: f32,
+  pixelCenter: vec2f,
 ) -> vec4f {
   if (debugMode == DEBUG_MODE_COVERAGE_WEIGHT) {
-    let heat = clamp(1.0 - exp(-coverageWeightSum), 0.0, 1.0);
-    return vec4f(heat, heat * 0.55, 1.0 - heat, 1.0);
+    let heat = diagnostic_log_heat(coverageWeightSum, 8.0);
+    let contour = diagnostic_contour(coverageWeightSum, 7.0);
+    return vec4f(heat, max(heat * 0.35, contour), 1.0 - heat * 0.85, 1.0);
   }
   if (debugMode == DEBUG_MODE_ACCUMULATED_ALPHA) {
-    let heat = clamp(accumulatedAlpha, 0.0, 1.0);
-    return vec4f(heat, heat, heat, 1.0);
+    let heat = diagnostic_log_heat(accumulatedAlpha, 5.0);
+    let contour = diagnostic_contour(accumulatedAlpha, 12.0);
+    return vec4f(heat, heat * (0.45 + 0.55 * contour), max(0.12, 1.0 - heat), 1.0);
   }
   if (debugMode == DEBUG_MODE_TRANSMITTANCE) {
     let heat = clamp(remainingTransmission, 0.0, 1.0);
-    return vec4f(heat, heat, 1.0 - heat, 1.0);
+    let contour = diagnostic_contour(remainingTransmission, 12.0);
+    return vec4f(heat, max(heat * 0.35, contour), 1.0 - heat, 1.0);
   }
   if (debugMode == DEBUG_MODE_TILE_REF_COUNT) {
-    let heat = clamp(f32(tileRefCount) / 32.0, 0.0, 1.0);
-    return vec4f(heat, 1.0 - heat, 0.15, 1.0);
+    let heat = diagnostic_log_heat(f32(tileRefCount), 0.1);
+    let stripe = tile_coord_stripe(pixelCenter);
+    return vec4f(max(heat, stripe * 0.55), 1.0 - heat * 0.75, 0.12 + stripe * 0.5, 1.0);
   }
   if (debugMode == DEBUG_MODE_CONIC_SHAPE) {
     let major = clamp(maxMajorRadiusPx / 32.0, 0.0, 1.0);
     let minor = clamp(minMinorRadiusPx / 8.0, 0.0, 1.0);
     let anisotropy = clamp(maxMajorRadiusPx / max(minMinorRadiusPx, 0.000001) / 32.0, 0.0, 1.0);
-    return vec4f(major, minor, anisotropy, 1.0);
+    let support = diagnostic_log_heat(coverageWeightSum, 8.0);
+    let contour = diagnostic_contour(coverageWeightSum, 10.0);
+    return vec4f(max(major * support, contour * 0.35), minor * support, max(anisotropy, contour * 0.5), 1.0);
   }
   return vec4f(0.0, 0.0, 0.0, 1.0);
 }
@@ -221,7 +249,8 @@ fn debug_heatmap_color(
       remainingTransmission,
       refLimit,
       maxMajorRadiusPx,
-      minMinorRadiusPx
+      minMinorRadiusPx,
+      pixelCenter
     )
   );
 }

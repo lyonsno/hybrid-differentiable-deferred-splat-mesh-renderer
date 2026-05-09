@@ -111,6 +111,29 @@ test("tile-local diagnostic classifier reports status labels, overflow reasons, 
   assert.equal(result.metrics.gpuAlphaParamBufferBytes, 1024);
 });
 
+test("tile-local diagnostic classifier rejects saturated low-detail heatmaps", () => {
+  const result = classifyTileLocalDiagnostics({
+    captures: [
+      diagnosticCapture("coverage-weight", { distinctColorCount: 8 }),
+      diagnosticCapture("accumulated-alpha"),
+      diagnosticCapture("transmittance"),
+      diagnosticCapture("tile-ref-count"),
+      diagnosticCapture("conic-shape", { distinctColorCount: 2 }),
+    ],
+  });
+
+  assert.equal(result.closeable, false);
+  assert.deepEqual(
+    result.findings
+      .filter((finding) => finding.kind === "low-detail-diagnostic")
+      .map((finding) => finding.summary),
+    [
+      "coverage-weight exposed only 8 distinct colors; the heatmap is saturated rather than diagnostic.",
+      "conic-shape exposed only 2 distinct colors; the heatmap is saturated rather than diagnostic.",
+    ]
+  );
+});
+
 test("visual smoke CLI exposes a tile-local diagnostics batch mode", () => {
   const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
 

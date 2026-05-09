@@ -12,6 +12,14 @@ const REQUIRED_DIAGNOSTIC_IDS = new Set([
   TILE_LOCAL_DIAGNOSTIC_CAPTURE_IDS.tileRefCount,
 ]);
 
+const MIN_DISTINCT_COLORS_BY_ID = {
+  [TILE_LOCAL_DIAGNOSTIC_CAPTURE_IDS.coverageWeight]: 128,
+  [TILE_LOCAL_DIAGNOSTIC_CAPTURE_IDS.accumulatedAlpha]: 128,
+  [TILE_LOCAL_DIAGNOSTIC_CAPTURE_IDS.transmittance]: 128,
+  [TILE_LOCAL_DIAGNOSTIC_CAPTURE_IDS.tileRefCount]: 16,
+  [TILE_LOCAL_DIAGNOSTIC_CAPTURE_IDS.conicShape]: 64,
+};
+
 export function buildTileLocalDiagnosticPlan(baseUrl) {
   return [
     diagnosticCapture(baseUrl, TILE_LOCAL_DIAGNOSTIC_CAPTURE_IDS.coverageWeight, "Coverage weight heatmap"),
@@ -44,6 +52,14 @@ export function classifyTileLocalDiagnostics({ captures = [] } = {}) {
     }
     if (!diagnostics(capture)) {
       findings.push(finding("missing-compact-diagnostics", `${id} did not expose compact tile-local diagnostics.`));
+    }
+    const distinctColorCount = diagnosticDistinctColorCount(capture);
+    const minDistinctColorCount = MIN_DISTINCT_COLORS_BY_ID[id] ?? 0;
+    if (distinctColorCount < minDistinctColorCount) {
+      findings.push(finding(
+        "low-detail-diagnostic",
+        `${id} exposed only ${distinctColorCount} distinct colors; the heatmap is saturated rather than diagnostic.`
+      ));
     }
   }
 
@@ -132,6 +148,10 @@ function tileRefs(capture = {}) {
 
 function diagnostics(capture = {}) {
   return capture.pageEvidence?.tileLocal?.diagnostics ?? capture.pageEvidence?.tileLocalDiagnostics;
+}
+
+function diagnosticDistinctColorCount(capture = {}) {
+  return finiteNumber(capture.imageAnalysis?.distinctColorCount) ?? 0;
 }
 
 function tileLocalEvidence(capture = {}) {
