@@ -1,7 +1,9 @@
 import { mat4, vec3 } from "./math.js";
 
 export const ORBIT_RADIANS_PER_PIXEL = 0.005;
-export const MAX_ORBIT_ELEVATION = Math.PI * 0.44;
+export const MAX_ORBIT_ELEVATION = Math.PI * 0.48;
+export const ZOOM_FACTOR_PER_WHEEL_UNIT = 0.12;
+export const MIN_DISTANCE_FRACTION = 0.002;
 
 export interface Camera {
   position: vec3;
@@ -17,7 +19,7 @@ export interface Camera {
   distance: number;
   // Input state
   keys: Set<string>;
-  mouse: { down: boolean; lastX: number; lastY: number };
+  mouse: { down: boolean; button: number; lastX: number; lastY: number; shiftKey: boolean };
 }
 
 export function createCamera(): Camera {
@@ -33,7 +35,7 @@ export function createCamera(): Camera {
     elevation: 0.3,
     distance: 3,
     keys: new Set(),
-    mouse: { down: false, lastX: 0, lastY: 0 },
+    mouse: { down: false, button: 0, lastX: 0, lastY: 0, shiftKey: false },
   };
 }
 
@@ -44,8 +46,10 @@ export function bindCameraControls(
 ) {
   canvas.addEventListener("mousedown", (e) => {
     cam.mouse.down = true;
+    cam.mouse.button = e.button;
     cam.mouse.lastX = e.clientX;
     cam.mouse.lastY = e.clientY;
+    cam.mouse.shiftKey = e.shiftKey;
     requestRender();
   });
 
@@ -60,20 +64,27 @@ export function bindCameraControls(
     const dy = e.clientY - cam.mouse.lastY;
     cam.mouse.lastX = e.clientX;
     cam.mouse.lastY = e.clientY;
-    rotateCameraView(cam, dx, dy);
+    const isPan = cam.mouse.button === 1 || cam.mouse.shiftKey || e.shiftKey;
+    if (isPan) {
+      const rect = canvas.getBoundingClientRect();
+      const width = rect.width || canvas.clientWidth || 1;
+      const height = rect.height || canvas.clientHeight || 1;
+      panCamera(cam, dx, dy, width / height);
+    } else {
+      rotateCameraView(cam, dx, dy);
+    }
     requestRender();
   });
 
   canvas.addEventListener("wheel", (e) => {
     e.preventDefault();
-    const rect = canvas.getBoundingClientRect();
-    const width = rect.width || canvas.clientWidth || 1;
-    const height = rect.height || canvas.clientHeight || 1;
-    const ndcX = ((e.clientX - rect.left) / width) * 2 - 1;
-    const ndcY = 1 - ((e.clientY - rect.top) / height) * 2;
-    zoomCameraToCursorProjection(cam, ndcX, ndcY, width / height, e.deltaY);
+    zoomCameraExponential(cam, e.deltaY);
     requestRender();
   }, { passive: false });
+
+  canvas.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+  });
 
   window.addEventListener("keydown", (e) => {
     cam.keys.add(e.key.toLowerCase());
@@ -87,46 +98,38 @@ export function bindCameraControls(
 
 export function updateCamera(cam: Camera, dt: number) {
   const speed = cameraMoveSpeed(cam) * dt;
-  const { forward, right, trueUp } = cameraBasis(cam);
-  const movement: vec3 = [0, 0, 0];
+  const { right, trueUp, forward } = cameraBasis(cam);
+  let moved = false;
 
-  // Free-fly navigation keeps the camera eye authoritative. The target is only
-  // the current look point, so loaded scans cannot impose a hostile pivot.
+  // WASD/QE translate the target (orbit pivot) so orbit stays coherent
   if (cam.keys.has("w")) {
-    movement[0] += forward[0] * speed;
-    movement[1] += forward[1] * speed;
-    movement[2] += forward[2] * speed;
+    translateTarget(cam, forward, speed);
+    moved = true;
   }
   if (cam.keys.has("s")) {
-    movement[0] -= forward[0] * speed;
-    movement[1] -= forward[1] * speed;
-    movement[2] -= forward[2] * speed;
+    translateTarget(cam, forward, -speed);
+    moved = true;
   }
   if (cam.keys.has("a")) {
-    movement[0] -= right[0] * speed;
-    movement[1] -= right[1] * speed;
-    movement[2] -= right[2] * speed;
+    translateTarget(cam, right, -speed);
+    moved = true;
   }
   if (cam.keys.has("d")) {
-    movement[0] += right[0] * speed;
-    movement[1] += right[1] * speed;
-    movement[2] += right[2] * speed;
+    translateTarget(cam, right, speed);
+    moved = true;
   }
   if (cam.keys.has("q")) {
-    movement[0] -= trueUp[0] * speed;
-    movement[1] -= trueUp[1] * speed;
-    movement[2] -= trueUp[2] * speed;
+    translateTarget(cam, trueUp, -speed);
+    moved = true;
   }
   if (cam.keys.has("e")) {
-    movement[0] += trueUp[0] * speed;
-    movement[1] += trueUp[1] * speed;
-    movement[2] += trueUp[2] * speed;
+    translateTarget(cam, trueUp, speed);
+    moved = true;
   }
 
-  cam.position[0] += movement[0];
-  cam.position[1] += movement[1];
-  cam.position[2] += movement[2];
-  syncCameraTargetFromPosition(cam);
+  if (moved) {
+    positionCameraFromTarget(cam);
+  }
 }
 
 export function cameraHasActiveInput(cam: Camera): boolean {
@@ -149,46 +152,29 @@ export function rotateCameraView(cam: Camera, dx: number, dy: number): void {
     -MAX_ORBIT_ELEVATION,
     MAX_ORBIT_ELEVATION
   );
+  positionCameraFromTarget(cam);
 }
 
-export function zoomCameraToCursorProjection(
-  cam: Camera,
-  ndcX: number,
-  ndcY: number,
-  aspect: number,
-  deltaY: number
-): void {
-  const oldDistance = cam.distance;
-  const newDistance = computeWheelZoomDistance(
-    oldDistance,
-    deltaY,
-    cam.navigationScale
-  );
-  if (newDistance === oldDistance) {
-    return;
-  }
+export function panCamera(cam: Camera, dx: number, dy: number, aspect: number): void {
+  const { right, trueUp } = cameraBasis(cam);
+  const halfHeight = cam.distance * Math.tan(cam.fovY / 2);
+  const halfWidth = halfHeight * Math.max(aspect, 0.001);
+  // Scale so dragging across the full viewport moves ~2x the visible extent
+  const panX = -dx * halfWidth * 0.004;
+  const panY = dy * halfHeight * 0.004;
+  cam.target[0] += right[0] * panX + trueUp[0] * panY;
+  cam.target[1] += right[1] * panX + trueUp[1] * panY;
+  cam.target[2] += right[2] * panX + trueUp[2] * panY;
+  positionCameraFromTarget(cam);
+}
 
-  const oldOffset = screenPlaneOffset(cam, ndcX, ndcY, aspect, oldDistance);
-  const newOffset = screenPlaneOffset(cam, ndcX, ndcY, aspect, newDistance);
-  const { forward } = cameraBasis(cam);
-  const cursorPoint: vec3 = [
-    cam.position[0] + forward[0] * oldDistance + oldOffset[0],
-    cam.position[1] + forward[1] * oldDistance + oldOffset[1],
-    cam.position[2] + forward[2] * oldDistance + oldOffset[2],
-  ];
-  const nextTarget: vec3 = [
-    cursorPoint[0] - newOffset[0],
-    cursorPoint[1] - newOffset[1],
-    cursorPoint[2] - newOffset[2],
-  ];
-  cam.distance = newDistance;
-  cam.position = [
-    nextTarget[0] - forward[0] * newDistance,
-    nextTarget[1] - forward[1] * newDistance,
-    nextTarget[2] - forward[2] * newDistance,
-  ];
-  cam.target = nextTarget;
-  updateCamera(cam, 0);
+export function zoomCameraExponential(cam: Camera, deltaY: number): void {
+  if (!Number.isFinite(deltaY) || deltaY === 0) return;
+  const wheelUnits = clamp(deltaY / 100, -5, 5);
+  const factor = Math.exp(wheelUnits * ZOOM_FACTOR_PER_WHEEL_UNIT);
+  const minDistance = Math.max(0.001, cam.navigationScale * MIN_DISTANCE_FRACTION);
+  cam.distance = Math.max(minDistance, cam.distance * factor);
+  positionCameraFromTarget(cam);
 }
 
 export function computeWheelZoomDistance(
@@ -202,19 +188,14 @@ export function computeWheelZoomDistance(
   if (!Number.isFinite(deltaY) || deltaY === 0) {
     return distance;
   }
-
-  const scale = Math.max(navigationScale, 0.001);
-  const wheelUnits = Math.max(-5, Math.min(5, deltaY / 100));
-  const signedStep =
-    Math.sign(wheelUnits) *
-    Math.abs(wheelUnits) *
-    (distance * 0.16 + scale * 0.025);
-  const minDistance = Math.max(0.01, scale * 0.004);
-  return Math.max(minDistance, distance + signedStep);
+  const wheelUnits = clamp(deltaY / 100, -5, 5);
+  const factor = Math.exp(wheelUnits * ZOOM_FACTOR_PER_WHEEL_UNIT);
+  const minDistance = Math.max(0.001, Math.max(navigationScale, 0.001) * MIN_DISTANCE_FRACTION);
+  return Math.max(minDistance, distance * factor);
 }
 
 export function cameraMoveSpeed(cam: Camera): number {
-  return Math.max(0.05, cam.distance * 0.65, cam.navigationScale * 0.35);
+  return Math.max(0.05, cam.distance * 0.5, cam.navigationScale * 0.25);
 }
 
 export function screenPlaneOffset(
@@ -252,13 +233,10 @@ export function cameraBasis(cam: Camera): { forward: vec3; right: vec3; trueUp: 
   return { forward, right, trueUp };
 }
 
-function syncCameraTargetFromPosition(cam: Camera): void {
-  const { forward } = cameraBasis(cam);
-  cam.target = [
-    cam.position[0] + forward[0] * cam.distance,
-    cam.position[1] + forward[1] * cam.distance,
-    cam.position[2] + forward[2] * cam.distance,
-  ];
+function translateTarget(cam: Camera, axis: vec3, amount: number): void {
+  cam.target[0] += axis[0] * amount;
+  cam.target[1] += axis[1] * amount;
+  cam.target[2] += axis[2] * amount;
 }
 
 function cameraBackVector(cam: Camera): vec3 {
