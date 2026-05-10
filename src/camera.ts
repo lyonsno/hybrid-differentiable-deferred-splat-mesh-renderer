@@ -69,7 +69,7 @@ export function bindCameraControls(
       const rect = canvas.getBoundingClientRect();
       const width = rect.width || canvas.clientWidth || 1;
       const height = rect.height || canvas.clientHeight || 1;
-      panCamera(cam, dx, dy, width / height);
+      panCamera(cam, dx, dy, width, height);
     } else {
       rotateCameraView(cam, dx, dy);
     }
@@ -155,13 +155,15 @@ export function rotateCameraView(cam: Camera, dx: number, dy: number): void {
   positionCameraFromTarget(cam);
 }
 
-export function panCamera(cam: Camera, dx: number, dy: number, aspect: number): void {
+export function panCamera(cam: Camera, dx: number, dy: number, viewportWidth: number, viewportHeight: number): void {
   const { right, trueUp } = cameraBasis(cam);
+  const width = Math.max(Number.isFinite(viewportWidth) ? viewportWidth : 1, 1);
+  const height = Math.max(Number.isFinite(viewportHeight) ? viewportHeight : 1, 1);
+  const aspect = width / height;
   const halfHeight = cam.distance * Math.tan(cam.fovY / 2);
-  const halfWidth = halfHeight * Math.max(aspect, 0.001);
-  // Scale so dragging across the full viewport moves ~2x the visible extent
-  const panX = -dx * halfWidth * 0.004;
-  const panY = dy * halfHeight * 0.004;
+  const halfWidth = halfHeight * aspect;
+  const panX = -(dx / width) * halfWidth * 2;
+  const panY = (dy / height) * halfHeight * 2;
   cam.target[0] += right[0] * panX + trueUp[0] * panY;
   cam.target[1] += right[1] * panX + trueUp[1] * panY;
   cam.target[2] += right[2] * panX + trueUp[2] * panY;

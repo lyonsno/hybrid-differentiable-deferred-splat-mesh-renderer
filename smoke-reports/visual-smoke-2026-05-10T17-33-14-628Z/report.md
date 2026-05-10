@@ -1,0 +1,145 @@
+# Static Dessert Witness Report
+
+- Status: PASS
+- Generated: 2026-05-10T17:33:14.641Z
+- Base URL: http://127.0.0.1:61623/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible
+- Analysis JSON: `analysis.json`
+
+## Fixed View
+
+- Asset path: /smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json
+- Viewport: 3456x1804
+- Tile grid: 216x113
+- Total tile refs: 2360150
+- Max tile refs per tile: 256
+- Projected tile refs before cap: 2360150
+- Retained tile refs after cap: 2360150
+- Evicted tile refs by cap: 0
+- Capped tiles: 0
+- Saturated retained tiles: 0
+- Max projected refs per tile: 94406
+- Header accounting matches retained refs: true
+- Retention audit full frame: current 0 refs vs legacy 0; policy added 0, dropped 0
+- Porous body retention audit: projected 0, current 0, legacy 0; capped tiles 0; policy added 0, dropped 0
+- Center leak band retention audit: projected 0, current 0, legacy 0; policy added 0, dropped 0
+- Plate renderer label: plate
+- Tile-local renderer label: tile-local-visible-gaussian-compositor
+- Plate/tile-local same asset: true
+- Plate/tile-local same viewport: true
+- Plate changed pixels: 25.289%
+- Tile-local changed pixels: 13.398%
+- Tile-local/plate changed-pixel ratio: 0.5297848171354744 (max 2)
+- Rim crop source centers: 5735
+- Rim crop projected support splats: 7391
+- Rim crop near-floor minor splats: 422
+- Rim crop source sample IDs: 534, 535, 552, 554, 562, 569, 570, 574, 575, 579, 580, 581
+- Porous body source centers: 1416
+- Porous body projected support splats: 2332
+- Porous body near-floor minor splats: 85
+- Porous body source sample IDs: 734, 735, 739, 740, 741, 742, 753, 754, 764, 767, 772, 773
+- Estimated max accumulated alpha: 1
+- Estimated min transmittance: 0
+- Max conic major radius px: 1
+- Min conic minor radius px: 1
+- Max conic anisotropy: 1
+
+## Captures
+
+### Plate baseline final color
+
+- URL: http://127.0.0.1:61623/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu
+- Screenshot: `plate-final-color.png`
+- Renderer label: plate
+- Tile refs: 0
+- Debug mode: final-color
+- Nonblank: true
+- Changed pixels: 1576659 / 6234624 (25.289%)
+
+### Final color tile-local visible compositor
+
+- URL: http://127.0.0.1:61623/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible
+- Screenshot: `final-color.png`
+- Renderer label: tile-local-visible-gaussian-compositor
+- Tile refs: 2360150
+- Debug mode: final-color
+- Nonblank: true
+- Changed pixels: 835290 / 6234624 (13.398%)
+
+### Coverage weight heatmap
+
+- URL: http://127.0.0.1:61623/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible&tileDebug=coverage-weight
+- Screenshot: `coverage-weight.png`
+- Renderer label: tile-local-visible-debug-coverage-weight
+- Tile refs: 2360150
+- Debug mode: coverage-weight
+- Nonblank: true
+- Changed pixels: 974805 / 6234624 (15.635%)
+
+### Accumulated alpha heatmap
+
+- URL: http://127.0.0.1:61623/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible&tileDebug=accumulated-alpha
+- Screenshot: `accumulated-alpha.png`
+- Renderer label: tile-local-visible-debug-accumulated-alpha
+- Tile refs: 2360150
+- Debug mode: accumulated-alpha
+- Nonblank: true
+- Changed pixels: 940354 / 6234624 (15.083%)
+
+### Transmittance heatmap
+
+- URL: http://127.0.0.1:61623/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible&tileDebug=transmittance
+- Screenshot: `transmittance.png`
+- Renderer label: tile-local-visible-debug-transmittance
+- Tile refs: 2360150
+- Debug mode: transmittance
+- Nonblank: true
+- Changed pixels: 913158 / 6234624 (14.647%)
+
+### Tile-ref density heatmap
+
+- URL: http://127.0.0.1:61623/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible&tileDebug=tile-ref-count
+- Screenshot: `tile-ref-count.png`
+- Renderer label: tile-local-visible-debug-tile-ref-count
+- Tile refs: 2360150
+- Debug mode: tile-ref-count
+- Nonblank: true
+- Changed pixels: 4402876 / 6234624 (70.620%)
+
+### Conic major/minor shape heatmap
+
+- URL: http://127.0.0.1:61623/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible&tileDebug=conic-shape
+- Screenshot: `conic-shape.png`
+- Renderer label: tile-local-visible-debug-conic-shape
+- Tile refs: 2360150
+- Debug mode: conic-shape
+- Nonblank: true
+- Changed pixels: 965480 / 6234624 (15.486%)
+
+
+## Observation Boundaries
+
+### Visible holes
+
+- Status: captured-for-review
+- Evidence IDs: final-color, coverage-weight, conic-shape
+- Boundary: Porous/non-square final-color gaps are witnessed separately from tile-ref density and alpha transfer.
+
+### Plate seepage
+
+- Status: captured-for-review
+- Evidence IDs: final-color, accumulated-alpha, transmittance
+- Boundary: Plate/background seepage is witnessed through final color plus alpha/transmittance debug modes, not by opacity tuning.
+
+### High-viewport budget skip
+
+- Status: separate-high-viewport-observation
+- Boundary: High-viewport stale/cached-frame skips are not collapsed into the fixed 1280x720 final-color artifact.
+- Repro: Run the same smoke URL at a high viewport such as 3456x1916 and capture overlay text containing `tile-local skipped: projected tile refs exceed budget`.
+
+## Findings
+
+- None
+
+## Summary
+
+PASS: static dessert final color and debug witnesses share one asset, viewport, and tile grid.

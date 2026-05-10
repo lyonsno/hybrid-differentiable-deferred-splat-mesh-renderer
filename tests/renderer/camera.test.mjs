@@ -121,7 +121,7 @@ test("pan translates both target and position equally", () => {
   const beforePosition = [...cam.position];
   const beforeDistance = cam.distance;
 
-  panCamera(cam, 50, 30, 16 / 9);
+  panCamera(cam, 50, 30, 1920, 1080);
 
   // Distance unchanged
   assert.equal(cam.distance, beforeDistance);
@@ -134,6 +134,23 @@ test("pan translates both target and position equally", () => {
     cam.position.map((v) => Number(v.toFixed(4))),
     beforePosition.map((v) => Number(v.toFixed(4)))
   );
+});
+
+test("pan is normalized by viewport size on high-resolution smoke viewports", () => {
+  const cam = createCamera();
+  cam.target = [0, 0, 0];
+  cam.azimuth = 0;
+  cam.elevation = 0;
+  cam.distance = 4;
+  positionCameraFromTarget(cam);
+
+  panCamera(cam, 3456, 0, 3456, 1804);
+
+  const halfHeight = cam.distance * Math.tan(cam.fovY / 2);
+  const halfWidth = halfHeight * (3456 / 1804);
+  assert.ok(Math.abs(cam.target[0] + halfWidth * 2) < 0.001);
+  assert.ok(Math.abs(cam.target[1]) < 0.001);
+  assert.ok(Math.abs(cam.target[2]) < 0.001);
 });
 
 test("WASD moves the orbit pivot (target), keeping distance constant", () => {
