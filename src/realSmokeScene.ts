@@ -185,6 +185,7 @@ declare global {
 export function configureCameraForSplatBounds(camera: Camera, bounds: SplatBounds): void {
   const framing = framingFromBounds(bounds, { padding: 1.45 });
   camera.target = [...framing.target];
+  camera.panOffset = [0, 0, 0];
   camera.distance = framing.distance;
   camera.navigationScale = Math.max(bounds.radius, 0.1);
   camera.near = framing.near;
@@ -212,6 +213,7 @@ export function applyRealScaniverseWitnessView(
     bounds.center[1] + radius * DESSERT_CLOSE_TARGET_Y_OFFSET,
     bounds.center[2],
   ];
+  camera.panOffset = [0, 0, 0];
   camera.distance = radius * DESSERT_CLOSE_DISTANCE_SCALE;
   camera.navigationScale = radius;
   camera.azimuth = 0;

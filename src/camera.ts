@@ -8,6 +8,7 @@ export const MIN_DISTANCE_FRACTION = 0.002;
 export interface Camera {
   position: vec3;
   target: vec3;
+  panOffset: vec3;
   up: vec3;
   fovY: number;
   near: number;
@@ -26,6 +27,7 @@ export function createCamera(): Camera {
   return {
     position: [0, 1, 3],
     target: [0, 0, 0],
+    panOffset: [0, 0, 0],
     up: [0, 1, 0],
     fovY: Math.PI / 3,
     near: 0.01,
@@ -76,11 +78,20 @@ export function bindCameraControls(
     requestRender();
   });
 
-  canvas.addEventListener("wheel", (e) => {
-    e.preventDefault();
-    zoomCameraExponential(cam, e.deltaY);
-    requestRender();
-  }, { passive: false });
+  canvas.addEventListener(
+    "wheel",
+    (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const width = rect.width || canvas.clientWidth || 1;
+      const height = rect.height || canvas.clientHeight || 1;
+      const ndcX = ((e.clientX - rect.left) / width) * 2 - 1;
+      const ndcY = 1 - ((e.clientY - rect.top) / height) * 2;
+      zoomCameraToCursorProjection(cam, ndcX, ndcY, width / height, e.deltaY);
+      requestRender();
+    },
+    { passive: false }
+  );
 
   canvas.addEventListener("contextmenu", (e) => {
     e.preventDefault();
@@ -137,11 +148,12 @@ export function cameraHasActiveInput(cam: Camera): boolean {
 }
 
 export function positionCameraFromTarget(cam: Camera): void {
+  const panOffset = ensurePanOffset(cam);
   const back = cameraBackVector(cam);
   cam.position = [
-    cam.target[0] + back[0] * cam.distance,
-    cam.target[1] + back[1] * cam.distance,
-    cam.target[2] + back[2] * cam.distance,
+    cam.target[0] + panOffset[0] + back[0] * cam.distance,
+    cam.target[1] + panOffset[1] + back[1] * cam.distance,
+    cam.target[2] + panOffset[2] + back[2] * cam.distance,
   ];
 }
 
@@ -164,9 +176,10 @@ export function panCamera(cam: Camera, dx: number, dy: number, viewportWidth: nu
   const halfWidth = halfHeight * aspect;
   const panX = -(dx / width) * halfWidth * 2;
   const panY = (dy / height) * halfHeight * 2;
-  cam.target[0] += right[0] * panX + trueUp[0] * panY;
-  cam.target[1] += right[1] * panX + trueUp[1] * panY;
-  cam.target[2] += right[2] * panX + trueUp[2] * panY;
+  const panOffset = ensurePanOffset(cam);
+  panOffset[0] += right[0] * panX + trueUp[0] * panY;
+  panOffset[1] += right[1] * panX + trueUp[1] * panY;
+  panOffset[2] += right[2] * panX + trueUp[2] * panY;
   positionCameraFromTarget(cam);
 }
 
@@ -176,6 +189,32 @@ export function zoomCameraExponential(cam: Camera, deltaY: number): void {
   const factor = Math.exp(wheelUnits * ZOOM_FACTOR_PER_WHEEL_UNIT);
   const minDistance = Math.max(0.001, cam.navigationScale * MIN_DISTANCE_FRACTION);
   cam.distance = Math.max(minDistance, cam.distance * factor);
+  positionCameraFromTarget(cam);
+}
+
+export function zoomCameraToCursorProjection(
+  cam: Camera,
+  ndcX: number,
+  ndcY: number,
+  aspect: number,
+  deltaY: number
+): void {
+  if (!Number.isFinite(deltaY) || deltaY === 0) return;
+  if (!Number.isFinite(aspect) || aspect <= 0) {
+    throw new RangeError("camera aspect must be a positive finite number");
+  }
+
+  const oldDistance = cam.distance;
+  const newDistance = computeWheelZoomDistance(cam.distance, deltaY, cam.navigationScale);
+  if (newDistance === oldDistance) return;
+
+  const oldCursorOffset = screenPlaneOffset(cam, ndcX, ndcY, aspect, oldDistance);
+  const newCursorOffset = screenPlaneOffset(cam, ndcX, ndcY, aspect, newDistance);
+  const panOffset = ensurePanOffset(cam);
+  panOffset[0] += oldCursorOffset[0] - newCursorOffset[0];
+  panOffset[1] += oldCursorOffset[1] - newCursorOffset[1];
+  panOffset[2] += oldCursorOffset[2] - newCursorOffset[2];
+  cam.distance = newDistance;
   positionCameraFromTarget(cam);
 }
 
@@ -239,6 +278,13 @@ function translateTarget(cam: Camera, axis: vec3, amount: number): void {
   cam.target[0] += axis[0] * amount;
   cam.target[1] += axis[1] * amount;
   cam.target[2] += axis[2] * amount;
+}
+
+function ensurePanOffset(cam: Camera): vec3 {
+  if (!cam.panOffset) {
+    cam.panOffset = [0, 0, 0];
+  }
+  return cam.panOffset;
 }
 
 function cameraBackVector(cam: Camera): vec3 {

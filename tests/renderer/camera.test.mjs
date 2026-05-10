@@ -13,6 +13,7 @@ import {
   screenPlaneOffset,
   updateCamera,
   zoomCameraExponential,
+  zoomCameraToCursorProjection,
 } from "../../node_modules/.cache/renderer-tests/src/camera.js";
 
 test("exponential zoom feels uniform regardless of distance", () => {
@@ -110,7 +111,7 @@ test("drag rotation orbits around the target (target stays fixed, position moves
   );
 });
 
-test("pan translates both target and position equally", () => {
+test("pan moves the view offset without mutating the durable orbit target", () => {
   const cam = createCamera();
   cam.target = [5, 1, -2];
   cam.azimuth = 0;
@@ -119,16 +120,21 @@ test("pan translates both target and position equally", () => {
   positionCameraFromTarget(cam);
   const beforeTarget = [...cam.target];
   const beforePosition = [...cam.position];
+  const beforePanOffset = [...cam.panOffset];
   const beforeDistance = cam.distance;
 
   panCamera(cam, 50, 30, 1920, 1080);
 
   // Distance unchanged
   assert.equal(cam.distance, beforeDistance);
-  // Both moved
-  assert.notDeepEqual(
+  // The orbit pivot stays fixed while the view offset carries the pan.
+  assert.deepEqual(
     cam.target.map((v) => Number(v.toFixed(4))),
     beforeTarget.map((v) => Number(v.toFixed(4)))
+  );
+  assert.notDeepEqual(
+    cam.panOffset.map((v) => Number(v.toFixed(4))),
+    beforePanOffset.map((v) => Number(v.toFixed(4)))
   );
   assert.notDeepEqual(
     cam.position.map((v) => Number(v.toFixed(4))),
@@ -148,9 +154,36 @@ test("pan is normalized by viewport size on high-resolution smoke viewports", ()
 
   const halfHeight = cam.distance * Math.tan(cam.fovY / 2);
   const halfWidth = halfHeight * (3456 / 1804);
-  assert.ok(Math.abs(cam.target[0] + halfWidth * 2) < 0.001);
+  assert.ok(Math.abs(cam.panOffset[0] + halfWidth * 2) < 0.001);
+  assert.ok(Math.abs(cam.panOffset[1]) < 0.001);
+  assert.ok(Math.abs(cam.panOffset[2]) < 0.001);
   assert.ok(Math.abs(cam.target[1]) < 0.001);
   assert.ok(Math.abs(cam.target[2]) < 0.001);
+});
+
+test("cursor-projected zoom preserves the target-plane point under the cursor", () => {
+  const cam = createCamera();
+  cam.target = [2, 1, -3];
+  cam.azimuth = 0.35;
+  cam.elevation = 0.2;
+  cam.distance = 6;
+  positionCameraFromTarget(cam);
+
+  const ndcX = 0.45;
+  const ndcY = -0.3;
+  const aspect = 16 / 9;
+  const beforeOffset = screenPlaneOffset(cam, ndcX, ndcY, aspect);
+  const beforeCursorPoint = cam.target.map((value, index) => value + cam.panOffset[index] + beforeOffset[index]);
+
+  zoomCameraToCursorProjection(cam, ndcX, ndcY, aspect, -140);
+
+  const afterOffset = screenPlaneOffset(cam, ndcX, ndcY, aspect);
+  const afterCursorPoint = cam.target.map((value, index) => value + cam.panOffset[index] + afterOffset[index]);
+  assert.ok(cam.distance < 6);
+  assert.deepEqual(
+    afterCursorPoint.map((v) => Number(v.toFixed(5))),
+    beforeCursorPoint.map((v) => Number(v.toFixed(5)))
+  );
 });
 
 test("WASD moves the orbit pivot (target), keeping distance constant", () => {
