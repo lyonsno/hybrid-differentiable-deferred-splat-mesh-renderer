@@ -12,6 +12,7 @@ import {
   getViewMatrix,
   updateCamera,
 } from "./camera.js";
+import { handleDoubleClickPivot } from "./clickToPivot.js";
 import { createStorageBuffer, createTexture2D, createUniformBuffer } from "./buffers.js";
 import {
   buildDeterministicGpuTileProjectionRetentionArena,
@@ -239,7 +240,13 @@ async function main() {
       requestAnimationFrame(frame);
     }
   };
-  bindCameraControls(cam, canvas, requestFrame);
+  bindCameraControls(cam, canvas, {
+    requestRender: requestFrame,
+    onDoubleClick(clickX, clickY, viewportWidth, viewportHeight) {
+      if (!activeScene) return;
+      handleDoubleClickPivot(cam, activeScene.attributes, clickX, clickY, viewportWidth, viewportHeight);
+    },
+  });
   window.addEventListener("resize", requestFrame);
 
   const ts = createTimestamps(gpu.device, gpu.timestampsSupported);

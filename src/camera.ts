@@ -41,11 +41,21 @@ export function createCamera(): Camera {
   };
 }
 
+export interface CameraControlOptions {
+  requestRender?: () => void;
+  onDoubleClick?: (clickX: number, clickY: number, viewportWidth: number, viewportHeight: number) => void;
+}
+
 export function bindCameraControls(
   cam: Camera,
   canvas: HTMLCanvasElement,
-  requestRender: () => void = () => {}
+  requestRenderOrOptions: (() => void) | CameraControlOptions = () => {}
 ) {
+  const options: CameraControlOptions = typeof requestRenderOrOptions === "function"
+    ? { requestRender: requestRenderOrOptions }
+    : requestRenderOrOptions;
+  const requestRender = options.requestRender ?? (() => {});
+  const onDoubleClick = options.onDoubleClick;
   canvas.addEventListener("mousedown", (e) => {
     cam.mouse.down = true;
     cam.mouse.button = e.button;
@@ -95,6 +105,17 @@ export function bindCameraControls(
 
   canvas.addEventListener("contextmenu", (e) => {
     e.preventDefault();
+  });
+
+  canvas.addEventListener("dblclick", (e) => {
+    if (!onDoubleClick) return;
+    const rect = canvas.getBoundingClientRect();
+    const width = rect.width || canvas.clientWidth || 1;
+    const height = rect.height || canvas.clientHeight || 1;
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+    onDoubleClick(clickX, clickY, width, height);
+    requestRender();
   });
 
   window.addEventListener("keydown", (e) => {
