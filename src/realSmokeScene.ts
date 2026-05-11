@@ -19,8 +19,10 @@ const STATIC_DESSERT_RIM_BAND_CROP = { x: 390, y: 322, width: 500, height: 115 }
 const STATIC_DESSERT_POROUS_BODY_CROP = { x: 520, y: 270, width: 260, height: 150 } as const;
 const DESSERT_CLOSE_DISTANCE_SCALE = 1.25;
 const DESSERT_CLOSE_TARGET_Y_OFFSET = -0.08;
+const DESSERT_POROUS_CLOSE_DISTANCE_SCALE = 0.72;
+const DESSERT_POROUS_CLOSE_TARGET_Y_OFFSET = -0.14;
 
-export type RealScaniverseWitnessViewMode = "default" | "dessert-close";
+export type RealScaniverseWitnessViewMode = "default" | "dessert-close" | "dessert-porous-close";
 
 const VIEWER_VERTICAL_FLIP = new Float32Array([
   1, 0, 0, 0,
@@ -203,18 +205,35 @@ export function applyRealScaniverseWitnessView(
   if (mode === "default") {
     return;
   }
-  if (mode !== "dessert-close") {
+
+  if (mode === "dessert-close") {
+    const radius = Math.max(bounds.radius, 0.001);
+    camera.target = [
+      bounds.center[0],
+      bounds.center[1] + radius * DESSERT_CLOSE_TARGET_Y_OFFSET,
+      bounds.center[2],
+    ];
+    camera.panOffset = [0, 0, 0];
+    camera.distance = radius * DESSERT_CLOSE_DISTANCE_SCALE;
+    camera.navigationScale = radius;
+    camera.azimuth = 0;
+    camera.elevation = 0.18;
+    positionCameraFromTarget(camera);
+    return;
+  }
+
+  if (mode !== "dessert-porous-close") {
     throw new Error(`Unknown real Scaniverse witness view: ${mode}`);
   }
 
   const radius = Math.max(bounds.radius, 0.001);
   camera.target = [
     bounds.center[0],
-    bounds.center[1] + radius * DESSERT_CLOSE_TARGET_Y_OFFSET,
+    bounds.center[1] + radius * DESSERT_POROUS_CLOSE_TARGET_Y_OFFSET,
     bounds.center[2],
   ];
   camera.panOffset = [0, 0, 0];
-  camera.distance = radius * DESSERT_CLOSE_DISTANCE_SCALE;
+  camera.distance = radius * DESSERT_POROUS_CLOSE_DISTANCE_SCALE;
   camera.navigationScale = radius;
   camera.azimuth = 0;
   camera.elevation = 0.18;

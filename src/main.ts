@@ -1584,7 +1584,10 @@ function selectedTileLocalDebugMode(): GpuTileCoverageDebugMode {
 function selectedRealScaniverseWitnessViewMode(): RealScaniverseWitnessViewMode {
   const params = new URLSearchParams(window.location.search);
   const requested = params.get("witnessView") ?? params.get("view");
-  return requested === "dessert-close" ? "dessert-close" : "default";
+  if (requested === "dessert-close" || requested === "dessert-porous-close") {
+    return requested;
+  }
+  return "default";
 }
 
 function selectedTileLocalUnsafeMode(): boolean {
