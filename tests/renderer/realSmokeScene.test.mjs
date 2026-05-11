@@ -110,6 +110,37 @@ test("dessert-close witness view zooms into the same real Scaniverse bounds dete
   ]);
 });
 
+test("dessert-porous-close witness view keeps lacunar underfill observable at high zoom", () => {
+  const camera = {
+    position: [0, 1, 3],
+    target: [0, 0, 0],
+    up: [0, 1, 0],
+    fovY: Math.PI / 3,
+    near: 0.01,
+    far: 100,
+    navigationScale: 1,
+    azimuth: 1,
+    elevation: 1,
+    distance: 3,
+    keys: new Set(),
+    mouse: { down: false, lastX: 0, lastY: 0 },
+  };
+
+  configureCameraForSplatBounds(camera, attributes.bounds);
+  const defaultDistance = camera.distance;
+  applyRealScaniverseWitnessView(camera, attributes.bounds, "dessert-porous-close");
+
+  assert.equal(camera.azimuth, 0);
+  assert.equal(camera.elevation, 0.18);
+  assert.equal(camera.navigationScale, attributes.bounds.radius);
+  assert.ok(camera.distance < defaultDistance * 0.65);
+  assert.deepEqual(camera.target, [
+    attributes.bounds.center[0],
+    attributes.bounds.center[1] - attributes.bounds.radius * 0.14,
+    attributes.bounds.center[2],
+  ]);
+});
+
 test("first-smoke presentation flips the viewer vertical axis", () => {
   const identity = new Float32Array([
     1, 0, 0, 0,

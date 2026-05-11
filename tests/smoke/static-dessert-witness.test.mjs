@@ -68,6 +68,22 @@ test("static dessert witness plan preserves the close-up witness view across fin
   );
 });
 
+test("static dessert witness plan preserves the porous underfill witness view across final and debug captures", () => {
+  const plan = buildStaticDessertWitnessPlan(
+    "http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close"
+  );
+
+  assert.ok(plan.every((capture) => capture.url.includes("witnessView=dessert-porous-close")));
+  assert.equal(
+    plan.find((capture) => capture.id === "final-color")?.url,
+    "http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&renderer=tile-local-visible"
+  );
+  assert.equal(
+    plan.find((capture) => capture.id === "tile-ref-count")?.url,
+    "http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&renderer=tile-local-visible&tileDebug=tile-ref-count"
+  );
+});
+
 test("static dessert witness classifier requires one asset, one viewport, final color, and compact debug evidence", () => {
   const result = classifyStaticDessertWitness({
     captures: [
