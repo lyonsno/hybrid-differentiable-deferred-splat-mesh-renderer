@@ -17,6 +17,12 @@ export const GPU_TILE_CONTRIBUTOR_ARENA_HEADER_BYTES =
 export const GPU_TILE_CONTRIBUTOR_ARENA_RECORD_BYTES =
   (GPU_TILE_CONTRIBUTOR_ARENA_RECORD_UINT32_STRIDE + GPU_TILE_CONTRIBUTOR_ARENA_RECORD_FLOAT32_STRIDE) *
   Uint32Array.BYTES_PER_ELEMENT;
+export const RETENTION_OCCLUSION_REQUIRED_LEDGER_FIELDS = Object.freeze([
+  "tileLocal.perPixelProjectedContributors",
+  "tileLocal.perPixelRetainedContributors",
+  "tileLocal.perPixelOrderedContributors",
+  "tileLocal.perPixelFinalColorAccumulation",
+]);
 
 export type GpuTileCoverageDebugMode =
   | "final-color"
@@ -112,6 +118,30 @@ export interface GpuTileContributorArenaCompatibility {
   readonly routesFirstSmokeThroughGpuArena: false;
   readonly legacyTileHeaderBytes: number;
   readonly legacyTileRefBytes: number;
+}
+
+export interface GpuTileCoverageRetentionOcclusionFrameEvidence {
+  readonly version: 1;
+  readonly requiredFields: readonly string[];
+  readonly refs: {
+    readonly projected: number;
+    readonly retained: number;
+    readonly dropped: number;
+    readonly maxRefsPerTile: number;
+    readonly tileCount: number;
+  };
+  readonly tileRefCustody: {
+    readonly projectedTileEntryCount: number;
+    readonly retainedTileEntryCount: number;
+    readonly evictedTileEntryCount: number;
+    readonly cappedTileCount: number;
+    readonly saturatedRetainedTileCount: number;
+    readonly maxProjectedRefsPerTile: number;
+    readonly maxRetainedRefsPerTile: number;
+    readonly headerRefCount: number;
+    readonly headerAccountingMatches: boolean;
+  };
+  readonly retentionAudit: unknown;
 }
 
 export interface GpuTileContributorArenaProjectedContributor {
@@ -345,6 +375,47 @@ export function assertGpuTileContributorArenaCompatibility(
     routesFirstSmokeThroughGpuArena: false,
     legacyTileHeaderBytes: plan.tileHeaderBytes,
     legacyTileRefBytes: plan.tileRefBytes,
+  };
+}
+
+export function getRetentionOcclusionRequiredLedgerFields(): readonly string[] {
+  return RETENTION_OCCLUSION_REQUIRED_LEDGER_FIELDS;
+}
+
+export function summarizeRetentionOcclusionFrameEvidence(input: {
+  readonly projectedContributorCount?: number;
+  readonly retainedContributorCount?: number;
+  readonly tileCount?: number;
+  readonly maxRefsPerTile?: number;
+  readonly tileRefCustody?: GpuTileCoverageRetentionOcclusionFrameEvidence["tileRefCustody"] | null;
+  readonly retentionAudit?: unknown;
+} = {}): GpuTileCoverageRetentionOcclusionFrameEvidence {
+  const projectedContributorCount = assertNonNegativeInteger(input.projectedContributorCount ?? 0, "retention occlusion projected contributor count");
+  const retainedContributorCount = assertNonNegativeInteger(input.retainedContributorCount ?? 0, "retention occlusion retained contributor count");
+  const tileCount = assertNonNegativeInteger(input.tileCount ?? 0, "retention occlusion tile count");
+  const maxRefsPerTile = assertNonNegativeInteger(input.maxRefsPerTile ?? 0, "retention occlusion max refs per tile");
+  return {
+    version: 1,
+    requiredFields: getRetentionOcclusionRequiredLedgerFields(),
+    refs: {
+      projected: projectedContributorCount,
+      retained: retainedContributorCount,
+      dropped: Math.max(0, projectedContributorCount - retainedContributorCount),
+      maxRefsPerTile,
+      tileCount,
+    },
+    tileRefCustody: input.tileRefCustody ?? {
+      projectedTileEntryCount: projectedContributorCount,
+      retainedTileEntryCount: retainedContributorCount,
+      evictedTileEntryCount: Math.max(0, projectedContributorCount - retainedContributorCount),
+      cappedTileCount: 0,
+      saturatedRetainedTileCount: 0,
+      maxProjectedRefsPerTile: projectedContributorCount,
+      maxRetainedRefsPerTile: retainedContributorCount,
+      headerRefCount: retainedContributorCount,
+      headerAccountingMatches: true,
+    },
+    retentionAudit: input.retentionAudit ?? null,
   };
 }
 

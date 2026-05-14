@@ -48,6 +48,20 @@ export interface TileRetentionAudit {
   };
 }
 
+export interface GpuTileCoverageRetentionOcclusionFrameEvidence {
+  readonly version: 1;
+  readonly requiredFields: readonly string[];
+  readonly refs: {
+    readonly projected: number;
+    readonly retained: number;
+    readonly dropped: number;
+    readonly maxRefsPerTile: number;
+    readonly tileCount: number;
+  };
+  readonly tileRefCustody: TileRefCustodySummary;
+  readonly retentionAudit: TileRetentionAudit | null;
+}
+
 export type TileLocalContributorOverflowFlag =
   | "none"
   | "perTileRetainedCap"
@@ -152,8 +166,20 @@ export interface GpuTileCoverageBridge {
   readonly retainedTileEntryCount: number;
   readonly tileRefCustody: TileRefCustodySummary;
   readonly retentionAudit: TileRetentionAudit;
+  readonly retentionOcclusionFrameEvidence: GpuTileCoverageRetentionOcclusionFrameEvidence;
   readonly contributorArena?: TileLocalContributorArena;
 }
+
+export function getRetentionOcclusionRequiredLedgerFields(): readonly string[];
+
+export function summarizeRetentionOcclusionFrameEvidence(input?: {
+  readonly projectedContributorCount?: number;
+  readonly retainedContributorCount?: number;
+  readonly tileCount?: number;
+  readonly maxRefsPerTile?: number;
+  readonly tileRefCustody?: TileRefCustodySummary | null;
+  readonly retentionAudit?: TileRetentionAudit | null;
+}): GpuTileCoverageRetentionOcclusionFrameEvidence;
 
 export function buildTileLocalContributorArena(
   coverage: unknown,

@@ -1,5 +1,11 @@
 const DEFAULT_MAX_REFS_PER_TILE = 32;
 const DEFAULT_DEPTH_BAND_COUNT = 4;
+const RETENTION_OCCLUSION_REQUIRED_LEDGER_FIELDS = Object.freeze([
+  "tileLocal.perPixelProjectedContributors",
+  "tileLocal.perPixelRetainedContributors",
+  "tileLocal.perPixelOrderedContributors",
+  "tileLocal.perPixelFinalColorAccumulation",
+]);
 const CONTRIBUTOR_OVERFLOW_FLAGS = Object.freeze({
   none: 0,
   perTileRetainedCap: 1,
@@ -107,6 +113,14 @@ export function buildGpuTileCoverageBridge(coverage, options = {}) {
     maxRefsPerTile,
     boundarySplatIds,
   });
+  const retentionOcclusionFrameEvidence = summarizeRetentionOcclusionFrameEvidence({
+    projectedContributorCount: sourceTileEntries.length,
+    retainedContributorCount: retainedTileEntryCount,
+    tileCount,
+    maxRefsPerTile,
+    tileRefCustody,
+    retentionAudit,
+  });
 
   return {
     viewportWidth: coverage.viewportWidth,
@@ -128,7 +142,45 @@ export function buildGpuTileCoverageBridge(coverage, options = {}) {
     retainedTileEntryCount,
     tileRefCustody,
     retentionAudit,
+    retentionOcclusionFrameEvidence,
     contributorArena,
+  };
+}
+
+export function getRetentionOcclusionRequiredLedgerFields() {
+  return RETENTION_OCCLUSION_REQUIRED_LEDGER_FIELDS;
+}
+
+export function summarizeRetentionOcclusionFrameEvidence({
+  projectedContributorCount = 0,
+  retainedContributorCount = 0,
+  tileCount = 0,
+  maxRefsPerTile = DEFAULT_MAX_REFS_PER_TILE,
+  tileRefCustody = null,
+  retentionAudit = null,
+} = {}) {
+  return {
+    version: 1,
+    requiredFields: getRetentionOcclusionRequiredLedgerFields(),
+    refs: {
+      projected: projectedContributorCount,
+      retained: retainedContributorCount,
+      dropped: Math.max(0, projectedContributorCount - retainedContributorCount),
+      maxRefsPerTile,
+      tileCount,
+    },
+    tileRefCustody: tileRefCustody ?? {
+      projectedTileEntryCount: projectedContributorCount,
+      retainedTileEntryCount: retainedContributorCount,
+      evictedTileEntryCount: Math.max(0, projectedContributorCount - retainedContributorCount),
+      cappedTileCount: 0,
+      saturatedRetainedTileCount: 0,
+      maxProjectedRefsPerTile: projectedContributorCount,
+      maxRetainedRefsPerTile: retainedContributorCount,
+      headerRefCount: retainedContributorCount,
+      headerAccountingMatches: true,
+    },
+    retentionAudit: retentionAudit ?? null,
   };
 }
 
