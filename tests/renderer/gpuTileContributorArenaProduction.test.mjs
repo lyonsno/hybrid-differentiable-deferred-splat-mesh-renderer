@@ -185,7 +185,7 @@ test("requested GPU arena live path exposes per-anchor contributor traces instea
   const cpuFactoryStart = mainSource.indexOf("function createCpuTileLocalSceneState");
   const gpuFactorySource = mainSource.slice(gpuFactoryStart, cpuFactoryStart);
 
-  assert.match(gpuFactorySource, /buildGpuLivePixelContributorTraces/);
+  assert.match(gpuFactorySource, /buildGpuLiveAnchorContributorTraces/);
   assert.doesNotMatch(gpuFactorySource, /gpuArenaProjectedContributors:\s*\[\]/);
   assert.doesNotMatch(gpuFactorySource, /perPixelProjectedContributors:\s*\[\]/);
   assert.doesNotMatch(gpuFactorySource, /perPixelRetainedContributors:\s*\[\]/);

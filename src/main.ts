@@ -30,7 +30,6 @@ import {
   projectGpuArenaToLegacyCompositorBuffers,
   type GpuTileContributorArenaRuntime,
 } from "./gpuTileContributorArenaRuntime.js";
-import { buildGpuLivePixelContributorTraces } from "./gpuLiveTraceExtraction.js";
 import { adaptGpuArenaRetainedContributors } from "./gpuArenaRetainedListAdapter.js";
 import {
   createGpuTileCoveragePipelineSkeleton,
@@ -48,11 +47,6 @@ import {
   writeViewDepthSortInput,
   type GpuSortPrototype,
 } from "./gpuSortPrototype.js";
-import {
-  createGpuOrderingRanker,
-  encodeGpuOrderingRanks,
-  type GpuOrderingRanker,
-} from "./gpuOrderingRanks.js";
 import { loadDroppedSplatFile } from "./localPly.js";
 import {
   createRenderDemandState,
@@ -96,6 +90,7 @@ import {
   buildPerPixelFinalColorAccumulationTraces,
   type PixelFinalAccumulationTraceRecord,
 } from "./rendererFidelityProbes/finalAccumulationTrace.js";
+import { buildGpuLiveAnchorContributorTraces } from "./rendererFidelityProbes/gpuLiveAnchorTrace.js";
 import {
   formatTileLocalBudgetPair,
   resolveTileLocalBudgetConfig,
@@ -144,6 +139,7 @@ const REAL_SCANIVERSE_WITNESS_VIEW = selectedRealScaniverseWitnessViewMode();
 const TILE_LOCAL_BUDGET_CONFIG = resolveTileLocalBudgetConfig(new URLSearchParams(window.location.search));
 const TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX = TILE_LOCAL_BUDGET_CONFIG.tileSizePx;
 const TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE = TILE_LOCAL_BUDGET_CONFIG.maxRefsPerTile;
+const TILE_LOCAL_TRACE_ANCHORS = selectedTileLocalTraceAnchors();
 const TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES = 1;
 const TILE_LOCAL_PROVISIONAL_MAX_SPLATS = 150_000;
 const TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES = 20_000_000;
@@ -185,10 +181,6 @@ interface TileLocalSceneState {
   tileCoverageWeightData: Float32Array;
   tileBuildCountBuffer: GPUBuffer;
   tileScatterCursorBuffer: GPUBuffer;
-  orderingKeyBuffer: GPUBuffer | null;
-  orderingKeyData: Uint32Array;
-  orderingRanker: GpuOrderingRanker | null;
-  orderingRanksNeedDispatch: boolean;
   alphaParamBuffer: GPUBuffer;
   alphaParamData: Float32Array;
   sourceOpacities: Float32Array;
@@ -206,6 +198,7 @@ interface TileLocalSceneState {
   arenaBackend: "cpu" | "gpu";
   gpuArenaRuntime: GpuTileContributorArenaRuntime | null;
   gpuArenaProjectedContributors: readonly GpuTileContributorArenaProjectedContributor[];
+  traceAnchors?: readonly PixelTraceAnchor[];
   perPixelProjectedContributors: TileLocalPrepassBridge["perPixelProjectedContributors"];
   perPixelRetainedContributors: TileLocalPrepassBridge["perPixelRetainedContributors"];
   arenaUnavailableReason?: string;
@@ -234,6 +227,15 @@ interface RuntimeFootprintParams {
   readonly splatScale: number;
   readonly minRadiusPx: number;
   readonly nearFadeEndNdc: number;
+}
+
+interface PixelTraceAnchor {
+  readonly id: string;
+  readonly kind: string;
+  readonly x: number;
+  readonly y: number;
+  readonly description: string;
+  readonly canonicalTileAddress: null;
 }
 
 interface SortSettleState {
@@ -553,9 +555,6 @@ async function main() {
       writeViewDepthSortInput(gpu.device.queue, scene.gpuSort, scene.attributes.positions, view);
       encodeGpuSortPrototype(encoder, scene.gpuSort);
       if (scene.tileLocalState) {
-        if (scene.tileLocalState.orderingRanker) {
-          scene.tileLocalState.orderingRanksNeedDispatch = true;
-        }
         scene.tileLocalState.needsDispatch = true;
       }
     }
@@ -601,10 +600,6 @@ async function main() {
         scene.tileLocalState = tileLocalState;
         scene.tileLocalLastSkipReason = null;
         scene.tileLocalLastSkipSignature = null;
-        if (tileLocalState.orderingRanksNeedDispatch && tileLocalState.orderingRanker) {
-          encodeGpuOrderingRanks(encoder, tileLocalState.orderingRanker);
-          tileLocalState.orderingRanksNeedDispatch = false;
-        }
         writeGpuTileCoverageFrameUniforms(
           tileLocalState.frameUniformData,
           viewProj,
@@ -1005,19 +1000,21 @@ function createGpuArenaTileLocalSceneState(
     alphaParamData,
     sourceOpacities: effectiveOpacities,
   });
-  const gpuLiveTrace = buildGpuLivePixelContributorTraces({
+  const anchorContributorTraces = buildGpuLiveAnchorContributorTraces({
     attributes,
-    effectiveOpacities,
     viewMatrix,
     viewProj,
+    effectiveOpacities,
     viewportWidth,
     viewportHeight,
     tileSizePx: plan.tileSizePx,
     tileColumns: plan.tileColumns,
     tileRows: plan.tileRows,
-    maxTileRefs: plan.maxTileRefs,
     splatScale: footprintParams.splatScale,
     minRadiusPx: footprintParams.minRadiusPx,
+    maxRefsPerTile: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
+    nearFadeEndNdc: footprintParams.nearFadeEndNdc,
+    anchors: TILE_LOCAL_TRACE_ANCHORS,
     rendererMetadata: {
       requestedRenderer: "tile-local-visible",
       effectiveRenderer: "tile-local-visible-gaussian-compositor",
@@ -1029,6 +1026,7 @@ function createGpuArenaTileLocalSceneState(
         width: viewportWidth,
         height: viewportHeight,
       },
+      traceExtractionBackend: "gpu-live-anchor-mirror",
     },
   });
 
@@ -1048,10 +1046,6 @@ function createGpuArenaTileLocalSceneState(
     tileCoverageWeightData,
     tileBuildCountBuffer,
     tileScatterCursorBuffer,
-    orderingKeyBuffer: null,
-    orderingKeyData: new Uint32Array(0),
-    orderingRanker: null,
-    orderingRanksNeedDispatch: false,
     alphaParamBuffer,
     alphaParamData,
     sourceOpacities: effectiveOpacities,
@@ -1068,9 +1062,10 @@ function createGpuArenaTileLocalSceneState(
     diagnostics,
     arenaBackend: "gpu",
     gpuArenaRuntime: null,
-    gpuArenaProjectedContributors: gpuLiveTrace.retainedContributors,
-    perPixelProjectedContributors: gpuLiveTrace.perPixelProjectedContributors,
-    perPixelRetainedContributors: gpuLiveTrace.perPixelRetainedContributors,
+    gpuArenaProjectedContributors: anchorContributorTraces.retainedContributors,
+    traceAnchors: TILE_LOCAL_TRACE_ANCHORS,
+    perPixelProjectedContributors: anchorContributorTraces.perPixelProjectedContributors,
+    perPixelRetainedContributors: anchorContributorTraces.perPixelRetainedContributors,
     arenaUnavailableReason: undefined,
     gpuDispatchEnqueueDurationMs: undefined,
     needsDispatch: true,
@@ -1156,7 +1151,6 @@ function createCpuTileLocalSceneState(
       gpu: {
         ...bridge.budgetDiagnostics.heat.gpu,
         alphaParamBufferBytes: plan.alphaParamBytes,
-        orderingKeyBufferBytes: plan.orderingKeyBytes,
       },
     },
   };
@@ -1171,8 +1165,6 @@ function createCpuTileLocalSceneState(
   if (legacyProjection) {
     alphaParamData.set(legacyProjection.alphaParamData.slice(0, alphaParamData.length));
   }
-  const orderingKeyData = new Uint32Array(Math.max(plan.orderingKeyBytes / Uint32Array.BYTES_PER_ELEMENT, 4));
-  orderingKeyData.fill(0xffffffff);
   const tileRefSplatIds = new Uint32Array(plan.maxTileRefs);
   for (let refIndex = 0; refIndex < plan.maxTileRefs; refIndex++) {
     const splatId = legacyProjection?.tileRefSplatIds[refIndex] ?? bridge.tileRefs[refIndex * 4] ?? 0;
@@ -1206,21 +1198,6 @@ function createCpuTileLocalSceneState(
   );
   const alphaParamBuffer = gpuArenaRuntime?.buffers.legacyAlphaParamBuffer
     ?? createStorageBuffer(device, alphaParamData.buffer, "tile_local_alpha_params");
-  const orderingKeyBuffer = createStorageBuffer(
-    device,
-    orderingKeyData.buffer as ArrayBuffer,
-    "tile_local_ordering_ranks"
-  );
-  const orderingRanker = createGpuOrderingRanker(
-    device,
-    {
-      splatCount: attributes.count,
-      sortedIndexCount: Math.max(attributes.count, 1),
-    },
-    sortedIndexBuffer,
-    orderingKeyBuffer,
-    "tile_local_ordering_ranks"
-  );
   const outputTexture = createTexture2D(
     device,
     viewportWidth,
@@ -1262,10 +1239,6 @@ function createCpuTileLocalSceneState(
     tileCoverageWeightData: legacyProjection?.tileCoverageWeights ?? bridge.tileCoverageWeights,
     tileBuildCountBuffer,
     tileScatterCursorBuffer,
-    orderingKeyBuffer,
-    orderingKeyData,
-    orderingRanker,
-    orderingRanksNeedDispatch: true,
     alphaParamBuffer,
     alphaParamData,
     sourceOpacities: effectiveOpacities,
@@ -1330,7 +1303,6 @@ function gpuTileCoverageBufferUnavailableReason(device: GPUDevice, plan: GpuTile
     plan.tileHeaderBytes,
     plan.tileRefBytes,
     plan.tileCoverageWeightBytes,
-    plan.orderingKeyBytes,
     plan.alphaParamBytes,
   );
   if (largestBindingBytes > maxStorageBindingBytes) {
@@ -1447,7 +1419,6 @@ function estimatedGpuLiveBudgetDiagnostics(
         retainedRefBufferBytes: plan.tileRefBytes,
         coverageWeightBufferBytes: plan.tileCoverageWeightBytes,
         alphaParamBufferBytes: plan.alphaParamBytes,
-        orderingKeyBufferBytes: plan.orderingKeyBytes,
       },
     },
   };
@@ -1596,8 +1567,6 @@ function destroyTileLocalSceneState(state: TileLocalSceneState): void {
   }
   state.tileBuildCountBuffer.destroy();
   state.tileScatterCursorBuffer.destroy();
-  state.orderingKeyBuffer?.destroy();
-  state.orderingRanker?.paramsBuffer?.destroy();
   state.outputTexture.destroy();
 }
 
@@ -1674,6 +1643,49 @@ function selectedRealScaniverseWitnessViewMode(): RealScaniverseWitnessViewMode 
 function selectedTileLocalUnsafeMode(): boolean {
   const params = new URLSearchParams(window.location.search);
   return params.has("tileLocalUnsafe") || params.get("tileLocalBudget") === "unsafe";
+}
+
+function selectedTileLocalTraceAnchors(): readonly PixelTraceAnchor[] | undefined {
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get("traceAnchors") ?? params.get("traceAnchor");
+  if (!raw) {
+    return undefined;
+  }
+  const anchors = raw
+    .split(";")
+    .map((entry, index) => parseTileLocalTraceAnchor(entry, index))
+    .filter((anchor): anchor is PixelTraceAnchor => anchor !== null);
+  return anchors.length > 0 ? anchors : undefined;
+}
+
+function parseTileLocalTraceAnchor(rawEntry: string, index: number): PixelTraceAnchor | null {
+  const entry = rawEntry.trim();
+  if (!entry) {
+    return null;
+  }
+  const [head, requestedKind] = entry.split(":");
+  const [maybeId, maybeCoords] = head.includes("@") ? head.split("@") : [`fresh-anchor-${index + 1}`, head];
+  const [xValue, yValue] = maybeCoords.split(",").map((value) => Number(value));
+  if (!Number.isFinite(xValue) || !Number.isFinite(yValue)) {
+    return null;
+  }
+  const id = sanitizeTraceAnchorId(maybeId || `fresh-anchor-${index + 1}`, index);
+  const kind = sanitizeTraceAnchorId(requestedKind || "fresh-lacunar-hole", index);
+  const x = Math.max(0, Math.floor(xValue));
+  const y = Math.max(0, Math.floor(yValue));
+  return {
+    id,
+    kind,
+    x,
+    y,
+    description: `Ad hoc current-frame trace anchor ${id} at ${x},${y}.`,
+    canonicalTileAddress: null,
+  };
+}
+
+function sanitizeTraceAnchorId(value: string, index: number): string {
+  const sanitized = value.trim().replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+  return sanitized || `fresh-anchor-${index + 1}`;
 }
 
 function selectedArenaBackend(): "cpu" | "gpu" {
@@ -1916,6 +1928,7 @@ function exposeTileLocalRuntimeEvidence(
         deferredFields: pixelOrderTrace?.deferredFields,
         tileSizePx: tileLocalState.plan.tileSizePx,
         tileColumns: tileLocalState.plan.tileColumns,
+        anchors: tileLocalState.traceAnchors,
       })
     : buildPerPixelFinalColorAccumulationTrace(pixelContributorTrace);
   runtimeWindow.__MESH_SPLAT_SMOKE__ = {
