@@ -17,6 +17,8 @@ export const GPU_TILE_CONTRIBUTOR_ARENA_HEADER_BYTES =
 export const GPU_TILE_CONTRIBUTOR_ARENA_RECORD_BYTES =
   (GPU_TILE_CONTRIBUTOR_ARENA_RECORD_UINT32_STRIDE + GPU_TILE_CONTRIBUTOR_ARENA_RECORD_FLOAT32_STRIDE) *
   Uint32Array.BYTES_PER_ELEMENT;
+const GPU_LIVE_MAX_ANISOTROPIC_MINOR_RADIUS_INFLATION = 4;
+const GPU_LIVE_MIN_ANISOTROPIC_MINOR_RADIUS_FRACTION = 1 / 64;
 
 export type GpuTileCoverageDebugMode =
   | "final-color"
@@ -493,15 +495,21 @@ export function resolveGpuLiveFootprintPolicy(input: GpuLiveFootprintPolicyInput
   const viewportWidth = finitePositiveOrDefault(input.viewportWidth, 1);
   const viewportHeight = finitePositiveOrDefault(input.viewportHeight, 1);
   const minRadiusPx = finiteNonNegativeOrDefault(input.minRadiusPx, 1.5);
-  const majorRadiusPx = Math.max(finiteNonNegativeOrDefault(input.majorRadiusPx, minRadiusPx), minRadiusPx);
-  const minorRadiusPx = Math.max(finiteNonNegativeOrDefault(input.minorRadiusPx, minRadiusPx), minRadiusPx);
+  const rawMajorRadiusPx = finiteNonNegativeOrDefault(input.majorRadiusPx, minRadiusPx);
+  const rawMinorRadiusPx = finiteNonNegativeOrDefault(input.minorRadiusPx, minRadiusPx);
+  const majorRadiusPx = Math.max(rawMajorRadiusPx, minRadiusPx);
+  const minorRadiusPx = resolveGpuLiveBoundedMinorRadiusPx(rawMajorRadiusPx, rawMinorRadiusPx, minRadiusPx);
   const areaCapPx = viewportWidth * viewportHeight * 0.01;
   const majorRadiusCapPx = Math.max(Math.min(viewportWidth, viewportHeight) * 0.65, minRadiusPx);
   const footprintAreaPx = Math.PI * majorRadiusPx * minorRadiusPx;
   const areaScale = Math.sqrt(areaCapPx / Math.max(footprintAreaPx, areaCapPx));
   const majorScale = majorRadiusCapPx / Math.max(majorRadiusPx, majorRadiusCapPx);
   const scale = Math.min(areaScale, majorScale, 1);
-  const cappedMinorRadiusPx = Math.max(minorRadiusPx * scale, minRadiusPx);
+  const scaledMinorFloorPx =
+    rawMinorRadiusPx >= minRadiusPx || rawMajorRadiusPx < minRadiusPx
+      ? minRadiusPx
+      : minRadiusPx * GPU_LIVE_MIN_ANISOTROPIC_MINOR_RADIUS_FRACTION;
+  const cappedMinorRadiusPx = Math.max(minorRadiusPx * scale, scaledMinorFloorPx);
   return {
     majorRadiusPx: Math.max(majorRadiusPx * scale, cappedMinorRadiusPx),
     minorRadiusPx: cappedMinorRadiusPx,
@@ -509,6 +517,24 @@ export function resolveGpuLiveFootprintPolicy(input: GpuLiveFootprintPolicyInput
     areaCapPx,
     majorRadiusCapPx,
   };
+}
+
+function resolveGpuLiveBoundedMinorRadiusPx(
+  rawMajorRadiusPx: number,
+  rawMinorRadiusPx: number,
+  minRadiusPx: number,
+): number {
+  if (rawMinorRadiusPx >= minRadiusPx) {
+    return rawMinorRadiusPx;
+  }
+  if (rawMajorRadiusPx < minRadiusPx) {
+    return minRadiusPx;
+  }
+  const inflatedMinorRadiusPx = Math.max(
+    rawMinorRadiusPx * GPU_LIVE_MAX_ANISOTROPIC_MINOR_RADIUS_INFLATION,
+    minRadiusPx * GPU_LIVE_MIN_ANISOTROPIC_MINOR_RADIUS_FRACTION,
+  );
+  return Math.min(minRadiusPx, inflatedMinorRadiusPx);
 }
 
 function finiteNonNegativeOrDefault(value: number | undefined, fallback: number): number {

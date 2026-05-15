@@ -152,7 +152,11 @@ fn gpu_live_projected_conic(splatId: u32, centerClip: vec4f, centerPx: vec2f) ->
   let uncappedMajorRadiusPx = max(rawMajorRadiusPx, minRadiusPx);
   let uncappedMinorRadiusPx = boundedMinorRadiusPx(rawMajorRadiusPx, rawMinorRadiusPx, minRadiusPx);
   let footprintScale = gpu_live_footprint_policy_scale(uncappedMajorRadiusPx, uncappedMinorRadiusPx);
-  let scaledMinorRadiusPx = max(uncappedMinorRadiusPx * footprintScale, minRadiusPx);
+  var scaledMinorFloorPx = minRadiusPx * MIN_ANISOTROPIC_MINOR_RADIUS_FRACTION;
+  if (rawMinorRadiusPx >= minRadiusPx || rawMajorRadiusPx < minRadiusPx) {
+    scaledMinorFloorPx = minRadiusPx;
+  }
+  let scaledMinorRadiusPx = max(uncappedMinorRadiusPx * footprintScale, scaledMinorFloorPx);
   let majorRadiusPx = max(uncappedMajorRadiusPx * footprintScale, scaledMinorRadiusPx);
   let minorRadiusPx = scaledMinorRadiusPx;
   let majorInvVar = 1.0 / max(majorRadiusPx * majorRadiusPx, 0.000001);
