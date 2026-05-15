@@ -63,6 +63,23 @@ export interface BandPixelOrderTraceRecord {
   }[];
 }
 
+export type BandDropoutMechanismClassification =
+  | "dispatch-cache"
+  | "order-rank"
+  | "final-accumulation"
+  | "conic-alpha-side-effect"
+  | "narrower-blocker";
+
+export interface BandDropoutMechanismVerdict {
+  readonly classification: BandDropoutMechanismClassification;
+  readonly provisional: boolean;
+  readonly reason: string;
+  readonly affectedRows: readonly number[];
+  readonly affectedTiles: readonly number[];
+  readonly blocker?: string;
+  readonly evidence: Record<string, unknown>;
+}
+
 export const BAND_ORDER_BACKEND: string;
 export const BLACK_BAND_TRACE_ANCHOR: {
   readonly id: string;
@@ -103,3 +120,16 @@ export function buildBandDispatchCacheTrace(input?: {
   readonly cacheState?: string;
   readonly tileSpan?: BandDispatchCacheTrace["tileSpan"];
 }): BandDispatchCacheTrace;
+
+export function classifyBandDropoutMechanism(input?: {
+  readonly anchorPixel?: typeof BLACK_BAND_TRACE_ANCHOR;
+  readonly tileAddress?: BandPixelOrderTraceRecord["tileAddress"];
+  readonly dispatchCache?: BandDispatchCacheTrace;
+  readonly orderedContributors?: BandPixelOrderTraceRecord["orderedContributors"];
+  readonly finalColorAccumulation?: {
+    readonly steps?: readonly Record<string, unknown>[];
+    readonly outputColor?: readonly number[];
+  };
+  readonly traceSource?: string;
+  readonly gpuLiveTraceAvailable?: boolean;
+}): BandDropoutMechanismVerdict;

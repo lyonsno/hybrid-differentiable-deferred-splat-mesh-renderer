@@ -121,6 +121,103 @@ export function buildBandDispatchCacheTrace({
   };
 }
 
+export function classifyBandDropoutMechanism({
+  anchorPixel = BLACK_BAND_TRACE_ANCHOR,
+  tileAddress = tileAddressForAnchor(16),
+  dispatchCache,
+  orderedContributors = [],
+  finalColorAccumulation = {},
+  traceSource = "synthetic-band-witness",
+  gpuLiveTraceAvailable = true,
+} = {}) {
+  if (!anchorPixel || anchorPixel.id !== BLACK_BAND_TRACE_ANCHOR.id) {
+    throw new Error("band dropout classifier only owns black-band-dropout-2300-1055");
+  }
+  const normalizedTileAddress = normalizeTileAddress(tileAddress);
+  const affectedRows = [normalizedTileAddress.tileY];
+  const affectedTiles = [normalizedTileAddress.tileIndex];
+  const finalSteps = Array.isArray(finalColorAccumulation.steps) ? finalColorAccumulation.steps : [];
+  const outputAlpha = outputAlphaFor(finalColorAccumulation.outputColor);
+  const maxCoverageAlpha = maxStepField(finalSteps, "coverageAlpha");
+  const maxCoverageWeight = maxStepField(finalSteps, "coverageWeight");
+  const currentFrameComplete = Boolean(dispatchCache?.rowDispatchState?.currentFrameComplete);
+  const baseEvidence = {
+    orderedCount: orderedContributors.length,
+    finalStepCount: finalSteps.length,
+    outputAlpha,
+    maxCoverageAlpha,
+    dispatchCurrentFrameComplete: currentFrameComplete,
+  };
+
+  if (!currentFrameComplete) {
+    return {
+      classification: "dispatch-cache",
+      provisional: false,
+      reason: `band tile ${normalizedTileAddress.tileIndex} or row ${normalizedTileAddress.tileY} was not cleared/built/composited for the current frame`,
+      affectedRows,
+      affectedTiles,
+      evidence: baseEvidence,
+    };
+  }
+
+  const orderDivergence = classifyOrderDivergence(orderedContributors, finalSteps);
+  if (orderDivergence.diverged) {
+    return {
+      classification: "order-rank",
+      provisional: false,
+      reason: "band final accumulation order diverges from ordered contributor ranks",
+      affectedRows,
+      affectedTiles,
+      evidence: {
+        ...baseEvidence,
+        orderedSplatIds: orderDivergence.orderedSplatIds,
+        accumulatedSplatIds: orderDivergence.accumulatedSplatIds,
+      },
+    };
+  }
+
+  if (orderedContributors.length > 0 && finalSteps.length === 0) {
+    return {
+      classification: "final-accumulation",
+      provisional: false,
+      reason: "band ordered contributors are present but no final accumulation steps were emitted",
+      affectedRows,
+      affectedTiles,
+      evidence: baseEvidence,
+    };
+  }
+
+  if (finalSteps.length > 0 && outputAlpha <= 0.001 && maxCoverageAlpha <= 0.001) {
+    return {
+      classification: "conic-alpha-side-effect",
+      provisional: !gpuLiveTraceAvailable,
+      reason: `band contributors reached current-frame accumulation, but max coverage alpha ${maxCoverageAlpha} leaves output alpha ${outputAlpha}`,
+      affectedRows,
+      affectedTiles,
+      ...(gpuLiveTraceAvailable ? {} : { blocker: "gpu-live-trace-extraction" }),
+      evidence: {
+        ...baseEvidence,
+        maxCoverageWeight,
+        traceSource,
+      },
+    };
+  }
+
+  return {
+    classification: "narrower-blocker",
+    provisional: !gpuLiveTraceAvailable,
+    reason: "band evidence does not isolate dispatch/cache, order/rank, final accumulation, or conic/alpha under-accumulation",
+    affectedRows,
+    affectedTiles,
+    ...(gpuLiveTraceAvailable ? {} : { blocker: "gpu-live-trace-extraction" }),
+    evidence: {
+      ...baseEvidence,
+      maxCoverageWeight,
+      traceSource,
+    },
+  };
+}
+
 function tileAddressForAnchor(tileSizePx, tileColumns = 216) {
   const tileX = Math.floor(BLACK_BAND_TRACE_ANCHOR.x / tileSizePx);
   const tileY = Math.floor(BLACK_BAND_TRACE_ANCHOR.y / tileSizePx);
@@ -132,6 +229,47 @@ function tileAddressForAnchor(tileSizePx, tileColumns = 216) {
     localX: BLACK_BAND_TRACE_ANCHOR.x - tileX * tileSizePx,
     localY: BLACK_BAND_TRACE_ANCHOR.y - tileY * tileSizePx,
   };
+}
+
+function normalizeTileAddress(tileAddress) {
+  if (!tileAddress || typeof tileAddress !== "object") {
+    throw new TypeError("band tile address must be an object");
+  }
+  return {
+    tileSizePx: nonNegativeInteger(tileAddress.tileSizePx, "tileAddress.tileSizePx"),
+    tileX: nonNegativeInteger(tileAddress.tileX, "tileAddress.tileX"),
+    tileY: nonNegativeInteger(tileAddress.tileY, "tileAddress.tileY"),
+    tileIndex: nonNegativeInteger(tileAddress.tileIndex, "tileAddress.tileIndex"),
+    localX: nonNegativeInteger(tileAddress.localX, "tileAddress.localX"),
+    localY: nonNegativeInteger(tileAddress.localY, "tileAddress.localY"),
+  };
+}
+
+function classifyOrderDivergence(orderedContributors, finalSteps) {
+  const orderedSplatIds = orderedContributors.map((entry) => nonNegativeInteger(entry.splatIndex, "orderedContributors.splatIndex"));
+  const accumulatedSplatIds = finalSteps.map((entry) => nonNegativeInteger(entry.splatIndex, "finalColorAccumulation.steps.splatIndex"));
+  if (orderedSplatIds.length === 0 || accumulatedSplatIds.length === 0) {
+    return { diverged: false, orderedSplatIds, accumulatedSplatIds };
+  }
+  if (orderedSplatIds.length !== accumulatedSplatIds.length) {
+    return { diverged: true, orderedSplatIds, accumulatedSplatIds };
+  }
+  const diverged = orderedSplatIds.some((splatId, index) => splatId !== accumulatedSplatIds[index]);
+  return { diverged, orderedSplatIds, accumulatedSplatIds };
+}
+
+function outputAlphaFor(outputColor) {
+  if (!Array.isArray(outputColor) || outputColor.length < 4) {
+    return 0;
+  }
+  return finiteNumber(outputColor[3], "finalColorAccumulation.outputColor.alpha");
+}
+
+function maxStepField(steps, field) {
+  if (!Array.isArray(steps) || steps.length === 0) {
+    return 0;
+  }
+  return Math.max(...steps.map((step) => finiteNumber(step[field] ?? 0, `finalColorAccumulation.steps.${field}`)));
 }
 
 function contributorCoversBandPixel(contributor, tileAddress) {
