@@ -1042,12 +1042,21 @@ function createGpuArenaTileLocalSceneState(
     arenaBackend: "gpu",
     gpuArenaRuntime: null,
     gpuArenaProjectedContributors: [],
+    perPixelProjectedContributors: [],
+    perPixelRetainedContributors: [],
     arenaUnavailableReason: undefined,
     gpuDispatchEnqueueDurationMs: undefined,
     needsDispatch: true,
     lastCompositedAtMs: 0,
     lastCompositedFrame: -1,
     lastCompositedSignature: prepassSignature,
+    bandDispatchCacheTrace: buildBandDispatchCacheTrace({
+      tileColumns: plan.tileColumns,
+      tileRows: plan.tileRows,
+      tileSizePx: plan.tileSizePx,
+      viewportWidth,
+      viewportHeight,
+    }),
   };
 }
 
