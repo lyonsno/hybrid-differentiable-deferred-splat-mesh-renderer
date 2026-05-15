@@ -194,6 +194,7 @@ interface TileLocalSceneState {
   gpuArenaRuntime: GpuTileContributorArenaRuntime | null;
   gpuArenaProjectedContributors: readonly GpuTileContributorArenaProjectedContributor[];
   perPixelProjectedContributors: TileLocalPrepassBridge["perPixelProjectedContributors"];
+  perPixelRetainedContributors: TileLocalPrepassBridge["perPixelRetainedContributors"];
   arenaUnavailableReason?: string;
   gpuDispatchDurationMs?: number;
   needsDispatch: boolean;
@@ -1015,6 +1016,7 @@ function createTileLocalSceneState(
     gpuArenaRuntime,
     gpuArenaProjectedContributors,
     perPixelProjectedContributors: bridge.perPixelProjectedContributors,
+    perPixelRetainedContributors: bridge.perPixelRetainedContributors,
     arenaUnavailableReason: gpuArenaRuntime ? undefined : gpuArenaRuntimeBlocker,
     gpuDispatchDurationMs: undefined,
     needsDispatch: true,
@@ -1398,12 +1400,15 @@ function exposeTileLocalRuntimeEvidence(
   const projectedTrace = tileLocalState?.perPixelProjectedContributors?.find(
     (trace) => trace?.anchorPixel?.id === "black-band-dropout-2300-1055",
   );
+  const retainedTrace = tileLocalState?.perPixelRetainedContributors?.find(
+    (trace) => trace?.anchorPixel?.id === "black-band-dropout-2300-1055",
+  );
   const pixelContributorTrace = tileLocalState && bandDispatchCache && pixelOrderTrace
     ? buildFinalColorAccumulationTraceRecord({
         contributors: tileLocalState.gpuArenaProjectedContributors,
         sourceColors,
         projectedContributors: projectedTrace?.traceRecord?.projectedContributors ?? [],
-        retainedContributors: null,
+        retainedContributors: retainedTrace?.traceRecord?.retainedContributors ?? [],
         orderedContributors: pixelOrderTrace.orderedContributors,
         dispatchCache: bandDispatchCache,
         rendererMetadata: pixelOrderTrace.rendererMetadata,
@@ -1426,6 +1431,7 @@ function exposeTileLocalRuntimeEvidence(
           tileColumns: tileLocalState.plan.tileColumns,
           tileRows: tileLocalState.plan.tileRows,
           perPixelProjectedContributors: tileLocalState.perPixelProjectedContributors,
+          perPixelRetainedContributors: tileLocalState.perPixelRetainedContributors,
           perPixelFinalColorAccumulation: buildPerPixelFinalColorAccumulationTrace(pixelContributorTrace),
           orderingBackend: TILE_LOCAL_ORDERING_BACKEND,
           debugMode: tileLocalState.debugMode,
