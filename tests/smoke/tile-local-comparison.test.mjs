@@ -161,6 +161,38 @@ test("tile-local comparison preserves initial high-viewport budget skip evidence
   );
 });
 
+test("tile-local comparison preserves runtime timing evidence for cadence, submit, readback, overlay, camera, and rebuild state", () => {
+  const metrics = extractTileLocalPageMetrics({
+    ready: true,
+    rendererLabel: "tile-local-visible-gaussian-compositor",
+    statsText:
+      "1280x720 | 60 fps | renderer: tile-local-visible-gaussian-compositor | timing: rAF 16.67ms (60fps) | camera 0.18ms | submit 0.31ms | gpu render 0.12ms | gpu readback 0.44ms | rebuild rebuild",
+    runtimeTiming: {
+      timestampsSupported: true,
+      rafCadenceMs: 16.67,
+      rafCadenceHz: 60,
+      cameraInteractionMs: 0.18,
+      renderSubmitMs: 0.31,
+      gpuRenderPassMs: 0.12,
+      gpuTimestampReadbackMs: 0.44,
+      overlayUpdateMs: 0.05,
+      rebuildState: "rebuild",
+    },
+  });
+
+  assert.deepEqual(metrics.runtimeTiming, {
+    timestampsSupported: true,
+    rafCadenceMs: 16.67,
+    rafCadenceHz: 60,
+    cameraInteractionMs: 0.18,
+    renderSubmitMs: 0.31,
+    gpuRenderPassMs: 0.12,
+    gpuTimestampReadbackMs: 0.44,
+    overlayUpdateMs: 0.05,
+    rebuildState: "rebuild",
+  });
+});
+
 test("tile-local comparison does not coerce absent skipped-ref evidence to zero", () => {
   const metrics = extractTileLocalPageMetrics({
     ready: true,

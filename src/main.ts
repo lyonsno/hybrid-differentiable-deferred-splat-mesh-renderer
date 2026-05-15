@@ -227,6 +227,18 @@ interface ArenaRuntimeEvidence {
   fallbackReason?: string;
 }
 
+interface RuntimeTimingEvidence {
+  timestampsSupported: boolean;
+  rafCadenceMs?: number;
+  rafCadenceHz?: number;
+  cameraInteractionMs?: number;
+  renderSubmitMs?: number;
+  gpuRenderPassMs?: number;
+  gpuTimestampReadbackMs?: number;
+  overlayUpdateMs?: number;
+  rebuildState?: "rebuild" | "reuse";
+}
+
 type RendererMode = "plate" | "tile-local" | "tile-local-visible";
 
 interface RuntimeFootprintParams {
@@ -302,6 +314,8 @@ async function main() {
   let fpsAccum = 0;
   let displayFps = 0;
   let gpuTimings: Map<string, number> = new Map();
+  let lastGpuTimestampReadbackMs: number | undefined;
+  let lastOverlayUpdateMs: number | undefined;
 
   statsEl.textContent = "Loading real Scaniverse splats...";
   const assetPath = selectedSplatAssetPath();
@@ -482,7 +496,11 @@ async function main() {
       fpsAccum = 0;
     }
 
+    const rafCadenceMs = roundRuntimeMetric(dt * 1000);
+    const rafCadenceHz = dt > 0 ? roundRuntimeMetric(1 / dt) : undefined;
+    const cameraInteractionStartedAtMs = performance.now();
     updateCamera(cam, dt);
+    const cameraInteractionMs = roundRuntimeMetric(performance.now() - cameraInteractionStartedAtMs);
 
     const activeInput = cameraHasActiveInput(cam);
     const { width, height } = resizeCanvas(gpu);
@@ -560,6 +578,7 @@ async function main() {
     }
     const pendingGpuSort = gpuSortRefreshPending(scene.sortState, view);
     const pendingAlphaDensity = scene.alphaDensityState.refreshState.needsRefresh;
+    let sceneRebuilt = false;
     const tileLocalCurrentSignature = scene.tileLocalState
       ? captureCurrentTileLocalSignature(view, viewProj, width, height, {
         splatScale: activeSplatScale,
@@ -574,6 +593,7 @@ async function main() {
       scene.tileLocalState.needsDispatch = true;
     }
 
+    let didDispatchTileLocal = false;
     if (scene.tileLocalState && shouldDispatchTileLocalCompositor({
       needsDispatch: scene.tileLocalState.needsDispatch,
       activeInput,
@@ -627,6 +647,7 @@ async function main() {
         } else {
           tileLocalState.pipeline.dispatch(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
         }
+        didDispatchTileLocal = true;
         if (gpuDispatchEnqueueStartedAtMs !== undefined) {
           tileLocalState.gpuDispatchEnqueueDurationMs = roundRuntimeMetric(
             performance.now() - gpuDispatchEnqueueStartedAtMs
@@ -658,6 +679,7 @@ async function main() {
         scene.tileLocalState.needsDispatch = false;
       }
     }
+    sceneRebuilt = gpuSortRefreshed || alphaRefreshed || didDispatchTileLocal;
 
     const textureView = gpu.context.getCurrentTexture().createView();
 
@@ -704,14 +726,30 @@ async function main() {
       resolveTimestamps(encoder, ts);
     }
 
+    const renderSubmitStartedAtMs = performance.now();
     gpu.device.queue.submit([encoder.finish()]);
+    const renderSubmitMs = roundRuntimeMetric(performance.now() - renderSubmitStartedAtMs);
 
     // Read GPU timings (async, one frame behind)
     if (writeTimestamps) {
+      const readbackStartedAtMs = performance.now();
       readTimestamps(ts).then((t) => {
         gpuTimings = t;
+        lastGpuTimestampReadbackMs = roundRuntimeMetric(performance.now() - readbackStartedAtMs);
       });
     }
+
+    const gpuRenderPassMs = gpuTimings.get("render");
+    const runtimeTiming: RuntimeTimingEvidence = {
+      timestampsSupported: gpu.timestampsSupported,
+      rafCadenceMs,
+      rafCadenceHz,
+      cameraInteractionMs,
+      renderSubmitMs,
+      gpuRenderPassMs: typeof gpuRenderPassMs === "number" && Number.isFinite(gpuRenderPassMs) ? roundRuntimeMetric(gpuRenderPassMs) : undefined,
+      gpuTimestampReadbackMs: lastGpuTimestampReadbackMs,
+      rebuildState: sceneRebuilt ? "rebuild" : "reuse",
+    };
 
     // Stats overlay
     const alphaSummary = scene.alphaDensityState.summary;
@@ -791,7 +829,34 @@ async function main() {
         statsText += ` | ${label}: ${ms.toFixed(2)}ms`;
       }
     }
+    const runtimeTimingRafCadenceMsText = runtimeTiming.rafCadenceMs !== undefined
+      ? runtimeTiming.rafCadenceMs.toFixed(2)
+      : "not reported";
+    const runtimeTimingRafCadenceHzText = runtimeTiming.rafCadenceHz !== undefined
+      ? runtimeTiming.rafCadenceHz.toFixed(0)
+      : "n/a";
+    const runtimeTimingCameraInteractionText = runtimeTiming.cameraInteractionMs !== undefined
+      ? runtimeTiming.cameraInteractionMs.toFixed(3)
+      : "n/a";
+    const runtimeTimingRenderSubmitText = runtimeTiming.renderSubmitMs !== undefined
+      ? runtimeTiming.renderSubmitMs.toFixed(3)
+      : "not reported";
+    const runtimeTimingGpuRenderPassText = runtimeTiming.gpuRenderPassMs !== undefined
+      ? `${runtimeTiming.gpuRenderPassMs.toFixed(2)}ms`
+      : "pending";
+    const runtimeTimingGpuReadbackText = runtimeTiming.gpuTimestampReadbackMs !== undefined
+      ? `${runtimeTiming.gpuTimestampReadbackMs.toFixed(2)}ms`
+      : "pending";
+    statsText += ` | timing: rAF ${runtimeTimingRafCadenceMsText}ms (${runtimeTimingRafCadenceHzText}fps)`;
+    statsText += ` | camera ${runtimeTimingCameraInteractionText}ms`;
+    statsText += ` | submit ${runtimeTimingRenderSubmitText}ms`;
+    statsText += ` | gpu render ${runtimeTimingGpuRenderPassText}`;
+    statsText += ` | gpu readback ${runtimeTimingGpuReadbackText}`;
+    statsText += ` | rebuild ${runtimeTiming.rebuildState}`;
+    const overlayUpdateStartedAtMs = performance.now();
     statsEl.textContent = statsText;
+    lastOverlayUpdateMs = roundRuntimeMetric(performance.now() - overlayUpdateStartedAtMs);
+    runtimeTiming.overlayUpdateMs = lastOverlayUpdateMs;
     exposeTileLocalRuntimeEvidence(
       rendererLabel,
       displayFps,
@@ -802,7 +867,8 @@ async function main() {
       now,
       width,
       height,
-      scene.attributes.colors
+      scene.attributes.colors,
+      runtimeTiming
     );
 
     if (shouldContinueRendering({
@@ -1782,7 +1848,8 @@ function exposeTileLocalRuntimeEvidence(
   nowMs: number,
   viewportWidth: number,
   viewportHeight: number,
-  sourceColors: Float32Array
+  sourceColors: Float32Array,
+  runtimeTiming?: RuntimeTimingEvidence
 ): void {
   const runtimeWindow = window as unknown as {
     __MESH_SPLAT_SMOKE__?: Record<string, unknown>;
@@ -1899,6 +1966,7 @@ function exposeTileLocalRuntimeEvidence(
     tileLocalDisabledReason,
     tileLocalLastSkipReason,
     arenaRuntime,
+    runtimeTiming,
     tileLocal: tileLocalState && diagnostics
       ? {
           status: tileLocalStatus,

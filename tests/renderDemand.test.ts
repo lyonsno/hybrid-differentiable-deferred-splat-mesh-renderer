@@ -63,3 +63,15 @@ test("GPU-backed tile-local compositor may refresh during active camera input", 
   assert.equal(shouldDispatchTileLocalCompositor({ ...activeGpuInput, pendingGpuSort: true }), true);
   assert.equal(shouldDispatchTileLocalCompositor({ ...activeGpuInput, pendingAlphaDensity: true }), true);
 });
+
+test("pending timing readback keeps the render demand alive for one more refresh", () => {
+  assert.equal(
+    shouldContinueRendering({
+      activeInput: false,
+      pendingGpuSort: false,
+      pendingAlphaDensity: false,
+      pendingTimings: true,
+    }),
+    true
+  );
+});

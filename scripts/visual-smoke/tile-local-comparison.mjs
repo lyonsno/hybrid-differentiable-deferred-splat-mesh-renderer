@@ -1,3 +1,5 @@
+import { normalizeRuntimeTimingEvidence } from "../../src/rendererFidelityProbes/runtimeTimingTrace.js";
+
 export const TILE_LOCAL_COMPARISON_CAPTURE_IDS = {
   plate: "plate",
   prepass: "tile-local-prepass",
@@ -136,6 +138,7 @@ export function extractTileLocalPageMetrics(pageEvidence = {}) {
   const parsedBudget = parseTileLocalBudget(statsText);
   const tileLocal = pageEvidence.tileLocal && typeof pageEvidence.tileLocal === "object" ? pageEvidence.tileLocal : {};
   const arenaRuntime = pageEvidence.arenaRuntime && typeof pageEvidence.arenaRuntime === "object" ? pageEvidence.arenaRuntime : {};
+  const runtimeTiming = normalizeRuntimeTimingEvidence(pageEvidence.runtimeTiming, statsText);
   const freshness = tileLocal.freshness
     ?? (/stale-cache/i.test(statsText) ? { status: "stale-cache" } : undefined);
   return {
@@ -168,6 +171,7 @@ export function extractTileLocalPageMetrics(pageEvidence = {}) {
           ?? skipReason,
       },
     },
+    runtimeTiming,
   };
 }
 

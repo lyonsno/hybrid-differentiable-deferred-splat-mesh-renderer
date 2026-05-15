@@ -179,6 +179,17 @@ test("visual smoke CLI reports requested and effective arena backend fields", ()
   assert.match(source, /Skipped reason:/);
 });
 
+test("visual smoke CLI reports runtime timing cadence, submit, readback, overlay, and camera costs", () => {
+  const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
+
+  assert.match(source, /rAF cadence/i);
+  assert.match(source, /Render submit duration ms/i);
+  assert.match(source, /GPU timestamp readback ms/i);
+  assert.match(source, /Overlay update duration ms/i);
+  assert.match(source, /Camera interaction cost ms/i);
+  assert.match(source, /Rebuild state/i);
+});
+
 function diagnosticCapture(id, overrides = {}) {
   const tileLocalOverrides = overrides.tileLocal ?? {};
   return {

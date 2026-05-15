@@ -513,6 +513,18 @@ ${result.captures
 - Visible presentation state: ${metrics.presentation?.visible || "not-applicable"}
 - Artifact movement: ${metrics.artifactMovement?.status || "not-measured"}${metrics.artifactMovement?.summary ? ` (${metrics.artifactMovement.summary})` : ""}
 
+## Runtime Timing
+
+- GPU timestamp support: ${metrics.runtimeTiming?.timestampsSupported ?? "not reported"}
+- rAF cadence ms: ${metrics.runtimeTiming?.rafCadenceMs ?? "not reported"}
+- rAF cadence fps: ${metrics.runtimeTiming?.rafCadenceHz ?? "not reported"}
+- Camera interaction cost ms: ${metrics.runtimeTiming?.cameraInteractionMs ?? "not reported"}
+- Render submit duration ms: ${metrics.runtimeTiming?.renderSubmitMs ?? "not reported"}
+- GPU render pass duration ms: ${metrics.runtimeTiming?.gpuRenderPassMs ?? "not reported"}
+- GPU timestamp readback ms: ${metrics.runtimeTiming?.gpuTimestampReadbackMs ?? "not reported"}
+- Overlay update duration ms: ${metrics.runtimeTiming?.overlayUpdateMs ?? "not reported"}
+- Rebuild state: ${metrics.runtimeTiming?.rebuildState ?? "not reported"}
+
 ## Findings
 
 ${classification.findings.length === 0 ? "- None" : classification.findings.map((finding) => `- ${finding.kind}: ${finding.summary}`).join("\n")}
