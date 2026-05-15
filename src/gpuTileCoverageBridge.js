@@ -1,4 +1,5 @@
 import { buildPerPixelProjectedContributorTraces } from "./rendererFidelityProbes/projectionPixelTrace.js";
+import { buildPerPixelRetainedContributorTraces } from "./rendererFidelityProbes/retentionPixelTrace.js";
 
 const DEFAULT_MAX_REFS_PER_TILE = 32;
 const DEFAULT_DEPTH_BAND_COUNT = 4;
@@ -141,6 +142,29 @@ export function buildGpuTileCoverageBridge(coverage, options = {}) {
       rendererMetadata: {
         requestedRenderer: coverage.requestedRenderer ?? "tile-local-visible",
         effectiveRenderer: coverage.effectiveRenderer ?? coverage.requestedRenderer ?? "tile-local-visible",
+        viewport: {
+          width: coverage.viewportWidth,
+          height: coverage.viewportHeight,
+        },
+        tileSizePx: coverage.tileSizePx,
+        maxRefsPerTile,
+      },
+    }),
+    perPixelRetainedContributors: buildPerPixelRetainedContributorTraces({
+      projectedContributors: contributorArena?.projectedContributors ?? null,
+      retainedContributors: Array.isArray(contributorArena?.contributors)
+        ? contributorArena.contributors
+        : retainedTileEntries,
+      viewportWidth: coverage.viewportWidth,
+      viewportHeight: coverage.viewportHeight,
+      tileSizePx: coverage.tileSizePx,
+      tileColumns: coverage.tileColumns,
+      tileRows: coverage.tileRows,
+      rendererMetadata: {
+        requestedRenderer: coverage.requestedRenderer ?? "tile-local-visible",
+        effectiveRenderer: coverage.effectiveRenderer ?? coverage.requestedRenderer ?? "tile-local-visible",
+        requestedArenaBackend: coverage.requestedArenaBackend ?? null,
+        effectiveArenaBackend: coverage.effectiveArenaBackend ?? null,
         viewport: {
           width: coverage.viewportWidth,
           height: coverage.viewportHeight,
