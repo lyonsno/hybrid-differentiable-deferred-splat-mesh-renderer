@@ -67,7 +67,11 @@ Interpretation boundary: this makes source sparsity unlikely for the fixed porou
 
 ## 2026-05-06 Conic Parity Follow-Up
 
-The tile-local visible compositor now uses the plate-rate conic falloff `exp(-2.0 * mahalanobis2)` for sample-local coverage, while preserving the optical-depth alpha transfer and not multiplying by the tile-integrated coverage mass. The hard support-discard variant was tested and rejected because it made the footprint metric tight while visibly exposing tile-cap perforation in the dessert body. The landed direction is the softer falloff: it reduces the fixed-view tile-local footprint expansion without pretending the remaining porous body is solved.
+The tile-local visible compositor used the plate-rate conic falloff `exp(-2.0 * mahalanobis2)` for sample-local coverage, while preserving the optical-depth alpha transfer and not multiplying by the tile-integrated coverage mass. The hard support-discard variant was tested and rejected because it made the footprint metric tight while visibly exposing tile-cap perforation in the dessert body. The landed direction reduced the fixed-view tile-local footprint expansion without pretending the remaining porous body was solved.
+
+## 2026-05-15 Black-Band Trace Follow-Up
+
+The pixel contributor trace substrate later showed that the plate-rate falloff was too tight for `black-band-dropout-2300-1055`: two projected, retained, and ordered contributors reached final accumulation with sample weights around `1e-7`, leaving the pixel effectively clear despite large projected footprints. The bounded follow-up restores the Gaussian-reference falloff `exp(-0.5 * mahalanobis2)` for sample-local visible coverage while preserving the same optical-depth alpha transfer and the prohibition on multiplying by tile-integrated coverage mass.
 
 Durable artifacts:
 

@@ -232,7 +232,7 @@ function conicPixelWeight(centerPx, inverseConic, pixelCenter) {
   const dx = pixelCenter[0] - center[0];
   const dy = pixelCenter[1] - center[1];
   const mahalanobis2 = conic[0] * dx * dx + 2 * conic[1] * dx * dy + conic[2] * dy * dy;
-  return Math.exp(-2 * Math.max(mahalanobis2, 0));
+  return Math.exp(-0.5 * Math.max(mahalanobis2, 0));
 }
 
 function resolveSourceColor(sourceColors, splatIndex, blockers) {
