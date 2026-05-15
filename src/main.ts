@@ -95,6 +95,7 @@ import {
   buildPerPixelFinalColorAccumulationTraces,
   type PixelFinalAccumulationTraceRecord,
 } from "./rendererFidelityProbes/finalAccumulationTrace.js";
+import { buildGpuLiveAnchorContributorTraces } from "./rendererFidelityProbes/gpuLiveAnchorTrace.js";
 import {
   formatTileLocalBudgetPair,
   resolveTileLocalBudgetConfig,
@@ -1004,6 +1005,33 @@ function createGpuArenaTileLocalSceneState(
     alphaParamData,
     sourceOpacities: effectiveOpacities,
   });
+  const anchorContributorTraces = buildGpuLiveAnchorContributorTraces({
+    attributes,
+    viewMatrix,
+    viewProj,
+    effectiveOpacities,
+    viewportWidth,
+    viewportHeight,
+    tileSizePx: plan.tileSizePx,
+    tileColumns: plan.tileColumns,
+    tileRows: plan.tileRows,
+    splatScale: footprintParams.splatScale,
+    minRadiusPx: footprintParams.minRadiusPx,
+    maxRefsPerTile: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
+    nearFadeEndNdc: footprintParams.nearFadeEndNdc,
+    rendererMetadata: {
+      requestedRenderer: "tile-local-visible",
+      effectiveRenderer: "tile-local-visible",
+      requestedArenaBackend: REQUESTED_ARENA_BACKEND,
+      effectiveArenaBackend: "gpu",
+      tileSizePx: plan.tileSizePx,
+      maxRefsPerTile: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
+      viewport: {
+        width: viewportWidth,
+        height: viewportHeight,
+      },
+    },
+  });
 
   return {
     viewportWidth,
@@ -1041,9 +1069,9 @@ function createGpuArenaTileLocalSceneState(
     diagnostics,
     arenaBackend: "gpu",
     gpuArenaRuntime: null,
-    gpuArenaProjectedContributors: [],
-    perPixelProjectedContributors: [],
-    perPixelRetainedContributors: [],
+    gpuArenaProjectedContributors: anchorContributorTraces.projectedContributors,
+    perPixelProjectedContributors: anchorContributorTraces.perPixelProjectedContributors,
+    perPixelRetainedContributors: anchorContributorTraces.perPixelRetainedContributors,
     arenaUnavailableReason: undefined,
     gpuDispatchEnqueueDurationMs: undefined,
     needsDispatch: true,
