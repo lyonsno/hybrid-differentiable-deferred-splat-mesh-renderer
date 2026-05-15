@@ -1,0 +1,171 @@
+{
+  "bundleSlug": "main-vs-candidate-slice-1",
+  "layout": {
+    "bundleDir": "smoke-reports/main-vs-candidate-slice-1",
+    "manifestPath": "smoke-reports/main-vs-candidate-slice-1/manifest.json",
+    "reportPath": "smoke-reports/main-vs-candidate-slice-1/report.md",
+    "branchDirs": {
+      "main": "smoke-reports/main-vs-candidate-slice-1/main",
+      "candidate": "smoke-reports/main-vs-candidate-slice-1/candidate"
+    }
+  },
+  "branches": [
+    {
+      "role": "main",
+      "label": "cc/smoke-contact-sheet-custody-0515",
+      "sha": "75a45f3",
+      "repoPath": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515",
+      "branchDir": "smoke-reports/main-vs-candidate-slice-1/main",
+      "reportPath": "smoke-reports/main-vs-candidate-slice-1/main/report.md",
+      "views": [
+        {
+          "name": "dessert-wide",
+          "title": "Dessert wide",
+          "sourceMode": "static-dessert-witness",
+          "sourceView": "dessert-wide",
+          "captureMode": "static-dessert-witness",
+          "outputDir": "smoke-reports/main-vs-candidate-slice-1/main/source/dessert-wide",
+          "sourceRunDir": "smoke-reports/main-vs-candidate-slice-1/main/source/dessert-wide",
+          "status": "present",
+          "role": "main"
+        },
+        {
+          "name": "dessert-close",
+          "title": "Dessert close",
+          "sourceMode": "static-dessert-witness",
+          "sourceView": "dessert-close",
+          "captureMode": "static-dessert-witness",
+          "outputDir": "smoke-reports/main-vs-candidate-slice-1/main/source/dessert-close",
+          "sourceRunDir": "smoke-reports/main-vs-candidate-slice-1/main/source/dessert-close",
+          "status": "skipped",
+          "role": "main",
+          "missingReason": "skipped by --only capture selection"
+        },
+        {
+          "name": "black-band-crop",
+          "title": "Black-band crop",
+          "sourceMode": "derived-crop",
+          "sourceView": "dessert-close",
+          "captureMode": "static-dessert-witness",
+          "outputDir": "smoke-reports/main-vs-candidate-slice-1/main/black-band-crop",
+          "sourceRunDir": "smoke-reports/main-vs-candidate-slice-1/main/source/dessert-close",
+          "status": "skipped",
+          "role": "main",
+          "cropKey": "rimBand",
+          "missingReason": "skipped by --only capture selection"
+        },
+        {
+          "name": "porous-body-crop",
+          "title": "Porous-body crop",
+          "sourceMode": "derived-crop",
+          "sourceView": "dessert-porous-close",
+          "captureMode": "static-dessert-witness",
+          "outputDir": "smoke-reports/main-vs-candidate-slice-1/main/porous-body-crop",
+          "sourceRunDir": "smoke-reports/main-vs-candidate-slice-1/main/source/dessert-porous-close",
+          "status": "skipped",
+          "role": "main",
+          "cropKey": "porousBody",
+          "missingReason": "skipped by --only capture selection"
+        },
+        {
+          "name": "toolbench-comparison",
+          "title": "Toolbench comparison",
+          "sourceMode": "tile-local-comparison",
+          "sourceView": "toolbench-comparison",
+          "captureMode": "tile-local-comparison",
+          "outputDir": "smoke-reports/main-vs-candidate-slice-1/main/source/toolbench-comparison",
+          "sourceRunDir": "smoke-reports/main-vs-candidate-slice-1/main/source/toolbench-comparison",
+          "status": "skipped",
+          "role": "main",
+          "missingReason": "skipped by --only capture selection"
+        }
+      ],
+      "availableViews": [
+        "dessert-wide",
+        "dessert-close",
+        "black-band-crop",
+        "porous-body-crop",
+        "toolbench-comparison"
+      ]
+    },
+    {
+      "role": "candidate",
+      "label": "cc/meshsplat-gpu-camera-trace-composed-0515",
+      "sha": "37bcab1",
+      "repoPath": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-meshsplat-gpu-camera-trace-composed-0515",
+      "branchDir": "smoke-reports/main-vs-candidate-slice-1/candidate",
+      "reportPath": "smoke-reports/main-vs-candidate-slice-1/candidate/report.md",
+      "views": [
+        {
+          "name": "dessert-wide",
+          "title": "Dessert wide",
+          "sourceMode": "static-dessert-witness",
+          "sourceView": "dessert-wide",
+          "captureMode": "static-dessert-witness",
+          "outputDir": "smoke-reports/main-vs-candidate-slice-1/candidate/source/dessert-wide",
+          "sourceRunDir": "smoke-reports/main-vs-candidate-slice-1/candidate/source/dessert-wide",
+          "status": "skipped",
+          "role": "candidate",
+          "missingReason": "skipped by --only capture selection"
+        },
+        {
+          "name": "dessert-close",
+          "title": "Dessert close",
+          "sourceMode": "static-dessert-witness",
+          "sourceView": "dessert-close",
+          "captureMode": "static-dessert-witness",
+          "outputDir": "smoke-reports/main-vs-candidate-slice-1/candidate/source/dessert-close",
+          "sourceRunDir": "smoke-reports/main-vs-candidate-slice-1/candidate/source/dessert-close",
+          "status": "skipped",
+          "role": "candidate",
+          "missingReason": "skipped by --only capture selection"
+        },
+        {
+          "name": "black-band-crop",
+          "title": "Black-band crop",
+          "sourceMode": "derived-crop",
+          "sourceView": "dessert-close",
+          "captureMode": "static-dessert-witness",
+          "outputDir": "smoke-reports/main-vs-candidate-slice-1/candidate/black-band-crop",
+          "sourceRunDir": "smoke-reports/main-vs-candidate-slice-1/candidate/source/dessert-close",
+          "status": "skipped",
+          "role": "candidate",
+          "cropKey": "rimBand",
+          "missingReason": "skipped by --only capture selection"
+        },
+        {
+          "name": "porous-body-crop",
+          "title": "Porous-body crop",
+          "sourceMode": "derived-crop",
+          "sourceView": "dessert-porous-close",
+          "captureMode": "static-dessert-witness",
+          "outputDir": "smoke-reports/main-vs-candidate-slice-1/candidate/porous-body-crop",
+          "sourceRunDir": "smoke-reports/main-vs-candidate-slice-1/candidate/source/dessert-porous-close",
+          "status": "skipped",
+          "role": "candidate",
+          "cropKey": "porousBody",
+          "missingReason": "skipped by --only capture selection"
+        },
+        {
+          "name": "toolbench-comparison",
+          "title": "Toolbench comparison",
+          "sourceMode": "tile-local-comparison",
+          "sourceView": "toolbench-comparison",
+          "captureMode": "tile-local-comparison",
+          "outputDir": "smoke-reports/main-vs-candidate-slice-1/candidate/source/toolbench-comparison",
+          "sourceRunDir": "smoke-reports/main-vs-candidate-slice-1/candidate/source/toolbench-comparison",
+          "status": "skipped",
+          "role": "candidate",
+          "missingReason": "skipped by --only capture selection"
+        }
+      ],
+      "availableViews": [
+        "dessert-wide",
+        "dessert-close",
+        "black-band-crop",
+        "porous-body-crop",
+        "toolbench-comparison"
+      ]
+    }
+  ]
+}
