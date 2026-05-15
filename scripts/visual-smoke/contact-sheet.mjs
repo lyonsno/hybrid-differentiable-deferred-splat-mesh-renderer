@@ -51,10 +51,10 @@ const CONTACT_SHEET_VIEW_DEFINITIONS = Object.freeze({
   },
 });
 
-export function buildSmokeContactSheetLayout({ bundleSlug } = {}) {
+export function buildSmokeContactSheetLayout({ bundleSlug, artifactRoot } = {}) {
   const resolvedSlug = bundleSlug || defaultBundleSlug();
   const bundleDir = path.posix.join("smoke-reports", resolvedSlug);
-  return {
+  const layout = {
     bundleDir,
     manifestPath: path.posix.join(bundleDir, "manifest.json"),
     reportPath: path.posix.join(bundleDir, "report.md"),
@@ -63,14 +63,28 @@ export function buildSmokeContactSheetLayout({ bundleSlug } = {}) {
       candidate: path.posix.join(bundleDir, "candidate"),
     },
   };
+  if (artifactRoot) {
+    layout.artifactRoot = artifactRoot;
+    layout.absoluteBundleDir = path.join(artifactRoot, bundleDir);
+    layout.absoluteManifestPath = path.join(artifactRoot, layout.manifestPath);
+    layout.absoluteReportPath = path.join(artifactRoot, layout.reportPath);
+    layout.absoluteBranchDirs = {
+      main: path.join(artifactRoot, layout.branchDirs.main),
+      candidate: path.join(artifactRoot, layout.branchDirs.candidate),
+    };
+  }
+  return layout;
 }
 
-export function buildSmokeContactSheetPlan({ bundleSlug, branches = [], captureSlices = [] } = {}) {
-  const layout = buildSmokeContactSheetLayout({ bundleSlug });
+export function buildSmokeContactSheetPlan({ bundleSlug, artifactRoot, branches = [], captureSlices = [], captureTimeoutMs } = {}) {
+  const resolvedArtifactRoot = artifactRoot ? path.resolve(artifactRoot) : undefined;
+  const layout = buildSmokeContactSheetLayout({ bundleSlug, artifactRoot: resolvedArtifactRoot });
   const plan = {
     bundleSlug: bundleSlug || defaultBundleSlug(),
     layout,
-    branches: branches.map((branch) => buildBranchPlan(branch, layout)),
+    artifactRoot: resolvedArtifactRoot,
+    captureTimeoutMs,
+    branches: branches.map((branch) => buildBranchPlan(branch, layout, resolvedArtifactRoot)),
   };
   applyCaptureSlices(plan, captureSlices);
   return plan;
@@ -83,6 +97,8 @@ export function renderSmokeContactSheetReport(plan) {
 - Bundle dir: \`${plan.layout.bundleDir}\`
 - Manifest: \`${plan.layout.manifestPath}\`
 - Branch report: \`${plan.layout.reportPath}\`
+- Artifact root: ${plan.artifactRoot ? `\`${plan.artifactRoot}\`` : "current working directory"}
+- Source capture timeout: ${plan.captureTimeoutMs ? `${plan.captureTimeoutMs} ms` : "unbounded"}
 
 ${plan.branches
   .map(
@@ -121,6 +137,8 @@ export async function buildSmokeContactSheetBundle({
   browserChannel,
   browserExecutable,
   captureSlices = [],
+  captureTimeoutMs,
+  artifactRoot = process.cwd(),
 } = {}) {
   if (!mainRepo || !candidateRepo) {
     throw new Error("buildSmokeContactSheetBundle: mainRepo and candidateRepo are required");
@@ -133,7 +151,7 @@ export async function buildSmokeContactSheetBundle({
   const allowedViews = includeToolbenchComparison
     ? CONTACT_SHEET_VIEW_ORDER
     : CONTACT_SHEET_VIEW_ORDER.filter((view) => view !== "toolbench-comparison");
-  const plan = buildSmokeContactSheetPlan({ bundleSlug, branches, captureSlices });
+  const plan = buildSmokeContactSheetPlan({ bundleSlug, branches, captureSlices, captureTimeoutMs, artifactRoot });
   for (const branch of plan.branches) {
     branch.availableViews = allowedViews;
     for (const view of branch.views) {
@@ -148,13 +166,14 @@ export async function buildSmokeContactSheetBundle({
     return { plan, captures: [] };
   }
 
-  await mkdir(plan.layout.bundleDir, { recursive: true });
+  await mkdir(plan.layout.absoluteBundleDir ?? plan.layout.bundleDir, { recursive: true });
   const captures = [];
 
   for (const branch of plan.branches) {
-    await mkdir(branch.branchDir, { recursive: true });
+    const branchDir = branch.absoluteBranchDir ?? branch.branchDir;
+    await mkdir(branchDir, { recursive: true });
     await writeFile(
-      path.join(branch.branchDir, "branch.json"),
+      path.join(branchDir, "branch.json"),
       `${JSON.stringify({ role: branch.role, label: branch.label, sha: branch.sha, repoPath: branch.repoPath }, null, 2)}\n`
     );
 
@@ -164,21 +183,37 @@ export async function buildSmokeContactSheetBundle({
     const sourceCaptureResults = new Map();
 
     for (const sourcePlan of sourcePlans) {
-      const sourceDir = path.join(branch.branchDir, "source", sourcePlan.sourceView);
-      const captureResult = await runSmokeCapture({
-        repoPath: branch.repoPath,
-        captureMode: sourcePlan.captureMode,
-        sourceView: sourcePlan.sourceView,
-        outDir: sourceDir,
-        browserChannel,
-        browserExecutable,
-      });
-      sourceCaptureResults.set(sourcePlan.sourceView, {
-        sourceDir,
-        reportPath: path.join(sourceDir, "report.md"),
-        analysisPath: path.join(sourceDir, "analysis.json"),
-        ...captureResult,
-      });
+      const sourceDir = sourcePlan.absoluteSourceRunDir ?? path.join(branchDir, "source", sourcePlan.sourceView);
+      try {
+        const captureResult = await runSmokeCapture({
+          repoPath: branch.repoPath,
+          captureMode: sourcePlan.captureMode,
+          sourceView: sourcePlan.sourceView,
+          outDir: sourceDir,
+          browserChannel,
+          browserExecutable,
+          captureTimeoutMs,
+        });
+        sourceCaptureResults.set(sourcePlan.sourceView, {
+          sourceDir,
+          reportPath: path.join(sourceDir, "report.md"),
+          analysisPath: path.join(sourceDir, "analysis.json"),
+          ...captureResult,
+        });
+      } catch (error) {
+        await mkdir(sourceDir, { recursive: true });
+        const failure = captureFailure(error);
+        await writeFile(
+          path.join(sourceDir, "capture-error.json"),
+          `${JSON.stringify({ sourceView: sourcePlan.sourceView, captureMode: sourcePlan.captureMode, ...failure }, null, 2)}\n`
+        );
+        sourceCaptureResults.set(sourcePlan.sourceView, {
+          sourceDir,
+          failed: true,
+          failure,
+        });
+        markViewsMissingForSourceFailure(branch, sourcePlan, failure);
+      }
     }
 
     for (const view of branch.views) {
@@ -186,9 +221,9 @@ export async function buildSmokeContactSheetBundle({
         continue;
       }
       const sourceCapture = sourceCaptureResults.get(view.sourceView);
-      if (!sourceCapture) {
+      if (!sourceCapture || sourceCapture.failed) {
         view.status = "missing";
-        view.missingReason = `missing source capture ${view.sourceView}`;
+        view.missingReason = sourceCapture?.failure?.summary ?? `missing source capture ${view.sourceView}`;
         continue;
       }
       const crop = await extractCropRegion(sourceCapture.analysisPath, view.cropKey);
@@ -197,21 +232,22 @@ export async function buildSmokeContactSheetBundle({
         view.missingReason = `missing ${view.cropKey} crop metadata`;
         continue;
       }
-      await mkdir(view.outputDir, { recursive: true });
+      const outputDir = view.absoluteOutputDir ?? view.outputDir;
+      await mkdir(outputDir, { recursive: true });
       const sourcePng = await readFile(path.join(sourceCapture.sourceDir, "final-color.png"));
-      await writeFile(path.join(view.outputDir, "final-color.png"), cropPngBuffer(sourcePng, crop));
-      await writeFile(path.join(view.outputDir, "crop.json"), `${JSON.stringify({ crop, sourceView: view.sourceView }, null, 2)}\n`);
-      await copyFile(path.join(sourceCapture.sourceDir, "analysis.json"), path.join(view.outputDir, "source-analysis.json"));
-      await copyFile(path.join(sourceCapture.sourceDir, "report.md"), path.join(view.outputDir, "source-report.md"));
+      await writeFile(path.join(outputDir, "final-color.png"), cropPngBuffer(sourcePng, crop));
+      await writeFile(path.join(outputDir, "crop.json"), `${JSON.stringify({ crop, sourceView: view.sourceView }, null, 2)}\n`);
+      await copyFile(path.join(sourceCapture.sourceDir, "analysis.json"), path.join(outputDir, "source-analysis.json"));
+      await copyFile(path.join(sourceCapture.sourceDir, "report.md"), path.join(outputDir, "source-report.md"));
       view.crop = crop;
     }
 
-    await writeFile(path.join(branch.branchDir, "report.md"), renderBranchReport(branch));
+    await writeFile(path.join(branchDir, "report.md"), renderBranchReport(branch));
     captures.push({ branch, sourceCaptureResults });
   }
 
-  await writeFile(plan.layout.manifestPath, `${JSON.stringify(plan, null, 2)}\n`);
-  await writeFile(plan.layout.reportPath, renderSmokeContactSheetReport(plan));
+  await writeFile(plan.layout.absoluteManifestPath ?? plan.layout.manifestPath, `${JSON.stringify(plan, null, 2)}\n`);
+  await writeFile(plan.layout.absoluteReportPath ?? plan.layout.reportPath, renderSmokeContactSheetReport(plan));
   return { plan, captures };
 }
 
@@ -227,31 +263,37 @@ async function resolveBranchDescriptor(role, repoPath) {
   };
 }
 
-function buildBranchPlan(branch, layout) {
+function buildBranchPlan(branch, layout, artifactRoot) {
   const availableViews = new Set(branch.availableViews ?? CONTACT_SHEET_VIEW_ORDER);
   const branchDir = layout.branchDirs[branch.role] ?? path.posix.join(layout.bundleDir, branch.role);
-  const views = CONTACT_SHEET_VIEW_ORDER.map((name) => buildViewPlan(name, branch.role, branchDir, availableViews));
+  const absoluteBranchDir = artifactRoot ? path.join(artifactRoot, branchDir) : undefined;
+  const views = CONTACT_SHEET_VIEW_ORDER.map((name) => buildViewPlan(name, branch.role, branchDir, availableViews, artifactRoot));
   return {
     role: branch.role,
     label: branch.label,
     sha: branch.sha,
     repoPath: branch.repoPath,
     branchDir,
+    absoluteBranchDir,
     reportPath: path.posix.join(branchDir, "report.md"),
     views,
   };
 }
 
-function buildViewPlan(name, role, branchDir, availableViews) {
+function buildViewPlan(name, role, branchDir, availableViews, artifactRoot) {
   const definition = CONTACT_SHEET_VIEW_DEFINITIONS[name];
+  const outputDir = path.posix.join(branchDir, definition.outputSubdir);
+  const sourceRunDir = path.posix.join(branchDir, "source", definition.sourceView);
   return {
     name,
     title: definition.title,
     sourceMode: definition.sourceMode,
     sourceView: definition.sourceView,
     captureMode: captureModeForView(name),
-    outputDir: path.posix.join(branchDir, definition.outputSubdir),
-    sourceRunDir: path.posix.join(branchDir, "source", definition.sourceView),
+    outputDir,
+    absoluteOutputDir: artifactRoot ? path.join(artifactRoot, outputDir) : undefined,
+    sourceRunDir,
+    absoluteSourceRunDir: artifactRoot ? path.join(artifactRoot, sourceRunDir) : undefined,
     status: availableViews.has(name) ? "present" : "missing",
     role,
     cropKey: definition.cropKey,
@@ -316,12 +358,13 @@ function uniqueSourcePlans(views) {
       captureMode: view.captureMode,
       sourceView: view.sourceView,
       sourceRunDir: view.sourceRunDir,
+      absoluteSourceRunDir: view.absoluteSourceRunDir,
     });
   }
   return plans;
 }
 
-async function runSmokeCapture({ repoPath, captureMode, sourceView, outDir, browserChannel, browserExecutable }) {
+async function runSmokeCapture({ repoPath, captureMode, sourceView, outDir, browserChannel, browserExecutable, captureTimeoutMs }) {
   const smokeScript = fileURLToPath(new URL("../run-visual-smoke.mjs", import.meta.url));
   const args = [
     smokeScript,
@@ -351,7 +394,31 @@ async function runSmokeCapture({ repoPath, captureMode, sourceView, outDir, brow
     throw new Error(`Unknown source mode: ${captureMode}`);
   }
 
-  return spawnPromise(process.execPath, args, { cwd: repoPath });
+  return spawnPromise(process.execPath, args, { cwd: repoPath, timeoutMs: captureTimeoutMs });
+}
+
+function markViewsMissingForSourceFailure(branch, sourcePlan, failure) {
+  for (const view of branch.views) {
+    if (view.status !== "present" || view.sourceView !== sourcePlan.sourceView) {
+      continue;
+    }
+    view.status = "missing";
+    view.missingReason = failure.summary;
+  }
+}
+
+function captureFailure(error) {
+  const summary = error.timedOut
+    ? `capture timed out after ${error.timeoutMs} ms`
+    : `capture failed: ${error.message}`;
+  return {
+    summary,
+    timedOut: Boolean(error.timedOut),
+    timeoutMs: error.timeoutMs,
+    message: error.message,
+    code: error.code,
+    signal: error.signal,
+  };
 }
 
 function smokeCaptureQuery({ captureMode, sourceView }) {
@@ -466,6 +533,7 @@ ${branch.views
 - Source mode: ${view.sourceMode}
 - Source view: ${view.sourceView}
 - Output dir: \`${view.outputDir}\`
+- Absolute output dir: ${view.absoluteOutputDir ? `\`${view.absoluteOutputDir}\`` : "not materialized"}
 - Source run dir: \`${view.sourceRunDir}\`
 ${view.crop ? `- Crop: \`${JSON.stringify(view.crop)}\`` : ""}
 ${view.status === "missing" && view.missingReason ? `- Missing: ${view.missingReason}` : ""}`
@@ -489,15 +557,45 @@ function defaultBundleSlug() {
   return `contact-sheet-${new Date().toISOString().replace(/[:.]/g, "-")}`;
 }
 
-function spawnPromise(command, args, { cwd, captureStdout = false } = {}) {
+function spawnPromise(command, args, { cwd, captureStdout = false, timeoutMs } = {}) {
   return new Promise((resolve, reject) => {
+    const useProcessGroup = Number.isFinite(timeoutMs) && timeoutMs > 0;
     const child = spawn(command, args, {
       cwd,
       stdio: captureStdout ? ["ignore", "pipe", "inherit"] : "inherit",
       env: process.env,
+      detached: useProcessGroup,
     });
 
     let stdout = "";
+    let timedOut = false;
+    let hardKillTimer;
+    const timeoutTimer = useProcessGroup
+      ? setTimeout(() => {
+          timedOut = true;
+          try {
+            process.kill(-child.pid, "SIGTERM");
+          } catch {
+            try {
+              child.kill("SIGTERM");
+            } catch {
+              // The close handler will report whatever state the child reached.
+            }
+          }
+          hardKillTimer = setTimeout(() => {
+            try {
+              process.kill(-child.pid, "SIGKILL");
+            } catch {
+              try {
+                child.kill("SIGKILL");
+              } catch {
+                // Nothing else to kill.
+              }
+            }
+          }, 5000);
+        }, timeoutMs)
+      : null;
+
     if (captureStdout && child.stdout) {
       child.stdout.setEncoding("utf8");
       child.stdout.on("data", (chunk) => {
@@ -506,11 +604,22 @@ function spawnPromise(command, args, { cwd, captureStdout = false } = {}) {
     }
 
     child.on("error", reject);
-    child.on("close", (code) => {
+    child.on("close", (code, signal) => {
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+      if (hardKillTimer) clearTimeout(hardKillTimer);
       if (code === 0) {
         resolve(stdout.trim());
       } else {
-        reject(new Error(`${command} exited with code ${code}`));
+        const error = new Error(
+          timedOut
+            ? `${command} timed out after ${timeoutMs} ms`
+            : `${command} exited with code ${code}${signal ? ` signal ${signal}` : ""}`
+        );
+        error.timedOut = timedOut;
+        error.timeoutMs = timeoutMs;
+        error.code = code;
+        error.signal = signal;
+        reject(error);
       }
     });
   });
@@ -542,6 +651,8 @@ function parseArgs(args) {
     browserChannel: process.env.VISUAL_SMOKE_BROWSER_CHANNEL || "chrome",
     browserExecutable: process.env.VISUAL_SMOKE_BROWSER_EXECUTABLE,
     captureSlices: [],
+    captureTimeoutMs: undefined,
+    artifactRoot: process.cwd(),
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -580,6 +691,12 @@ function parseArgs(args) {
       case "--browser-executable":
         options.browserExecutable = next();
         break;
+      case "--capture-timeout-ms":
+        options.captureTimeoutMs = parsePositiveInteger(next(), arg);
+        break;
+      case "--artifact-root":
+        options.artifactRoot = next();
+        break;
       case "--help":
       case "-h":
         printHelp();
@@ -602,10 +719,20 @@ Options:
   --candidate-repo <path>      Candidate branch renderer checkout.
   --no-toolbench               Skip the tile-local comparison capture.
   --only <branch:view>         Run only selected branch/view slices; repeat or comma-separate values.
+  --capture-timeout-ms <ms>    Bound each source capture child; timed-out slices are recorded as missing.
+  --artifact-root <path>       Root that owns all bundle artifacts. Defaults to the current working directory.
   --dry-run                    Print the plan without running captures.
   --browser-channel <name>     Browser channel for visual smoke capture.
   --browser-executable <path>  Browser executable path; overrides the channel.
 `);
+}
+
+function parsePositiveInteger(value, flag) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`${flag} must be a positive integer`);
+  }
+  return parsed;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

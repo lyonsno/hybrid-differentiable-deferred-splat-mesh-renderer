@@ -186,3 +186,36 @@ test("smoke contact-sheet plan accepts wildcard branch capture slices", () => {
     ]
   );
 });
+
+test("smoke contact-sheet plan records explicit source capture timeout metadata", () => {
+  const plan = buildSmokeContactSheetPlan({
+    bundleSlug: "bounded-capture",
+    artifactRoot: "/tmp/contact-sheet-owner",
+    captureTimeoutMs: 240000,
+    branches: [
+      { role: "main", label: "main", sha: "37bcab1" },
+      { role: "candidate", label: "candidate", sha: "a1b2c3d" },
+    ],
+  });
+
+  assert.equal(plan.captureTimeoutMs, 240000);
+  assert.match(renderSmokeContactSheetReport(plan), /Source capture timeout: 240000 ms/);
+});
+
+test("smoke contact-sheet plan keeps candidate artifacts under the owning bundle root", () => {
+  const plan = buildSmokeContactSheetPlan({
+    bundleSlug: "candidate-custody",
+    artifactRoot: "/tmp/contact-sheet-owner",
+    branches: [
+      { role: "main", label: "main", sha: "37bcab1" },
+      { role: "candidate", label: "candidate", sha: "a1b2c3d" },
+    ],
+  });
+
+  const candidateWide = plan.branches[1].views.find((view) => view.name === "dessert-wide");
+  assert.equal(
+    candidateWide.absoluteOutputDir,
+    "/tmp/contact-sheet-owner/smoke-reports/candidate-custody/candidate/source/dessert-wide"
+  );
+  assert.equal(candidateWide.outputDir, "smoke-reports/candidate-custody/candidate/source/dessert-wide");
+});

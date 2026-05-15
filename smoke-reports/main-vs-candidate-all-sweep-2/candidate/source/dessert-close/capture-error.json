@@ -1,0 +1,10 @@
+{
+  "sourceView": "dessert-close",
+  "captureMode": "static-dessert-witness",
+  "summary": "capture timed out after 180000 ms",
+  "timedOut": true,
+  "timeoutMs": 180000,
+  "message": "/opt/homebrew/Cellar/node/25.9.0_2/bin/node timed out after 180000 ms",
+  "code": 143,
+  "signal": null
+}

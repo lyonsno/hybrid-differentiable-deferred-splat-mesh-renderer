@@ -1,0 +1,202 @@
+{
+  "bundleSlug": "main-vs-candidate-all-sweep-2",
+  "layout": {
+    "bundleDir": "smoke-reports/main-vs-candidate-all-sweep-2",
+    "manifestPath": "smoke-reports/main-vs-candidate-all-sweep-2/manifest.json",
+    "reportPath": "smoke-reports/main-vs-candidate-all-sweep-2/report.md",
+    "branchDirs": {
+      "main": "smoke-reports/main-vs-candidate-all-sweep-2/main",
+      "candidate": "smoke-reports/main-vs-candidate-all-sweep-2/candidate"
+    },
+    "artifactRoot": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515",
+    "absoluteBundleDir": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515/smoke-reports/main-vs-candidate-all-sweep-2",
+    "absoluteManifestPath": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515/smoke-reports/main-vs-candidate-all-sweep-2/manifest.json",
+    "absoluteReportPath": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515/smoke-reports/main-vs-candidate-all-sweep-2/report.md",
+    "absoluteBranchDirs": {
+      "main": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515/smoke-reports/main-vs-candidate-all-sweep-2/main",
+      "candidate": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515/smoke-reports/main-vs-candidate-all-sweep-2/candidate"
+    }
+  },
+  "artifactRoot": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515",
+  "captureTimeoutMs": 180000,
+  "branches": [
+    {
+      "role": "main",
+      "label": "cc/smoke-contact-sheet-custody-0515",
+      "sha": "2f394e3",
+      "repoPath": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515",
+      "branchDir": "smoke-reports/main-vs-candidate-all-sweep-2/main",
+      "absoluteBranchDir": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515/smoke-reports/main-vs-candidate-all-sweep-2/main",
+      "reportPath": "smoke-reports/main-vs-candidate-all-sweep-2/main/report.md",
+      "views": [
+        {
+          "name": "dessert-wide",
+          "title": "Dessert wide",
+          "sourceMode": "static-dessert-witness",
+          "sourceView": "dessert-wide",
+          "captureMode": "static-dessert-witness",
+          "outputDir": "smoke-reports/main-vs-candidate-all-sweep-2/main/source/dessert-wide",
+          "absoluteOutputDir": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515/smoke-reports/main-vs-candidate-all-sweep-2/main/source/dessert-wide",
+          "sourceRunDir": "smoke-reports/main-vs-candidate-all-sweep-2/main/source/dessert-wide",
+          "absoluteSourceRunDir": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515/smoke-reports/main-vs-candidate-all-sweep-2/main/source/dessert-wide",
+          "status": "missing",
+          "role": "main",
+          "missingReason": "capture timed out after 180000 ms"
+        },
+        {
+          "name": "dessert-close",
+          "title": "Dessert close",
+          "sourceMode": "static-dessert-witness",
+          "sourceView": "dessert-close",
+          "captureMode": "static-dessert-witness",
+          "outputDir": "smoke-reports/main-vs-candidate-all-sweep-2/main/source/dessert-close",
+          "absoluteOutputDir": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515/smoke-reports/main-vs-candidate-all-sweep-2/main/source/dessert-close",
+          "sourceRunDir": "smoke-reports/main-vs-candidate-all-sweep-2/main/source/dessert-close",
+          "absoluteSourceRunDir": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515/smoke-reports/main-vs-candidate-all-sweep-2/main/source/dessert-close",
+          "status": "missing",
+          "role": "main",
+          "missingReason": "capture timed out after 180000 ms"
+        },
+        {
+          "name": "black-band-crop",
+          "title": "Black-band crop",
+          "sourceMode": "derived-crop",
+          "sourceView": "dessert-close",
+          "captureMode": "static-dessert-witness",
+          "outputDir": "smoke-reports/main-vs-candidate-all-sweep-2/main/black-band-crop",
+          "absoluteOutputDir": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515/smoke-reports/main-vs-candidate-all-sweep-2/main/black-band-crop",
+          "sourceRunDir": "smoke-reports/main-vs-candidate-all-sweep-2/main/source/dessert-close",
+          "absoluteSourceRunDir": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515/smoke-reports/main-vs-candidate-all-sweep-2/main/source/dessert-close",
+          "status": "missing",
+          "role": "main",
+          "cropKey": "rimBand",
+          "missingReason": "capture timed out after 180000 ms"
+        },
+        {
+          "name": "porous-body-crop",
+          "title": "Porous-body crop",
+          "sourceMode": "derived-crop",
+          "sourceView": "dessert-porous-close",
+          "captureMode": "static-dessert-witness",
+          "outputDir": "smoke-reports/main-vs-candidate-all-sweep-2/main/porous-body-crop",
+          "absoluteOutputDir": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515/smoke-reports/main-vs-candidate-all-sweep-2/main/porous-body-crop",
+          "sourceRunDir": "smoke-reports/main-vs-candidate-all-sweep-2/main/source/dessert-porous-close",
+          "absoluteSourceRunDir": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515/smoke-reports/main-vs-candidate-all-sweep-2/main/source/dessert-porous-close",
+          "status": "missing",
+          "role": "main",
+          "cropKey": "porousBody",
+          "missingReason": "capture failed: /opt/homebrew/Cellar/node/25.9.0_2/bin/node exited with code 1"
+        },
+        {
+          "name": "toolbench-comparison",
+          "title": "Toolbench comparison",
+          "sourceMode": "tile-local-comparison",
+          "sourceView": "toolbench-comparison",
+          "captureMode": "tile-local-comparison",
+          "outputDir": "smoke-reports/main-vs-candidate-all-sweep-2/main/source/toolbench-comparison",
+          "absoluteOutputDir": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515/smoke-reports/main-vs-candidate-all-sweep-2/main/source/toolbench-comparison",
+          "sourceRunDir": "smoke-reports/main-vs-candidate-all-sweep-2/main/source/toolbench-comparison",
+          "absoluteSourceRunDir": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515/smoke-reports/main-vs-candidate-all-sweep-2/main/source/toolbench-comparison",
+          "status": "present",
+          "role": "main"
+        }
+      ],
+      "availableViews": [
+        "dessert-wide",
+        "dessert-close",
+        "black-band-crop",
+        "porous-body-crop",
+        "toolbench-comparison"
+      ]
+    },
+    {
+      "role": "candidate",
+      "label": "cc/meshsplat-gpu-camera-trace-composed-0515",
+      "sha": "37bcab1",
+      "repoPath": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-meshsplat-gpu-camera-trace-composed-0515",
+      "branchDir": "smoke-reports/main-vs-candidate-all-sweep-2/candidate",
+      "absoluteBranchDir": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515/smoke-reports/main-vs-candidate-all-sweep-2/candidate",
+      "reportPath": "smoke-reports/main-vs-candidate-all-sweep-2/candidate/report.md",
+      "views": [
+        {
+          "name": "dessert-wide",
+          "title": "Dessert wide",
+          "sourceMode": "static-dessert-witness",
+          "sourceView": "dessert-wide",
+          "captureMode": "static-dessert-witness",
+          "outputDir": "smoke-reports/main-vs-candidate-all-sweep-2/candidate/source/dessert-wide",
+          "absoluteOutputDir": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515/smoke-reports/main-vs-candidate-all-sweep-2/candidate/source/dessert-wide",
+          "sourceRunDir": "smoke-reports/main-vs-candidate-all-sweep-2/candidate/source/dessert-wide",
+          "absoluteSourceRunDir": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515/smoke-reports/main-vs-candidate-all-sweep-2/candidate/source/dessert-wide",
+          "status": "missing",
+          "role": "candidate",
+          "missingReason": "capture timed out after 180000 ms"
+        },
+        {
+          "name": "dessert-close",
+          "title": "Dessert close",
+          "sourceMode": "static-dessert-witness",
+          "sourceView": "dessert-close",
+          "captureMode": "static-dessert-witness",
+          "outputDir": "smoke-reports/main-vs-candidate-all-sweep-2/candidate/source/dessert-close",
+          "absoluteOutputDir": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515/smoke-reports/main-vs-candidate-all-sweep-2/candidate/source/dessert-close",
+          "sourceRunDir": "smoke-reports/main-vs-candidate-all-sweep-2/candidate/source/dessert-close",
+          "absoluteSourceRunDir": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515/smoke-reports/main-vs-candidate-all-sweep-2/candidate/source/dessert-close",
+          "status": "missing",
+          "role": "candidate",
+          "missingReason": "capture timed out after 180000 ms"
+        },
+        {
+          "name": "black-band-crop",
+          "title": "Black-band crop",
+          "sourceMode": "derived-crop",
+          "sourceView": "dessert-close",
+          "captureMode": "static-dessert-witness",
+          "outputDir": "smoke-reports/main-vs-candidate-all-sweep-2/candidate/black-band-crop",
+          "absoluteOutputDir": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515/smoke-reports/main-vs-candidate-all-sweep-2/candidate/black-band-crop",
+          "sourceRunDir": "smoke-reports/main-vs-candidate-all-sweep-2/candidate/source/dessert-close",
+          "absoluteSourceRunDir": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515/smoke-reports/main-vs-candidate-all-sweep-2/candidate/source/dessert-close",
+          "status": "missing",
+          "role": "candidate",
+          "cropKey": "rimBand",
+          "missingReason": "capture timed out after 180000 ms"
+        },
+        {
+          "name": "porous-body-crop",
+          "title": "Porous-body crop",
+          "sourceMode": "derived-crop",
+          "sourceView": "dessert-porous-close",
+          "captureMode": "static-dessert-witness",
+          "outputDir": "smoke-reports/main-vs-candidate-all-sweep-2/candidate/porous-body-crop",
+          "absoluteOutputDir": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515/smoke-reports/main-vs-candidate-all-sweep-2/candidate/porous-body-crop",
+          "sourceRunDir": "smoke-reports/main-vs-candidate-all-sweep-2/candidate/source/dessert-porous-close",
+          "absoluteSourceRunDir": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515/smoke-reports/main-vs-candidate-all-sweep-2/candidate/source/dessert-porous-close",
+          "status": "missing",
+          "role": "candidate",
+          "cropKey": "porousBody",
+          "missingReason": "capture failed: /opt/homebrew/Cellar/node/25.9.0_2/bin/node exited with code 1"
+        },
+        {
+          "name": "toolbench-comparison",
+          "title": "Toolbench comparison",
+          "sourceMode": "tile-local-comparison",
+          "sourceView": "toolbench-comparison",
+          "captureMode": "tile-local-comparison",
+          "outputDir": "smoke-reports/main-vs-candidate-all-sweep-2/candidate/source/toolbench-comparison",
+          "absoluteOutputDir": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515/smoke-reports/main-vs-candidate-all-sweep-2/candidate/source/toolbench-comparison",
+          "sourceRunDir": "smoke-reports/main-vs-candidate-all-sweep-2/candidate/source/toolbench-comparison",
+          "absoluteSourceRunDir": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-smoke-contact-sheet-custody-0515/smoke-reports/main-vs-candidate-all-sweep-2/candidate/source/toolbench-comparison",
+          "status": "present",
+          "role": "candidate"
+        }
+      ],
+      "availableViews": [
+        "dessert-wide",
+        "dessert-close",
+        "black-band-crop",
+        "porous-body-crop",
+        "toolbench-comparison"
+      ]
+    }
+  ]
+}

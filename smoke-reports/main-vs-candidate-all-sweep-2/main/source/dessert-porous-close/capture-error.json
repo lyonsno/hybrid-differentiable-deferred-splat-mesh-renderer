@@ -1,0 +1,10 @@
+{
+  "sourceView": "dessert-porous-close",
+  "captureMode": "static-dessert-witness",
+  "summary": "capture failed: /opt/homebrew/Cellar/node/25.9.0_2/bin/node exited with code 1",
+  "timedOut": false,
+  "timeoutMs": 180000,
+  "message": "/opt/homebrew/Cellar/node/25.9.0_2/bin/node exited with code 1",
+  "code": 1,
+  "signal": null
+}
