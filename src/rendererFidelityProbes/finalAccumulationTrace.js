@@ -113,7 +113,7 @@ export function buildPerPixelFinalColorAccumulationTraces({
       sourceColors,
       projectedContributors: lookupAnchorList(projectedContributorsByAnchorId, anchorPixel.id),
       retainedContributors: lookupAnchorList(retainedContributorsByAnchorId, anchorPixel.id),
-      orderedContributors: lookupAnchorList(orderedContributorsByAnchorId, anchorPixel.id),
+      orderedContributors: lookupOptionalAnchorList(orderedContributorsByAnchorId, anchorPixel.id),
       dispatchCache,
       rendererMetadata,
       deferredFields,
@@ -157,6 +157,20 @@ function lookupAnchorList(byAnchorId, anchorId) {
     return Array.isArray(byAnchorId[anchorId]) ? byAnchorId[anchorId] : [];
   }
   return [];
+}
+
+function lookupOptionalAnchorList(byAnchorId, anchorId) {
+  if (byAnchorId instanceof Map) {
+    return byAnchorId.has(anchorId) && Array.isArray(byAnchorId.get(anchorId))
+      ? byAnchorId.get(anchorId)
+      : null;
+  }
+  if (byAnchorId && typeof byAnchorId === "object") {
+    return Object.prototype.hasOwnProperty.call(byAnchorId, anchorId) && Array.isArray(byAnchorId[anchorId])
+      ? byAnchorId[anchorId]
+      : null;
+  }
+  return null;
 }
 
 function composeFinalColorAccumulationSteps({
@@ -268,6 +282,9 @@ function orderedContributorTraceEntry(contributor, orderIndex) {
       `splat:${nonNegativeInteger(contributor.splatIndex, "contributor.splatIndex")}`,
     ].join("|"),
     orderBackend: BAND_ORDER_BACKEND,
+    coverageWeight: Number.isFinite(contributor.coverageWeight) ? round(Math.max(contributor.coverageWeight, 0)) : 0,
+    opacity: Number.isFinite(contributor.opacity) ? round(clamp01(contributor.opacity)) : 0,
+    tileIndex: Number.isInteger(contributor.tileIndex) ? contributor.tileIndex : null,
   };
 }
 

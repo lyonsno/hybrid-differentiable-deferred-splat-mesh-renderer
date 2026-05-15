@@ -80,6 +80,7 @@ export function buildRetainedToOrderedSurvivalLedger(anchorTraces = [], options 
 export function classifyRetainedToOrderedSurvival({
   anchorPixel,
   tileAddress = null,
+  projectedContributors = [],
   retainedContributors,
   orderedContributors,
   finalColorAccumulation,
@@ -112,16 +113,26 @@ export function classifyRetainedToOrderedSurvival({
   }
 
   const foregroundRoleSet = new Set(foregroundRoles.map(String));
-  const roleLookup = buildRoleLookup(retainedContributors, orderedContributors, finalColorAccumulation.steps);
+  const depthContext = Array.isArray(projectedContributors) && projectedContributors.length > 0
+    ? projectedContributors
+    : retainedContributors;
+  const depthBands = buildDepthBands(depthContext);
+  const roleLookup = buildRoleLookup(depthBands, projectedContributors, retainedContributors, orderedContributors, finalColorAccumulation.steps);
   const retained = retainedContributors.map((entry, index) =>
-    normalizeContributor(entry, index, "retainedContributors", roleLookup)
-  );
-  const ordered = orderedContributors.map((entry, index) =>
-    normalizeOrderedContributor(entry, index, "orderedContributors", roleLookup)
+    normalizeContributor(entry, index, "retainedContributors", roleLookup, depthBands)
   );
   const finalSteps = finalColorAccumulation.steps.map((entry, index) =>
     normalizeFinalStep(entry, index, roleLookup)
   );
+  const explicitOrdered = orderedContributors.map((entry, index) =>
+    normalizeOrderedContributor(entry, index, "orderedContributors", roleLookup, depthBands)
+  );
+  const ordered = explicitOrdered.length > 0
+    ? explicitOrdered
+    : finalSteps.map((entry) => ({
+        ...entry,
+        occlusionWeight: round((entry.coverageWeight ?? entry.coverageAlpha ?? 0) * (entry.opacity ?? 0)),
+      }));
 
   const retainedForeground = retained.filter((entry) => isForeground(entry, foregroundRoleSet));
   const orderedForeground = ordered.filter((entry) => isForeground(entry, foregroundRoleSet));
@@ -270,21 +281,24 @@ function blockerFor(field) {
   };
 }
 
-function buildRoleLookup(...lists) {
+function buildRoleLookup(depthBands, ...lists) {
   const lookup = new Map();
   for (const list of lists) {
     for (const entry of Array.isArray(list) ? list : []) {
       const id = identityFor(entry);
-      const role = roleFor(entry);
+      const explicitRole = explicitRoleFor(entry);
+      const role = roleFor(entry, undefined, depthBands);
       if (id !== null && role !== "unclassified") {
-        lookup.set(id, role);
+        if (explicitRole !== null || !lookup.has(id)) {
+          lookup.set(id, role);
+        }
       }
     }
   }
   return lookup;
 }
 
-function normalizeContributor(entry, index, field, roleLookup) {
+function normalizeContributor(entry, index, field, roleLookup, depthBands = null) {
   if (!entry || typeof entry !== "object") {
     throw new TypeError(`${field} entry ${index} must be an object`);
   }
@@ -292,13 +306,14 @@ function normalizeContributor(entry, index, field, roleLookup) {
   if (originalId === null) {
     throw new TypeError(`${field} entry ${index} requires originalId, id, or splatIndex`);
   }
+  const role = roleFor(entry, roleLookup.get(originalId), depthBands);
   const coverageWeight = nonNegativeFinite(entry.coverageWeight ?? 0, `${field} entry ${index} coverageWeight`);
   const opacity = clamp01(entry.opacity ?? 0);
   return {
     originalId,
     splatIndex: integerOrNull(entry.splatIndex),
-    role: roleFor(entry, roleLookup.get(originalId)),
-    roleClass: String(entry.roleClass ?? roleClassFor(roleFor(entry, roleLookup.get(originalId)))),
+    role,
+    roleClass: String(entry.roleClass ?? roleClassFor(role)),
     retentionBand: String(entry.retentionBand ?? "unknown"),
     coverageWeight: round(coverageWeight),
     opacity: round(opacity),
@@ -309,8 +324,8 @@ function normalizeContributor(entry, index, field, roleLookup) {
   };
 }
 
-function normalizeOrderedContributor(entry, index, field, roleLookup) {
-  const base = normalizeContributor(entry, index, field, roleLookup);
+function normalizeOrderedContributor(entry, index, field, roleLookup, depthBands = null) {
+  const base = normalizeContributor(entry, index, field, roleLookup, depthBands);
   return {
     ...base,
     orderIndex: nonNegativeInteger(entry.orderIndex ?? index, `${field} entry ${index} orderIndex`),
@@ -347,17 +362,56 @@ function identityFor(entry) {
   return String(value);
 }
 
-function roleFor(entry, fallback = "unclassified") {
-  const role = entry?.role ?? entry?.roleClass ?? entry?.sourceRole ?? entry?.semanticRole ?? fallback;
+function roleFor(entry, fallback = null, depthBands = null) {
+  const role = explicitRoleFor(entry) ?? fallback ?? inferRole(entry, depthBands);
   return role === undefined || role === null || role === "" ? "unclassified" : String(role);
 }
 
+function explicitRoleFor(entry) {
+  const role = entry?.role ?? entry?.sourceRole ?? entry?.semanticRole;
+  return role === undefined || role === null || role === "" ? null : String(role);
+}
+
 function roleClassFor(role) {
-  return DEFAULT_FOREGROUND_ROLES.includes(role) ? "foreground" : "unknown";
+  if (DEFAULT_FOREGROUND_ROLES.includes(role) || role === "foreground-depth-band") {
+    return "foreground";
+  }
+  if (role === "behind-depth-band" || role === "behind-surface" || role === "background-haze") {
+    return "behindOrBackground";
+  }
+  return "unknown";
 }
 
 function isForeground(entry, foregroundRoleSet) {
-  return foregroundRoleSet.has(entry.role) || (entry.role === "unclassified" && entry.roleClass === "foreground");
+  return foregroundRoleSet.has(entry.role) || entry.role === "foreground-depth-band" || (entry.role === "unclassified" && entry.roleClass === "foreground");
+}
+
+function inferRole(entry, depthBands) {
+  const retentionBand = String(entry?.retentionBand ?? "").toLowerCase();
+  if (retentionBand === "front" || retentionBand === "foreground") return "foreground-sealing";
+  if (retentionBand === "behind" || retentionBand === "background") return "behind-surface";
+  const viewDepth = finiteOrNull(entry?.viewDepth);
+  if (viewDepth != null && depthBands) {
+    if (viewDepth <= depthBands.foregroundMaxDepth) return "foreground-depth-band";
+    if (viewDepth >= depthBands.behindMinDepth) return "behind-depth-band";
+  }
+  return "unclassified";
+}
+
+function buildDepthBands(contributors) {
+  if (!Array.isArray(contributors)) return null;
+  const depths = contributors
+    .map((contributor) => finiteOrNull(contributor?.viewDepth))
+    .filter((value) => value != null)
+    .sort((left, right) => left - right);
+  if (depths.length < 2) return null;
+  const minDepth = depths[0];
+  const maxDepth = depths[depths.length - 1];
+  if (maxDepth <= minDepth) return null;
+  return {
+    foregroundMaxDepth: minDepth + (maxDepth - minDepth) * 0.25,
+    behindMinDepth: minDepth + (maxDepth - minDepth) * 0.75,
+  };
 }
 
 function finalAlpha(finalColorAccumulation, finalForeground) {

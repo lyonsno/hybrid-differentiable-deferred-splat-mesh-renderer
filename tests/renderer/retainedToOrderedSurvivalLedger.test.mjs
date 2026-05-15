@@ -139,6 +139,33 @@ test("separates weak final alpha from ordering survival", () => {
   assert.equal(verdict.metrics.finalForegroundAlpha, 0.06);
 });
 
+test("infers foreground role from projected depth context and final steps when explicit ordered trace is absent", () => {
+  const verdict = classifyRetainedToOrderedSurvival({
+    anchorPixel: { id: "fresh-real", kind: "lacunar-hole", x: 1514, y: 1324 },
+    projectedContributors: [
+      retainedContributor({ originalId: 1, role: null, roleClass: null, retentionBand: "middle", viewDepth: -0.25, coverageWeight: 0.5 }),
+      retainedContributor({ originalId: 2, role: null, roleClass: null, retentionBand: "middle", viewDepth: -0.15, coverageWeight: 0.5 }),
+      retainedContributor({ originalId: 3, role: null, roleClass: null, retentionBand: "middle", viewDepth: -0.05, coverageWeight: 0.5 }),
+    ],
+    retainedContributors: [
+      retainedContributor({ originalId: 1, role: null, roleClass: null, retentionBand: "middle", viewDepth: -0.25, coverageWeight: 0.5 }),
+    ],
+    orderedContributors: [],
+    finalColorAccumulation: {
+      steps: [
+        accumulationStep({ originalId: 1, splatIndex: 1, orderIndex: 0, coverageAlpha: 0.4 }),
+      ],
+      outputColor: [0.3, 0.25, 0.2, 0.4],
+    },
+  });
+
+  assert.equal(verdict.category, "ordered-present");
+  assert.equal(verdict.retainedForeground[0].role, "foreground-depth-band");
+  assert.deepEqual(verdict.ids.retainedForeground, ["1"]);
+  assert.deepEqual(verdict.ids.orderedForeground, ["1"]);
+  assert.deepEqual(verdict.ids.accumulatedForeground, ["1"]);
+});
+
 test("builds a ledger over anchors and summarizes stage verdicts", () => {
   const ledger = buildRetainedToOrderedSurvivalLedger([
     {

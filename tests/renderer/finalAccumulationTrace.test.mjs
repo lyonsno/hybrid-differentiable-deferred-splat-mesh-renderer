@@ -164,6 +164,42 @@ test("final accumulation trace closes or explicitly blocks every canonical ancho
   );
 });
 
+test("per-pixel final accumulation traces expose runtime ordered contributors when no explicit order trace exists", () => {
+  const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
+  const traces = buildPerPixelFinalColorAccumulationTraces({
+    contributors: [
+      accumulationContributor({
+        anchor,
+        tileIndex: tileIndexForAnchor(anchor),
+        splatIndex: 31,
+        originalId: 3100,
+        viewRank: 31,
+        opacity: 0.4,
+      }),
+    ],
+    sourceColors: new Map([[31, [0.7, 0.5, 0.3]]]),
+    retainedContributorsByAnchorId: new Map([
+      [anchor.id, [{ splatIndex: 31, originalId: 3100 }]],
+    ]),
+    tileSizePx: 16,
+    tileColumns: 216,
+  });
+
+  const trace = traces.find((entry) => entry.anchorPixel.id === anchor.id);
+  assert.equal(trace.status, "present");
+  assert.deepEqual(
+    trace.orderedContributors.map(({ splatIndex, originalId, orderIndex, viewRank }) => [
+      splatIndex,
+      originalId,
+      orderIndex,
+      viewRank,
+    ]),
+    [[31, 3100, 0, 31]],
+  );
+  assert.equal(trace.orderedContributors[0].coverageWeight, 1);
+  assert.equal(trace.orderedContributors[0].opacity, 0.4);
+});
+
 function accumulationContributor(overrides = {}) {
   const anchor = overrides.anchor ?? BLACK_BAND_FINAL_ACCUMULATION_ANCHOR;
   return {
