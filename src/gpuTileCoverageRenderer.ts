@@ -10,12 +10,12 @@ export interface GpuTileCoverageBuffers {
   readonly frameUniformBuffer: GPUBuffer;
   readonly positionBuffer: GPUBuffer;
   readonly colorBuffer: GPUBuffer;
+  readonly opacityBuffer: GPUBuffer;
   readonly scaleBuffer: GPUBuffer;
   readonly rotationBuffer: GPUBuffer;
   readonly tileHeaderBuffer: GPUBuffer;
   readonly tileRefBuffer: GPUBuffer;
   readonly tileCoverageWeightBuffer: GPUBuffer;
-  readonly tileBuildCountBuffer: GPUBuffer;
   readonly tileScatterCursorBuffer: GPUBuffer;
   readonly alphaParamBuffer: GPUBuffer;
   readonly outputColorView: GPUTextureView;
@@ -57,6 +57,7 @@ export function createGpuTileCoveragePipelineSkeleton(
       storageEntry(GPU_TILE_COVERAGE_BINDINGS.tileRefs, "storage"),
       storageEntry(GPU_TILE_COVERAGE_BINDINGS.tileCoverageWeights, "storage"),
       storageEntry(GPU_TILE_COVERAGE_BINDINGS.alphaParams, "storage"),
+      storageEntry(GPU_TILE_COVERAGE_BINDINGS.opacities, "read-only-storage"),
       {
         binding: GPU_TILE_COVERAGE_BINDINGS.outputColor,
         visibility: GPUShaderStage.COMPUTE,
@@ -65,7 +66,6 @@ export function createGpuTileCoveragePipelineSkeleton(
           format: outputFormat,
         },
       },
-      storageEntry(GPU_TILE_COVERAGE_BINDINGS.tileBuildCounts, "storage"),
       storageEntry(GPU_TILE_COVERAGE_BINDINGS.tileScatterCursors, "storage"),
     ],
   });
@@ -92,6 +92,7 @@ export function createGpuTileCoveragePipelineSkeleton(
           { binding: GPU_TILE_COVERAGE_BINDINGS.frame, resource: { buffer: buffers.frameUniformBuffer } },
           { binding: GPU_TILE_COVERAGE_BINDINGS.positions, resource: { buffer: buffers.positionBuffer } },
           { binding: GPU_TILE_COVERAGE_BINDINGS.colors, resource: { buffer: buffers.colorBuffer } },
+          { binding: GPU_TILE_COVERAGE_BINDINGS.opacities, resource: { buffer: buffers.opacityBuffer } },
           { binding: GPU_TILE_COVERAGE_BINDINGS.scales, resource: { buffer: buffers.scaleBuffer } },
           { binding: GPU_TILE_COVERAGE_BINDINGS.rotations, resource: { buffer: buffers.rotationBuffer } },
           { binding: GPU_TILE_COVERAGE_BINDINGS.tileHeaders, resource: { buffer: buffers.tileHeaderBuffer } },
@@ -99,7 +100,6 @@ export function createGpuTileCoveragePipelineSkeleton(
           { binding: GPU_TILE_COVERAGE_BINDINGS.tileCoverageWeights, resource: { buffer: buffers.tileCoverageWeightBuffer } },
           { binding: GPU_TILE_COVERAGE_BINDINGS.alphaParams, resource: { buffer: buffers.alphaParamBuffer } },
           { binding: GPU_TILE_COVERAGE_BINDINGS.outputColor, resource: buffers.outputColorView },
-          { binding: GPU_TILE_COVERAGE_BINDINGS.tileBuildCounts, resource: { buffer: buffers.tileBuildCountBuffer } },
           { binding: GPU_TILE_COVERAGE_BINDINGS.tileScatterCursors, resource: { buffer: buffers.tileScatterCursorBuffer } },
         ],
       });

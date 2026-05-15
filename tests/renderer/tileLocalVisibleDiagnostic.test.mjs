@@ -29,6 +29,7 @@ test("tile-local visible shader composites ordered tile refs with sample-local c
   assert.match(shader, /var<storage, read> colors/);
   assert.match(shader, /tileHeaders\[tileId\]/);
   assert.match(shader, /tileRefs\[refIndex\]/);
+  assert.match(shader, /var<storage, read> opacities/);
   assert.match(shader, /let alphaParam = alphaParams\[alphaParamIndex\]/);
   assert.match(shader, /let conicParam = alphaParams\[alphaParamIndex \+ frame\.maxTileRefs\]/);
   assert.match(shader, /alphaParam\.yz/);
@@ -40,6 +41,8 @@ test("tile-local visible shader composites ordered tile refs with sample-local c
   assert.match(shader, /let pixelCoverageWeight = conic_pixel_weight\(alphaParam, conicParam, pixelCenter\)/);
   assert.match(shader, /1\.0\s*-\s*pow\(1\.0\s*-\s*sourceOpacity,\s*pixelCoverageWeight\)/);
   assert.match(shader, /let orderingKey = splatId/);
+  assert.match(shader, /let sourceOpacity = clamp\(opacities\[splatId\]/);
+  assert.doesNotMatch(shader, /alphaParams\[refIndex\] = vec4f\(0\.35/);
   assert.match(shader, /conic_pixel_weight/);
   assert.match(shader, /conic_falloff_scale/);
   assert.match(shader, /frame\.tileSizePx >= 16\.0 && frame\.maxTileRefs >= 256u/);
@@ -72,10 +75,14 @@ test("GPU live tile-ref builder scatters a projected conic footprint across ever
 
   assert.match(shader, /var<storage, read> scales/);
   assert.match(shader, /var<storage, read> rotations/);
+  assert.match(shader, /var<storage, read> opacities/);
   assert.match(shader, /frame\.splatScale/);
   assert.match(shader, /frame\.minRadiusPx/);
   assert.match(shader, /fn projectAxisJacobian/);
   assert.match(shader, /fn gpu_live_projected_conic/);
+  assert.match(shader, /fn gpu_live_footprint_policy_scale/);
+  assert.match(shader, /frame\.viewport\.x \* frame\.viewport\.y \* 0\.01/);
+  assert.match(shader, /min\(frame\.viewport\.x, frame\.viewport\.y\) \* 0\.65/);
   assert.match(shader, /let support = gpu_live_support_radius_px\(conic\.majorRadiusPx, conic\.minorRadiusPx\)/);
   assert.doesNotMatch(shader, /return 10\.0/);
   assert.match(shader, /let minTileX =/);

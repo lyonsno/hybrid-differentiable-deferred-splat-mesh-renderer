@@ -46,8 +46,8 @@ export const GPU_TILE_COVERAGE_BINDINGS = {
   tileCoverageWeights: 7,
   alphaParams: 8,
   outputColor: 9,
-  tileBuildCounts: 10,
   tileScatterCursors: 11,
+  opacities: 12,
 } as const;
 
 export interface GpuTileCoveragePlanInput {
@@ -73,6 +73,22 @@ export interface GpuTileCoveragePlan extends GpuTileCoveragePlanInput {
 export interface GpuTileCoverageFootprintParams {
   readonly splatScale?: number;
   readonly minRadiusPx?: number;
+}
+
+export interface GpuLiveFootprintPolicyInput {
+  readonly majorRadiusPx: number;
+  readonly minorRadiusPx: number;
+  readonly viewportWidth: number;
+  readonly viewportHeight: number;
+  readonly minRadiusPx?: number;
+}
+
+export interface GpuLiveFootprintPolicyResult {
+  readonly majorRadiusPx: number;
+  readonly minorRadiusPx: number;
+  readonly scale: number;
+  readonly areaCapPx: number;
+  readonly majorRadiusCapPx: number;
 }
 
 export interface GpuTileCoverageDispatch {
@@ -473,8 +489,34 @@ export function writeGpuTileCoverageFrameUniforms(
   target[25] = finiteNonNegativeOrDefault(footprintParams.minRadiusPx, 1.5);
 }
 
+export function resolveGpuLiveFootprintPolicy(input: GpuLiveFootprintPolicyInput): GpuLiveFootprintPolicyResult {
+  const viewportWidth = finitePositiveOrDefault(input.viewportWidth, 1);
+  const viewportHeight = finitePositiveOrDefault(input.viewportHeight, 1);
+  const minRadiusPx = finiteNonNegativeOrDefault(input.minRadiusPx, 1.5);
+  const majorRadiusPx = Math.max(finiteNonNegativeOrDefault(input.majorRadiusPx, minRadiusPx), minRadiusPx);
+  const minorRadiusPx = Math.max(finiteNonNegativeOrDefault(input.minorRadiusPx, minRadiusPx), minRadiusPx);
+  const areaCapPx = viewportWidth * viewportHeight * 0.01;
+  const majorRadiusCapPx = Math.max(Math.min(viewportWidth, viewportHeight) * 0.65, minRadiusPx);
+  const footprintAreaPx = Math.PI * majorRadiusPx * minorRadiusPx;
+  const areaScale = Math.sqrt(areaCapPx / Math.max(footprintAreaPx, areaCapPx));
+  const majorScale = majorRadiusCapPx / Math.max(majorRadiusPx, majorRadiusCapPx);
+  const scale = Math.min(areaScale, majorScale, 1);
+  const cappedMinorRadiusPx = Math.max(minorRadiusPx * scale, minRadiusPx);
+  return {
+    majorRadiusPx: Math.max(majorRadiusPx * scale, cappedMinorRadiusPx),
+    minorRadiusPx: cappedMinorRadiusPx,
+    scale,
+    areaCapPx,
+    majorRadiusCapPx,
+  };
+}
+
 function finiteNonNegativeOrDefault(value: number | undefined, fallback: number): number {
   return value !== undefined && Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
+function finitePositiveOrDefault(value: number, fallback: number): number {
+  return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
 function linearDispatch(count: number): GpuTileCoverageDispatch {

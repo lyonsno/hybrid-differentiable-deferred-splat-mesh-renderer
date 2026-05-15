@@ -28,8 +28,8 @@ const DEBUG_MODE_CONIC_SHAPE = 5.0;
 @group(0) @binding(7) var<storage, read_write> tileCoverageWeights: array<f32>;
 @group(0) @binding(8) var<storage, read_write> alphaParams: array<vec4f>;
 @group(0) @binding(9) var outputColor: texture_storage_2d<rgba16float, write>;
-@group(0) @binding(10) var<storage, read_write> tileBuildCounts: array<atomic<u32>>;
 @group(0) @binding(11) var<storage, read_write> tileScatterCursors: array<atomic<u32>>;
+@group(0) @binding(12) var<storage, read> opacities: array<f32>;
 
 const MIN_SPLAT_CLIP_W = 0.0001;
 const MAX_ANISOTROPIC_MINOR_RADIUS_INFLATION = 4.0;
@@ -111,6 +111,15 @@ fn boundedMinorRadiusPx(rawMajorRadiusPx: f32, rawMinorRadiusPx: f32, minRadiusP
   return min(minRadiusPx, inflatedMinor);
 }
 
+fn gpu_live_footprint_policy_scale(majorRadiusPx: f32, minorRadiusPx: f32) -> f32 {
+  let areaCapPx = frame.viewport.x * frame.viewport.y * 0.01;
+  let majorRadiusCapPx = max(min(frame.viewport.x, frame.viewport.y) * 0.65, frame.minRadiusPx);
+  let footprintAreaPx = 3.14159265 * majorRadiusPx * minorRadiusPx;
+  let areaScale = sqrt(areaCapPx / max(footprintAreaPx, areaCapPx));
+  let majorScale = majorRadiusCapPx / max(majorRadiusPx, majorRadiusCapPx);
+  return min(min(areaScale, majorScale), 1.0);
+}
+
 fn gpu_live_projected_conic(splatId: u32, centerClip: vec4f, centerPx: vec2f) -> GpuLiveConic {
   let vecBase = splatId * 3u;
   let quatBase = splatId * 4u;
@@ -140,8 +149,12 @@ fn gpu_live_projected_conic(splatId: u32, centerClip: vec4f, centerPx: vec2f) ->
   let rawMajorRadiusPx = sqrt(lambda0);
   let rawMinorRadiusPx = sqrt(lambda1);
   let minRadiusPx = max(frame.minRadiusPx, 0.0);
-  let majorRadiusPx = max(rawMajorRadiusPx, minRadiusPx);
-  let minorRadiusPx = boundedMinorRadiusPx(rawMajorRadiusPx, rawMinorRadiusPx, minRadiusPx);
+  let uncappedMajorRadiusPx = max(rawMajorRadiusPx, minRadiusPx);
+  let uncappedMinorRadiusPx = boundedMinorRadiusPx(rawMajorRadiusPx, rawMinorRadiusPx, minRadiusPx);
+  let footprintScale = gpu_live_footprint_policy_scale(uncappedMajorRadiusPx, uncappedMinorRadiusPx);
+  let scaledMinorRadiusPx = max(uncappedMinorRadiusPx * footprintScale, minRadiusPx);
+  let majorRadiusPx = max(uncappedMajorRadiusPx * footprintScale, scaledMinorRadiusPx);
+  let minorRadiusPx = scaledMinorRadiusPx;
   let majorInvVar = 1.0 / max(majorRadiusPx * majorRadiusPx, 0.000001);
   let minorInvVar = 1.0 / max(minorRadiusPx * minorRadiusPx, 0.000001);
   let inverseXX = majorDir.x * majorDir.x * majorInvVar + minorDir.x * minorDir.x * minorInvVar;
@@ -263,7 +276,6 @@ fn debug_heatmap_color(
   }
 
   let tileCapacity = tile_ref_capacity_per_tile();
-  atomicStore(&tileBuildCounts[tileId], 0u);
   atomicStore(&tileScatterCursors[tileId], 0u);
   tileHeaders[tileId] = vec4u(tileId * tileCapacity, 0u, 0u, 0u);
 }
@@ -303,10 +315,6 @@ fn debug_heatmap_color(
       if (tileId >= tile_count()) {
         continue;
       }
-      let projectedSlot = atomicAdd(&tileBuildCounts[tileId], 1u);
-      if (projectedSlot >= tileCapacity) {
-        continue;
-      }
       let slot = atomicAdd(&tileScatterCursors[tileId], 1u);
       if (slot >= tileCapacity) {
         continue;
@@ -320,7 +328,8 @@ fn debug_heatmap_color(
         conic,
         gpu_live_tile_center_px(tileX, tileY, tileSizePx)
       );
-      alphaParams[refIndex] = vec4f(0.35, centerPx.x, centerPx.y, f32(orderingKey));
+      let sourceOpacity = clamp(opacities[splatId], 0.0, 0.999);
+      alphaParams[refIndex] = vec4f(sourceOpacity, centerPx.x, centerPx.y, f32(orderingKey));
       alphaParams[refIndex + frame.maxTileRefs] = vec4f(conic.inverseConic, 0.0);
     }
   }

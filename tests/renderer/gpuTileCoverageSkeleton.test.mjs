@@ -14,6 +14,7 @@ import {
   GPU_TILE_COVERAGE_COMPOSITE_WORKGROUP_HEIGHT,
   createGpuTileCoveragePlan,
   createGpuTileContributorArenaLayout,
+  resolveGpuLiveFootprintPolicy,
   getGpuTileContributorArenaDispatchPlan,
   assertGpuTileContributorArenaCompatibility,
   GPU_TILE_CONTRIBUTOR_ARENA_HEADER_FLOAT32_STRIDE,
@@ -123,9 +124,43 @@ test("GPU tile coverage bindings carry the live tile buffers inside WebGPU stora
     tileCoverageWeights: 7,
     alphaParams: 8,
     outputColor: 9,
-    tileBuildCounts: 10,
     tileScatterCursors: 11,
+    opacities: 12,
   });
+});
+
+test("GPU live footprint policy caps pathological projected conic energy without shrinking normal splats", () => {
+  const normal = resolveGpuLiveFootprintPolicy({
+    majorRadiusPx: 24,
+    minorRadiusPx: 12,
+    viewportWidth: 1280,
+    viewportHeight: 720,
+    minRadiusPx: 1.5,
+  });
+  assert.equal(normal.scale, 1);
+  assert.equal(normal.majorRadiusPx, 24);
+  assert.equal(normal.minorRadiusPx, 12);
+
+  const pathological = resolveGpuLiveFootprintPolicy({
+    majorRadiusPx: 14695.833284102126,
+    minorRadiusPx: 958.8789017237548,
+    viewportWidth: 1280,
+    viewportHeight: 720,
+    minRadiusPx: 1.5,
+  });
+  assert.ok(pathological.scale < 0.02, `expected strong cap scale, got ${pathological.scale}`);
+  assert.ok(pathological.majorRadiusPx < 220, `expected bounded major radius, got ${pathological.majorRadiusPx}`);
+  assert.ok(Math.PI * pathological.majorRadiusPx * pathological.minorRadiusPx <= pathological.areaCapPx + 1e-6);
+
+  const longThin = resolveGpuLiveFootprintPolicy({
+    majorRadiusPx: 900,
+    minorRadiusPx: 2,
+    viewportWidth: 1280,
+    viewportHeight: 720,
+    minRadiusPx: 1.5,
+  });
+  assert.ok(longThin.majorRadiusPx <= longThin.majorRadiusCapPx + 1e-6);
+  assert.ok(longThin.minorRadiusPx >= 1.5);
 });
 
 test("GPU contributor arena layout extends the legacy flat tile-ref buffers without replacing them", () => {
@@ -203,7 +238,6 @@ test("GPU tile coverage WGSL is a separate skeleton and does not mutate the live
   assert.match(shader, /@compute @workgroup_size\(8,\s*8,\s*1\)\s+fn composite_tiles/);
   assert.match(shader, /var<storage, read_write> tileCoverageWeights/);
   assert.match(shader, /var<storage, read_write> alphaParams/);
-  assert.match(shader, /var<storage, read_write> tileBuildCounts: array<atomic<u32>>/);
   assert.match(shader, /var<storage, read_write> tileScatterCursors: array<atomic<u32>>/);
   assert.match(shader, /fn conic_pixel_weight/);
   assert.match(shader, /alphaParams\[alphaParamIndex \+ frame\.maxTileRefs\]/);
