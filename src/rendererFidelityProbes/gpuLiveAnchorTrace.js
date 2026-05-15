@@ -1,3 +1,4 @@
+import { PIXEL_CONTRIBUTOR_TRACE_SCHEMA } from "./pixelContributorTraceSchema.js";
 import { buildPerPixelProjectedContributorTraces } from "./projectionPixelTrace.js";
 import { buildPerPixelRetainedContributorTraces } from "./retentionPixelTrace.js";
 
@@ -90,7 +91,7 @@ function buildAnchorProjectedContributors({
   const safeTileRows = positiveInteger(tileRows ?? Math.ceil(safeViewportHeight / safeTileSizePx), "tileRows");
   const tileCount = safeTileColumns * safeTileRows;
   const ranksAndDepths = buildBackToFrontDepthEvidence(attributes, viewMatrix);
-  const canonicalAnchors = (Array.isArray(anchors) ? anchors : []).filter(Boolean);
+  const canonicalAnchors = (Array.isArray(anchors) ? anchors : PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors).filter(Boolean);
   const projectedContributors = [];
 
   for (let splatIndex = 0; splatIndex < attributes.count; splatIndex += 1) {

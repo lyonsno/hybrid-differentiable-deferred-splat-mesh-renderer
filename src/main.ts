@@ -144,6 +144,7 @@ const REAL_SCANIVERSE_WITNESS_VIEW = selectedRealScaniverseWitnessViewMode();
 const TILE_LOCAL_BUDGET_CONFIG = resolveTileLocalBudgetConfig(new URLSearchParams(window.location.search));
 const TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX = TILE_LOCAL_BUDGET_CONFIG.tileSizePx;
 const TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE = TILE_LOCAL_BUDGET_CONFIG.maxRefsPerTile;
+const TILE_LOCAL_TRACE_ANCHORS = selectedTileLocalTraceAnchors();
 const TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES = 1;
 const TILE_LOCAL_PROVISIONAL_MAX_SPLATS = 150_000;
 const TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES = 20_000_000;
@@ -206,6 +207,7 @@ interface TileLocalSceneState {
   arenaBackend: "cpu" | "gpu";
   gpuArenaRuntime: GpuTileContributorArenaRuntime | null;
   gpuArenaProjectedContributors: readonly GpuTileContributorArenaProjectedContributor[];
+  traceAnchors?: readonly PixelTraceAnchor[];
   perPixelProjectedContributors: TileLocalPrepassBridge["perPixelProjectedContributors"];
   perPixelRetainedContributors: TileLocalPrepassBridge["perPixelRetainedContributors"];
   arenaUnavailableReason?: string;
@@ -234,6 +236,15 @@ interface RuntimeFootprintParams {
   readonly splatScale: number;
   readonly minRadiusPx: number;
   readonly nearFadeEndNdc: number;
+}
+
+interface PixelTraceAnchor {
+  readonly id: string;
+  readonly kind: string;
+  readonly x: number;
+  readonly y: number;
+  readonly description: string;
+  readonly canonicalTileAddress: null;
 }
 
 interface SortSettleState {
@@ -1019,6 +1030,7 @@ function createGpuArenaTileLocalSceneState(
     minRadiusPx: footprintParams.minRadiusPx,
     maxRefsPerTile: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
     nearFadeEndNdc: footprintParams.nearFadeEndNdc,
+    anchors: TILE_LOCAL_TRACE_ANCHORS,
     rendererMetadata: {
       requestedRenderer: "tile-local-visible",
       effectiveRenderer: "tile-local-visible",
@@ -1069,7 +1081,8 @@ function createGpuArenaTileLocalSceneState(
     diagnostics,
     arenaBackend: "gpu",
     gpuArenaRuntime: null,
-    gpuArenaProjectedContributors: anchorContributorTraces.projectedContributors,
+    gpuArenaProjectedContributors: anchorContributorTraces.retainedContributors,
+    traceAnchors: TILE_LOCAL_TRACE_ANCHORS,
     perPixelProjectedContributors: anchorContributorTraces.perPixelProjectedContributors,
     perPixelRetainedContributors: anchorContributorTraces.perPixelRetainedContributors,
     arenaUnavailableReason: undefined,
@@ -1677,6 +1690,49 @@ function selectedTileLocalUnsafeMode(): boolean {
   return params.has("tileLocalUnsafe") || params.get("tileLocalBudget") === "unsafe";
 }
 
+function selectedTileLocalTraceAnchors(): readonly PixelTraceAnchor[] | undefined {
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get("traceAnchors") ?? params.get("traceAnchor");
+  if (!raw) {
+    return undefined;
+  }
+  const anchors = raw
+    .split(";")
+    .map((entry, index) => parseTileLocalTraceAnchor(entry, index))
+    .filter((anchor): anchor is PixelTraceAnchor => anchor !== null);
+  return anchors.length > 0 ? anchors : undefined;
+}
+
+function parseTileLocalTraceAnchor(rawEntry: string, index: number): PixelTraceAnchor | null {
+  const entry = rawEntry.trim();
+  if (!entry) {
+    return null;
+  }
+  const [head, requestedKind] = entry.split(":");
+  const [maybeId, maybeCoords] = head.includes("@") ? head.split("@") : [`fresh-anchor-${index + 1}`, head];
+  const [xValue, yValue] = maybeCoords.split(",").map((value) => Number(value));
+  if (!Number.isFinite(xValue) || !Number.isFinite(yValue)) {
+    return null;
+  }
+  const id = sanitizeTraceAnchorId(maybeId || `fresh-anchor-${index + 1}`, index);
+  const kind = sanitizeTraceAnchorId(requestedKind || "fresh-lacunar-hole", index);
+  const x = Math.max(0, Math.floor(xValue));
+  const y = Math.max(0, Math.floor(yValue));
+  return {
+    id,
+    kind,
+    x,
+    y,
+    description: `Ad hoc current-frame trace anchor ${id} at ${x},${y}.`,
+    canonicalTileAddress: null,
+  };
+}
+
+function sanitizeTraceAnchorId(value: string, index: number): string {
+  const sanitized = value.trim().replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+  return sanitized || `fresh-anchor-${index + 1}`;
+}
+
 function selectedArenaBackend(): "cpu" | "gpu" {
   const params = new URLSearchParams(window.location.search);
   const requested = params.get("arenaBackend") ?? params.get("requestedArenaBackend");
@@ -1917,6 +1973,7 @@ function exposeTileLocalRuntimeEvidence(
         deferredFields: pixelOrderTrace?.deferredFields,
         tileSizePx: tileLocalState.plan.tileSizePx,
         tileColumns: tileLocalState.plan.tileColumns,
+        anchors: tileLocalState.traceAnchors,
       })
     : buildPerPixelFinalColorAccumulationTrace(pixelContributorTrace);
   runtimeWindow.__MESH_SPLAT_SMOKE__ = {

@@ -52,6 +52,28 @@ test("GPU-live anchor traces expose projected and retained contributors without 
   );
 });
 
+test("GPU-live anchor traces default to the canonical packet anchors", () => {
+  const traces = buildGpuLiveAnchorContributorTraces({
+    attributes: syntheticAttributes(),
+    viewMatrix: identityMatrix(),
+    viewProj: identityMatrix(),
+    effectiveOpacities: new Float32Array([0.8, 0.7, 0.6]),
+    viewportWidth: 3456,
+    viewportHeight: 1804,
+    tileSizePx: 16,
+    tileColumns: 216,
+    tileRows: 113,
+    splatScale: 600,
+    minRadiusPx: 1.5,
+    maxRefsPerTile: 256,
+  });
+
+  assert.deepEqual(
+    traces.perPixelProjectedContributors.map((record) => record.anchorPixel.id),
+    PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors.map((anchor) => anchor.id),
+  );
+});
+
 function syntheticAttributes() {
   const positions = new Float32Array([
     ndcX(LACUNAR_ANCHOR.x, 3456), ndcY(LACUNAR_ANCHOR.y, 1804), 0,
