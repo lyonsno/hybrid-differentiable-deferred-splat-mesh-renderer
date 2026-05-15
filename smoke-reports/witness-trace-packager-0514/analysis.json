@@ -1,0 +1,262 @@
+{
+  "generatedAt": "2026-05-15T02:30:56.874Z",
+  "smokeUrl": "http://127.0.0.1:61625/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible",
+  "branch": "cc/witness-trace-packager",
+  "commit": "82ad1aa071dab515529b4f470c079e9fbbfa53fd",
+  "repoRoot": "/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-witness-trace-packager",
+  "packet": {
+    "path": "metadosis/coordination-packets/meshsplat-pixel-contributor-trace-substrate_2026-05-14.md",
+    "thesisPath": "metadosis/coordination-packets/meshsplat-pixel-contributor-trace-substrate_2026-05-14.thesis.md",
+    "stewardTopos": "pixel-trace-steward-0514"
+  },
+  "viewport": {
+    "width": 3456,
+    "height": 1916
+  },
+  "anchorPixels": [
+    {
+      "id": "lacunar-hole-dessert-1260-930",
+      "label": "lacunar hole dessert",
+      "x": 1260,
+      "y": 930,
+      "status": "present",
+      "source": "packet",
+      "crop": {
+        "x": 1132,
+        "y": 802,
+        "width": 256,
+        "height": 256
+      }
+    },
+    {
+      "id": "dense-foreground-leak-1580-1260",
+      "label": "dense foreground leak",
+      "x": 1580,
+      "y": 1260,
+      "status": "present",
+      "source": "packet",
+      "crop": {
+        "x": 1452,
+        "y": 1132,
+        "width": 256,
+        "height": 256
+      }
+    },
+    {
+      "id": "black-band-dropout-2300-1055",
+      "label": "black band dropout",
+      "x": 2300,
+      "y": 1055,
+      "status": "present",
+      "source": "packet",
+      "crop": {
+        "x": 2108,
+        "y": 959,
+        "width": 384,
+        "height": 192
+      }
+    }
+  ],
+  "crops": [
+    {
+      "id": "lacunar-hole-dessert-1260-930-crop",
+      "anchorPixelId": "lacunar-hole-dessert-1260-930",
+      "sourceCaptureId": "final-color",
+      "sourceScreenshotPath": "smoke-reports/witness-trace-packager-0514/final-color.png",
+      "path": "crops/lacunar-hole-dessert-1260-930.png",
+      "box": {
+        "x": 1132,
+        "y": 802,
+        "width": 256,
+        "height": 256
+      },
+      "status": "present"
+    },
+    {
+      "id": "dense-foreground-leak-1580-1260-crop",
+      "anchorPixelId": "dense-foreground-leak-1580-1260",
+      "sourceCaptureId": "final-color",
+      "sourceScreenshotPath": "smoke-reports/witness-trace-packager-0514/final-color.png",
+      "path": "crops/dense-foreground-leak-1580-1260.png",
+      "box": {
+        "x": 1452,
+        "y": 1132,
+        "width": 256,
+        "height": 256
+      },
+      "status": "present"
+    },
+    {
+      "id": "black-band-dropout-2300-1055-crop",
+      "anchorPixelId": "black-band-dropout-2300-1055",
+      "sourceCaptureId": "final-color",
+      "sourceScreenshotPath": "smoke-reports/witness-trace-packager-0514/final-color.png",
+      "path": "crops/black-band-dropout-2300-1055.png",
+      "box": {
+        "x": 2108,
+        "y": 959,
+        "width": 384,
+        "height": 192
+      },
+      "status": "present"
+    }
+  ],
+  "traceJson": {
+    "schema": {
+      "status": "present",
+      "source": {
+        "lane": "trace-schema-anchor",
+        "ref": "origin/cc/trace-schema-anchor-0514@3cd5919",
+        "packetPath": "metadosis/coordination-packets/meshsplat-pixel-contributor-trace-substrate_2026-05-14.md",
+        "thesisPath": "metadosis/coordination-packets/meshsplat-pixel-contributor-trace-substrate_2026-05-14.thesis.md"
+      },
+      "note": "Canonical trace schema is consumed, not redefined, by the witness bundle."
+    },
+    "projection": {
+      "status": "present",
+      "source": {
+        "lane": "projection-pixel-trace",
+        "ref": "origin/cc/projection-pixel-trace-0514@ba76a485cf34bf514eca1d862399eb6e71fcd1ef",
+        "packetPath": "metadosis/coordination-packets/meshsplat-pixel-contributor-trace-substrate_2026-05-14.md",
+        "thesisPath": "metadosis/coordination-packets/meshsplat-pixel-contributor-trace-substrate_2026-05-14.thesis.md"
+      },
+      "note": "Projection provenance is referenced from the sibling report surface."
+    },
+    "syntheticParity": {
+      "status": "present",
+      "source": {
+        "lane": "synthetic-trace-parity-oracle",
+        "ref": "origin/cc/synthetic-trace-parity-oracle-0514@b3eadeba5d607753270c190d3f27b7e4f2b586e7",
+        "packetPath": "metadosis/coordination-packets/meshsplat-pixel-contributor-trace-substrate_2026-05-14.md",
+        "thesisPath": "metadosis/coordination-packets/meshsplat-pixel-contributor-trace-substrate_2026-05-14.thesis.md"
+      },
+      "note": "Synthetic parity provenance is referenced from the sibling report surface."
+    },
+    "retention": {
+      "status": "missing",
+      "source": {
+        "lane": "retention-pixel-trace",
+        "ref": "pending",
+        "packetPath": "metadosis/coordination-packets/meshsplat-pixel-contributor-trace-substrate_2026-05-14.md",
+        "thesisPath": "metadosis/coordination-packets/meshsplat-pixel-contributor-trace-substrate_2026-05-14.thesis.md"
+      },
+      "note": "Retention lane has not landed in this bundle yet."
+    },
+    "ordering": {
+      "status": "missing",
+      "source": {
+        "lane": "ordering-band-row-trace",
+        "ref": "pending",
+        "packetPath": "metadosis/coordination-packets/meshsplat-pixel-contributor-trace-substrate_2026-05-14.md",
+        "thesisPath": "metadosis/coordination-packets/meshsplat-pixel-contributor-trace-substrate_2026-05-14.thesis.md"
+      },
+      "note": "Ordering lane has not landed in this bundle yet."
+    },
+    "finalAccumulation": {
+      "status": "missing",
+      "source": {
+        "lane": "final-accumulation-trace",
+        "ref": "pending",
+        "packetPath": "metadosis/coordination-packets/meshsplat-pixel-contributor-trace-substrate_2026-05-14.md",
+        "thesisPath": "metadosis/coordination-packets/meshsplat-pixel-contributor-trace-substrate_2026-05-14.thesis.md"
+      },
+      "note": "Final accumulation lane has not landed in this bundle yet."
+    }
+  },
+  "summary": "FAIL: Static dessert witness did not report crop-local rim source support.",
+  "passFailNotes": [
+    "FAIL: Static dessert witness did not report crop-local rim source support.",
+    "missing-rim-source-support: Static dessert witness did not report crop-local rim source support.",
+    "missing-porous-body-source-support: Static dessert witness did not report crop-local porous body source support.",
+    "tile-local-visible-footprint-expansion: Tile-local final color changed 114.60x as many pixels as plate on the fixed dessert witness.",
+    "missing retention: explicit placeholder kept until the retention lane lands",
+    "missing ordering: explicit placeholder kept until the ordering lane lands",
+    "missing finalAccumulation: explicit placeholder kept until the final accumulation lane lands"
+  ],
+  "captures": [
+    {
+      "id": "plate-final-color",
+      "title": "Plate baseline final color",
+      "screenshotPath": "smoke-reports/witness-trace-packager-0514/plate-final-color.png",
+      "rendererLabel": "plate",
+      "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+      "splatCount": 94406,
+      "tileRefs": 0,
+      "nonblank": true,
+      "realSplatEvidence": true,
+      "summary": "PASS: nonblank scaniverse_ply capture with 94406 splats from /smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json."
+    },
+    {
+      "id": "final-color",
+      "title": "Final color tile-local visible compositor",
+      "screenshotPath": "smoke-reports/witness-trace-packager-0514/final-color.png",
+      "rendererLabel": "tile-local-visible-gaussian-compositor",
+      "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+      "splatCount": 94406,
+      "tileRefs": 2360150,
+      "nonblank": true,
+      "realSplatEvidence": true,
+      "summary": "PASS: nonblank scaniverse_ply capture with 94406 splats from /smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json."
+    },
+    {
+      "id": "coverage-weight",
+      "title": "Coverage weight heatmap",
+      "screenshotPath": "smoke-reports/witness-trace-packager-0514/coverage-weight.png",
+      "rendererLabel": "tile-local-visible-debug-coverage-weight",
+      "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+      "splatCount": 94406,
+      "tileRefs": 2360150,
+      "nonblank": true,
+      "realSplatEvidence": true,
+      "summary": "PASS: nonblank scaniverse_ply capture with 94406 splats from /smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json."
+    },
+    {
+      "id": "accumulated-alpha",
+      "title": "Accumulated alpha heatmap",
+      "screenshotPath": "smoke-reports/witness-trace-packager-0514/accumulated-alpha.png",
+      "rendererLabel": "tile-local-visible-debug-accumulated-alpha",
+      "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+      "splatCount": 94406,
+      "tileRefs": 2360150,
+      "nonblank": true,
+      "realSplatEvidence": true,
+      "summary": "PASS: nonblank scaniverse_ply capture with 94406 splats from /smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json."
+    },
+    {
+      "id": "transmittance",
+      "title": "Transmittance heatmap",
+      "screenshotPath": "smoke-reports/witness-trace-packager-0514/transmittance.png",
+      "rendererLabel": "tile-local-visible-debug-transmittance",
+      "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+      "splatCount": 94406,
+      "tileRefs": 2360150,
+      "nonblank": true,
+      "realSplatEvidence": true,
+      "summary": "PASS: nonblank scaniverse_ply capture with 94406 splats from /smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json."
+    },
+    {
+      "id": "tile-ref-count",
+      "title": "Tile-ref density heatmap",
+      "screenshotPath": "smoke-reports/witness-trace-packager-0514/tile-ref-count.png",
+      "rendererLabel": "tile-local-visible-debug-tile-ref-count",
+      "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+      "splatCount": 94406,
+      "tileRefs": 2360150,
+      "nonblank": true,
+      "realSplatEvidence": true,
+      "summary": "PASS: nonblank scaniverse_ply capture with 94406 splats from /smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json."
+    },
+    {
+      "id": "conic-shape",
+      "title": "Conic major/minor shape heatmap",
+      "screenshotPath": "smoke-reports/witness-trace-packager-0514/conic-shape.png",
+      "rendererLabel": "tile-local-visible-debug-conic-shape",
+      "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+      "splatCount": 94406,
+      "tileRefs": 2360150,
+      "nonblank": true,
+      "realSplatEvidence": true,
+      "summary": "PASS: nonblank scaniverse_ply capture with 94406 splats from /smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json."
+    }
+  ]
+}

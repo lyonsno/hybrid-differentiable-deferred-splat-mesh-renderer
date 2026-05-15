@@ -19,11 +19,16 @@ import {
   buildStaticDessertWitnessPlan,
   classifyStaticDessertWitness,
 } from "./visual-smoke/static-dessert-witness.mjs";
+import {
+  buildWitnessTraceBundle,
+  renderWitnessTraceBundleReport,
+  writeWitnessTraceBundle,
+} from "./visual-smoke/witness-trace-bundle.mjs";
 import { classifyWitnessCapture } from "./visual-smoke/witness-diagnostics.mjs";
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const reportDir = path.resolve(options.appRoot, options.reportDir ?? defaultReportDir());
+  const reportDir = path.resolve(options.appRoot, options.reportDir ?? defaultReportDir(options));
   await mkdir(reportDir, { recursive: true });
 
   const server = options.url ? null : await startViteServer(options);
@@ -84,7 +89,7 @@ async function main() {
       return;
     }
 
-    if (options.staticDessertWitness) {
+    if (options.staticDessertWitness && !options.traceBundle) {
       const witness = await runStaticDessertWitness({
         browser,
         options,
@@ -98,6 +103,23 @@ async function main() {
       await writeFile(reportPath, renderStaticDessertWitnessReport(witness));
       printStaticDessertWitnessSummary(witness);
       if (!witness.classification.closeable) {
+        process.exitCode = 5;
+      }
+      return;
+    }
+
+    if (options.traceBundle) {
+      const { bundle, paths } = await runWitnessTraceBundle({
+        browser,
+        options,
+        baseUrl: url,
+        reportDir,
+        analysisPath,
+        reportPath,
+        generatedAt,
+      });
+      printWitnessTraceBundleSummary(bundle, paths);
+      if (bundle.witness && !bundle.witness.classification.closeable) {
         process.exitCode = 5;
       }
       return;
@@ -257,6 +279,26 @@ async function runStaticDessertWitness({ browser, options, baseUrl, reportDir, a
     captures,
     classification,
   };
+}
+
+async function runWitnessTraceBundle({ browser, options, baseUrl, reportDir, analysisPath, reportPath, generatedAt }) {
+  const witness = await runStaticDessertWitness({
+    browser,
+    options,
+    baseUrl,
+    reportDir,
+    analysisPath,
+    reportPath,
+    generatedAt,
+  });
+  const bundle = buildWitnessTraceBundle({
+    witness,
+    appRoot: options.appRoot,
+    packetPath: "metadosis/coordination-packets/meshsplat-pixel-contributor-trace-substrate_2026-05-14.md",
+    thesisPath: "metadosis/coordination-packets/meshsplat-pixel-contributor-trace-substrate_2026-05-14.thesis.md",
+  });
+  const paths = await writeWitnessTraceBundle(bundle, { reportDir });
+  return { bundle, paths };
 }
 
 async function captureVisualSmoke({ browser, options, capture, reportDir }) {
@@ -709,6 +751,23 @@ function printStaticDessertWitnessSummary(result) {
   }
 }
 
+function printWitnessTraceBundleSummary(bundle, paths) {
+  const { anchorPixels, crops, traceJson, passFailNotes } = bundle;
+  const { schema, projection, syntheticParity, retention, ordering, finalAccumulation } = traceJson;
+  console.log(bundle.summary);
+  console.log(`report: ${paths.reportPath}`);
+  console.log(`trace: ${paths.tracePath}`);
+  console.log(
+    `anchors: ${anchorPixels.length}; crops: ${crops.length}; trace: schema=${schema.status}, projection=${projection.status}, synthetic=${syntheticParity.status}, retention=${retention.status}, ordering=${ordering.status}, finalAccumulation=${finalAccumulation.status}`
+  );
+  for (const crop of crops) {
+    console.log(`${crop.id}: ${crop.path}`);
+  }
+  for (const note of passFailNotes) {
+    console.log(`note: ${note}`);
+  }
+}
+
 function parseArgs(args) {
   const options = {
     appRoot: process.cwd(),
@@ -728,6 +787,7 @@ function parseArgs(args) {
     tileLocalComparison: false,
     tileLocalDiagnostics: false,
     staticDessertWitness: false,
+    traceBundle: false,
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -811,6 +871,18 @@ function parseArgs(args) {
           options.settleMs = 5000;
         }
         break;
+      case "--trace-bundle":
+      case "--witness-trace-bundle":
+        options.traceBundle = true;
+        options.staticDessertWitness = true;
+        options.requireRealSplat = true;
+        if (options.settleMs === 1000) {
+          options.settleMs = 5000;
+        }
+        if (options.viewport.width === 1280 && options.viewport.height === 720) {
+          options.viewport = { width: 3456, height: 1916 };
+        }
+        break;
       case "--help":
       case "-h":
         printHelp();
@@ -843,6 +915,7 @@ function publicOptions(options) {
     tileLocalComparison: options.tileLocalComparison,
     tileLocalDiagnostics: options.tileLocalDiagnostics,
     staticDessertWitness: options.staticDessertWitness,
+    traceBundle: options.traceBundle,
   };
 }
 
@@ -854,7 +927,10 @@ function parseViewport(value) {
   return { width: Number(match[1]), height: Number(match[2]) };
 }
 
-function defaultReportDir() {
+function defaultReportDir(options = {}) {
+  if (options.traceBundle) {
+    return path.join("smoke-reports", `witness-trace-bundle-${new Date().toISOString().replace(/[:.]/g, "-")}`);
+  }
   return path.join("smoke-reports", `visual-smoke-${new Date().toISOString().replace(/[:.]/g, "-")}`);
 }
 
@@ -888,6 +964,7 @@ Options:
   --tile-local-comparison         Capture plate, renderer=tile-local, and renderer=tile-local-visible in one report.
   --tile-local-diagnostics        Capture tile-local-visible diagnostic heatmaps and compact evidence in one report.
   --static-dessert-witness        Capture fixed dessert final color plus tile-local debug evidence in one report.
+  --trace-bundle                  Capture the static dessert witness and write a trace bundle with explicit missing-field placeholders.
 `);
 }
 
