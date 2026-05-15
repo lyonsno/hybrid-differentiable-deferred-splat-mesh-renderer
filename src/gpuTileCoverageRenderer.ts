@@ -10,6 +10,8 @@ export interface GpuTileCoverageBuffers {
   readonly frameUniformBuffer: GPUBuffer;
   readonly positionBuffer: GPUBuffer;
   readonly colorBuffer: GPUBuffer;
+  readonly scaleBuffer: GPUBuffer;
+  readonly rotationBuffer: GPUBuffer;
   readonly tileHeaderBuffer: GPUBuffer;
   readonly tileRefBuffer: GPUBuffer;
   readonly tileCoverageWeightBuffer: GPUBuffer;
@@ -49,6 +51,8 @@ export function createGpuTileCoveragePipelineSkeleton(
       },
       storageEntry(GPU_TILE_COVERAGE_BINDINGS.positions, "read-only-storage"),
       storageEntry(GPU_TILE_COVERAGE_BINDINGS.colors, "read-only-storage"),
+      storageEntry(GPU_TILE_COVERAGE_BINDINGS.scales, "read-only-storage"),
+      storageEntry(GPU_TILE_COVERAGE_BINDINGS.rotations, "read-only-storage"),
       storageEntry(GPU_TILE_COVERAGE_BINDINGS.tileHeaders, "storage"),
       storageEntry(GPU_TILE_COVERAGE_BINDINGS.tileRefs, "storage"),
       storageEntry(GPU_TILE_COVERAGE_BINDINGS.tileCoverageWeights, "storage"),
@@ -88,6 +92,8 @@ export function createGpuTileCoveragePipelineSkeleton(
           { binding: GPU_TILE_COVERAGE_BINDINGS.frame, resource: { buffer: buffers.frameUniformBuffer } },
           { binding: GPU_TILE_COVERAGE_BINDINGS.positions, resource: { buffer: buffers.positionBuffer } },
           { binding: GPU_TILE_COVERAGE_BINDINGS.colors, resource: { buffer: buffers.colorBuffer } },
+          { binding: GPU_TILE_COVERAGE_BINDINGS.scales, resource: { buffer: buffers.scaleBuffer } },
+          { binding: GPU_TILE_COVERAGE_BINDINGS.rotations, resource: { buffer: buffers.rotationBuffer } },
           { binding: GPU_TILE_COVERAGE_BINDINGS.tileHeaders, resource: { buffer: buffers.tileHeaderBuffer } },
           { binding: GPU_TILE_COVERAGE_BINDINGS.tileRefs, resource: { buffer: buffers.tileRefBuffer } },
           { binding: GPU_TILE_COVERAGE_BINDINGS.tileCoverageWeights, resource: { buffer: buffers.tileCoverageWeightBuffer } },

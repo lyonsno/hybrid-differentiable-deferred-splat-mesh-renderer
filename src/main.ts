@@ -593,7 +593,11 @@ async function main() {
           tileLocalState.frameUniformData,
           viewProj,
           tileLocalState.plan,
-          tileLocalState.debugMode
+          tileLocalState.debugMode,
+          {
+            splatScale: activeSplatScale,
+            minRadiusPx: activeMinRadiusPx,
+          }
         );
         gpu.device.queue.writeBuffer(tileLocalState.frameUniformBuffer, 0, tileLocalState.frameUniformData);
         const tileLocalComputePass = encoder.beginComputePass();
@@ -945,6 +949,8 @@ function createGpuArenaTileLocalSceneState(
     frameUniformBuffer,
     positionBuffer: buffers.positionBuffer,
     colorBuffer: buffers.colorBuffer,
+    scaleBuffer: buffers.scaleBuffer,
+    rotationBuffer: buffers.rotationBuffer,
     tileHeaderBuffer,
     tileRefBuffer,
     tileCoverageWeightBuffer,
@@ -1165,6 +1171,8 @@ function createCpuTileLocalSceneState(
     frameUniformBuffer,
     positionBuffer: buffers.positionBuffer,
     colorBuffer: buffers.colorBuffer,
+    scaleBuffer: buffers.scaleBuffer,
+    rotationBuffer: buffers.rotationBuffer,
     tileHeaderBuffer: bridgeBuffers.tileHeaderBuffer,
     tileRefBuffer: bridgeBuffers.tileRefBuffer,
     tileCoverageWeightBuffer: bridgeBuffers.tileCoverageWeightBuffer,

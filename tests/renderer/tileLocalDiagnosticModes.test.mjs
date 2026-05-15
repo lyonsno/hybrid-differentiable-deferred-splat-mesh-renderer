@@ -19,7 +19,7 @@ test("GPU tile coverage uniforms carry an explicit debug heatmap mode without ch
     splatCount: 2,
     maxTileRefs: 4,
   });
-  const target = new Float32Array(24);
+  const target = new Float32Array(28);
   const viewProj = Float32Array.from({ length: 16 }, (_, index) => index + 1);
 
   writeGpuTileCoverageFrameUniforms(target, viewProj, plan);

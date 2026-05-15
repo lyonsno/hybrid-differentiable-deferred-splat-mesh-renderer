@@ -87,7 +87,8 @@ test("visible bridge stores contributor arena refs in compositor rank order", ()
 test("visible shader consumes preordered tile refs without a per-pixel rank search", () => {
   const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
 
-  assert.doesNotMatch(shader, /@binding\(3\)/);
+  assert.match(shader, /@binding\(3\) var<storage, read> scales/);
+  assert.match(shader, /@binding\(4\) var<storage, read> rotations/);
   assert.match(shader, /let refIndex = header\.x \+ layer/);
   assert.match(shader, /let tileCoverageWeight = max\(tileCoverageWeights\[refIndex\], 0\.0\)/);
   assert.doesNotMatch(shader, /for \(var candidate = 0u; candidate < refLimit/);

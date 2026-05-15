@@ -82,6 +82,11 @@ test("GPU tile coverage frame uniforms expose viewport, tile grid, and counts at
   assert.equal(targetU32[21], 24);
   assert.equal(targetU32[22], 9);
   assert.equal(targetU32[23], 40);
+  assert.equal(target[24], 1);
+  assert.equal(target[25], 1.5);
+  writeGpuTileCoverageFrameUniforms(target, viewProj, plan, "final-color", { splatScale: 600, minRadiusPx: 4 });
+  assert.equal(target[24], 600);
+  assert.equal(target[25], 4);
   assert.throws(() => writeGpuTileCoverageFrameUniforms(new Float32Array(4), viewProj, plan), /too small/i);
 });
 
@@ -111,6 +116,8 @@ test("GPU tile coverage bindings carry the live tile buffers inside WebGPU stora
     frame: 0,
     positions: 1,
     colors: 2,
+    scales: 3,
+    rotations: 4,
     tileHeaders: 5,
     tileRefs: 6,
     tileCoverageWeights: 7,
@@ -200,8 +207,8 @@ test("GPU tile coverage WGSL is a separate skeleton and does not mutate the live
   assert.match(shader, /var<storage, read_write> tileScatterCursors: array<atomic<u32>>/);
   assert.match(shader, /fn conic_pixel_weight/);
   assert.match(shader, /alphaParams\[alphaParamIndex \+ frame\.maxTileRefs\]/);
-  assert.doesNotMatch(shader, /var<storage, read> scales/);
-  assert.doesNotMatch(shader, /var<storage, read> rotations/);
+  assert.match(shader, /var<storage, read> scales/);
+  assert.match(shader, /var<storage, read> rotations/);
   assert.doesNotMatch(shader, /splat_plate/);
   assert.doesNotMatch(shader, /alphaDensity|centerTile|48px/);
 });

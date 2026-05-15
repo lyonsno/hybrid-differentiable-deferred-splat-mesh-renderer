@@ -6,6 +6,9 @@ struct FrameUniforms {
   tileGrid: vec2u,
   splatCount: u32,
   maxTileRefs: u32,
+  splatScale: f32,
+  minRadiusPx: f32,
+  uniformPadding: vec2f,
 };
 
 const DEBUG_MODE_FINAL_COLOR = 0.0;
@@ -18,6 +21,8 @@ const DEBUG_MODE_CONIC_SHAPE = 5.0;
 @group(0) @binding(0) var<uniform> frame: FrameUniforms;
 @group(0) @binding(1) var<storage, read> positions: array<f32>;
 @group(0) @binding(2) var<storage, read> colors: array<f32>;
+@group(0) @binding(3) var<storage, read> scales: array<f32>;
+@group(0) @binding(4) var<storage, read> rotations: array<f32>;
 @group(0) @binding(5) var<storage, read_write> tileHeaders: array<vec4u>;
 @group(0) @binding(6) var<storage, read_write> tileRefs: array<vec4u>;
 @group(0) @binding(7) var<storage, read_write> tileCoverageWeights: array<f32>;
@@ -25,6 +30,23 @@ const DEBUG_MODE_CONIC_SHAPE = 5.0;
 @group(0) @binding(9) var outputColor: texture_storage_2d<rgba16float, write>;
 @group(0) @binding(10) var<storage, read_write> tileBuildCounts: array<atomic<u32>>;
 @group(0) @binding(11) var<storage, read_write> tileScatterCursors: array<atomic<u32>>;
+
+const MIN_SPLAT_CLIP_W = 0.0001;
+const MAX_ANISOTROPIC_MINOR_RADIUS_INFLATION = 4.0;
+const MIN_ANISOTROPIC_MINOR_RADIUS_FRACTION = 0.015625;
+
+struct SplatShape {
+  axis0: vec3f,
+  axis1: vec3f,
+  axis2: vec3f,
+};
+
+struct GpuLiveConic {
+  centerPx: vec2f,
+  inverseConic: vec3f,
+  majorRadiusPx: f32,
+  minorRadiusPx: f32,
+};
 
 fn tile_count() -> u32 {
   return max(frame.tileGrid.x * frame.tileGrid.y, 1u);
@@ -45,12 +67,91 @@ fn projected_center_px(splatId: u32) -> vec2f {
   );
 }
 
-fn gpu_live_sigma_px() -> f32 {
-  return 10.0;
+fn rotateAxis(rotation: vec4f, axis: vec3f) -> vec3f {
+  let q = rotation / max(length(rotation), 0.000001);
+  let u = vec3f(q.y, q.z, q.w);
+  return axis + 2.0 * cross(u, cross(u, axis) + q.x * axis);
 }
 
-fn gpu_live_support_radius_px() -> f32 {
-  return gpu_live_sigma_px() * 3.0;
+fn makeSplatShape(scaleLog: vec3f, rotation: vec4f) -> SplatShape {
+  let scale = exp(scaleLog);
+  return SplatShape(
+    rotateAxis(rotation, vec3f(1.0, 0.0, 0.0)) * scale.x,
+    rotateAxis(rotation, vec3f(0.0, 1.0, 0.0)) * scale.y,
+    rotateAxis(rotation, vec3f(0.0, 0.0, 1.0)) * scale.z,
+  );
+}
+
+fn viewProjectionLinearRow(row: u32) -> vec3f {
+  return vec3f(frame.viewProj[0][row], frame.viewProj[1][row], frame.viewProj[2][row]);
+}
+
+fn projectAxisJacobian(axis: vec3f, centerClip: vec4f) -> vec2f {
+  let viewProjRow0 = viewProjectionLinearRow(0u);
+  let viewProjRow1 = viewProjectionLinearRow(1u);
+  let viewProjRow3 = viewProjectionLinearRow(3u);
+  let safeW = max(abs(centerClip.w), MIN_SPLAT_CLIP_W);
+  let clipW2 = safeW * safeW;
+  let viewJacobianX = (centerClip.w * viewProjRow0 - centerClip.x * viewProjRow3) / clipW2;
+  let viewJacobianY = (centerClip.w * viewProjRow1 - centerClip.y * viewProjRow3) / clipW2;
+  return vec2f(dot(viewJacobianX, axis), dot(viewJacobianY, axis));
+}
+
+fn boundedMinorRadiusPx(rawMajorRadiusPx: f32, rawMinorRadiusPx: f32, minRadiusPx: f32) -> f32 {
+  if (rawMinorRadiusPx >= minRadiusPx) {
+    return rawMinorRadiusPx;
+  }
+  if (rawMajorRadiusPx < minRadiusPx) {
+    return minRadiusPx;
+  }
+  let inflatedMinor = max(
+    rawMinorRadiusPx * MAX_ANISOTROPIC_MINOR_RADIUS_INFLATION,
+    minRadiusPx * MIN_ANISOTROPIC_MINOR_RADIUS_FRACTION,
+  );
+  return min(minRadiusPx, inflatedMinor);
+}
+
+fn gpu_live_projected_conic(splatId: u32, centerClip: vec4f, centerPx: vec2f) -> GpuLiveConic {
+  let vecBase = splatId * 3u;
+  let quatBase = splatId * 4u;
+  let shape = makeSplatShape(
+    vec3f(scales[vecBase], scales[vecBase + 1u], scales[vecBase + 2u]),
+    vec4f(rotations[quatBase], rotations[quatBase + 1u], rotations[quatBase + 2u], rotations[quatBase + 3u]),
+  );
+  let viewportScale = vec2f(frame.viewport.x, frame.viewport.y) * 0.5 * (frame.splatScale / 600.0);
+  let axis0 = projectAxisJacobian(shape.axis0, centerClip) * viewportScale;
+  let axis1 = projectAxisJacobian(shape.axis1, centerClip) * viewportScale;
+  let axis2 = projectAxisJacobian(shape.axis2, centerClip) * viewportScale;
+  let covXX = axis0.x * axis0.x + axis1.x * axis1.x + axis2.x * axis2.x;
+  let covXY = axis0.x * axis0.y + axis1.x * axis1.y + axis2.x * axis2.y;
+  let covYY = axis0.y * axis0.y + axis1.y * axis1.y + axis2.y * axis2.y;
+  let trace = 0.5 * (covXX + covYY);
+  let diff = 0.5 * (covXX - covYY);
+  let root = sqrt(max(diff * diff + covXY * covXY, 0.0));
+  let lambda0 = max(trace + root, 0.0);
+  let lambda1 = max(trace - root, 0.0);
+  var majorDir = vec2f(1.0, 0.0);
+  if (abs(covXY) + abs(lambda0 - covXX) > 0.00000001) {
+    majorDir = normalize(vec2f(covXY, lambda0 - covXX));
+  } else if (covYY > covXX) {
+    majorDir = vec2f(0.0, 1.0);
+  }
+  let minorDir = vec2f(-majorDir.y, majorDir.x);
+  let rawMajorRadiusPx = sqrt(lambda0);
+  let rawMinorRadiusPx = sqrt(lambda1);
+  let minRadiusPx = max(frame.minRadiusPx, 0.0);
+  let majorRadiusPx = max(rawMajorRadiusPx, minRadiusPx);
+  let minorRadiusPx = boundedMinorRadiusPx(rawMajorRadiusPx, rawMinorRadiusPx, minRadiusPx);
+  let majorInvVar = 1.0 / max(majorRadiusPx * majorRadiusPx, 0.000001);
+  let minorInvVar = 1.0 / max(minorRadiusPx * minorRadiusPx, 0.000001);
+  let inverseXX = majorDir.x * majorDir.x * majorInvVar + minorDir.x * minorDir.x * minorInvVar;
+  let inverseXY = majorDir.x * majorDir.y * majorInvVar + minorDir.x * minorDir.y * minorInvVar;
+  let inverseYY = majorDir.y * majorDir.y * majorInvVar + minorDir.y * minorDir.y * minorInvVar;
+  return GpuLiveConic(centerPx, vec3f(inverseXX, inverseXY, inverseYY), majorRadiusPx, minorRadiusPx);
+}
+
+fn gpu_live_support_radius_px(majorRadiusPx: f32, minorRadiusPx: f32) -> f32 {
+  return max(max(majorRadiusPx, minorRadiusPx) * 3.0, frame.tileSizePx * 0.5);
 }
 
 fn gpu_live_tile_center_px(tileX: u32, tileY: u32, tileSizePx: u32) -> vec2f {
@@ -58,11 +159,12 @@ fn gpu_live_tile_center_px(tileX: u32, tileY: u32, tileSizePx: u32) -> vec2f {
   return vec2f((f32(tileX) + 0.5) * tileSize, (f32(tileY) + 0.5) * tileSize);
 }
 
-fn gpu_live_tile_coverage_weight(centerPx: vec2f, tileCenterPx: vec2f) -> f32 {
-  let sigma = gpu_live_sigma_px();
-  let delta = tileCenterPx - centerPx;
-  let distance2 = dot(delta, delta);
-  return exp(-0.5 * distance2 / max(sigma * sigma, 0.000001));
+fn gpu_live_tile_coverage_weight(conic: GpuLiveConic, tileCenterPx: vec2f) -> f32 {
+  let delta = tileCenterPx - conic.centerPx;
+  let tileMahalanobis2 = conic.inverseConic.x * delta.x * delta.x
+    + 2.0 * conic.inverseConic.y * delta.x * delta.y
+    + conic.inverseConic.z * delta.y * delta.y;
+  return exp(-0.5 * tileMahalanobis2);
 }
 
 fn conic_falloff_scale() -> f32 {
@@ -183,9 +285,10 @@ fn debug_heatmap_color(
   }
   let maxTile = max(frame.tileGrid, vec2u(1u)) - vec2u(1u, 1u);
   let centerPx = projected_center_px(splatId);
+  let conic = gpu_live_projected_conic(splatId, centerClip, centerPx);
   let tileSizePx = max(u32(frame.tileSizePx), 1u);
   let tileCapacity = tile_ref_capacity_per_tile();
-  let support = gpu_live_support_radius_px();
+  let support = gpu_live_support_radius_px(conic.majorRadiusPx, conic.minorRadiusPx);
   let viewportMax = max(frame.viewport - vec2f(1.0, 1.0), vec2f(0.0, 0.0));
   let minCenterPx = clamp(centerPx - vec2f(support, support), vec2f(0.0, 0.0), viewportMax);
   let maxCenterPx = clamp(centerPx + vec2f(support, support), vec2f(0.0, 0.0), viewportMax);
@@ -194,8 +297,6 @@ fn debug_heatmap_color(
   let minTileY = min(u32(minCenterPx.y) / tileSizePx, maxTile.y);
   let maxTileY = min(u32(maxCenterPx.y) / tileSizePx, maxTile.y);
   let orderingKey = splatId;
-  let sigma = gpu_live_sigma_px();
-  let inverseRadius2 = 1.0 / (sigma * sigma);
   for (var tileY = minTileY; tileY <= maxTileY; tileY = tileY + 1u) {
     for (var tileX = minTileX; tileX <= maxTileX; tileX = tileX + 1u) {
       let tileId = tileY * frame.tileGrid.x + tileX;
@@ -216,11 +317,11 @@ fn debug_heatmap_color(
       }
       tileRefs[refIndex] = vec4u(splatId, splatId, tileId, refIndex);
       tileCoverageWeights[refIndex] = gpu_live_tile_coverage_weight(
-        centerPx,
+        conic,
         gpu_live_tile_center_px(tileX, tileY, tileSizePx)
       );
       alphaParams[refIndex] = vec4f(0.35, centerPx.x, centerPx.y, f32(orderingKey));
-      alphaParams[refIndex + frame.maxTileRefs] = vec4f(inverseRadius2, 0.0, inverseRadius2, 0.0);
+      alphaParams[refIndex + frame.maxTileRefs] = vec4f(conic.inverseConic, 0.0);
     }
   }
 }

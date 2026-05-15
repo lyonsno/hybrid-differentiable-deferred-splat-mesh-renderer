@@ -4,6 +4,7 @@ import test from "node:test";
 
 test("main exposes a visible tile-local Gaussian compositor without replacing the prepass smoke mode", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const gpuSource = readFileSync(new URL("../../src/gpu.ts", import.meta.url), "utf8");
 
   assert.match(source, /"tile-local-visible"/);
   assert.match(source, /tile-local-visible-gaussian-compositor/);
@@ -17,6 +18,7 @@ test("main exposes a visible tile-local Gaussian compositor without replacing th
   assert.doesNotMatch(source, /syncTileLocalOrderingKeys/);
   assert.match(source, /params\.get\("renderer"\)\s*===\s*"tile-local-visible"/);
   assert.match(source, /params\.get\("renderer"\)\s*===\s*"tile-local"/);
+  assert.match(gpuSource, /maxStorageBuffersPerShaderStage:\s*adapter\.limits\.maxStorageBuffersPerShaderStage/);
 });
 
 test("tile-local visible shader composites ordered tile refs with sample-local conic coverage, alpha, and real colors", () => {
@@ -46,7 +48,6 @@ test("tile-local visible shader composites ordered tile refs with sample-local c
   assert.doesNotMatch(shader, /exp\(-0\.5 \* mahalanobis2\)/);
   assert.doesNotMatch(shader, /exp\(-2\.0 \* mahalanobis2\)/);
   assert.doesNotMatch(shader, /tileCoverageWeights\[refIndex\][^;]*\*\s*conic_pixel_weight/);
-  assert.doesNotMatch(shader, /radiusPx/);
   assert.doesNotMatch(shader, /for \(var candidate = 0u; candidate < refLimit/);
   assert.match(shader, /remainingTransmission/);
   assert.doesNotMatch(shader, /identityTint/);
@@ -65,11 +66,18 @@ test("tile-local visible compositor consumes the retained tile header count with
   assert.match(source, /visibleCompositedRefLimit/);
 });
 
-test("GPU live tile-ref builder scatters a projected point footprint across every overlapped tile", () => {
+test("GPU live tile-ref builder scatters a projected conic footprint across every overlapped tile", () => {
   const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
 
-  assert.match(shader, /fn gpu_live_support_radius_px/);
+  assert.match(shader, /var<storage, read> scales/);
+  assert.match(shader, /var<storage, read> rotations/);
+  assert.match(shader, /frame\.splatScale/);
+  assert.match(shader, /frame\.minRadiusPx/);
+  assert.match(shader, /fn projectAxisJacobian/);
+  assert.match(shader, /fn gpu_live_projected_conic/);
+  assert.match(shader, /let support = gpu_live_support_radius_px\(conic\.majorRadiusPx, conic\.minorRadiusPx\)/);
+  assert.doesNotMatch(shader, /return 10\.0/);
   assert.match(shader, /let minTileX =/);
   assert.match(shader, /let maxTileX =/);
   assert.match(shader, /let minTileY =/);

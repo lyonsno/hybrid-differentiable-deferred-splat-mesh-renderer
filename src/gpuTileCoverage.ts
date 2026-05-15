@@ -2,7 +2,7 @@ export const GPU_TILE_COVERAGE_WORKGROUP_SIZE = 64;
 export const GPU_TILE_COVERAGE_COMPOSITE_WORKGROUP_WIDTH = 8;
 export const GPU_TILE_COVERAGE_COMPOSITE_WORKGROUP_HEIGHT = 8;
 
-export const GPU_TILE_COVERAGE_FRAME_UNIFORM_BYTES = 96;
+export const GPU_TILE_COVERAGE_FRAME_UNIFORM_BYTES = 112;
 export const GPU_TILE_COVERAGE_PROJECTED_BOUNDS_BYTES = 16;
 export const GPU_TILE_COVERAGE_TILE_HEADER_BYTES = 16;
 export const GPU_TILE_COVERAGE_TILE_REF_BYTES = 16;
@@ -39,6 +39,8 @@ export const GPU_TILE_COVERAGE_BINDINGS = {
   frame: 0,
   positions: 1,
   colors: 2,
+  scales: 3,
+  rotations: 4,
   tileHeaders: 5,
   tileRefs: 6,
   tileCoverageWeights: 7,
@@ -66,6 +68,11 @@ export interface GpuTileCoveragePlan extends GpuTileCoveragePlanInput {
   readonly tileCoverageWeightBytes: number;
   readonly orderingKeyBytes: number;
   readonly alphaParamBytes: number;
+}
+
+export interface GpuTileCoverageFootprintParams {
+  readonly splatScale?: number;
+  readonly minRadiusPx?: number;
 }
 
 export interface GpuTileCoverageDispatch {
@@ -442,6 +449,7 @@ export function writeGpuTileCoverageFrameUniforms(
   viewProj: Float32Array,
   plan: GpuTileCoveragePlan,
   debugMode: GpuTileCoverageDebugMode = "final-color",
+  footprintParams: GpuTileCoverageFootprintParams = {},
 ): void {
   if (target.length < GPU_TILE_COVERAGE_FRAME_UNIFORM_BYTES / Float32Array.BYTES_PER_ELEMENT) {
     throw new Error("GPU tile coverage frame uniform target is too small");
@@ -461,6 +469,12 @@ export function writeGpuTileCoverageFrameUniforms(
   targetU32[21] = plan.tileRows;
   targetU32[22] = plan.splatCount;
   targetU32[23] = plan.maxTileRefs;
+  target[24] = finiteNonNegativeOrDefault(footprintParams.splatScale, 1);
+  target[25] = finiteNonNegativeOrDefault(footprintParams.minRadiusPx, 1.5);
+}
+
+function finiteNonNegativeOrDefault(value: number | undefined, fallback: number): number {
+  return value !== undefined && Number.isFinite(value) && value >= 0 ? value : fallback;
 }
 
 function linearDispatch(count: number): GpuTileCoverageDispatch {
