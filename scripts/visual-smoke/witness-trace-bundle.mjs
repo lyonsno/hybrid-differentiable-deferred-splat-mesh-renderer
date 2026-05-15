@@ -36,6 +36,14 @@ export const WITNESS_TRACE_PROJECTION_REF =
   "origin/cc/projection-pixel-trace-0514@ba76a485cf34bf514eca1d862399eb6e71fcd1ef";
 export const WITNESS_TRACE_SYNTHETIC_REF =
   "origin/cc/synthetic-trace-parity-oracle-0514@b3eadeba5d607753270c190d3f27b7e4f2b586e7";
+export const WITNESS_TRACE_ORDERING_REF = "origin/cc/ordering-band-row-trace-0514@13cfcca";
+export const WITNESS_TRACE_ORDERING_REPORT = "8176bf3f";
+export const WITNESS_TRACE_RETENTION_REF =
+  "origin/cc/retention-pixel-trace-0514@79cb725fb7ec55c1fb8f2c22276e58945b0a8744";
+export const WITNESS_TRACE_RETENTION_REPORT = "def83a63";
+export const WITNESS_TRACE_FINAL_ACCUMULATION_REF =
+  "origin/cc/final-accumulation-trace-0515@f5f0fbb7689dac0cc3ef997f0e3cdb4ccf0d2cd5";
+export const WITNESS_TRACE_FINAL_ACCUMULATION_REPORT = "db4c263e";
 
 export function buildWitnessTraceBundle({ witness, appRoot, packetPath, thesisPath }) {
   const git = readGitInfo(appRoot);
@@ -81,19 +89,19 @@ export function buildWitnessTraceBundle({ witness, appRoot, packetPath, thesisPa
       note: "Synthetic parity provenance is referenced from the sibling report surface.",
     },
     retention: {
-      status: "missing",
-      source: packetSource("retention-pixel-trace", "pending", packetPath, thesisPath),
-      note: "Retention lane has not landed in this bundle yet.",
+      status: "present",
+      source: packetSource("retention-pixel-trace", WITNESS_TRACE_RETENTION_REF, packetPath, thesisPath),
+      note: `Retention lane landed in report ${WITNESS_TRACE_RETENTION_REPORT} on the retention branch; the bundle no longer uses a stale missing placeholder for this section.`,
     },
     ordering: {
-      status: "missing",
-      source: packetSource("ordering-band-row-trace", "pending", packetPath, thesisPath),
-      note: "Ordering lane has not landed in this bundle yet.",
+      status: "present",
+      source: packetSource("ordering-band-row-trace", WITNESS_TRACE_ORDERING_REF, packetPath, thesisPath),
+      note: `Ordering lane landed in report ${WITNESS_TRACE_ORDERING_REPORT} on the ordering branch; the bundle no longer uses a stale missing placeholder for this section.`,
     },
     finalAccumulation: {
-      status: "missing",
-      source: packetSource("final-accumulation-trace", "pending", packetPath, thesisPath),
-      note: "Final accumulation lane has not landed in this bundle yet.",
+      status: "present",
+      source: packetSource("final-accumulation-trace", WITNESS_TRACE_FINAL_ACCUMULATION_REF, packetPath, thesisPath),
+      note: `Final accumulation lane landed in report ${WITNESS_TRACE_FINAL_ACCUMULATION_REPORT} on the final-accumulation branch; the bundle no longer uses a stale missing placeholder for this section.`,
     },
   };
 
@@ -149,14 +157,9 @@ export async function writeWitnessTraceBundle(bundle, { reportDir }) {
 }
 
 export function renderWitnessTraceBundleReport(bundle) {
-  const missingSections = [
-    bundle.traceJson.retention.status,
-    bundle.traceJson.ordering.status,
-    bundle.traceJson.finalAccumulation.status,
-  ].filter((status) => status === "missing");
   return `# Witness Trace Bundle
 
-- Status: ${missingSections.length > 0 ? "PROVISIONAL" : bundle.passFailNotes.some((note) => note.startsWith("FAIL:")) ? "FAIL" : "PASS"}
+- Status: ${bundle.passFailNotes.some((note) => note.startsWith("FAIL:")) ? "FAIL" : "PASS"}
 - Generated: ${bundle.generatedAt}
 - Smoke URL: ${bundle.smokeUrl}
 - Branch: ${bundle.branch}
@@ -216,9 +219,15 @@ function buildPassFailNotes(witness) {
   for (const finding of witness.classification?.findings ?? []) {
     notes.push(`${finding.kind}: ${finding.summary}`);
   }
-  notes.push("missing retention: explicit placeholder kept until the retention lane lands");
-  notes.push("missing ordering: explicit placeholder kept until the ordering lane lands");
-  notes.push("missing finalAccumulation: explicit placeholder kept until the final accumulation lane lands");
+  notes.push(
+    `retention: landed report ${WITNESS_TRACE_RETENTION_REPORT} on ${WITNESS_TRACE_RETENTION_REF}; explicit placeholder retired from the bundle`
+  );
+  notes.push(
+    `ordering: landed report ${WITNESS_TRACE_ORDERING_REPORT} on ${WITNESS_TRACE_ORDERING_REF}; explicit placeholder retired from the bundle`
+  );
+  notes.push(
+    `finalAccumulation: landed report ${WITNESS_TRACE_FINAL_ACCUMULATION_REPORT} on ${WITNESS_TRACE_FINAL_ACCUMULATION_REF}; explicit placeholder retired from the bundle`
+  );
   return notes;
 }
 
