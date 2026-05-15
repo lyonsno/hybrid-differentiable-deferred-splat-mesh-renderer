@@ -80,6 +80,8 @@ export interface RetainedToOrderedSurvivalLedger {
   };
 }
 
+export declare const RETAINED_TO_ORDERED_SURVIVAL_CATEGORIES: readonly RetainedToOrderedSurvivalLedgerCategory[];
+
 export declare function describeRetainedToOrderedSurvivalLedgerContract(): {
   readonly consumes: readonly string[];
   readonly categories: readonly RetainedToOrderedSurvivalLedgerCategory[];

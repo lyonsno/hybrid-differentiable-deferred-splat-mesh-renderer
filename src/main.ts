@@ -91,6 +91,7 @@ import {
   type PixelFinalAccumulationTraceRecord,
 } from "./rendererFidelityProbes/finalAccumulationTrace.js";
 import { buildDeadSplatElectorLedger } from "./rendererFidelityProbes/deadSplatElectorLedger.js";
+import { buildRetainedToOrderedSurvivalLedger } from "./rendererFidelityProbes/retainedToOrderedSurvivalLedger.js";
 import { buildGpuLiveAnchorContributorTraces } from "./rendererFidelityProbes/gpuLiveAnchorTrace.js";
 import {
   formatTileLocalBudgetPair,
@@ -1934,6 +1935,13 @@ function exposeTileLocalRuntimeEvidence(
   const perPixelDeadSplatElectorLedger = tileLocalState
     ? buildDeadSplatElectorLedger(tileLocalState.perPixelRetainedContributors)
     : undefined;
+  const perPixelRetainedToOrderedSurvivalLedger = tileLocalState
+    ? buildRetainedToOrderedSurvivalLedger(
+        perPixelFinalColorAccumulation.map((trace) =>
+          (trace.traceRecord ?? trace) as Record<string, unknown>
+        )
+      )
+    : undefined;
   runtimeWindow.__MESH_SPLAT_SMOKE__ = {
     ...(runtimeWindow.__MESH_SPLAT_SMOKE__ ?? {}),
     rendererLabel,
@@ -1953,6 +1961,7 @@ function exposeTileLocalRuntimeEvidence(
           perPixelRetainedContributors: tileLocalState.perPixelRetainedContributors,
           perPixelFinalColorAccumulation,
           perPixelDeadSplatElectorLedger,
+          perPixelRetainedToOrderedSurvivalLedger,
           orderingBackend: TILE_LOCAL_ORDERING_BACKEND,
           debugMode: tileLocalState.debugMode,
           visibleCompositedRefLimit: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
