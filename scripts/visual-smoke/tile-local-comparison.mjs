@@ -102,6 +102,10 @@ export function classifyTileLocalComparison({
 
   const metrics = comparisonMetrics({ plate, prepass, visible });
   const arena = summarizeTileLocalArenaWitness({ plate, prepass, visible });
+  const runtimeTiming = normalizeRuntimeTimingEvidence(
+    visible?.pageEvidence?.runtimeTiming,
+    visible?.pageEvidence?.statsText
+  );
   if (Number.isFinite(metrics.fps.visibleToPlateRatio) && metrics.fps.visibleToPlateRatio < minVisibleToPlateFpsRatio) {
     findings.push(
       finding(
@@ -123,6 +127,7 @@ export function classifyTileLocalComparison({
     metrics: {
       ...metrics,
       ...arena,
+      runtimeTiming,
     },
     findings,
   };

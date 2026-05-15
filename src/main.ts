@@ -435,6 +435,9 @@ async function main() {
       canvas
     );
     destroySplatScene(previous);
+    lastTime = performance.now();
+    frameCount = 0;
+    fpsAccum = 0;
     requestFrame();
   }
 
