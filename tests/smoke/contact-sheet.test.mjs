@@ -91,3 +91,98 @@ test("smoke contact-sheet plan uses a deterministic branch and view layout", () 
   assert.match(renderSmokeContactSheetReport(plan), /37bcab1/);
   assert.match(renderSmokeContactSheetReport(plan), /toolbench-comparison: missing/i);
 });
+
+test("smoke contact-sheet plan can budget captures to explicit branch/view slices", () => {
+  const plan = buildSmokeContactSheetPlan({
+    bundleSlug: "main-vs-candidate",
+    captureSlices: ["main:dessert-wide", "candidate:black-band-crop"],
+    branches: [
+      {
+        role: "main",
+        label: "main",
+        sha: "37bcab1",
+      },
+      {
+        role: "candidate",
+        label: "candidate",
+        sha: "a1b2c3d",
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    plan.branches.map((branch) => [
+      branch.role,
+      branch.views.map((view) => `${view.name}:${view.status}`),
+    ]),
+    [
+      [
+        "main",
+        [
+          "dessert-wide:present",
+          "dessert-close:skipped",
+          "black-band-crop:skipped",
+          "porous-body-crop:skipped",
+          "toolbench-comparison:skipped",
+        ],
+      ],
+      [
+        "candidate",
+        [
+          "dessert-wide:skipped",
+          "dessert-close:skipped",
+          "black-band-crop:present",
+          "porous-body-crop:skipped",
+          "toolbench-comparison:skipped",
+        ],
+      ],
+    ]
+  );
+
+  assert.equal(
+    plan.branches[1].views.find((view) => view.name === "black-band-crop")?.sourceRunDir,
+    "smoke-reports/main-vs-candidate/candidate/source/dessert-close"
+  );
+  assert.match(renderSmokeContactSheetReport(plan), /dessert-close: skipped/i);
+  assert.match(renderSmokeContactSheetReport(plan), /skipped by --only capture selection/i);
+});
+
+test("smoke contact-sheet plan accepts wildcard branch capture slices", () => {
+  const plan = buildSmokeContactSheetPlan({
+    bundleSlug: "main-vs-candidate",
+    captureSlices: ["*:porous-body-crop"],
+    branches: [
+      { role: "main", label: "main", sha: "37bcab1" },
+      { role: "candidate", label: "candidate", sha: "a1b2c3d" },
+    ],
+  });
+
+  assert.deepEqual(
+    plan.branches.map((branch) => [
+      branch.role,
+      branch.views.map((view) => `${view.name}:${view.status}`),
+    ]),
+    [
+      [
+        "main",
+        [
+          "dessert-wide:skipped",
+          "dessert-close:skipped",
+          "black-band-crop:skipped",
+          "porous-body-crop:present",
+          "toolbench-comparison:skipped",
+        ],
+      ],
+      [
+        "candidate",
+        [
+          "dessert-wide:skipped",
+          "dessert-close:skipped",
+          "black-band-crop:skipped",
+          "porous-body-crop:present",
+          "toolbench-comparison:skipped",
+        ],
+      ],
+    ]
+  );
+});

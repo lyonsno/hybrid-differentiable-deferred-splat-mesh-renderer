@@ -65,13 +65,15 @@ export function buildSmokeContactSheetLayout({ bundleSlug } = {}) {
   };
 }
 
-export function buildSmokeContactSheetPlan({ bundleSlug, branches = [] } = {}) {
+export function buildSmokeContactSheetPlan({ bundleSlug, branches = [], captureSlices = [] } = {}) {
   const layout = buildSmokeContactSheetLayout({ bundleSlug });
-  return {
+  const plan = {
     bundleSlug: bundleSlug || defaultBundleSlug(),
     layout,
     branches: branches.map((branch) => buildBranchPlan(branch, layout)),
   };
+  applyCaptureSlices(plan, captureSlices);
+  return plan;
 }
 
 export function renderSmokeContactSheetReport(plan) {
@@ -118,6 +120,7 @@ export async function buildSmokeContactSheetBundle({
   dryRun = false,
   browserChannel,
   browserExecutable,
+  captureSlices = [],
 } = {}) {
   if (!mainRepo || !candidateRepo) {
     throw new Error("buildSmokeContactSheetBundle: mainRepo and candidateRepo are required");
@@ -130,7 +133,7 @@ export async function buildSmokeContactSheetBundle({
   const allowedViews = includeToolbenchComparison
     ? CONTACT_SHEET_VIEW_ORDER
     : CONTACT_SHEET_VIEW_ORDER.filter((view) => view !== "toolbench-comparison");
-  const plan = buildSmokeContactSheetPlan({ bundleSlug, branches });
+  const plan = buildSmokeContactSheetPlan({ bundleSlug, branches, captureSlices });
   for (const branch of plan.branches) {
     branch.availableViews = allowedViews;
     for (const view of branch.views) {
@@ -155,7 +158,7 @@ export async function buildSmokeContactSheetBundle({
       `${JSON.stringify({ role: branch.role, label: branch.label, sha: branch.sha, repoPath: branch.repoPath }, null, 2)}\n`
     );
 
-    const sourcePlans = uniqueSourcePlans(branch.views).filter((sourcePlan) =>
+    const sourcePlans = uniqueSourcePlans(branch.views.filter((view) => view.status === "present")).filter((sourcePlan) =>
       includeToolbenchComparison ? true : sourcePlan.captureMode !== "tile-local-comparison"
     );
     const sourceCaptureResults = new Map();
@@ -179,7 +182,7 @@ export async function buildSmokeContactSheetBundle({
     }
 
     for (const view of branch.views) {
-      if (view.sourceMode !== "derived-crop") {
+      if (view.status !== "present" || view.sourceMode !== "derived-crop") {
         continue;
       }
       const sourceCapture = sourceCaptureResults.get(view.sourceView);
@@ -253,6 +256,53 @@ function buildViewPlan(name, role, branchDir, availableViews) {
     role,
     cropKey: definition.cropKey,
   };
+}
+
+function applyCaptureSlices(plan, captureSlices) {
+  const selection = normalizeCaptureSlices(captureSlices);
+  if (!selection) {
+    return plan;
+  }
+
+  for (const branch of plan.branches) {
+    for (const view of branch.views) {
+      if (selectionHasView(selection, branch.role, view.name)) {
+        continue;
+      }
+      view.status = "skipped";
+      view.missingReason = "skipped by --only capture selection";
+    }
+  }
+  return plan;
+}
+
+function normalizeCaptureSlices(captureSlices = []) {
+  const entries = captureSlices.flatMap((slice) => String(slice).split(",")).map((slice) => slice.trim()).filter(Boolean);
+  if (entries.length === 0) {
+    return null;
+  }
+
+  const selection = new Map();
+  for (const entry of entries) {
+    const [role, view, extra] = entry.split(":");
+    if (!role || !view || extra !== undefined) {
+      throw new Error(`Invalid --only slice ${entry}; expected <branch>:<view>`);
+    }
+    if (role !== "*" && role !== "main" && role !== "candidate") {
+      throw new Error(`Invalid --only branch ${role}; expected main, candidate, or *`);
+    }
+    if (!CONTACT_SHEET_VIEW_ORDER.includes(view)) {
+      throw new Error(`Invalid --only view ${view}; expected one of ${CONTACT_SHEET_VIEW_ORDER.join(", ")}`);
+    }
+    const views = selection.get(role) ?? new Set();
+    views.add(view);
+    selection.set(role, views);
+  }
+  return selection;
+}
+
+function selectionHasView(selection, role, view) {
+  return Boolean(selection.get(role)?.has(view) || selection.get("*")?.has(view));
 }
 
 function uniqueSourcePlans(views) {
@@ -491,6 +541,7 @@ function parseArgs(args) {
     dryRun: false,
     browserChannel: process.env.VISUAL_SMOKE_BROWSER_CHANNEL || "chrome",
     browserExecutable: process.env.VISUAL_SMOKE_BROWSER_EXECUTABLE,
+    captureSlices: [],
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -515,6 +566,10 @@ function parseArgs(args) {
         break;
       case "--no-toolbench":
         options.includeToolbenchComparison = false;
+        break;
+      case "--only":
+      case "--capture":
+        options.captureSlices.push(next());
         break;
       case "--dry-run":
         options.dryRun = true;
@@ -546,6 +601,7 @@ Options:
   --main-repo <path>           Main branch renderer checkout.
   --candidate-repo <path>      Candidate branch renderer checkout.
   --no-toolbench               Skip the tile-local comparison capture.
+  --only <branch:view>         Run only selected branch/view slices; repeat or comma-separate values.
   --dry-run                    Print the plan without running captures.
   --browser-channel <name>     Browser channel for visual smoke capture.
   --browser-executable <path>  Browser executable path; overrides the channel.
