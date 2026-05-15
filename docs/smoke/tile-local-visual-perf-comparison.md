@@ -2,6 +2,8 @@
 
 Lane: `visual-perf-witness`
 
+Smoke kind: visual. This comparison asks whether the visible renderer output and FPS behavior moved in the claimed direction. It is not a telemetry-only backend-label or trace-surface check; use `docs/smoke/smoke-handoff-contract.md` when handing results to another lane or the operator.
+
 The tile-local Gaussian compositor smoke compares three renderer modes in one report:
 
 - Plate baseline: default renderer, expected label `plate`.
