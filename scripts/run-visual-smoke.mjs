@@ -28,7 +28,7 @@ async function main() {
   await mkdir(reportDir, { recursive: true });
 
   const server = options.url ? null : await startViteServer(options);
-  const url = options.url ?? server.url;
+  const url = appendQuery(options.url ?? server.url, options.query);
   const generatedAt = new Date().toISOString();
   const screenshotPath = path.join(reportDir, "canvas.png");
   const analysisPath = path.join(reportDir, "analysis.json");
@@ -735,6 +735,7 @@ function parseArgs(args) {
     tileLocalComparison: false,
     tileLocalDiagnostics: false,
     staticDessertWitness: false,
+    query: undefined,
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -751,6 +752,9 @@ function parseArgs(args) {
         break;
       case "--url":
         options.url = next();
+        break;
+      case "--query":
+        options.query = next();
         break;
       case "--host":
         options.host = next();
@@ -850,7 +854,20 @@ function publicOptions(options) {
     tileLocalComparison: options.tileLocalComparison,
     tileLocalDiagnostics: options.tileLocalDiagnostics,
     staticDessertWitness: options.staticDessertWitness,
+    query: options.query,
   };
+}
+
+function appendQuery(url, query) {
+  if (!query) {
+    return url;
+  }
+  const resolvedUrl = new URL(url);
+  const params = new URLSearchParams(query.startsWith("?") ? query.slice(1) : query);
+  for (const [key, value] of params) {
+    resolvedUrl.searchParams.set(key, value);
+  }
+  return resolvedUrl.toString().replaceAll("%2F", "/");
 }
 
 function parseViewport(value) {
@@ -885,6 +902,7 @@ function printHelp() {
 
 Options:
   --url <url>                     Capture an already-running app instead of launching Vite.
+  --query <query>                 Append query parameters to the capture URL.
   --app-root <path>               Repo root to launch with Vite. Defaults to cwd.
   --report-dir, --out-dir <path>  Output directory. Defaults to smoke-reports/visual-smoke-<timestamp>.
   --require-real-splat            Exit nonzero unless the page reports real Scaniverse splat evidence.
