@@ -123,6 +123,33 @@ export interface TileLocalProjectedContributorRecord extends TileLocalContributo
   readonly retained: boolean;
 }
 
+export interface TileLocalProjectedPixelContributorTrace {
+  readonly status: "present" | "absent" | "uninstrumented";
+  readonly anchorPixel: {
+    readonly id: string;
+    readonly kind: string;
+    readonly x: number;
+    readonly y: number;
+    readonly description: string;
+    readonly canonicalTileAddress: null | {
+      readonly tileX: number;
+      readonly tileY: number;
+      readonly tileIndex: number;
+      readonly localX: number;
+      readonly localY: number;
+    };
+  };
+  readonly tileAddress: {
+    readonly tileSizePx: number;
+    readonly tileX: number;
+    readonly tileY: number;
+    readonly tileIndex: number;
+    readonly localX: number;
+    readonly localY: number;
+  };
+  readonly traceRecord: Record<string, unknown>;
+}
+
 export interface TileLocalContributorArena {
   readonly version: 1;
   readonly tileHeaders: readonly TileLocalContributorTileHeader[];
@@ -153,6 +180,7 @@ export interface GpuTileCoverageBridge {
   readonly tileRefCustody: TileRefCustodySummary;
   readonly retentionAudit: TileRetentionAudit;
   readonly contributorArena?: TileLocalContributorArena;
+  readonly perPixelProjectedContributors: readonly TileLocalProjectedPixelContributorTrace[];
 }
 
 export function buildTileLocalContributorArena(
