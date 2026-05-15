@@ -157,6 +157,12 @@ npm run smoke:visual:real -- --static-dessert-witness --out-dir /tmp/static-dess
 
 When reporting smoke results, include the smoke kind, the decision requested, the expected visual delta, and the evidence surface. A telemetry-only branch may be mergeable while the renderer remains visually bad; do not ask for human visual approval unless the branch claims a visual delta.
 
+Telemetry handoffs can make that explicit in the harness:
+
+```bash
+npm run smoke:visual:real -- --smoke-kind telemetry --decision-requested "confirm anchor traces are populated" --expected-visual-delta "none expected" --evidence-surface "analysis.json tileLocal.perPixelProjectedContributors"
+```
+
 ## Status
 
 The preprocessing oracle (Packet L) is feature-complete. Validated on real Scaniverse phone scans with SAM3 MLX running at 90ms/concept on M4 Max. First real-splat visual smoke is passing in the WebGPU viewer against the committed Scaniverse asset. Renderer main at `05ceef6` has the production-spine smoke baseline plus the first tile-local compositor plumbing: Jacobian covariance projection, bounded near-plane LOD policy, fidelity witness diagnostics, fly-camera framing, deferred CPU depth-key refresh, WebGPU bitonic sort, coverage-aware alpha, GPU tile coverage contracts, CPU tile-list bridge packing, a smoke-toggleable `plate+tile-local-prepass` mode, and a visible `tile-local-visible-gaussian-compositor` mode over CPU-bridge tile buffers. The visible tile-local path now uses plate-rate conic falloff and the static dessert witness guards the fixed-view tile-local/plate footprint ratio. This is still a first-smoke renderer-fidelity baseline, not the finished production renderer; the visible tile-local path produces a coarse tile-local Gaussian compositor image, but it does not claim final GPU ref-builder, SH shading, PBR relighting, mesh integration, or deferred G-buffer quality. Remaining triage includes tile-ref/cap retention for the remaining porous dessert body, final GPU tile-list construction, clipping and culling policy, SH evaluation, and deferred G-buffer integration. See [FANOUT.md](FANOUT.md) for the original coordination plan.

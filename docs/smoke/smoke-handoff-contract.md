@@ -39,6 +39,16 @@ Every smoke handoff should state:
 - `Expected visual delta:` what should look different, or `none expected`.
 - `Evidence surface:` the report, URL, screenshot, trace field, timing field, or manifest field that carries the claim.
 
+The smoke harness can record these fields directly:
+
+```bash
+npm run smoke:visual:real -- \
+  --smoke-kind telemetry \
+  --decision-requested "confirm GPU-live anchor traces are populated" \
+  --expected-visual-delta "none expected" \
+  --evidence-surface "analysis.json tileLocal.perPixelProjectedContributors"
+```
+
 If a branch is mergeable because it improves observability while preserving known-bad output, say so directly. Do not imply that a human should visually approve a telemetry branch.
 
 ## Merge Readiness
