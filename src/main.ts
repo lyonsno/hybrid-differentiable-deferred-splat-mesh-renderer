@@ -87,6 +87,7 @@ import {
 import {
   buildFinalColorAccumulationTraceRecord,
   buildPerPixelFinalColorAccumulationTrace,
+  buildPerPixelFinalColorAccumulationTraces,
   type PixelFinalAccumulationTraceRecord,
 } from "./rendererFidelityProbes/finalAccumulationTrace.js";
 import {
@@ -1415,6 +1416,39 @@ function exposeTileLocalRuntimeEvidence(
         deferredFields: pixelOrderTrace.deferredFields,
       })
     : undefined;
+  const perPixelFinalColorAccumulation = tileLocalState && bandDispatchCache
+    ? buildPerPixelFinalColorAccumulationTraces({
+        contributors: tileLocalState.gpuArenaProjectedContributors,
+        sourceColors,
+        projectedContributorsByAnchorId: traceContributorListByAnchorId(
+          tileLocalState.perPixelProjectedContributors,
+          "projectedContributors",
+        ),
+        retainedContributorsByAnchorId: traceContributorListByAnchorId(
+          tileLocalState.perPixelRetainedContributors,
+          "retainedContributors",
+        ),
+        orderedContributorsByAnchorId: pixelOrderTrace
+          ? new Map([[pixelOrderTrace.anchorPixel.id, pixelOrderTrace.orderedContributors]])
+          : new Map(),
+        dispatchCache: bandDispatchCache,
+        rendererMetadata: pixelOrderTrace?.rendererMetadata ?? {
+          requestedRenderer: "tile-local-visible",
+          effectiveRenderer: rendererLabel,
+          requestedArenaBackend: REQUESTED_ARENA_BACKEND,
+          effectiveArenaBackend: arenaRuntime.effectiveArenaBackend,
+          tileSizePx: tileLocalState.plan.tileSizePx,
+          maxRefsPerTile: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
+          viewport: {
+            width: viewportWidth,
+            height: viewportHeight,
+          },
+        },
+        deferredFields: pixelOrderTrace?.deferredFields,
+        tileSizePx: tileLocalState.plan.tileSizePx,
+        tileColumns: tileLocalState.plan.tileColumns,
+      })
+    : buildPerPixelFinalColorAccumulationTrace(pixelContributorTrace);
   runtimeWindow.__MESH_SPLAT_SMOKE__ = {
     ...(runtimeWindow.__MESH_SPLAT_SMOKE__ ?? {}),
     rendererLabel,
@@ -1432,7 +1466,7 @@ function exposeTileLocalRuntimeEvidence(
           tileRows: tileLocalState.plan.tileRows,
           perPixelProjectedContributors: tileLocalState.perPixelProjectedContributors,
           perPixelRetainedContributors: tileLocalState.perPixelRetainedContributors,
-          perPixelFinalColorAccumulation: buildPerPixelFinalColorAccumulationTrace(pixelContributorTrace),
+          perPixelFinalColorAccumulation,
           orderingBackend: TILE_LOCAL_ORDERING_BACKEND,
           debugMode: tileLocalState.debugMode,
           visibleCompositedRefLimit: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
@@ -1457,6 +1491,21 @@ function exposeTileLocalRuntimeEvidence(
   } else {
     delete runtimeWindow.__MESH_SPLAT_PIXEL_CONTRIBUTOR_TRACE__;
   }
+}
+
+function traceContributorListByAnchorId(
+  traces: readonly { anchorPixel?: { id?: string }; traceRecord?: Record<string, unknown> }[] | undefined,
+  listName: string,
+): Map<string, readonly unknown[]> {
+  const byAnchorId = new Map<string, readonly unknown[]>();
+  for (const trace of traces ?? []) {
+    const anchorId = trace?.anchorPixel?.id;
+    const list = trace?.traceRecord?.[listName];
+    if (typeof anchorId === "string" && Array.isArray(list)) {
+      byAnchorId.set(anchorId, list);
+    }
+  }
+  return byAnchorId;
 }
 
 function buildArenaRuntimeEvidence(

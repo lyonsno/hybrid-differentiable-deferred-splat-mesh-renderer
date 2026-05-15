@@ -4,8 +4,12 @@ import test from "node:test";
 import {
   BLACK_BAND_FINAL_ACCUMULATION_ANCHOR,
   buildFinalColorAccumulationTraceRecord,
+  buildPerPixelFinalColorAccumulationTraces,
 } from "../../src/rendererFidelityProbes/finalAccumulationTrace.js";
-import { validatePixelContributorTraceRecord } from "../../src/rendererFidelityProbes/pixelContributorTraceSchema.js";
+import {
+  PIXEL_CONTRIBUTOR_TRACE_SCHEMA,
+  validatePixelContributorTraceRecord,
+} from "../../src/rendererFidelityProbes/pixelContributorTraceSchema.js";
 
 const EPSILON = 1e-9;
 
@@ -112,19 +116,73 @@ test("final accumulation trace distinguishes ordered-but-skipped contributors fr
   assert.deepEqual(validatePixelContributorTraceRecord(record), []);
 });
 
+test("final accumulation trace closes or explicitly blocks every canonical anchor", () => {
+  const traces = buildPerPixelFinalColorAccumulationTraces({
+    contributors: [
+      accumulationContributor({
+        anchor: PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0],
+        tileIndex: tileIndexForAnchor(PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0]),
+        splatIndex: 11,
+        originalId: 1100,
+        viewRank: 11,
+        opacity: 0.4,
+      }),
+      accumulationContributor({
+        anchor: PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[2],
+        tileIndex: tileIndexForAnchor(PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[2]),
+        splatIndex: 22,
+        originalId: 2200,
+        viewRank: 22,
+        opacity: 0.5,
+      }),
+    ],
+    sourceColors: new Map([
+      [11, [0.7, 0.5, 0.3]],
+      [22, [0.2, 0.4, 0.8]],
+    ]),
+    retainedContributorsByAnchorId: new Map([
+      ["lacunar-hole-dessert-1260-930", [{ splatIndex: 11, originalId: 1100 }]],
+      ["dense-foreground-leak-1580-1260", []],
+      ["black-band-dropout-2300-1055", [{ splatIndex: 22, originalId: 2200 }]],
+    ]),
+    tileSizePx: 16,
+    tileColumns: 216,
+  });
+
+  assert.deepEqual(
+    traces.map((trace) => trace.anchorPixel.id),
+    PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors.map((anchor) => anchor.id),
+  );
+
+  const byAnchorId = new Map(traces.map((trace) => [trace.anchorPixel.id, trace]));
+  assert.equal(byAnchorId.get("lacunar-hole-dessert-1260-930").status, "present");
+  assert.equal(byAnchorId.get("black-band-dropout-2300-1055").status, "present");
+  assert.equal(byAnchorId.get("dense-foreground-leak-1580-1260").status, "blocked");
+  assert.equal(
+    byAnchorId.get("dense-foreground-leak-1580-1260").blockers[0].reason,
+    "tileLocal.perPixelFinalColorAccumulation missing contributors for dense-foreground-leak-1580-1260",
+  );
+});
+
 function accumulationContributor(overrides = {}) {
+  const anchor = overrides.anchor ?? BLACK_BAND_FINAL_ACCUMULATION_ANCHOR;
   return {
     splatIndex: 1,
     originalId: 100,
-    tileIndex: 14183,
+    tileIndex: tileIndexForAnchor(anchor),
     viewRank: 1,
     viewDepth: -1,
     coverageWeight: 1,
-    centerPx: [2300.5, 1055.5],
+    centerPx: [anchor.x + 0.5, anchor.y + 0.5],
     inverseConic: [1, 0, 1],
     opacity: 0.5,
     ...overrides,
   };
+}
+
+function tileIndexForAnchor(anchor, tileSizePx = 16, tileColumns = 216) {
+  if (anchor.canonicalTileAddress) return anchor.canonicalTileAddress.tileIndex;
+  return Math.floor(anchor.y / tileSizePx) * tileColumns + Math.floor(anchor.x / tileSizePx);
 }
 
 function assertColorClose(actual, expected) {

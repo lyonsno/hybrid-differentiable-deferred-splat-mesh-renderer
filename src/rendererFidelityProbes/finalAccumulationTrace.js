@@ -33,11 +33,12 @@ export function buildFinalColorAccumulationTraceRecord({
   deferredFields = DEFAULT_DEFERRED_FIELDS,
   clearColor = DEFAULT_CLEAR_COLOR,
   tileSizePx = anchorPixel?.canonicalTileAddress?.tileSizePx ?? 16,
+  tileColumns,
 } = {}) {
   if (!anchorPixel) {
     throw new Error("black-band-dropout-2300-1055 anchor is missing from the pixel contributor trace schema");
   }
-  const tileAddress = tileAddressForAnchor(anchorPixel, tileSizePx);
+  const tileAddress = tileAddressForAnchor(anchorPixel, tileSizePx, tileColumns);
   const orderedRuntimeContributors = selectAccumulationContributors(contributors, anchorPixel, tileAddress);
   const blockers = [];
   if (retainedContributors === null) {
@@ -91,6 +92,50 @@ export function buildFinalColorAccumulationTraceRecord({
   };
 }
 
+export function buildPerPixelFinalColorAccumulationTraces({
+  contributors = [],
+  sourceColors,
+  projectedContributorsByAnchorId = new Map(),
+  retainedContributorsByAnchorId = new Map(),
+  orderedContributorsByAnchorId = new Map(),
+  dispatchCache = DEFAULT_DISPATCH_CACHE,
+  rendererMetadata = DEFAULT_RENDERER_METADATA,
+  deferredFields = DEFAULT_DEFERRED_FIELDS,
+  clearColor = DEFAULT_CLEAR_COLOR,
+  tileSizePx = 16,
+  tileColumns,
+  anchors = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors,
+} = {}) {
+  return anchors.map((anchorPixel) => {
+    const record = buildFinalColorAccumulationTraceRecord({
+      anchorPixel,
+      contributors,
+      sourceColors,
+      projectedContributors: lookupAnchorList(projectedContributorsByAnchorId, anchorPixel.id),
+      retainedContributors: lookupAnchorList(retainedContributorsByAnchorId, anchorPixel.id),
+      orderedContributors: lookupAnchorList(orderedContributorsByAnchorId, anchorPixel.id),
+      dispatchCache,
+      rendererMetadata,
+      deferredFields,
+      clearColor,
+      tileSizePx,
+      tileColumns,
+    });
+
+    return {
+      status: record.finalColorAccumulation?.steps?.length > 0 ? "present" : "blocked",
+      anchorPixel: record.anchorPixel,
+      tileAddress: record.tileAddress,
+      projectedContributors: record.projectedContributors,
+      retainedContributors: record.retainedContributors,
+      orderedContributors: record.orderedContributors,
+      finalColorAccumulation: record.finalColorAccumulation,
+      blockers: Array.isArray(record.blockers) ? record.blockers : [],
+      traceRecord: record,
+    };
+  });
+}
+
 export function buildPerPixelFinalColorAccumulationTrace(record) {
   if (!record || typeof record !== "object") {
     return [];
@@ -102,6 +147,16 @@ export function buildPerPixelFinalColorAccumulationTrace(record) {
     finalColorAccumulation: record.finalColorAccumulation,
     blockers: Array.isArray(record.blockers) ? record.blockers : [],
   }];
+}
+
+function lookupAnchorList(byAnchorId, anchorId) {
+  if (byAnchorId instanceof Map) {
+    return Array.isArray(byAnchorId.get(anchorId)) ? byAnchorId.get(anchorId) : [];
+  }
+  if (byAnchorId && typeof byAnchorId === "object") {
+    return Array.isArray(byAnchorId[anchorId]) ? byAnchorId[anchorId] : [];
+  }
+  return [];
 }
 
 function composeFinalColorAccumulationSteps({
@@ -266,7 +321,7 @@ function sourceColorValue(sourceColors, splatIndex) {
   return null;
 }
 
-function tileAddressForAnchor(anchorPixel, tileSizePx) {
+function tileAddressForAnchor(anchorPixel, tileSizePx, tileColumns) {
   if (anchorPixel.canonicalTileAddress) {
     return {
       tileSizePx,
@@ -274,13 +329,14 @@ function tileAddressForAnchor(anchorPixel, tileSizePx) {
     };
   }
   const safeTileSizePx = positiveInteger(tileSizePx, "tileSizePx");
+  const safeTileColumns = positiveInteger(tileColumns, "tileColumns");
   const tileX = Math.floor(anchorPixel.x / safeTileSizePx);
   const tileY = Math.floor(anchorPixel.y / safeTileSizePx);
   return {
     tileSizePx: safeTileSizePx,
     tileX,
     tileY,
-    tileIndex: tileY * Math.max(tileX + 1, 1) + tileX,
+    tileIndex: tileY * safeTileColumns + tileX,
     localX: anchorPixel.x - tileX * safeTileSizePx,
     localY: anchorPixel.y - tileY * safeTileSizePx,
   };

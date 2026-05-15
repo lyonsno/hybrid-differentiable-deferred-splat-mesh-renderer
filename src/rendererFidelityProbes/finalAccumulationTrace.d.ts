@@ -45,3 +45,7 @@ export declare function buildFinalColorAccumulationTraceRecord(options?: Record<
 export declare function buildPerPixelFinalColorAccumulationTrace(
   record: PixelFinalAccumulationTraceRecord | null | undefined,
 ): readonly Record<string, unknown>[];
+
+export declare function buildPerPixelFinalColorAccumulationTraces(
+  options?: Record<string, unknown>,
+): readonly Record<string, unknown>[];
