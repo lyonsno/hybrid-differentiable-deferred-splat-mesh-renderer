@@ -112,6 +112,42 @@ test("final accumulation trace distinguishes ordered-but-skipped contributors fr
   assert.deepEqual(validatePixelContributorTraceRecord(record), []);
 });
 
+test("black-band high-cap traces get adaptive tail support without changing low-cap witness falloff", () => {
+  const highCapRecord = buildFinalColorAccumulationTraceRecord({
+    contributors: blackBandTraceContributors(),
+    sourceColors: blackBandSourceColors(),
+    retainedContributors: [],
+    tileSizePx: 16,
+    maxRefsPerTile: 256,
+  });
+  const lowCapRecord = buildFinalColorAccumulationTraceRecord({
+    contributors: blackBandTraceContributors(),
+    sourceColors: blackBandSourceColors(),
+    retainedContributors: [],
+    tileSizePx: 16,
+    maxRefsPerTile: 32,
+  });
+
+  assert.equal(highCapRecord.finalColorAccumulation.steps.length, 2);
+  assert.equal(lowCapRecord.finalColorAccumulation.steps.length, 2);
+  assert.ok(
+    highCapRecord.finalColorAccumulation.steps.every((step) => step.coverageWeight > 0.01),
+    `expected high-cap black-band contributors to keep visible support, got ${highCapRecord.finalColorAccumulation.steps.map((step) => step.coverageWeight).join(", ")}`,
+  );
+  assert.ok(
+    highCapRecord.finalColorAccumulation.outputColor[3] > 0.01,
+    `expected high-cap black-band alpha above trace noise, got ${highCapRecord.finalColorAccumulation.outputColor[3]}`,
+  );
+  assert.ok(
+    lowCapRecord.finalColorAccumulation.steps.every((step) => step.coverageWeight < 0.000001),
+    `expected low-cap witness mode to keep tight tail falloff, got ${lowCapRecord.finalColorAccumulation.steps.map((step) => step.coverageWeight).join(", ")}`,
+  );
+  assert.ok(
+    lowCapRecord.finalColorAccumulation.outputColor[3] < 0.000001,
+    `expected low-cap witness alpha to stay near the current tight-falloff baseline, got ${lowCapRecord.finalColorAccumulation.outputColor[3]}`,
+  );
+});
+
 function accumulationContributor(overrides = {}) {
   return {
     splatIndex: 1,
@@ -125,6 +161,38 @@ function accumulationContributor(overrides = {}) {
     opacity: 0.5,
     ...overrides,
   };
+}
+
+function blackBandTraceContributors() {
+  return [
+    accumulationContributor({
+      splatIndex: 87386,
+      originalId: 87386,
+      viewRank: 75720,
+      viewDepth: -0.5866499543190002,
+      coverageWeight: 0.00021563291812395251,
+      centerPx: [2116.802795836614, 1020.0000211992419],
+      inverseConic: [0.00021853002002069583, 0.00003070445583185498, 0.00023906783613453477],
+      opacity: 0.178431391716,
+    }),
+    accumulationContributor({
+      splatIndex: 87369,
+      originalId: 87369,
+      viewRank: 79126,
+      viewDepth: -0.5753166079521179,
+      coverageWeight: 0.00019441714687238104,
+      centerPx: [2080.042287645351, 1024.8105756731634],
+      inverseConic: [0.00015402070055196016, -0.000015322501887454922, 0.00018610989570900727],
+      opacity: 0.368627458811,
+    }),
+  ];
+}
+
+function blackBandSourceColors() {
+  return new Map([
+    [87386, [0.328064262867, 0.222050338984, 0.140501201153]],
+    [87369, [0.40145856142, 0.328064262867, 0.279134780169]],
+  ]);
 }
 
 function assertColorClose(actual, expected) {

@@ -1411,6 +1411,8 @@ function exposeTileLocalRuntimeEvidence(
         retainedContributors: retainedTrace?.traceRecord?.retainedContributors ?? [],
         orderedContributors: pixelOrderTrace.orderedContributors,
         dispatchCache: bandDispatchCache,
+        tileSizePx: tileLocalState.plan.tileSizePx,
+        maxRefsPerTile: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
         rendererMetadata: pixelOrderTrace.rendererMetadata,
         deferredFields: pixelOrderTrace.deferredFields,
       })

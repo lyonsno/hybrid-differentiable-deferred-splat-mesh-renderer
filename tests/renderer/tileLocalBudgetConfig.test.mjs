@@ -49,3 +49,12 @@ test("main consumes query-controlled tile-local budget config", () => {
   assert.match(source, /TILE_LOCAL_BUDGET_CONFIG\.invalidReason/);
   assert.doesNotMatch(source, /const TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX = 6;/);
 });
+
+test("main passes live tile-local budget into final accumulation trace diagnostics", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+
+  assert.match(
+    source,
+    /buildFinalColorAccumulationTraceRecord\(\{[\s\S]*tileSizePx: tileLocalState\.plan\.tileSizePx,[\s\S]*maxRefsPerTile: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,/,
+  );
+});

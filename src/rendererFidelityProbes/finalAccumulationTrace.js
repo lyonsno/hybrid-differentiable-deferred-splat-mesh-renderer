@@ -33,6 +33,7 @@ export function buildFinalColorAccumulationTraceRecord({
   deferredFields = DEFAULT_DEFERRED_FIELDS,
   clearColor = DEFAULT_CLEAR_COLOR,
   tileSizePx = anchorPixel?.canonicalTileAddress?.tileSizePx ?? 16,
+  maxRefsPerTile = 32,
 } = {}) {
   if (!anchorPixel) {
     throw new Error("black-band-dropout-2300-1055 anchor is missing from the pixel contributor trace schema");
@@ -60,6 +61,7 @@ export function buildFinalColorAccumulationTraceRecord({
     sourceColors,
     clearColor,
     blockers,
+    conicFalloffScale: adaptiveConicFalloffScale({ tileSizePx, maxRefsPerTile }),
   });
 
   return {
@@ -82,6 +84,9 @@ export function buildFinalColorAccumulationTraceRecord({
     rendererMetadata: {
       ...DEFAULT_RENDERER_METADATA,
       ...rendererMetadata,
+      tileSizePx,
+      maxRefsPerTile,
+      conicFalloffPolicy: adaptiveConicFalloffPolicy({ tileSizePx, maxRefsPerTile }),
     },
     deferredFields: {
       ...DEFAULT_DEFERRED_FIELDS,
@@ -111,6 +116,7 @@ function composeFinalColorAccumulationSteps({
   sourceColors,
   clearColor,
   blockers,
+  conicFalloffScale,
 }) {
   const pixelCenter = [anchorPixel.x + 0.5, anchorPixel.y + 0.5];
   let runningColor = normalizeColor(clearColor, "clearColor");
@@ -124,7 +130,7 @@ function composeFinalColorAccumulationSteps({
     const opacity = Math.min(Math.max(finiteNumber(contributor.opacity, "contributor.opacity"), 0), 0.999);
     const transmittanceBefore = remainingTransmission;
     const pixelCoverageWeight = tileCoverageWeight > 0
-      ? conicPixelWeight(contributor.centerPx, contributor.inverseConic, pixelCenter)
+      ? conicPixelWeight(contributor.centerPx, contributor.inverseConic, pixelCenter, conicFalloffScale)
       : 0;
     const coverageAlpha = tileCoverageWeight > 0
       ? clamp01(1 - Math.pow(1 - opacity, pixelCoverageWeight))
@@ -226,13 +232,23 @@ function compareAccumulationOrder(left, right) {
   );
 }
 
-function conicPixelWeight(centerPx, inverseConic, pixelCenter) {
+function adaptiveConicFalloffPolicy({ tileSizePx, maxRefsPerTile }) {
+  return adaptiveConicFalloffScale({ tileSizePx, maxRefsPerTile }) === 0.5
+    ? "high-cap-gaussian-reference-tail"
+    : "tight-plate-rate-tail";
+}
+
+function adaptiveConicFalloffScale({ tileSizePx, maxRefsPerTile }) {
+  return tileSizePx >= 16 && maxRefsPerTile >= 256 ? 0.5 : 2;
+}
+
+function conicPixelWeight(centerPx, inverseConic, pixelCenter, falloffScale = 2) {
   const center = normalizePair(centerPx, "centerPx");
   const conic = normalizeTriple(inverseConic, "inverseConic");
   const dx = pixelCenter[0] - center[0];
   const dy = pixelCenter[1] - center[1];
   const mahalanobis2 = conic[0] * dx * dx + 2 * conic[1] * dx * dy + conic[2] * dy * dy;
-  return Math.exp(-2 * Math.max(mahalanobis2, 0));
+  return Math.exp(-falloffScale * Math.max(mahalanobis2, 0));
 }
 
 function resolveSourceColor(sourceColors, splatIndex, blockers) {

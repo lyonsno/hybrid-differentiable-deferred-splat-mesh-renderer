@@ -26,12 +26,19 @@ const DEBUG_MODE_CONIC_SHAPE = 5u;
 @group(0) @binding(9) var<storage, read> alphaParams: array<vec4f>;
 @group(0) @binding(10) var outputColor: texture_storage_2d<rgba16float, write>;
 
+fn conic_falloff_scale() -> f32 {
+  if (frame.tileSizePx >= 16.0 && frame.maxTileRefs >= 256u) {
+    return 0.5;
+  }
+  return 2.0;
+}
+
 fn conic_pixel_weight(alphaParam: vec4f, conicParam: vec4f, pixelCenter: vec2f) -> f32 {
   let delta = pixelCenter - alphaParam.yz;
   let mahalanobis2 = conicParam.x * delta.x * delta.x
     + 2.0 * conicParam.y * delta.x * delta.y
     + conicParam.z * delta.y * delta.y;
-  return exp(-2.0 * mahalanobis2);
+  return exp(-conic_falloff_scale() * mahalanobis2);
 }
 
 fn inverse_conic_radii(conicParam: vec4f) -> vec2f {
