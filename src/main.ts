@@ -85,6 +85,11 @@ import {
   type BandPixelOrderTraceRecord,
 } from "./rendererFidelityProbes/bandOrderTrace.js";
 import {
+  buildFinalColorAccumulationTraceRecord,
+  buildPerPixelFinalColorAccumulationTrace,
+  type PixelFinalAccumulationTraceRecord,
+} from "./rendererFidelityProbes/finalAccumulationTrace.js";
+import {
   formatTileLocalBudgetPair,
   resolveTileLocalBudgetConfig,
 } from "./tileLocalBudgetConfig.js";
@@ -760,7 +765,8 @@ async function main() {
       scene.tileLocalLastSkipSignature,
       now,
       width,
-      height
+      height,
+      scene.attributes.colors
     );
 
     if (shouldContinueRendering({
@@ -1330,12 +1336,13 @@ function exposeTileLocalRuntimeEvidence(
   tileLocalLastSkipSignature: string | null,
   nowMs: number,
   viewportWidth: number,
-  viewportHeight: number
+  viewportHeight: number,
+  sourceColors: Float32Array
 ): void {
   const runtimeWindow = window as unknown as {
     __MESH_SPLAT_SMOKE__?: Record<string, unknown>;
     __MESH_SPLAT_TILE_LOCAL_DIAGNOSTICS__?: TileLocalDiagnosticSummary;
-    __MESH_SPLAT_PIXEL_CONTRIBUTOR_TRACE__?: BandPixelOrderTraceRecord;
+    __MESH_SPLAT_PIXEL_CONTRIBUTOR_TRACE__?: PixelFinalAccumulationTraceRecord | BandPixelOrderTraceRecord;
   };
   const diagnostics = tileLocalState ? refreshTileLocalDiagnostics(tileLocalState) : undefined;
   const freshness = tileLocalState
@@ -1370,7 +1377,7 @@ function exposeTileLocalRuntimeEvidence(
         })
       : tileLocalState.bandDispatchCacheTrace
     : undefined;
-  const pixelContributorTrace = tileLocalState && bandDispatchCache
+  const pixelOrderTrace = tileLocalState && bandDispatchCache
     ? buildBandPixelOrderTraceRecord({
         contributors: tileLocalState.gpuArenaProjectedContributors,
         dispatchCache: bandDispatchCache,
@@ -1386,6 +1393,21 @@ function exposeTileLocalRuntimeEvidence(
             height: viewportHeight,
           },
         },
+      })
+    : undefined;
+  const projectedTrace = tileLocalState?.perPixelProjectedContributors?.find(
+    (trace) => trace?.anchorPixel?.id === "black-band-dropout-2300-1055",
+  );
+  const pixelContributorTrace = tileLocalState && bandDispatchCache && pixelOrderTrace
+    ? buildFinalColorAccumulationTraceRecord({
+        contributors: tileLocalState.gpuArenaProjectedContributors,
+        sourceColors,
+        projectedContributors: projectedTrace?.traceRecord?.projectedContributors ?? [],
+        retainedContributors: null,
+        orderedContributors: pixelOrderTrace.orderedContributors,
+        dispatchCache: bandDispatchCache,
+        rendererMetadata: pixelOrderTrace.rendererMetadata,
+        deferredFields: pixelOrderTrace.deferredFields,
       })
     : undefined;
   runtimeWindow.__MESH_SPLAT_SMOKE__ = {
@@ -1404,6 +1426,7 @@ function exposeTileLocalRuntimeEvidence(
           tileColumns: tileLocalState.plan.tileColumns,
           tileRows: tileLocalState.plan.tileRows,
           perPixelProjectedContributors: tileLocalState.perPixelProjectedContributors,
+          perPixelFinalColorAccumulation: buildPerPixelFinalColorAccumulationTrace(pixelContributorTrace),
           orderingBackend: TILE_LOCAL_ORDERING_BACKEND,
           debugMode: tileLocalState.debugMode,
           visibleCompositedRefLimit: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
