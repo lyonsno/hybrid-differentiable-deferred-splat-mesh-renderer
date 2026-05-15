@@ -66,7 +66,6 @@ export interface GpuTileCoveragePlan extends GpuTileCoveragePlanInput {
   readonly tileHeaderBytes: number;
   readonly tileRefBytes: number;
   readonly tileCoverageWeightBytes: number;
-  readonly orderingKeyBytes: number;
   readonly alphaParamBytes: number;
 }
 
@@ -210,7 +209,6 @@ export function createGpuTileCoveragePlan(input: GpuTileCoveragePlanInput): GpuT
     tileHeaderBytes: Math.max(16, tileCount * GPU_TILE_COVERAGE_TILE_HEADER_BYTES),
     tileRefBytes: Math.max(16, maxTileRefs * GPU_TILE_COVERAGE_TILE_REF_BYTES),
     tileCoverageWeightBytes: Math.max(16, maxTileRefs * Float32Array.BYTES_PER_ELEMENT),
-    orderingKeyBytes: Math.max(16, maxTileRefs * Uint32Array.BYTES_PER_ELEMENT),
     alphaParamBytes: Math.max(16, maxTileRefs * GPU_TILE_COVERAGE_ALPHA_PARAM_FLOATS_PER_REF * Float32Array.BYTES_PER_ELEMENT),
   };
 }

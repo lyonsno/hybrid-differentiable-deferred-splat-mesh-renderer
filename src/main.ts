@@ -47,11 +47,6 @@ import {
   writeViewDepthSortInput,
   type GpuSortPrototype,
 } from "./gpuSortPrototype.js";
-import {
-  createGpuOrderingRanker,
-  encodeGpuOrderingRanks,
-  type GpuOrderingRanker,
-} from "./gpuOrderingRanks.js";
 import { loadDroppedSplatFile } from "./localPly.js";
 import {
   createRenderDemandState,
@@ -186,10 +181,6 @@ interface TileLocalSceneState {
   tileCoverageWeightData: Float32Array;
   tileBuildCountBuffer: GPUBuffer;
   tileScatterCursorBuffer: GPUBuffer;
-  orderingKeyBuffer: GPUBuffer | null;
-  orderingKeyData: Uint32Array;
-  orderingRanker: GpuOrderingRanker | null;
-  orderingRanksNeedDispatch: boolean;
   alphaParamBuffer: GPUBuffer;
   alphaParamData: Float32Array;
   sourceOpacities: Float32Array;
@@ -564,9 +555,6 @@ async function main() {
       writeViewDepthSortInput(gpu.device.queue, scene.gpuSort, scene.attributes.positions, view);
       encodeGpuSortPrototype(encoder, scene.gpuSort);
       if (scene.tileLocalState) {
-        if (scene.tileLocalState.orderingRanker) {
-          scene.tileLocalState.orderingRanksNeedDispatch = true;
-        }
         scene.tileLocalState.needsDispatch = true;
       }
     }
@@ -612,10 +600,6 @@ async function main() {
         scene.tileLocalState = tileLocalState;
         scene.tileLocalLastSkipReason = null;
         scene.tileLocalLastSkipSignature = null;
-        if (tileLocalState.orderingRanksNeedDispatch && tileLocalState.orderingRanker) {
-          encodeGpuOrderingRanks(encoder, tileLocalState.orderingRanker);
-          tileLocalState.orderingRanksNeedDispatch = false;
-        }
         writeGpuTileCoverageFrameUniforms(
           tileLocalState.frameUniformData,
           viewProj,
@@ -1061,10 +1045,6 @@ function createGpuArenaTileLocalSceneState(
     tileCoverageWeightData,
     tileBuildCountBuffer,
     tileScatterCursorBuffer,
-    orderingKeyBuffer: null,
-    orderingKeyData: new Uint32Array(0),
-    orderingRanker: null,
-    orderingRanksNeedDispatch: false,
     alphaParamBuffer,
     alphaParamData,
     sourceOpacities: effectiveOpacities,
@@ -1170,7 +1150,6 @@ function createCpuTileLocalSceneState(
       gpu: {
         ...bridge.budgetDiagnostics.heat.gpu,
         alphaParamBufferBytes: plan.alphaParamBytes,
-        orderingKeyBufferBytes: plan.orderingKeyBytes,
       },
     },
   };
@@ -1185,8 +1164,6 @@ function createCpuTileLocalSceneState(
   if (legacyProjection) {
     alphaParamData.set(legacyProjection.alphaParamData.slice(0, alphaParamData.length));
   }
-  const orderingKeyData = new Uint32Array(Math.max(plan.orderingKeyBytes / Uint32Array.BYTES_PER_ELEMENT, 4));
-  orderingKeyData.fill(0xffffffff);
   const tileRefSplatIds = new Uint32Array(plan.maxTileRefs);
   for (let refIndex = 0; refIndex < plan.maxTileRefs; refIndex++) {
     const splatId = legacyProjection?.tileRefSplatIds[refIndex] ?? bridge.tileRefs[refIndex * 4] ?? 0;
@@ -1220,21 +1197,6 @@ function createCpuTileLocalSceneState(
   );
   const alphaParamBuffer = gpuArenaRuntime?.buffers.legacyAlphaParamBuffer
     ?? createStorageBuffer(device, alphaParamData.buffer, "tile_local_alpha_params");
-  const orderingKeyBuffer = createStorageBuffer(
-    device,
-    orderingKeyData.buffer as ArrayBuffer,
-    "tile_local_ordering_ranks"
-  );
-  const orderingRanker = createGpuOrderingRanker(
-    device,
-    {
-      splatCount: attributes.count,
-      sortedIndexCount: Math.max(attributes.count, 1),
-    },
-    sortedIndexBuffer,
-    orderingKeyBuffer,
-    "tile_local_ordering_ranks"
-  );
   const outputTexture = createTexture2D(
     device,
     viewportWidth,
@@ -1276,10 +1238,6 @@ function createCpuTileLocalSceneState(
     tileCoverageWeightData: legacyProjection?.tileCoverageWeights ?? bridge.tileCoverageWeights,
     tileBuildCountBuffer,
     tileScatterCursorBuffer,
-    orderingKeyBuffer,
-    orderingKeyData,
-    orderingRanker,
-    orderingRanksNeedDispatch: true,
     alphaParamBuffer,
     alphaParamData,
     sourceOpacities: effectiveOpacities,
@@ -1344,7 +1302,6 @@ function gpuTileCoverageBufferUnavailableReason(device: GPUDevice, plan: GpuTile
     plan.tileHeaderBytes,
     plan.tileRefBytes,
     plan.tileCoverageWeightBytes,
-    plan.orderingKeyBytes,
     plan.alphaParamBytes,
   );
   if (largestBindingBytes > maxStorageBindingBytes) {
@@ -1461,7 +1418,6 @@ function estimatedGpuLiveBudgetDiagnostics(
         retainedRefBufferBytes: plan.tileRefBytes,
         coverageWeightBufferBytes: plan.tileCoverageWeightBytes,
         alphaParamBufferBytes: plan.alphaParamBytes,
-        orderingKeyBufferBytes: plan.orderingKeyBytes,
       },
     },
   };
@@ -1610,8 +1566,6 @@ function destroyTileLocalSceneState(state: TileLocalSceneState): void {
   }
   state.tileBuildCountBuffer.destroy();
   state.tileScatterCursorBuffer.destroy();
-  state.orderingKeyBuffer?.destroy();
-  state.orderingRanker?.paramsBuffer?.destroy();
   state.outputTexture.destroy();
 }
 

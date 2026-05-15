@@ -69,6 +69,17 @@ test("tile-local visible compositor consumes the retained tile header count with
   assert.match(source, /visibleCompositedRefLimit/);
 });
 
+test("CPU tile-local path does not dispatch orphaned ordering-rank work after ordering keys leave the shader bind group", () => {
+  const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+
+  assert.doesNotMatch(shader, /orderingKeys/);
+  assert.doesNotMatch(source, /createGpuOrderingRanker/);
+  assert.doesNotMatch(source, /encodeGpuOrderingRanks/);
+  assert.doesNotMatch(source, /orderingRanksNeedDispatch/);
+  assert.doesNotMatch(source, /tile_local_ordering_ranks/);
+});
+
 test("GPU live tile-ref builder scatters a projected conic footprint across every overlapped tile", () => {
   const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");

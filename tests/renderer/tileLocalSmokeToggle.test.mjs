@@ -37,15 +37,11 @@ test("main labels skipped tile-local rebuilds as stale cached presentations", ()
   );
 });
 
-test("main does not encode tile-local ordering ranks before a possible state rebuild", () => {
+test("main leaves tile-local ordering to the retained ref and alpha-param contracts", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
 
-  assert.doesNotMatch(
-    source,
-    /if \(gpuSortRefreshed\) \{[\s\S]*?encodeGpuOrderingRanks\(encoder, scene\.tileLocalState\.orderingRanker\)/
-  );
-  assert.match(
-    source,
-    /if \(tileLocalState\.orderingRanksNeedDispatch && tileLocalState\.orderingRanker\) \{[\s\S]*?encodeGpuOrderingRanks\(encoder, tileLocalState\.orderingRanker\)/
-  );
+  assert.match(source, /writeGpuTileCoverageAlphaParams/);
+  assert.match(source, /tileRefSplatIds/);
+  assert.doesNotMatch(source, /encodeGpuOrderingRanks/);
+  assert.doesNotMatch(source, /orderingRanksNeedDispatch/);
 });
