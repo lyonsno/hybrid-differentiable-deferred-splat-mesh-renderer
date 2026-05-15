@@ -79,6 +79,12 @@ import {
   type TileLocalDiagnosticSummary,
 } from "./rendererFidelityProbes/tileLocalDiagnostics.js";
 import {
+  buildBandDispatchCacheTrace,
+  buildBandPixelOrderTraceRecord,
+  type BandDispatchCacheTrace,
+  type BandPixelOrderTraceRecord,
+} from "./rendererFidelityProbes/bandOrderTrace.js";
+import {
   formatTileLocalBudgetPair,
   resolveTileLocalBudgetConfig,
 } from "./tileLocalBudgetConfig.js";
@@ -187,6 +193,7 @@ interface TileLocalSceneState {
   lastCompositedAtMs: number;
   lastCompositedFrame: number;
   lastCompositedSignature: string;
+  bandDispatchCacheTrace: BandDispatchCacheTrace;
 }
 
 interface ArenaRuntimeEvidence {
@@ -260,6 +267,14 @@ async function main() {
   // The fixture data replaces the real Scaniverse asset; the real compositor and plate
   // renderer process the synthetic splats exactly as they would real splat data.
   const shapeWitnessFixtureId = selectedShapeWitnessFixtureId();
+
+  let depthTexture: GPUTexture | null = null;
+  let lastTime = performance.now();
+  let frameCount = 0;
+  let frameSerial = 0;
+  let fpsAccum = 0;
+  let displayFps = 0;
+  let gpuTimings: Map<string, number> = new Map();
 
   statsEl.textContent = "Loading real Scaniverse splats...";
   const assetPath = selectedSplatAssetPath();
@@ -418,15 +433,6 @@ async function main() {
     }
   });
 
-  let depthTexture: GPUTexture | null = null;
-
-  let lastTime = performance.now();
-  let frameCount = 0;
-  let frameSerial = 0;
-  let fpsAccum = 0;
-  let displayFps = 0;
-  let gpuTimings: Map<string, number> = new Map();
-
   async function frame() {
     markRenderFrameFinished(renderDemand);
     const now = performance.now();
@@ -584,6 +590,18 @@ async function main() {
           tileLocalState.pipeline.dispatch(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
         }
         tileLocalComputePass.end();
+        tileLocalState.bandDispatchCacheTrace = buildBandDispatchCacheTrace({
+          tileColumns: tileLocalState.plan.tileColumns,
+          tileRows: tileLocalState.plan.tileRows,
+          tileSizePx: tileLocalState.plan.tileSizePx,
+          viewportWidth: width,
+          viewportHeight: height,
+          currentFrameId: frameSerial,
+          clearFrameId: frameSerial,
+          buildFrameId: frameSerial,
+          compositeFrameId: frameSerial,
+          cacheState: "current",
+        });
         tileLocalState.needsDispatch = false;
         tileLocalState.lastCompositedAtMs = now;
         tileLocalState.lastCompositedFrame = frameSerial;
@@ -994,6 +1012,13 @@ function createTileLocalSceneState(
     lastCompositedAtMs: 0,
     lastCompositedFrame: -1,
     lastCompositedSignature: prepassSignature,
+    bandDispatchCacheTrace: buildBandDispatchCacheTrace({
+      tileColumns: plan.tileColumns,
+      tileRows: plan.tileRows,
+      tileSizePx: plan.tileSizePx,
+      viewportWidth,
+      viewportHeight,
+    }),
   };
 }
 
@@ -1307,6 +1332,7 @@ function exposeTileLocalRuntimeEvidence(
   const runtimeWindow = window as unknown as {
     __MESH_SPLAT_SMOKE__?: Record<string, unknown>;
     __MESH_SPLAT_TILE_LOCAL_DIAGNOSTICS__?: TileLocalDiagnosticSummary;
+    __MESH_SPLAT_PIXEL_CONTRIBUTOR_TRACE__?: BandPixelOrderTraceRecord;
   };
   const diagnostics = tileLocalState ? refreshTileLocalDiagnostics(tileLocalState) : undefined;
   const freshness = tileLocalState
@@ -1325,6 +1351,40 @@ function exposeTileLocalRuntimeEvidence(
     tileLocalDisabledReason,
     tileLocalLastSkipReason
   );
+  const bandDispatchCache = tileLocalState
+    ? tileLocalLastSkipReason
+      ? buildBandDispatchCacheTrace({
+          tileColumns: tileLocalState.plan.tileColumns,
+          tileRows: tileLocalState.plan.tileRows,
+          tileSizePx: tileLocalState.plan.tileSizePx,
+          viewportWidth,
+          viewportHeight,
+          currentFrameId: tileLocalState.lastCompositedFrame + 1,
+          clearFrameId: tileLocalState.bandDispatchCacheTrace.clearFrameId,
+          buildFrameId: tileLocalState.bandDispatchCacheTrace.buildFrameId,
+          compositeFrameId: tileLocalState.bandDispatchCacheTrace.compositeFrameId,
+          cacheState: "stale-cache",
+        })
+      : tileLocalState.bandDispatchCacheTrace
+    : undefined;
+  const pixelContributorTrace = tileLocalState && bandDispatchCache
+    ? buildBandPixelOrderTraceRecord({
+        contributors: tileLocalState.gpuArenaProjectedContributors,
+        dispatchCache: bandDispatchCache,
+        rendererMetadata: {
+          requestedRenderer: "tile-local-visible",
+          effectiveRenderer: rendererLabel,
+          requestedArenaBackend: REQUESTED_ARENA_BACKEND,
+          effectiveArenaBackend: arenaRuntime.effectiveArenaBackend,
+          tileSizePx: tileLocalState.plan.tileSizePx,
+          maxRefsPerTile: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
+          viewport: {
+            width: viewportWidth,
+            height: viewportHeight,
+          },
+        },
+      })
+    : undefined;
   runtimeWindow.__MESH_SPLAT_SMOKE__ = {
     ...(runtimeWindow.__MESH_SPLAT_SMOKE__ ?? {}),
     rendererLabel,
@@ -1350,6 +1410,7 @@ function exposeTileLocalRuntimeEvidence(
           },
           budgetDiagnostics: tileLocalState.budgetDiagnostics,
           diagnostics,
+          pixelContributorTrace,
         }
       : undefined,
   };
@@ -1357,6 +1418,11 @@ function exposeTileLocalRuntimeEvidence(
     runtimeWindow.__MESH_SPLAT_TILE_LOCAL_DIAGNOSTICS__ = diagnostics;
   } else {
     delete runtimeWindow.__MESH_SPLAT_TILE_LOCAL_DIAGNOSTICS__;
+  }
+  if (pixelContributorTrace) {
+    runtimeWindow.__MESH_SPLAT_PIXEL_CONTRIBUTOR_TRACE__ = pixelContributorTrace;
+  } else {
+    delete runtimeWindow.__MESH_SPLAT_PIXEL_CONTRIBUTOR_TRACE__;
   }
 }
 
