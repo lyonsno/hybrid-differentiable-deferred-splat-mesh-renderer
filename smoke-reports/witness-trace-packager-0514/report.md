@@ -1,10 +1,10 @@
 # Witness Trace Bundle
 
-- Status: PROVISIONAL
-- Generated: 2026-05-15T02:30:56.874Z
+- Status: FAIL
+- Generated: 2026-05-15T02:47:11.018Z
 - Smoke URL: http://127.0.0.1:61625/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible
 - Branch: cc/witness-trace-packager
-- Commit: 82ad1aa071dab515529b4f470c079e9fbbfa53fd
+- Commit: 074005a2703469eb8c3a109717272bd68ae63ac6
 - Packet: `metadosis/coordination-packets/meshsplat-pixel-contributor-trace-substrate_2026-05-14.md`
 - Thesis: `metadosis/coordination-packets/meshsplat-pixel-contributor-trace-substrate_2026-05-14.thesis.md`
 - Steward topos: `pixel-trace-steward-0514`
@@ -97,34 +97,34 @@
     "note": "Synthetic parity provenance is referenced from the sibling report surface."
   },
   "retention": {
-    "status": "missing",
+    "status": "present",
     "source": {
       "lane": "retention-pixel-trace",
-      "ref": "pending",
+      "ref": "origin/cc/retention-pixel-trace-0514@79cb725fb7ec55c1fb8f2c22276e58945b0a8744",
       "packetPath": "metadosis/coordination-packets/meshsplat-pixel-contributor-trace-substrate_2026-05-14.md",
       "thesisPath": "metadosis/coordination-packets/meshsplat-pixel-contributor-trace-substrate_2026-05-14.thesis.md"
     },
-    "note": "Retention lane has not landed in this bundle yet."
+    "note": "Retention lane landed in report def83a63 on the retention branch; the bundle no longer uses a stale missing placeholder for this section."
   },
   "ordering": {
-    "status": "missing",
+    "status": "present",
     "source": {
       "lane": "ordering-band-row-trace",
-      "ref": "pending",
+      "ref": "origin/cc/ordering-band-row-trace-0514@13cfcca",
       "packetPath": "metadosis/coordination-packets/meshsplat-pixel-contributor-trace-substrate_2026-05-14.md",
       "thesisPath": "metadosis/coordination-packets/meshsplat-pixel-contributor-trace-substrate_2026-05-14.thesis.md"
     },
-    "note": "Ordering lane has not landed in this bundle yet."
+    "note": "Ordering lane landed in report 8176bf3f on the ordering branch; the bundle no longer uses a stale missing placeholder for this section."
   },
   "finalAccumulation": {
-    "status": "missing",
+    "status": "present",
     "source": {
       "lane": "final-accumulation-trace",
-      "ref": "pending",
+      "ref": "origin/cc/final-accumulation-trace-0515@f5f0fbb7689dac0cc3ef997f0e3cdb4ccf0d2cd5",
       "packetPath": "metadosis/coordination-packets/meshsplat-pixel-contributor-trace-substrate_2026-05-14.md",
       "thesisPath": "metadosis/coordination-packets/meshsplat-pixel-contributor-trace-substrate_2026-05-14.thesis.md"
     },
-    "note": "Final accumulation lane has not landed in this bundle yet."
+    "note": "Final accumulation lane landed in report db4c263e on the final-accumulation branch; the bundle no longer uses a stale missing placeholder for this section."
   }
 }
 ```
@@ -135,6 +135,6 @@
 - missing-rim-source-support: Static dessert witness did not report crop-local rim source support.
 - missing-porous-body-source-support: Static dessert witness did not report crop-local porous body source support.
 - tile-local-visible-footprint-expansion: Tile-local final color changed 114.60x as many pixels as plate on the fixed dessert witness.
-- missing retention: explicit placeholder kept until the retention lane lands
-- missing ordering: explicit placeholder kept until the ordering lane lands
-- missing finalAccumulation: explicit placeholder kept until the final accumulation lane lands
+- retention: landed report def83a63 on origin/cc/retention-pixel-trace-0514@79cb725fb7ec55c1fb8f2c22276e58945b0a8744; explicit placeholder retired from the bundle
+- ordering: landed report 8176bf3f on origin/cc/ordering-band-row-trace-0514@13cfcca; explicit placeholder retired from the bundle
+- finalAccumulation: landed report db4c263e on origin/cc/final-accumulation-trace-0515@f5f0fbb7689dac0cc3ef997f0e3cdb4ccf0d2cd5; explicit placeholder retired from the bundle
