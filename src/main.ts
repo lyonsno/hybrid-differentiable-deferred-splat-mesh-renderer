@@ -30,6 +30,7 @@ import {
   projectGpuArenaToLegacyCompositorBuffers,
   type GpuTileContributorArenaRuntime,
 } from "./gpuTileContributorArenaRuntime.js";
+import { buildGpuLivePixelContributorTraces } from "./gpuLiveTraceExtraction.js";
 import { adaptGpuArenaRetainedContributors } from "./gpuArenaRetainedListAdapter.js";
 import {
   createGpuTileCoveragePipelineSkeleton,
@@ -1004,6 +1005,32 @@ function createGpuArenaTileLocalSceneState(
     alphaParamData,
     sourceOpacities: effectiveOpacities,
   });
+  const gpuLiveTrace = buildGpuLivePixelContributorTraces({
+    attributes,
+    effectiveOpacities,
+    viewMatrix,
+    viewProj,
+    viewportWidth,
+    viewportHeight,
+    tileSizePx: plan.tileSizePx,
+    tileColumns: plan.tileColumns,
+    tileRows: plan.tileRows,
+    maxTileRefs: plan.maxTileRefs,
+    splatScale: footprintParams.splatScale,
+    minRadiusPx: footprintParams.minRadiusPx,
+    rendererMetadata: {
+      requestedRenderer: "tile-local-visible",
+      effectiveRenderer: "tile-local-visible-gaussian-compositor",
+      requestedArenaBackend: REQUESTED_ARENA_BACKEND,
+      effectiveArenaBackend: "gpu",
+      tileSizePx: plan.tileSizePx,
+      maxRefsPerTile: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
+      viewport: {
+        width: viewportWidth,
+        height: viewportHeight,
+      },
+    },
+  });
 
   return {
     viewportWidth,
@@ -1041,9 +1068,9 @@ function createGpuArenaTileLocalSceneState(
     diagnostics,
     arenaBackend: "gpu",
     gpuArenaRuntime: null,
-    gpuArenaProjectedContributors: [],
-    perPixelProjectedContributors: [],
-    perPixelRetainedContributors: [],
+    gpuArenaProjectedContributors: gpuLiveTrace.retainedContributors,
+    perPixelProjectedContributors: gpuLiveTrace.perPixelProjectedContributors,
+    perPixelRetainedContributors: gpuLiveTrace.perPixelRetainedContributors,
     arenaUnavailableReason: undefined,
     gpuDispatchEnqueueDurationMs: undefined,
     needsDispatch: true,

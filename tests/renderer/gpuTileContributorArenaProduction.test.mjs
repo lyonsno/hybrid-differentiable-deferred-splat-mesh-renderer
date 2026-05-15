@@ -179,6 +179,18 @@ test("requested GPU arena live path does not build the CPU tile-local prepass fi
   assert.match(mainSource, /REQUESTED_ARENA_BACKEND === "gpu"[\s\S]*createGpuArenaTileLocalSceneState/);
 });
 
+test("requested GPU arena live path exposes per-anchor contributor traces instead of empty smoke arrays", () => {
+  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const gpuFactoryStart = mainSource.indexOf("function createGpuArenaTileLocalSceneState");
+  const cpuFactoryStart = mainSource.indexOf("function createCpuTileLocalSceneState");
+  const gpuFactorySource = mainSource.slice(gpuFactoryStart, cpuFactoryStart);
+
+  assert.match(gpuFactorySource, /buildGpuLivePixelContributorTraces/);
+  assert.doesNotMatch(gpuFactorySource, /gpuArenaProjectedContributors:\s*\[\]/);
+  assert.doesNotMatch(gpuFactorySource, /perPixelProjectedContributors:\s*\[\]/);
+  assert.doesNotMatch(gpuFactorySource, /perPixelRetainedContributors:\s*\[\]/);
+});
+
 function contributor(overrides) {
   return {
     splatIndex: 0,
