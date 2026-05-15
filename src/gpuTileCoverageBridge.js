@@ -1,3 +1,5 @@
+import { buildPerPixelProjectedContributorTraces } from "./rendererFidelityProbes/projectionPixelTrace.js";
+
 const DEFAULT_MAX_REFS_PER_TILE = 32;
 const DEFAULT_DEPTH_BAND_COUNT = 4;
 const CONTRIBUTOR_OVERFLOW_FLAGS = Object.freeze({
@@ -129,6 +131,24 @@ export function buildGpuTileCoverageBridge(coverage, options = {}) {
     tileRefCustody,
     retentionAudit,
     contributorArena,
+    perPixelProjectedContributors: buildPerPixelProjectedContributorTraces({
+      projectedContributors: contributorArena?.projectedContributors ?? null,
+      viewportWidth: coverage.viewportWidth,
+      viewportHeight: coverage.viewportHeight,
+      tileSizePx: coverage.tileSizePx,
+      tileColumns: coverage.tileColumns,
+      tileRows: coverage.tileRows,
+      rendererMetadata: {
+        requestedRenderer: coverage.requestedRenderer ?? "tile-local-visible",
+        effectiveRenderer: coverage.effectiveRenderer ?? coverage.requestedRenderer ?? "tile-local-visible",
+        viewport: {
+          width: coverage.viewportWidth,
+          height: coverage.viewportHeight,
+        },
+        tileSizePx: coverage.tileSizePx,
+        maxRefsPerTile,
+      },
+    }),
   };
 }
 
@@ -266,6 +286,24 @@ export function buildTileLocalContributorArena(coverage, options = {}) {
     overflowReasons: CONTRIBUTOR_OVERFLOW_FLAGS,
     overflowReasonNames: CONTRIBUTOR_OVERFLOW_REASONS,
     projectedContributors,
+    perPixelProjectedContributors: buildPerPixelProjectedContributorTraces({
+      projectedContributors,
+      viewportWidth: coverage.viewportWidth,
+      viewportHeight: coverage.viewportHeight,
+      tileSizePx: coverage.tileSizePx,
+      tileColumns: coverage.tileColumns,
+      tileRows: coverage.tileRows,
+      rendererMetadata: {
+        requestedRenderer: coverage.requestedRenderer ?? "tile-local-visible",
+        effectiveRenderer: coverage.effectiveRenderer ?? coverage.requestedRenderer ?? "tile-local-visible",
+        viewport: {
+          width: coverage.viewportWidth,
+          height: coverage.viewportHeight,
+        },
+        tileSizePx: coverage.tileSizePx,
+        maxRefsPerTile,
+      },
+    }),
     metadata: {
       viewportWidth: coverage.viewportWidth,
       viewportHeight: coverage.viewportHeight,

@@ -98,6 +98,7 @@ import {
   buildTileLocalPrepassBridge,
   captureTileLocalPrepassBridgeSignature,
   tileLocalPrepassBridgeSignatureChanged,
+  type TileLocalPrepassBridge,
   type TileLocalPrepassBudgetDiagnostics,
 } from "./tileLocalPrepassBridge.js";
 import { createTileLocalTexturePresenter } from "./tileLocalTexturePresenter.js";
@@ -181,6 +182,7 @@ interface TileLocalSceneState {
   arenaBackend: "cpu" | "gpu";
   gpuArenaRuntime: GpuTileContributorArenaRuntime | null;
   gpuArenaProjectedContributors: readonly GpuTileContributorArenaProjectedContributor[];
+  perPixelProjectedContributors: TileLocalPrepassBridge["perPixelProjectedContributors"];
   arenaUnavailableReason?: string;
   gpuDispatchDurationMs?: number;
   needsDispatch: boolean;
@@ -988,6 +990,7 @@ function createTileLocalSceneState(
     arenaBackend: gpuArenaRuntime ? "gpu" : "cpu",
     gpuArenaRuntime,
     gpuArenaProjectedContributors,
+    perPixelProjectedContributors: bridge.perPixelProjectedContributors,
     arenaUnavailableReason: gpuArenaRuntime ? undefined : gpuArenaRuntimeBlocker,
     gpuDispatchDurationMs: undefined,
     needsDispatch: true,
@@ -1340,6 +1343,7 @@ function exposeTileLocalRuntimeEvidence(
           allocatedRefs: tileLocalState.tileEntryCount,
           tileColumns: tileLocalState.plan.tileColumns,
           tileRows: tileLocalState.plan.tileRows,
+          perPixelProjectedContributors: tileLocalState.perPixelProjectedContributors,
           orderingBackend: TILE_LOCAL_ORDERING_BACKEND,
           debugMode: tileLocalState.debugMode,
           visibleCompositedRefLimit: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
