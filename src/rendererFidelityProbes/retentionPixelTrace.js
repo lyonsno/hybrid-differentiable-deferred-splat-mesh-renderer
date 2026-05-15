@@ -23,14 +23,6 @@ const DEFAULT_DEFERRED_FIELDS = Object.freeze({
   lossEvidence: null,
 });
 
-const RETAINED_SUPPORT_STATUSES = Object.freeze([
-  "sufficient",
-  "insufficient",
-  "misleadingly-sufficient",
-  "absent",
-  "still-blocked",
-]);
-
 export function buildPerPixelRetainedContributorTraces({
   projectedContributors,
   retainedContributors,
