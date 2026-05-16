@@ -5,6 +5,7 @@ import {
   GPU_LIVE_LACUNAR_ANCHORS,
   classifyLacunarOcclusionMechanism,
   describeLacunarOcclusionLedgerContract,
+  classifyFreshAnchorRoleTightening,
 } from "../../src/rendererFidelityProbes/lacunarOcclusionLedger.js";
 
 test("contract keeps lacunar occlusion separate from black-band repair and global tuning", () => {
@@ -202,4 +203,137 @@ test("classifies ordered foreground omitted from final accumulation as composito
   assert.equal(verdict.mechanism, "ordered-foreground-omitted-from-final-accumulation");
   assert.deepEqual(verdict.ids.orderedForeground, ["front-0"]);
   assert.deepEqual(verdict.ids.accumulatedForeground, []);
+});
+
+test("fresh-anchor tightening keeps fresh-b in the same narrower blocker class as fresh-a/c", () => {
+  const verdicts = classifyFreshAnchorRoleTightening([
+    {
+      anchor: {
+        id: "fresh-a",
+        sourceColor: [0.81, 0.46, 0.32],
+        luminance: 0.44,
+        depthBand: "foreground",
+        foregroundCluster: "retained-and-dropped-foreground-support-ambiguous",
+        behindCluster: "behind",
+        backgroundCluster: "background",
+      },
+      deadSplatElector: {
+        category: "narrower-blocker",
+        mechanism: "retained-and-dropped-foreground-support-ambiguous",
+        observation: {
+          observationId: "dead-splat-elector-ledger-0515-fresh-anchors",
+          tileSizePx: 16,
+          maxRefsPerTile: 256,
+          witnessView: "dessert-porous-close",
+          viewport: { width: 3456, height: 1916 },
+        },
+      },
+      retainedToOrdered: {
+        category: "narrower-role-source-blocker",
+        mechanism: "no-retained-foreground-role-support",
+        retainedForegroundCount: 0,
+        orderedForegroundCount: 0,
+        finalForegroundCount: 0,
+        retainedAll: 32,
+        orderedAll: 32,
+        droppedForegroundCount: 32,
+        observation: {
+          observationId: "retained-to-ordered-survival-0515-fresh-anchor-smoke",
+          tileSizePx: 6,
+          maxRefsPerTile: 32,
+          witnessView: "dessert-porous-close",
+          viewport: { width: 3456, height: 1916 },
+        },
+      },
+    },
+    {
+      anchor: {
+        id: "fresh-b",
+        sourceColor: [0.88, 0.57, 0.39],
+        luminance: 0.49,
+        depthBand: "foreground",
+        foregroundCluster: "foreground-sealing-slate-retained",
+        behindCluster: "behind",
+        backgroundCluster: "background",
+      },
+      deadSplatElector: {
+        category: "later-transfer-failure",
+        mechanism: "foreground-sealing-slate-retained",
+        observation: {
+          observationId: "dead-splat-elector-ledger-0515-fresh-anchors",
+          tileSizePx: 16,
+          maxRefsPerTile: 256,
+          witnessView: "dessert-porous-close",
+          viewport: { width: 3456, height: 1916 },
+        },
+      },
+      retainedToOrdered: {
+        category: "narrower-role-source-blocker",
+        mechanism: "no-retained-foreground-role-support",
+        retainedForegroundCount: 0,
+        orderedForegroundCount: 0,
+        finalForegroundCount: 0,
+        retainedAll: 32,
+        orderedAll: 32,
+        droppedForegroundCount: 32,
+        observation: {
+          observationId: "retained-to-ordered-survival-0515-fresh-anchor-smoke",
+          tileSizePx: 6,
+          maxRefsPerTile: 32,
+          witnessView: "dessert-porous-close",
+          viewport: { width: 3456, height: 1916 },
+        },
+      },
+    },
+    {
+      anchor: {
+        id: "fresh-c",
+        sourceColor: [0.84, 0.51, 0.35],
+        luminance: 0.46,
+        depthBand: "foreground",
+        foregroundCluster: "retained-and-dropped-foreground-support-ambiguous",
+        behindCluster: "behind",
+        backgroundCluster: "background",
+      },
+      deadSplatElector: {
+        category: "narrower-blocker",
+        mechanism: "retained-and-dropped-foreground-support-ambiguous",
+        observation: {
+          observationId: "dead-splat-elector-ledger-0515-fresh-anchors",
+          tileSizePx: 16,
+          maxRefsPerTile: 256,
+          witnessView: "dessert-porous-close",
+          viewport: { width: 3456, height: 1916 },
+        },
+      },
+      retainedToOrdered: {
+        category: "narrower-role-source-blocker",
+        mechanism: "no-retained-foreground-role-support",
+        retainedForegroundCount: 0,
+        orderedForegroundCount: 0,
+        finalForegroundCount: 0,
+        retainedAll: 32,
+        orderedAll: 32,
+        droppedForegroundCount: 32,
+        observation: {
+          observationId: "retained-to-ordered-survival-0515-fresh-anchor-smoke",
+          tileSizePx: 6,
+          maxRefsPerTile: 32,
+          witnessView: "dessert-porous-close",
+          viewport: { width: 3456, height: 1916 },
+        },
+      },
+    },
+  ]);
+
+  assert.deepEqual(verdicts.map((verdict) => verdict.category), [
+    "narrower blocker",
+    "narrower blocker",
+    "narrower blocker",
+  ]);
+  assert.equal(verdicts[1].priorDeadSplatCategory, "later-transfer-failure");
+  assert.equal(verdicts[1].crossRunInference, true);
+  assert.match(verdicts[1].note, /same blocker class/);
+  assert.equal(verdicts[0].anchor.sourceColor[0], 0.81);
+  assert.equal(verdicts[2].anchor.depthBand, "foreground");
 });

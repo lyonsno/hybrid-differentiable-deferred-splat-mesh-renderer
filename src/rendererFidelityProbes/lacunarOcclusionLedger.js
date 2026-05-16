@@ -216,6 +216,14 @@ export function classifyLacunarOcclusionMechanism({
   });
 }
 
+export function classifyFreshAnchorRoleTightening(evidenceRecords = []) {
+  if (!Array.isArray(evidenceRecords)) {
+    throw new TypeError("evidenceRecords must be an array");
+  }
+
+  return evidenceRecords.map((record, index) => classifyFreshAnchorRecord(record, index));
+}
+
 function classified({ category, mechanism, anchor, ids, counts, metrics }) {
   return {
     status: "classified",
@@ -363,4 +371,155 @@ function readNonNegative(value, label) {
 
 function roundMetric(value) {
   return Number(value.toFixed(12));
+}
+
+function classifyFreshAnchorRecord(record, index) {
+  if (!record || typeof record !== "object") {
+    throw new TypeError(`fresh anchor record ${index} must be an object`);
+  }
+
+  const anchor = normalizeFreshAnchor(record.anchor, index);
+  const deadSplatElector = normalizeFreshAnchorEvidence(record.deadSplatElector, "deadSplatElector", index);
+  const retainedToOrdered = normalizeFreshAnchorEvidence(record.retainedToOrdered, "retainedToOrdered", index);
+  const crossRunInference = observationsDiffer(deadSplatElector.observation, retainedToOrdered.observation);
+  const priorDeadSplatCategory = deadSplatElector.category ?? null;
+  const currentCategory = retainedToOrdered.category ?? "narrower blocker";
+
+  return {
+    status: "classified",
+    category: currentCategory === "narrower-role-source-blocker" ? "narrower blocker" : String(currentCategory),
+    mechanism: retainedToOrdered.mechanism ?? "retained-to-ordered-role/source-blocker",
+    anchor,
+    priorDeadSplatCategory,
+    retainedToOrderedCategory: currentCategory,
+    crossRunInference,
+    evidence: {
+      deadSplatElector,
+      retainedToOrdered,
+    },
+    note: buildFreshAnchorNote({
+      anchor,
+      priorDeadSplatCategory,
+      retainedToOrderedCategory: currentCategory,
+      crossRunInference,
+      deadSplatElector,
+      retainedToOrdered,
+    }),
+  };
+}
+
+function normalizeFreshAnchor(anchor, index) {
+  if (!anchor || typeof anchor !== "object") {
+    throw new TypeError(`fresh anchor ${index} anchor must be an object`);
+  }
+
+  return {
+    id: String(anchor.id ?? `fresh-anchor-${index}`),
+    sourceColor: Array.isArray(anchor.sourceColor) ? [...anchor.sourceColor] : null,
+    luminance: anchor.luminance ?? null,
+    depthBand: anchor.depthBand ?? null,
+    foregroundCluster: anchor.foregroundCluster ?? null,
+    behindCluster: anchor.behindCluster ?? null,
+    backgroundCluster: anchor.backgroundCluster ?? null,
+  };
+}
+
+function normalizeFreshAnchorEvidence(evidence, label, index) {
+  if (!evidence || typeof evidence !== "object") {
+    throw new TypeError(`fresh anchor ${index} ${label} must be an object`);
+  }
+
+  return {
+    category: evidence.category ?? null,
+    mechanism: evidence.mechanism ?? null,
+    retainedForegroundCount: evidence.retainedForegroundCount ?? null,
+    orderedForegroundCount: evidence.orderedForegroundCount ?? null,
+    finalForegroundCount: evidence.finalForegroundCount ?? null,
+    retainedAll: evidence.retainedAll ?? null,
+    orderedAll: evidence.orderedAll ?? null,
+    droppedForegroundCount: evidence.droppedForegroundCount ?? null,
+    observation: normalizeFreshAnchorObservation(evidence.observation, label, index),
+  };
+}
+
+function normalizeFreshAnchorObservation(observation, label, index) {
+  if (!observation || typeof observation !== "object") {
+    throw new TypeError(`fresh anchor ${index} ${label}.observation must be an object`);
+  }
+
+  return {
+    observationId: observation.observationId ?? null,
+    tileSizePx: observation.tileSizePx ?? null,
+    maxRefsPerTile: observation.maxRefsPerTile ?? null,
+    witnessView: observation.witnessView ?? null,
+    viewport: observation.viewport ? { ...observation.viewport } : null,
+  };
+}
+
+function observationsDiffer(left, right) {
+  if (!left || !right) {
+    return false;
+  }
+
+  return (
+    left.tileSizePx !== right.tileSizePx ||
+    left.maxRefsPerTile !== right.maxRefsPerTile ||
+    left.witnessView !== right.witnessView ||
+    !sameViewport(left.viewport, right.viewport)
+  );
+}
+
+function sameViewport(left, right) {
+  if (!left || !right) {
+    return left === right;
+  }
+
+  return left.width === right.width && left.height === right.height;
+}
+
+function buildFreshAnchorNote({
+  anchor,
+  priorDeadSplatCategory,
+  retainedToOrderedCategory,
+  crossRunInference,
+  deadSplatElector,
+  retainedToOrdered,
+}) {
+  const comparison = crossRunInference
+    ? `cross-run inference only: dead-splat ${formatObservation(deadSplatElector.observation)} versus retained-to-ordered ${formatObservation(retainedToOrdered.observation)}`
+    : "same-observation evidence";
+
+  const sameClassNote = retainedToOrderedCategory === "narrower-role-source-blocker"
+    ? "latest retained-to-ordered verdict keeps it in the same blocker class as fresh-a/c"
+    : `latest retained-to-ordered verdict keeps it in ${retainedToOrderedCategory}`;
+
+  return [
+    `${anchor.id}: ${sameClassNote}.`,
+    priorDeadSplatCategory ? `prior dead-splat category: ${priorDeadSplatCategory}.` : null,
+    comparison,
+  ].filter(Boolean).join(" ");
+}
+
+function formatObservation(observation) {
+  if (!observation) {
+    return "unknown observation";
+  }
+
+  const parts = [];
+  if (observation.observationId) {
+    parts.push(observation.observationId);
+  }
+  if (observation.tileSizePx !== null && observation.tileSizePx !== undefined) {
+    parts.push(`tile=${observation.tileSizePx}`);
+  }
+  if (observation.maxRefsPerTile !== null && observation.maxRefsPerTile !== undefined) {
+    parts.push(`cap=${observation.maxRefsPerTile}`);
+  }
+  if (observation.witnessView) {
+    parts.push(`view=${observation.witnessView}`);
+  }
+  if (observation.viewport) {
+    parts.push(`viewport=${observation.viewport.width}x${observation.viewport.height}`);
+  }
+  return parts.join(", ");
 }
