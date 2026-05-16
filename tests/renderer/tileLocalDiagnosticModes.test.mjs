@@ -125,6 +125,50 @@ test("tile-local diagnostic summary uses GPU custody and opacity estimates when 
   assert(summary.alpha.estimatedMinTransmittance < 1);
 });
 
+test("tile-local diagnostic summary classifies GPU runtime budget below trace retained contributors", () => {
+  const summary = summarizeTileLocalDiagnostics({
+    debugMode: "final-color",
+    plan: {
+      tileColumns: 216,
+      tileRows: 120,
+      tileSizePx: 16,
+      maxTileRefs: 2360150,
+    },
+    tileEntryCount: 2360150,
+    tileHeaders: new Uint32Array(216 * 120 * 4),
+    tileRefCustody: {
+      projectedTileEntryCount: 94406 * 9,
+      retainedTileEntryCount: 2360150,
+      evictedTileEntryCount: 0,
+      cappedTileCount: 0,
+      saturatedRetainedTileCount: 0,
+      maxProjectedRefsPerTile: 94406,
+      maxRetainedRefsPerTile: 91,
+      headerRefCount: 2360150,
+      headerAccountingMatches: true,
+    },
+    tileCoverageWeights: new Float32Array(0),
+    alphaParamData: new Float32Array(8),
+    traceCapacityEvidence: {
+      anchors: [
+        { id: "fresh-a", projectedCount: 2396, retainedCount: 256, finalStepCount: 256 },
+        { id: "fresh-b", projectedCount: 2159, retainedCount: 256, finalStepCount: 256 },
+        { id: "fresh-c", projectedCount: 2052, retainedCount: 256, finalStepCount: 256 },
+      ],
+    },
+  });
+
+  assert.equal(summary.runtimeRefBudget.classification, "runtime-capacity-loss");
+  assert.equal(summary.runtimeRefBudget.tileCount, 25920);
+  assert.equal(summary.runtimeRefBudget.maxTraceRetainedContributors, 256);
+  assert.equal(summary.runtimeRefBudget.effectiveRefsPerTile < 256, true);
+  assert.deepEqual(summary.runtimeRefBudget.blockingAnchors.map((anchor) => anchor.id), [
+    "fresh-a",
+    "fresh-b",
+    "fresh-c",
+  ]);
+});
+
 test("tile-local diagnostic shader branches are debug-only and preserve final color as mode zero", () => {
   const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
 

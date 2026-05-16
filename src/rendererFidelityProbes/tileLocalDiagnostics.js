@@ -8,6 +8,7 @@ export function summarizeTileLocalDiagnostics({
   tileCoverageWeights,
   alphaParamData,
   sourceOpacities,
+  traceCapacityEvidence,
 } = {}) {
   const maxTileRefs = positiveInteger(plan?.maxTileRefs, "plan.maxTileRefs");
   const tileCount = positiveInteger(plan?.tileColumns, "plan.tileColumns") *
@@ -40,11 +41,74 @@ export function summarizeTileLocalDiagnostics({
     },
     tileRefs,
     tileRefCustody: normalizeTileRefCustody(tileRefCustody, tileRefs),
+    runtimeRefBudget: summarizeRuntimeRefBudget({
+      plan,
+      tileRefs,
+      tileRefCustody,
+      traceCapacityEvidence,
+    }),
     retentionAudit: normalizeRetentionAudit(retentionAudit),
     coverageWeight,
     alpha,
     conicShape,
   };
+}
+
+function summarizeRuntimeRefBudget({
+  plan,
+  tileRefs,
+  tileRefCustody,
+  traceCapacityEvidence,
+}) {
+  const tileCount = positiveInteger(plan?.tileColumns, "plan.tileColumns") *
+    positiveInteger(plan?.tileRows, "plan.tileRows");
+  const retainedRuntimeRefs = nonNegativeFiniteInteger(
+    tileRefCustody?.retainedTileEntryCount ?? tileRefCustody?.headerRefCount ?? tileRefs?.total
+  );
+  const effectiveRefsPerTile = tileCount > 0 ? round(retainedRuntimeRefs / tileCount) : 0;
+  const anchors = normalizeTraceCapacityAnchors(traceCapacityEvidence?.anchors);
+  const maxTraceRetainedContributors = anchors.reduce(
+    (max, anchor) => Math.max(max, anchor.retainedCount),
+    0,
+  );
+  const maxTraceFinalSteps = anchors.reduce(
+    (max, anchor) => Math.max(max, anchor.finalStepCount),
+    0,
+  );
+  const blockingAnchors = anchors.filter(
+    (anchor) => anchor.retainedCount > 0 && effectiveRefsPerTile < anchor.retainedCount,
+  );
+
+  let classification = "telemetry-insufficient";
+  if (anchors.length > 0) {
+    classification = blockingAnchors.length > 0
+      ? "runtime-capacity-loss"
+      : "no-capacity-discrepancy";
+  }
+
+  return {
+    classification,
+    tileCount,
+    runtimeRetainedRefs: retainedRuntimeRefs,
+    effectiveRefsPerTile,
+    maxTraceRetainedContributors,
+    maxTraceFinalSteps,
+    blockingAnchors,
+  };
+}
+
+function normalizeTraceCapacityAnchors(anchors) {
+  if (!Array.isArray(anchors)) {
+    return [];
+  }
+  return anchors
+    .filter((anchor) => anchor && typeof anchor === "object")
+    .map((anchor) => ({
+      id: typeof anchor.id === "string" ? anchor.id : "",
+      projectedCount: nonNegativeFiniteInteger(anchor.projectedCount),
+      retainedCount: nonNegativeFiniteInteger(anchor.retainedCount),
+      finalStepCount: nonNegativeFiniteInteger(anchor.finalStepCount),
+    }));
 }
 
 function normalizeRetentionAudit(retentionAudit) {

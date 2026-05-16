@@ -1798,7 +1798,10 @@ function labelRendererMode(
   return mode;
 }
 
-function refreshTileLocalDiagnostics(state: TileLocalSceneState): TileLocalDiagnosticSummary {
+function refreshTileLocalDiagnostics(
+  state: TileLocalSceneState,
+  perPixelFinalColorAccumulation: readonly Record<string, unknown>[] = [],
+): TileLocalDiagnosticSummary {
   state.diagnostics = summarizeTileLocalDiagnostics({
     debugMode: state.debugMode,
     plan: state.plan,
@@ -1809,8 +1812,56 @@ function refreshTileLocalDiagnostics(state: TileLocalSceneState): TileLocalDiagn
     tileCoverageWeights: state.tileCoverageWeightData,
     alphaParamData: state.alphaParamData,
     sourceOpacities: state.sourceOpacities,
+    traceCapacityEvidence: traceCapacityEvidenceFromState(state, perPixelFinalColorAccumulation),
   });
   return state.diagnostics;
+}
+
+function traceCapacityEvidenceFromState(
+  state: TileLocalSceneState,
+  perPixelFinalColorAccumulation: readonly Record<string, unknown>[] = [],
+): {
+  anchors: {
+    id: string;
+    projectedCount: number;
+    retainedCount: number;
+    finalStepCount: number;
+  }[];
+} {
+  const finalStepCountByAnchorId = new Map(
+    perPixelFinalColorAccumulation.map((trace) => {
+      const anchorPixel = trace.anchorPixel as { id?: string } | undefined;
+      const traceRecord = (trace.traceRecord ?? trace) as {
+        finalColorAccumulation?: { steps?: unknown[] };
+      };
+      return [
+        String(anchorPixel?.id ?? ""),
+        Array.isArray(traceRecord.finalColorAccumulation?.steps)
+          ? traceRecord.finalColorAccumulation.steps.length
+          : 0,
+      ] as const;
+    }),
+  );
+
+  return {
+    anchors: state.perPixelRetainedContributors.map((record) => {
+      const traceRecord = record.traceRecord ?? record;
+      const finalColorAccumulation = (traceRecord as {
+        finalColorAccumulation?: { steps?: unknown[] };
+      }).finalColorAccumulation;
+      return {
+        id: record.anchorPixel.id,
+        projectedCount: Array.isArray(traceRecord.projectedContributors)
+          ? traceRecord.projectedContributors.length
+          : 0,
+        retainedCount: Array.isArray(traceRecord.retainedContributors)
+          ? traceRecord.retainedContributors.length
+          : 0,
+        finalStepCount: finalStepCountByAnchorId.get(record.anchorPixel.id) ??
+          (Array.isArray(finalColorAccumulation?.steps) ? finalColorAccumulation.steps.length : 0),
+      };
+    }),
+  };
 }
 
 function exposeTileLocalRuntimeEvidence(
@@ -1830,7 +1881,6 @@ function exposeTileLocalRuntimeEvidence(
     __MESH_SPLAT_TILE_LOCAL_DIAGNOSTICS__?: TileLocalDiagnosticSummary;
     __MESH_SPLAT_PIXEL_CONTRIBUTOR_TRACE__?: PixelFinalAccumulationTraceRecord | BandPixelOrderTraceRecord;
   };
-  const diagnostics = tileLocalState ? refreshTileLocalDiagnostics(tileLocalState) : undefined;
   const freshness = tileLocalState
     ? tileLocalPresentationFreshness(tileLocalState, tileLocalLastSkipReason, tileLocalLastSkipSignature, nowMs)
     : undefined;
@@ -1942,6 +1992,9 @@ function exposeTileLocalRuntimeEvidence(
           (trace.traceRecord ?? trace) as Record<string, unknown>
         )
       )
+    : undefined;
+  const diagnostics = tileLocalState
+    ? refreshTileLocalDiagnostics(tileLocalState, perPixelFinalColorAccumulation)
     : undefined;
   runtimeWindow.__MESH_SPLAT_SMOKE__ = {
     ...(runtimeWindow.__MESH_SPLAT_SMOKE__ ?? {}),

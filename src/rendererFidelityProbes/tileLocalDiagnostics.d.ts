@@ -11,6 +11,14 @@ export interface TileLocalDiagnosticSummaryInput {
   readonly tileCoverageWeights: Float32Array;
   readonly alphaParamData: Float32Array;
   readonly sourceOpacities?: Float32Array;
+  readonly traceCapacityEvidence?: {
+    readonly anchors?: readonly {
+      readonly id?: string;
+      readonly projectedCount?: number;
+      readonly retainedCount?: number;
+      readonly finalStepCount?: number;
+    }[];
+  };
 }
 
 export interface TileLocalDiagnosticSummary {
@@ -29,6 +37,20 @@ export interface TileLocalDiagnosticSummary {
     readonly density: number;
   };
   readonly tileRefCustody: TileRefCustodySummary;
+  readonly runtimeRefBudget: {
+    readonly classification: "runtime-capacity-loss" | "no-capacity-discrepancy" | "telemetry-insufficient";
+    readonly tileCount: number;
+    readonly runtimeRetainedRefs: number;
+    readonly effectiveRefsPerTile: number;
+    readonly maxTraceRetainedContributors: number;
+    readonly maxTraceFinalSteps: number;
+    readonly blockingAnchors: readonly {
+      readonly id: string;
+      readonly projectedCount: number;
+      readonly retainedCount: number;
+      readonly finalStepCount: number;
+    }[];
+  };
   readonly retentionAudit: TileRetentionAudit | null;
   readonly coverageWeight: {
     readonly min: number;
