@@ -21,6 +21,11 @@ import {
   classifyStaticDessertWitness,
 } from "./visual-smoke/static-dessert-witness.mjs";
 import { classifyWitnessCapture } from "./visual-smoke/witness-diagnostics.mjs";
+import {
+  buildSmokeHandoff,
+  parseSmokeKind,
+  renderSmokeHandoffSection,
+} from "./visual-smoke/smoke-handoff.mjs";
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
@@ -145,6 +150,7 @@ async function main() {
       screenshotPath: path.relative(options.appRoot, screenshotPath),
       analysisPath: path.relative(options.appRoot, analysisPath),
       reportPath: path.relative(options.appRoot, reportPath),
+      smokeHandoff: buildSmokeHandoff(options),
       options: publicOptions(options),
       pageEvidence,
       imageAnalysis,
@@ -213,6 +219,12 @@ async function runTileLocalComparison({ browser, options, baseUrl, reportDir, an
     baseUrl,
     analysisPath: path.relative(options.appRoot, analysisPath),
     reportPath: path.relative(options.appRoot, reportPath),
+    smokeHandoff: buildSmokeHandoff(options, {
+      smokeKind: "visual",
+      decisionRequested: "Judge tile-local visible renderer behavior against plate and prepass baselines.",
+      expectedVisualDelta: "visible tile-local output should be distinguishable from plate without bridge-block fallback",
+      evidenceSurface: "tile-local comparison report, analysis.json, and captured plate/prepass/visible screenshots",
+    }),
     options: publicOptions(options),
     plan,
     captures,
@@ -233,6 +245,12 @@ async function runTileLocalDiagnostics({ browser, options, baseUrl, reportDir, a
     baseUrl,
     analysisPath: path.relative(options.appRoot, analysisPath),
     reportPath: path.relative(options.appRoot, reportPath),
+    smokeHandoff: buildSmokeHandoff(options, {
+      smokeKind: "telemetry",
+      decisionRequested: "Judge diagnostic heatmap and compact tile-local evidence availability.",
+      expectedVisualDelta: "none expected",
+      evidenceSurface: "tile-local diagnostic report, analysis.json, and debug heatmap captures",
+    }),
     options: publicOptions(options),
     plan,
     captures,
@@ -253,6 +271,12 @@ async function runStaticDessertWitness({ browser, options, baseUrl, reportDir, a
     baseUrl,
     analysisPath: path.relative(options.appRoot, analysisPath),
     reportPath: path.relative(options.appRoot, reportPath),
+    smokeHandoff: buildSmokeHandoff(options, {
+      smokeKind: "visual",
+      decisionRequested: "Judge fixed dessert final-color and debug evidence for renderer-fidelity movement.",
+      expectedVisualDelta: "fixed-view final-color should move only in the branch's claimed visual direction",
+      evidenceSurface: "static dessert witness report, analysis.json, final-color capture, and debug captures",
+    }),
     options: publicOptions(options),
     plan,
     captures,
@@ -420,6 +444,8 @@ function renderMarkdownReport(result) {
 - Screenshot: \`${path.relative(path.dirname(result.reportPath), result.screenshotPath)}\`
 - Analysis JSON: \`${path.relative(path.dirname(result.reportPath), result.analysisPath)}\`
 
+${renderSmokeHandoffSection(result.smokeHandoff)}
+
 ## Image Evidence
 
 - Canvas PNG: ${image.width}x${image.height}
@@ -475,6 +501,8 @@ function renderTileLocalComparisonReport(result) {
 - Generated: ${result.generatedAt}
 - Base URL: ${result.baseUrl}
 - Analysis JSON: \`${path.relative(path.dirname(result.reportPath), result.analysisPath)}\`
+
+${renderSmokeHandoffSection(result.smokeHandoff)}
 
 ## Captures
 
@@ -532,6 +560,8 @@ function renderTileLocalDiagnosticsReport(result) {
 - Generated: ${result.generatedAt}
 - Base URL: ${result.baseUrl}
 - Analysis JSON: \`${path.relative(path.dirname(result.reportPath), result.analysisPath)}\`
+
+${renderSmokeHandoffSection(result.smokeHandoff)}
 
 ## Captures
 
@@ -594,6 +624,8 @@ function renderStaticDessertWitnessReport(result) {
 - Generated: ${result.generatedAt}
 - Base URL: ${result.baseUrl}
 - Analysis JSON: \`${path.relative(path.dirname(result.reportPath), result.analysisPath)}\`
+
+${renderSmokeHandoffSection(result.smokeHandoff)}
 
 ## Fixed View
 
@@ -735,6 +767,10 @@ function parseArgs(args) {
     tileLocalComparison: false,
     tileLocalDiagnostics: false,
     staticDessertWitness: false,
+    smokeKind: undefined,
+    decisionRequested: undefined,
+    expectedVisualDelta: undefined,
+    evidenceSurface: undefined,
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -818,6 +854,18 @@ function parseArgs(args) {
           options.settleMs = 5000;
         }
         break;
+      case "--smoke-kind":
+        options.smokeKind = parseSmokeKind(next());
+        break;
+      case "--decision-requested":
+        options.decisionRequested = next();
+        break;
+      case "--expected-visual-delta":
+        options.expectedVisualDelta = next();
+        break;
+      case "--evidence-surface":
+        options.evidenceSurface = next();
+        break;
       case "--help":
       case "-h":
         printHelp();
@@ -850,6 +898,7 @@ function publicOptions(options) {
     tileLocalComparison: options.tileLocalComparison,
     tileLocalDiagnostics: options.tileLocalDiagnostics,
     staticDessertWitness: options.staticDessertWitness,
+    smokeHandoff: buildSmokeHandoff(options),
   };
 }
 
@@ -888,6 +937,10 @@ Options:
   --app-root <path>               Repo root to launch with Vite. Defaults to cwd.
   --report-dir, --out-dir <path>  Output directory. Defaults to smoke-reports/visual-smoke-<timestamp>.
   --require-real-splat            Exit nonzero unless the page reports real Scaniverse splat evidence.
+  --smoke-kind <kind>             Handoff kind: visual or telemetry. Defaults to visual.
+  --decision-requested <text>     Merge, rerun, or investigation decision this smoke is meant to support.
+  --expected-visual-delta <text>  Expected visual change, or "none expected" for telemetry-only checks.
+  --evidence-surface <text>       Report, trace field, timing field, manifest, screenshot, or URL carrying the claim.
   --browser-channel <name>        Playwright channel. Defaults to VISUAL_SMOKE_BROWSER_CHANNEL or chrome.
   --browser-executable <path>     Browser executable path; overrides channel.
   --viewport <WIDTHxHEIGHT>       Browser viewport. Defaults to 1280x720.

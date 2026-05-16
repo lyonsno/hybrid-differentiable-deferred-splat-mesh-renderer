@@ -65,6 +65,8 @@ npm run smoke:visual:real -- --tile-local-comparison --out-dir /tmp/tile-local-v
 
 That comparison captures the plate baseline, `plate+tile-local-prepass`, and `renderer=tile-local-visible`; it fails if the visible mode falls back to plate, still presents the bridge-block diagnostic, loses tile-local refs, lacks real Scaniverse evidence, or suffers a catastrophic FPS collapse. See `docs/smoke/tile-local-visual-perf-comparison.md`.
 
+Smoke handoffs in this renderer repo must distinguish visual smoke from telemetry smoke. Visual smoke asks for image-quality or visual-regression judgment; telemetry smoke asks whether runtime evidence surfaces such as backend labels, trace arrays, timing counters, and observation manifests are alive and correctly populated. See `docs/smoke/smoke-handoff-contract.md`.
+
 The viewer also accepts local binary little-endian PLY splat files by drag-and-drop onto the canvas. Drag-and-drop SPZ loading is not wired yet.
 
 Requires WebGPU support (Chrome 113+, Edge 113+, Firefox Nightly).
@@ -151,6 +153,14 @@ npm run build
 npm run smoke:visual:real
 npm run smoke:visual:real -- --tile-local-comparison --out-dir /tmp/tile-local-visual-perf-comparison
 npm run smoke:visual:real -- --static-dessert-witness --out-dir /tmp/static-dessert-witness
+```
+
+When reporting smoke results, include the smoke kind, the decision requested, the expected visual delta, and the evidence surface. A telemetry-only branch may be mergeable while the renderer remains visually bad; do not ask for human visual approval unless the branch claims a visual delta.
+
+Telemetry handoffs can make that explicit in the harness:
+
+```bash
+npm run smoke:visual:real -- --smoke-kind telemetry --decision-requested "confirm anchor traces are populated" --expected-visual-delta "none expected" --evidence-surface "analysis.json tileLocal.perPixelProjectedContributors"
 ```
 
 ## Status
