@@ -17,6 +17,8 @@ test("visual smoke CLI exposes smoke handoff contract metadata flags", () => {
   assert.match(source, /--decision-requested/);
   assert.match(source, /--expected-visual-delta/);
   assert.match(source, /--evidence-surface/);
+  assert.match(source, /--trace-canvas-identity-file/);
+  assert.match(source, /--trace-canvas-comparison-class/);
 });
 
 test("visual smoke reports include the smoke handoff frame", () => {
@@ -24,6 +26,8 @@ test("visual smoke reports include the smoke handoff frame", () => {
 
   assert.match(source, /renderSmokeHandoffSection/);
   assert.match(source, /smokeHandoff/);
+  assert.match(source, /buildTraceCanvasParitySummary/);
+  assert.match(source, /renderTraceCanvasParitySection/);
 });
 
 test("smoke handoff defaults visual and telemetry decisions without losing caller overrides", () => {

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import net from "node:net";
 import path from "node:path";
 
@@ -26,6 +27,10 @@ import {
   parseSmokeKind,
   renderSmokeHandoffSection,
 } from "./visual-smoke/smoke-handoff.mjs";
+import {
+  buildTraceCanvasParitySummary,
+  renderTraceCanvasParitySection,
+} from "./visual-smoke/trace-canvas-parity.mjs";
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
@@ -38,6 +43,8 @@ async function main() {
   const screenshotPath = path.join(reportDir, "canvas.png");
   const analysisPath = path.join(reportDir, "analysis.json");
   const reportPath = path.join(reportDir, "report.md");
+  const gitIdentity = readGitIdentity(options.appRoot);
+  const traceCanvasIdentity = await loadTraceCanvasIdentity(options.traceCanvasIdentityFile);
 
   const consoleMessages = [];
   const pageErrors = [];
@@ -143,6 +150,14 @@ async function main() {
       imageAnalysis,
       smokeClassification: classification,
     });
+    const traceCanvasParity = buildTraceCanvasParitySummary({
+      screenshotBuffer: screenshot,
+      pageEvidence,
+      gitIdentity,
+      url,
+      comparisonClass: options.traceCanvasComparisonClass ?? "same-branch rerun",
+      expectedObservationIdentity: traceCanvasIdentity,
+    });
 
     const result = {
       generatedAt,
@@ -156,6 +171,9 @@ async function main() {
       imageAnalysis,
       classification,
       witnessDiagnostics,
+      traceCanvasParity,
+      gitIdentity,
+      traceCanvasIdentity,
       consoleMessages,
       pageErrors,
     };
@@ -472,6 +490,8 @@ ${renderSmokeHandoffSection(result.smokeHandoff)}
 ${JSON.stringify(result.witnessDiagnostics, null, 2)}
 \`\`\`
 
+${renderTraceCanvasParitySection(result.traceCanvasParity)}
+
 ## Sibling Contract Notes
 
 - Synthetic or fixture content may validate this harness, but it does not close first smoke.
@@ -716,6 +736,7 @@ function printSummary(result) {
   console.log(result.classification.summary);
   console.log(`report: ${result.reportPath}`);
   console.log(`screenshot: ${result.screenshotPath}`);
+  console.log(`trace/canvas parity: ${result.traceCanvasParity?.status ?? "not-run"}`);
 }
 
 function formatMetricRatio(value) {
@@ -771,6 +792,8 @@ function parseArgs(args) {
     decisionRequested: undefined,
     expectedVisualDelta: undefined,
     evidenceSurface: undefined,
+    traceCanvasIdentityFile: undefined,
+    traceCanvasComparisonClass: undefined,
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -866,6 +889,12 @@ function parseArgs(args) {
       case "--evidence-surface":
         options.evidenceSurface = next();
         break;
+      case "--trace-canvas-identity-file":
+        options.traceCanvasIdentityFile = path.resolve(next());
+        break;
+      case "--trace-canvas-comparison-class":
+        options.traceCanvasComparisonClass = next();
+        break;
       case "--help":
       case "-h":
         printHelp();
@@ -899,6 +928,8 @@ function publicOptions(options) {
     tileLocalDiagnostics: options.tileLocalDiagnostics,
     staticDessertWitness: options.staticDessertWitness,
     smokeHandoff: buildSmokeHandoff(options),
+    traceCanvasIdentityFile: options.traceCanvasIdentityFile,
+    traceCanvasComparisonClass: options.traceCanvasComparisonClass,
   };
 }
 
@@ -941,6 +972,8 @@ Options:
   --decision-requested <text>     Merge, rerun, or investigation decision this smoke is meant to support.
   --expected-visual-delta <text>  Expected visual change, or "none expected" for telemetry-only checks.
   --evidence-surface <text>       Report, trace field, timing field, manifest, screenshot, or URL carrying the claim.
+  --trace-canvas-identity-file    JSON file with expected observation identity keys for parity comparison.
+  --trace-canvas-comparison-class Explicit comparison class for parity, e.g. same-branch rerun or prior-main baseline.
   --browser-channel <name>        Playwright channel. Defaults to VISUAL_SMOKE_BROWSER_CHANNEL or chrome.
   --browser-executable <path>     Browser executable path; overrides channel.
   --viewport <WIDTHxHEIGHT>       Browser viewport. Defaults to 1280x720.
@@ -955,3 +988,19 @@ main().catch((error) => {
   console.error(error.stack || error.message);
   process.exit(1);
 });
+
+async function loadTraceCanvasIdentity(identityFile) {
+  if (!identityFile) {
+    return null;
+  }
+
+  const raw = await readFile(identityFile, "utf8");
+  const parsed = JSON.parse(raw);
+  return parsed && typeof parsed === "object" ? parsed : null;
+}
+
+function readGitIdentity(appRoot) {
+  const branch = execFileSync("git", ["-C", appRoot, "branch", "--show-current"], { encoding: "utf8" }).trim();
+  const commit = execFileSync("git", ["-C", appRoot, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  return { branch, commit };
+}
