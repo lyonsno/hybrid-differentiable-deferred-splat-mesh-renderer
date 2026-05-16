@@ -1019,7 +1019,7 @@ function createGpuArenaTileLocalSceneState(
     anchors: TILE_LOCAL_TRACE_ANCHORS,
     rendererMetadata: {
       requestedRenderer: "tile-local-visible",
-      effectiveRenderer: "tile-local-visible",
+      effectiveRenderer: "tile-local-visible-gaussian-compositor",
       requestedArenaBackend: REQUESTED_ARENA_BACKEND,
       effectiveArenaBackend: "gpu",
       tileSizePx: plan.tileSizePx,
@@ -1028,6 +1028,7 @@ function createGpuArenaTileLocalSceneState(
         width: viewportWidth,
         height: viewportHeight,
       },
+      traceExtractionBackend: "gpu-live-anchor-mirror",
     },
   });
 
