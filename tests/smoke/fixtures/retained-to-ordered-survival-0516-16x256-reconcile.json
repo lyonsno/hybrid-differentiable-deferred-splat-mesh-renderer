@@ -1,0 +1,85 @@
+{
+  "observationId": "retained-to-ordered-survival-0516-16x256-reconcile",
+  "comparisonClass": "same-branch rerun",
+  "expectedObservationIdentity": {
+    "branch": "cc/retained-to-ordered-survival-ledger-0515",
+    "commit": "7b72aad",
+    "url": "http://127.0.0.1:5188/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible&traceAnchors=fresh-a@1918,780:lacunar-hole;fresh-b@2166,908:lacunar-hole;fresh-c@1734,1044:lacunar-hole;fresh-d@1514,1324:lacunar-hole;fresh-e@1422,1324:lacunar-hole;fresh-f@2134,988:lacunar-hole",
+    "viewport": {
+      "width": 3456,
+      "height": 1916
+    },
+    "renderer": "tile-local-visible-gaussian-compositor",
+    "arenaBackend": "gpu",
+    "tileSizePx": 16,
+    "maxRefsPerTile": 256,
+    "witnessView": "dessert-porous-close"
+  },
+  "actualObservationIdentity": {
+    "branch": "cc/retained-to-ordered-survival-ledger-0515",
+    "commit": "7b72aad",
+    "url": "http://127.0.0.1:5188/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible&traceAnchors=fresh-a@1918,780:lacunar-hole;fresh-b@2166,908:lacunar-hole;fresh-c@1734,1044:lacunar-hole;fresh-d@1514,1324:lacunar-hole;fresh-e@1422,1324:lacunar-hole;fresh-f@2134,988:lacunar-hole",
+    "viewport": {
+      "width": 3456,
+      "height": 1916
+    },
+    "renderer": "tile-local-visible-gaussian-compositor",
+    "arenaBackend": "gpu",
+    "tileSizePx": 16,
+    "maxRefsPerTile": 256,
+    "witnessView": "dessert-porous-close"
+  },
+  "identityDiffs": [],
+  "sampleScale": {
+    "x": 1,
+    "y": 1
+  },
+  "tolerance": {
+    "maxChannelDelta": 4,
+    "channelOrder": "rgba8"
+  },
+  "anchors": [
+    {
+      "id": "fresh-a",
+      "predictedRgba8": [90, 51, 39, 255],
+      "sampledRgba8": [87, 56, 38, 255],
+      "deltaRgba8": [-3, 5, -1, 0],
+      "maxDelta": 5
+    },
+    {
+      "id": "fresh-b",
+      "predictedRgba8": [91, 51, 40, 255],
+      "sampledRgba8": [158, 105, 67, 255],
+      "deltaRgba8": [67, 54, 27, 0],
+      "maxDelta": 67
+    },
+    {
+      "id": "fresh-c",
+      "predictedRgba8": [89, 53, 42, 255],
+      "sampledRgba8": [26, 19, 17, 255],
+      "deltaRgba8": [-63, -34, -25, 0],
+      "maxDelta": 63
+    },
+    {
+      "id": "fresh-d",
+      "predictedRgba8": [91, 57, 46, 255],
+      "sampledRgba8": [174, 127, 87, 255],
+      "deltaRgba8": [83, 70, 41, 0],
+      "maxDelta": 83
+    },
+    {
+      "id": "fresh-e",
+      "predictedRgba8": [82, 49, 38, 255],
+      "sampledRgba8": [181, 140, 96, 255],
+      "deltaRgba8": [99, 91, 58, 0],
+      "maxDelta": 99
+    },
+    {
+      "id": "fresh-f",
+      "predictedRgba8": [88, 50, 39, 255],
+      "sampledRgba8": [86, 57, 35, 255],
+      "deltaRgba8": [-2, 7, -4, 0],
+      "maxDelta": 7
+    }
+  ]
+}
