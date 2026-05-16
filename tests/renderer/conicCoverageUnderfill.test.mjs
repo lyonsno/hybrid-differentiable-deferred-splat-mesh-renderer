@@ -44,7 +44,8 @@ test("tile-local visible conic coverage keeps adaptive anisotropic falloff witho
   const shader = shaderSource();
 
   assert.match(shader, /fn conic_falloff_scale\(\) -> f32/);
-  assert.match(shader, /frame\.tileSizePx >= 16\.0 && frame\.maxTileRefs >= 256u/);
+  assert.match(shader, /fn conic_falloff_scale\(\) -> f32\s*\{\s*return 2\.0;\s*\}/);
+  assert.doesNotMatch(shader, /frame\.tileSizePx >= 16\.0 && frame\.maxTileRefs >= 256u/);
   assert.match(shader, /fn conic_pixel_weight\(alphaParam: vec4f, conicParam: vec4f, pixelCenter: vec2f\) -> f32/);
   assert.match(shader, /2\.0 \* conicParam\.y \* delta\.x \* delta\.y/);
   assert.match(shader, /exp\(-conic_falloff_scale\(\) \* mahalanobis2\)/);

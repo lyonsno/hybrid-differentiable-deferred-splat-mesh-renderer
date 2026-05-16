@@ -181,9 +181,6 @@ fn gpu_live_tile_coverage_weight(conic: GpuLiveConic, tileCenterPx: vec2f) -> f3
 }
 
 fn conic_falloff_scale() -> f32 {
-  if (frame.tileSizePx >= 16.0 && frame.maxTileRefs >= 256u) {
-    return 0.5;
-  }
   return 2.0;
 }
 
