@@ -3,6 +3,11 @@ import {
   WITNESS_FIELD_CANONICAL,
 } from "../../src/rendererFidelityProbes/witnessCapture.js";
 import { classifyAlphaDensityWitness } from "../../src/rendererFidelityProbes/alphaDensity.js";
+import {
+  classifyTraceCanvasParityWitness,
+  TRACE_CANVAS_PARITY_KINDS,
+  TRACE_CANVAS_PARITY_OWNER,
+} from "./trace-canvas-parity.mjs";
 
 export const WITNESS_OWNER = {
   fieldAutopsy: "field-autopsy",
@@ -11,6 +16,7 @@ export const WITNESS_OWNER = {
   alphaLedger: "alpha-ledger",
   alphaDensity: "alpha-density",
   witnessScope: "witness-scope",
+  traceCanvasParity: TRACE_CANVAS_PARITY_OWNER,
 };
 
 export const WITNESS_FAILURE_KIND = {
@@ -19,6 +25,9 @@ export const WITNESS_FAILURE_KIND = {
   nearPlaneSlab: "near-plane-slab",
   compositingAmbiguous: "compositing-ambiguous",
   alphaDensityOcclusion: "alpha-density-occlusion",
+  traceCanvasMismatch: TRACE_CANVAS_PARITY_KINDS.mismatch,
+  observationMismatch: TRACE_CANVAS_PARITY_KINDS.observationMismatch,
+  traceCanvasCalibrationBlocked: TRACE_CANVAS_PARITY_KINDS.calibrationBlocked,
   noWitnessEvidence: "no-witness-evidence",
 };
 
@@ -55,6 +64,13 @@ export function classifyWitnessCapture({
 
   const alphaDensityFinding = classifyAlphaDensitySmokeWitness(witness.alphaDensity);
   if (alphaDensityFinding) findings.push(alphaDensityFinding);
+
+  if (witness.traceCanvasParity !== undefined) {
+    const traceCanvasParityFinding = classifyTraceCanvasParityWitness(witness.traceCanvasParity);
+    if (traceCanvasParityFinding && traceCanvasParityFinding.kind !== TRACE_CANVAS_PARITY_KINDS.match) {
+      findings.push(traceCanvasParityFinding);
+    }
+  }
 
   if (findings.length === 0 && Object.keys(witness).length === 0) {
     findings.push({
