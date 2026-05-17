@@ -8,6 +8,11 @@ import {
   TRACE_CANVAS_PARITY_KINDS,
   TRACE_CANVAS_PARITY_OWNER,
 } from "./trace-canvas-parity.mjs";
+import {
+  classifyCanvasPresentationTransfer,
+  CANVAS_PRESENTATION_TRANSFER_KINDS,
+  CANVAS_PRESENTATION_TRANSFER_OWNER,
+} from "./canvas-presentation-transfer.mjs";
 
 export const WITNESS_OWNER = {
   fieldAutopsy: "field-autopsy",
@@ -17,6 +22,7 @@ export const WITNESS_OWNER = {
   alphaDensity: "alpha-density",
   witnessScope: "witness-scope",
   traceCanvasParity: TRACE_CANVAS_PARITY_OWNER,
+  canvasPresentationTransfer: CANVAS_PRESENTATION_TRANSFER_OWNER,
 };
 
 export const WITNESS_FAILURE_KIND = {
@@ -28,6 +34,9 @@ export const WITNESS_FAILURE_KIND = {
   traceCanvasMismatch: TRACE_CANVAS_PARITY_KINDS.mismatch,
   observationMismatch: TRACE_CANVAS_PARITY_KINDS.observationMismatch,
   traceCanvasCalibrationBlocked: TRACE_CANVAS_PARITY_KINDS.calibrationBlocked,
+  presentationTransferDivergence: CANVAS_PRESENTATION_TRANSFER_KINDS.transferDivergence,
+  canvasReadbackTransform: CANVAS_PRESENTATION_TRANSFER_KINDS.readbackTransform,
+  presentationUnderinstrumented: CANVAS_PRESENTATION_TRANSFER_KINDS.underinstrumented,
   noWitnessEvidence: "no-witness-evidence",
 };
 
@@ -69,6 +78,16 @@ export function classifyWitnessCapture({
     const traceCanvasParityFinding = classifyTraceCanvasParityWitness(witness.traceCanvasParity);
     if (traceCanvasParityFinding && traceCanvasParityFinding.kind !== TRACE_CANVAS_PARITY_KINDS.match) {
       findings.push(traceCanvasParityFinding);
+    }
+    const canvasPresentationFinding = classifyCanvasPresentationTransfer({
+      traceCanvasParity: witness.traceCanvasParity,
+      pageEvidence,
+    });
+    if (
+      canvasPresentationFinding &&
+      canvasPresentationFinding.kind !== CANVAS_PRESENTATION_TRANSFER_KINDS.cleared
+    ) {
+      findings.push(canvasPresentationFinding);
     }
   }
 
