@@ -50,6 +50,7 @@ function compareAnchor({ traceRow, liveRow, tolerance }) {
     anchorPixel: traceRow?.anchorPixel ?? liveRow?.anchorPixel ?? null,
     tileAddress: traceRow?.tileAddress ?? liveRow?.tileAddress ?? null,
     missingFields,
+    ...liveWindowMetadata(liveRow),
   };
 
   if (missingFields.length > 0) {
@@ -150,16 +151,52 @@ function missingLiveFields(liveRow) {
   if (!liveRow || typeof liveRow !== "object") {
     return REQUIRED_LIVE_BUFFER_FIELDS.map(([field]) => field);
   }
+  const observedZeroRefWindow = isObservedZeroRefWindow(liveRow);
   return REQUIRED_LIVE_BUFFER_FIELDS
-    .filter(([, read]) => isMissing(read(liveRow)))
+    .filter(([field, read]) => isMissing(read(liveRow), { field, observedZeroRefWindow }))
     .map(([field]) => field);
 }
 
-function isMissing(value) {
+function isMissing(value, { field, observedZeroRefWindow } = {}) {
   if (value === null || value === undefined) {
     return true;
   }
-  return Array.isArray(value) && value.length === 0;
+  if (!Array.isArray(value) || value.length > 0) {
+    return false;
+  }
+  return !observedZeroRefWindow || field === "liveBuffer.outputSpace";
+}
+
+function isObservedZeroRefWindow(liveRow) {
+  const liveBuffer = liveRow?.liveBuffer;
+  if (!liveBuffer || typeof liveBuffer !== "object") {
+    return false;
+  }
+  const status = liveBuffer.windowStatus ?? liveRow.windowStatus ?? "";
+  if (status !== "header-offset-outside-live-ref-buffer") {
+    return false;
+  }
+  return nonNegativeInteger(liveBuffer.refCount ?? liveRow.refCount) === 0;
+}
+
+function liveWindowMetadata(liveRow) {
+  const liveBuffer = liveRow?.liveBuffer;
+  if (!liveBuffer || typeof liveBuffer !== "object") {
+    return {};
+  }
+  const header = liveBuffer.legacyTileHeader && typeof liveBuffer.legacyTileHeader === "object"
+    ? liveBuffer.legacyTileHeader
+    : {};
+  return {
+    liveWindowStatus: liveBuffer.windowStatus ?? liveRow?.windowStatus ?? null,
+    liveRefCapacity: nonNegativeInteger(liveBuffer.liveRefCapacity ?? liveRow?.liveRefCapacity),
+    headerOffset: nonNegativeInteger(header.contributorOffset ?? liveBuffer.headerOffset ?? liveRow?.headerOffset),
+    headerCount: nonNegativeInteger(header.retainedContributorCount ?? liveBuffer.headerCount ?? liveRow?.headerCount),
+    scatterCount: nonNegativeInteger(liveBuffer.scatterCount ?? liveRow?.scatterCount),
+    refCount: nonNegativeInteger(liveBuffer.refCount ?? liveRow?.refCount),
+    requestedEnd: nonNegativeInteger(liveBuffer.requestedEnd ?? liveRow?.requestedEnd),
+    truncatedCount: nonNegativeInteger(liveBuffer.truncatedCount ?? liveRow?.truncatedCount),
+  };
 }
 
 function normalizeTraceContributors(traceRow) {

@@ -38,6 +38,29 @@ test("compositor buffer parity matches identity, order, coverage/alpha, source p
   assert.deepEqual(summary.perAnchor[0].order, [0, 1]);
 });
 
+test("compositor buffer parity classifies out-of-capacity readback windows as zero-ref identity divergence", () => {
+  const summary = classifyCompositorBufferTraceParity({
+    traceFinalRows: [traceRow({ anchorId: "fresh-a" })],
+    liveBufferRows: [outOfCapacityBufferRow({ anchorId: "fresh-a" })],
+  });
+
+  assert.equal(summary.classification, "buffer-identity-divergence");
+  const [row] = summary.perAnchor;
+  assert.equal(row.status, "buffer-identity-divergence");
+  assert.deepEqual(row.missingFields, []);
+  assert.equal(row.traceContributorCount, 2);
+  assert.equal(row.bufferContributorCount, 0);
+  assert.equal(row.liveWindowStatus, "header-offset-outside-live-ref-buffer");
+  assert.equal(row.liveRefCapacity, 2360150);
+  assert.equal(row.headerOffset, 2684672);
+  assert.equal(row.requestedEnd, 2689035);
+  assert.deepEqual(row.contributorIds, []);
+  assert.deepEqual(row.missingTraceIdentitySample, [
+    { splatIndex: 101, originalId: 1010 },
+    { splatIndex: 202, originalId: 2020 },
+  ]);
+});
+
 test("compositor buffer parity classifies identity and order divergence before payload drift", () => {
   const identity = classifyCompositorBufferTraceParity({
     traceFinalRows: [traceRow({ anchorId: "fresh-a" })],
@@ -158,6 +181,34 @@ function bufferRow({ anchorId, contributors } = {}) {
       },
     },
     contributors: rows,
+  };
+}
+
+function outOfCapacityBufferRow({ anchorId }) {
+  return {
+    anchorId,
+    anchorPixel: { id: anchorId, x: 1918, y: 780 },
+    tileAddress: { tileSizePx: 16, tileX: 119, tileY: 48, tileIndex: 10487, localX: 14, localY: 12 },
+    liveBuffer: {
+      legacyTileHeader: { contributorOffset: 2684672, retainedContributorCount: 0 },
+      legacyTileRefs: [],
+      legacyTileCoverageWeights: [],
+      legacyAlphaParams: [],
+      sourceColor: [],
+      opacity: [],
+      outputSpace: {
+        textureFormat: "rgba16float",
+        sampleSpace: "linear-float",
+        transferStage: "after-gpu-arena-dispatch-before-composite-tiles",
+      },
+      windowStatus: "header-offset-outside-live-ref-buffer",
+      liveRefCapacity: 2360150,
+      refCount: 0,
+      scatterCount: 4363,
+      requestedEnd: 2689035,
+      truncatedCount: 328885,
+    },
+    contributors: [],
   };
 }
 

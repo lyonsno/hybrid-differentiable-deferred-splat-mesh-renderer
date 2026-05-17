@@ -32,6 +32,14 @@ export interface CompositorBufferTraceParitySummary {
     firstDivergentOrderIndex?: number;
     firstCoverageAlphaMismatch?: unknown;
     firstSourcePayloadMismatch?: unknown;
+    liveWindowStatus?: string | null;
+    liveRefCapacity?: number;
+    headerOffset?: number;
+    headerCount?: number;
+    scatterCount?: number;
+    refCount?: number;
+    requestedEnd?: number;
+    truncatedCount?: number;
   }>;
 }
 
