@@ -1002,19 +1002,6 @@ function createTileLocalSceneState(
   viewportHeight: number,
   footprintParams: RuntimeFootprintParams
 ): TileLocalSceneState {
-  if (REQUESTED_ARENA_BACKEND === "gpu") {
-    return createGpuArenaTileLocalSceneState(
-      device,
-      attributes,
-      buffers,
-      effectiveOpacities,
-      viewMatrix,
-      viewProj,
-      viewportWidth,
-      viewportHeight,
-      footprintParams
-    );
-  }
   return createCpuTileLocalSceneState(
     device,
     attributes,

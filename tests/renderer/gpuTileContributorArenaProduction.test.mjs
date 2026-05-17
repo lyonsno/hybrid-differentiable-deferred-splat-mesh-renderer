@@ -185,23 +185,27 @@ test("GPU contributor arena runtime writes legacy compositor buffers for live co
   assert.match(mainSource, /adaptGpuArenaRetainedContributors/);
 });
 
-test("requested GPU arena live path does not build the CPU tile-local prepass first", () => {
+test("requested GPU arena route builds the retained-list handoff before live composition", () => {
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const createStart = mainSource.indexOf("function createTileLocalSceneState");
   const gpuFactoryStart = mainSource.indexOf("function createGpuArenaTileLocalSceneState");
   const cpuFactoryStart = mainSource.indexOf("function createCpuTileLocalSceneState");
+  const routeSource = mainSource.slice(createStart, gpuFactoryStart);
+  const cpuFactorySource = mainSource.slice(cpuFactoryStart);
 
+  assert.ok(createStart >= 0, "tile-local route function should exist");
   assert.ok(gpuFactoryStart >= 0, "GPU arena path should have its own live scene-state factory");
   assert.ok(cpuFactoryStart > gpuFactoryStart, "CPU bridge path should be a separate factory after the GPU path");
 
-  const gpuFactorySource = mainSource.slice(gpuFactoryStart, cpuFactoryStart);
-  assert.doesNotMatch(gpuFactorySource, /buildTileLocalPrepassBridge/);
-  assert.doesNotMatch(gpuFactorySource, /adaptGpuArenaRetainedContributors/);
-  assert.match(gpuFactorySource, /gpuLiveMaxTileRefs\(device, tileCount, attributes\.count\)/);
+  assert.doesNotMatch(routeSource, /return createGpuArenaTileLocalSceneState/);
+  assert.match(routeSource, /return createCpuTileLocalSceneState\(/);
+  assert.match(cpuFactorySource, /buildTileLocalPrepassBridge/);
+  assert.match(cpuFactorySource, /adaptGpuArenaRetainedContributors/);
   assert.match(mainSource, /maxStorageBufferBindingSize/);
-  assert.match(mainSource, /REQUESTED_ARENA_BACKEND === "gpu"[\s\S]*createGpuArenaTileLocalSceneState/);
+  assert.match(mainSource, /REQUESTED_ARENA_BACKEND === "gpu"[\s\S]*adaptGpuArenaRetainedContributors/);
 });
 
-test("requested GPU arena live path exposes per-anchor contributor traces instead of empty smoke arrays", () => {
+test("direct GPU arena factory exposes per-anchor contributor traces instead of empty smoke arrays", () => {
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const gpuFactoryStart = mainSource.indexOf("function createGpuArenaTileLocalSceneState");
   const cpuFactoryStart = mainSource.indexOf("function createCpuTileLocalSceneState");
@@ -211,6 +215,26 @@ test("requested GPU arena live path exposes per-anchor contributor traces instea
   assert.doesNotMatch(gpuFactorySource, /gpuArenaProjectedContributors:\s*\[\]/);
   assert.doesNotMatch(gpuFactorySource, /perPixelProjectedContributors:\s*\[\]/);
   assert.doesNotMatch(gpuFactorySource, /perPixelRetainedContributors:\s*\[\]/);
+});
+
+test("requested GPU arena route keeps the trace-law retained contributor set in the compositor handoff", () => {
+  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const createStart = mainSource.indexOf("function createTileLocalSceneState");
+  const gpuFactoryStart = mainSource.indexOf("function createGpuArenaTileLocalSceneState");
+  const routeSource = mainSource.slice(createStart, gpuFactoryStart);
+
+  assert.ok(createStart >= 0, "createTileLocalSceneState should exist");
+  assert.ok(gpuFactoryStart > createStart, "GPU factory should follow the route function");
+  assert.doesNotMatch(
+    routeSource,
+    /REQUESTED_ARENA_BACKEND === "gpu"[\s\S]*?return createGpuArenaTileLocalSceneState/,
+    "the selected gpu route must not bypass the retained-list adapter before composite_tiles",
+  );
+  assert.match(
+    routeSource,
+    /return createCpuTileLocalSceneState\(/,
+    "the selected gpu route should enter the retained-list adapter path before the GPU runtime compositor",
+  );
 });
 
 function contributor(overrides) {
