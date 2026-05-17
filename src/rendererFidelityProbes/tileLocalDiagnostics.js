@@ -248,18 +248,20 @@ function readRuntimeTileHeader(tileHeaders, tileIndex) {
 }
 
 function completeRuntimeTileHeader({ header, runtimeTileRecords, traceProjectedCount }) {
-  if (header.retainedContributorCount > 0 || runtimeTileRecords.length === 0) {
+  const retainedContributorCount = header.retainedContributorCount > 0
+    ? header.retainedContributorCount
+    : runtimeTileRecords.length;
+  if (retainedContributorCount === 0 && runtimeTileRecords.length === 0) {
     return header;
   }
-  const retainedContributorCount = runtimeTileRecords.length;
   const projectedContributorCount = Math.max(nonNegativeFiniteInteger(traceProjectedCount), retainedContributorCount);
   const droppedContributorCount = Math.max(0, projectedContributorCount - retainedContributorCount);
   return {
-    contributorOffset: 0,
+    contributorOffset: header.retainedContributorCount > 0 ? header.contributorOffset : 0,
     retainedContributorCount,
     projectedContributorCount,
     droppedContributorCount,
-    overflowFlags: droppedContributorCount > 0 ? 1 : 0,
+    overflowFlags: Math.max(header.overflowFlags, droppedContributorCount > 0 ? 1 : 0),
   };
 }
 

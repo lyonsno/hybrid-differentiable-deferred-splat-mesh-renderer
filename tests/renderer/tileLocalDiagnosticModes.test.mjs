@@ -322,6 +322,68 @@ test("tile-local runtime budget exposes per-anchor live tile identities for trac
   assert.equal(gpuLiveMirrorSummary.runtimeRefBudget.anchorTileEvidence[0].identityMatch, true);
 });
 
+test("tile-local runtime budget repairs legacy runtime headers with trace projected pressure", () => {
+  const retainedIdentities = Array.from({ length: 4 }, (_, index) => ({
+    splatIndex: 100 + index,
+    originalId: 200 + index,
+  }));
+  const summary = summarizeTileLocalDiagnostics({
+    debugMode: "final-color",
+    plan: {
+      tileColumns: 1,
+      tileRows: 1,
+      tileSizePx: 16,
+      maxTileRefs: 4,
+    },
+    tileEntryCount: 4,
+    tileHeaders: Uint32Array.from([
+      0, 4, 4, 0,
+    ]),
+    tileRefCustody: {
+      projectedTileEntryCount: 11,
+      retainedTileEntryCount: 4,
+      evictedTileEntryCount: 7,
+      cappedTileCount: 1,
+      saturatedRetainedTileCount: 1,
+      maxProjectedRefsPerTile: 11,
+      maxRetainedRefsPerTile: 4,
+      headerRefCount: 4,
+      headerAccountingMatches: true,
+    },
+    tileCoverageWeights: Float32Array.from([1, 1, 1, 1]),
+    alphaParamData: new Float32Array(8),
+    runtimeContributors: retainedIdentities.map((identity) => ({
+      ...identity,
+      tileIndex: 0,
+    })),
+    traceCapacityEvidence: {
+      anchors: [
+        {
+          id: "legacy-saturated-anchor",
+          x: 7,
+          y: 9,
+          tileAddress: { tileSizePx: 16, tileX: 0, tileY: 0, tileIndex: 0, localX: 7, localY: 9 },
+          projectedCount: 11,
+          retainedCount: 4,
+          finalStepCount: 4,
+          retainedIdentities,
+        },
+      ],
+    },
+  });
+
+  const [anchor] = summary.runtimeRefBudget.anchorTileEvidence;
+  assert.deepEqual(anchor.runtimeTileHeader, {
+    contributorOffset: 0,
+    retainedContributorCount: 4,
+    projectedContributorCount: 11,
+    droppedContributorCount: 7,
+    overflowFlags: 1,
+  });
+  assert.equal(anchor.runtimeConsumedCount, 4);
+  assert.equal(anchor.identityMatch, true);
+});
+
 test("tile-local diagnostic shader branches are debug-only and preserve final color as mode zero", () => {
   const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
 
