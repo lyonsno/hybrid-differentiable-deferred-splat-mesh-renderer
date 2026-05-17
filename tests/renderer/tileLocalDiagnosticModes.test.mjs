@@ -169,6 +169,159 @@ test("tile-local diagnostic summary classifies GPU runtime budget below trace re
   ]);
 });
 
+test("tile-local runtime budget exposes per-anchor live tile identities for trace comparison", () => {
+  const summary = summarizeTileLocalDiagnostics({
+    debugMode: "final-color",
+    plan: {
+      tileColumns: 2,
+      tileRows: 1,
+      tileSizePx: 16,
+      maxTileRefs: 8,
+    },
+    tileEntryCount: 3,
+    tileHeaders: Uint32Array.from([
+      0, 2, 3, 1,
+      2, 1, 1, 0,
+    ]),
+    tileRefCustody: {
+      projectedTileEntryCount: 4,
+      retainedTileEntryCount: 3,
+      evictedTileEntryCount: 1,
+      cappedTileCount: 1,
+      saturatedRetainedTileCount: 0,
+      maxProjectedRefsPerTile: 3,
+      maxRetainedRefsPerTile: 2,
+      headerRefCount: 3,
+      headerAccountingMatches: true,
+    },
+    tileCoverageWeights: Float32Array.from([0.9, 0.8, 0.7]),
+    alphaParamData: new Float32Array(8),
+    runtimeContributors: [
+      { splatIndex: 10, originalId: 100, tileIndex: 0 },
+      { splatIndex: 11, originalId: 101, tileIndex: 0 },
+      { splatIndex: 20, originalId: 200, tileIndex: 1 },
+    ],
+    traceCapacityEvidence: {
+      anchors: [
+        {
+          id: "fresh-a",
+          x: 7,
+          y: 9,
+          tileAddress: { tileSizePx: 16, tileX: 0, tileY: 0, tileIndex: 0, localX: 7, localY: 9 },
+          projectedCount: 3,
+          retainedCount: 3,
+          finalStepCount: 3,
+          retainedIdentities: [
+            { splatIndex: 10, originalId: 100 },
+            { splatIndex: 11, originalId: 101 },
+            { splatIndex: 12, originalId: 102 },
+          ],
+        },
+      ],
+    },
+  });
+
+  assert.deepEqual(summary.runtimeRefBudget.frameHeaderAccounting, {
+    projectedTileEntryCount: 4,
+    retainedTileEntryCount: 3,
+    evictedTileEntryCount: 1,
+    cappedTileCount: 1,
+    saturatedRetainedTileCount: 0,
+    maxProjectedRefsPerTile: 3,
+    maxRetainedRefsPerTile: 2,
+    headerRefCount: 3,
+    headerAccountingMatches: true,
+  });
+  assert.equal(summary.runtimeRefBudget.anchorTileEvidence.length, 1);
+  const [anchor] = summary.runtimeRefBudget.anchorTileEvidence;
+  assert.equal(anchor.id, "fresh-a");
+  assert.deepEqual(anchor.anchorPixel, { x: 7, y: 9 });
+  assert.deepEqual(anchor.tileAddress, { tileSizePx: 16, tileX: 0, tileY: 0, tileIndex: 0, localX: 7, localY: 9 });
+  assert.equal(anchor.traceProjectedCount, 3);
+  assert.equal(anchor.traceRetainedCount, 3);
+  assert.equal(anchor.traceFinalStepCount, 3);
+  assert.deepEqual(anchor.runtimeTileHeader, {
+    contributorOffset: 0,
+    retainedContributorCount: 2,
+    projectedContributorCount: 3,
+    droppedContributorCount: 1,
+    overflowFlags: 1,
+  });
+  assert.equal(anchor.runtimeConsumedCount, 2);
+  assert.notEqual(anchor.traceRetainedIdentityHash, anchor.runtimeConsumedIdentityHash);
+  assert.deepEqual(anchor.traceRetainedIdentitySample, [
+    { splatIndex: 10, originalId: 100 },
+    { splatIndex: 11, originalId: 101 },
+    { splatIndex: 12, originalId: 102 },
+  ]);
+  assert.deepEqual(anchor.runtimeConsumedIdentitySample, [
+    { splatIndex: 10, originalId: 100 },
+    { splatIndex: 11, originalId: 101 },
+  ]);
+  assert.deepEqual(anchor.missingTraceIdentitySample, [
+    { splatIndex: 12, originalId: 102 },
+  ]);
+  assert.deepEqual(anchor.extraRuntimeIdentitySample, []);
+  assert.equal(anchor.identityMatch, false);
+
+  const gpuLiveMirrorSummary = summarizeTileLocalDiagnostics({
+    debugMode: "final-color",
+    plan: {
+      tileColumns: 2,
+      tileRows: 1,
+      tileSizePx: 16,
+      maxTileRefs: 8,
+    },
+    tileEntryCount: 3,
+    tileHeaders: new Uint32Array(8),
+    tileRefCustody: {
+      projectedTileEntryCount: 4,
+      retainedTileEntryCount: 3,
+      evictedTileEntryCount: 1,
+      cappedTileCount: 1,
+      saturatedRetainedTileCount: 0,
+      maxProjectedRefsPerTile: 3,
+      maxRetainedRefsPerTile: 2,
+      headerRefCount: 3,
+      headerAccountingMatches: true,
+    },
+    tileCoverageWeights: Float32Array.from([0.9, 0.8, 0.7]),
+    alphaParamData: new Float32Array(8),
+    runtimeContributors: [
+      { splatIndex: 10, originalId: 100, tileIndex: 0 },
+      { splatIndex: 11, originalId: 101, tileIndex: 0 },
+      { splatIndex: 12, originalId: 102, tileIndex: 0 },
+    ],
+    traceCapacityEvidence: {
+      anchors: [
+        {
+          id: "fresh-a",
+          x: 7,
+          y: 9,
+          tileAddress: { tileSizePx: 16, tileX: 0, tileY: 0, tileIndex: 0, localX: 7, localY: 9 },
+          projectedCount: 3,
+          retainedCount: 3,
+          finalStepCount: 3,
+          retainedIdentities: [
+            { splatIndex: 10, originalId: 100 },
+            { splatIndex: 11, originalId: 101 },
+            { splatIndex: 12, originalId: 102 },
+          ],
+        },
+      ],
+    },
+  });
+  assert.equal(gpuLiveMirrorSummary.runtimeRefBudget.anchorTileEvidence[0].runtimeConsumedCount, 3);
+  assert.deepEqual(gpuLiveMirrorSummary.runtimeRefBudget.anchorTileEvidence[0].runtimeTileHeader, {
+    contributorOffset: 0,
+    retainedContributorCount: 3,
+    projectedContributorCount: 3,
+    droppedContributorCount: 0,
+    overflowFlags: 0,
+  });
+  assert.equal(gpuLiveMirrorSummary.runtimeRefBudget.anchorTileEvidence[0].identityMatch, true);
+});
+
 test("tile-local diagnostic shader branches are debug-only and preserve final color as mode zero", () => {
   const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
 

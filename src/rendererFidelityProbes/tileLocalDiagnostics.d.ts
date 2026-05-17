@@ -11,14 +11,66 @@ export interface TileLocalDiagnosticSummaryInput {
   readonly tileCoverageWeights: Float32Array;
   readonly alphaParamData: Float32Array;
   readonly sourceOpacities?: Float32Array;
+  readonly runtimeContributors?: readonly {
+    readonly splatIndex?: number;
+    readonly originalId?: number;
+    readonly tileIndex?: number;
+  }[];
   readonly traceCapacityEvidence?: {
     readonly anchors?: readonly {
       readonly id?: string;
+      readonly x?: number;
+      readonly y?: number;
+      readonly tileAddress?: TileLocalRuntimeAnchorTileAddress;
       readonly projectedCount?: number;
       readonly retainedCount?: number;
       readonly finalStepCount?: number;
+      readonly retainedIdentities?: readonly TileLocalRuntimeIdentity[];
     }[];
   };
+}
+
+export interface TileLocalRuntimeIdentity {
+  readonly splatIndex: number;
+  readonly originalId: number;
+}
+
+export interface TileLocalRuntimeAnchorTileAddress {
+  readonly tileSizePx: number;
+  readonly tileX: number;
+  readonly tileY: number;
+  readonly tileIndex: number;
+  readonly localX: number;
+  readonly localY: number;
+}
+
+export interface TileLocalRuntimeTileHeaderSummary {
+  readonly contributorOffset: number;
+  readonly retainedContributorCount: number;
+  readonly projectedContributorCount: number;
+  readonly droppedContributorCount: number;
+  readonly overflowFlags: number;
+}
+
+export interface TileLocalRuntimeAnchorTileEvidence {
+  readonly id: string;
+  readonly anchorPixel: {
+    readonly x: number;
+    readonly y: number;
+  };
+  readonly tileAddress: TileLocalRuntimeAnchorTileAddress;
+  readonly traceProjectedCount: number;
+  readonly traceRetainedCount: number;
+  readonly traceFinalStepCount: number;
+  readonly runtimeTileHeader: TileLocalRuntimeTileHeaderSummary;
+  readonly runtimeConsumedCount: number;
+  readonly traceRetainedIdentityHash: string;
+  readonly runtimeConsumedIdentityHash: string;
+  readonly traceRetainedIdentitySample: readonly TileLocalRuntimeIdentity[];
+  readonly runtimeConsumedIdentitySample: readonly TileLocalRuntimeIdentity[];
+  readonly missingTraceIdentitySample: readonly TileLocalRuntimeIdentity[];
+  readonly extraRuntimeIdentitySample: readonly TileLocalRuntimeIdentity[];
+  readonly identityMatch: boolean;
 }
 
 export interface TileLocalDiagnosticSummary {
@@ -44,11 +96,17 @@ export interface TileLocalDiagnosticSummary {
     readonly effectiveRefsPerTile: number;
     readonly maxTraceRetainedContributors: number;
     readonly maxTraceFinalSteps: number;
+    readonly frameHeaderAccounting: TileRefCustodySummary;
+    readonly anchorTileEvidence: readonly TileLocalRuntimeAnchorTileEvidence[];
     readonly blockingAnchors: readonly {
       readonly id: string;
+      readonly x: number | null;
+      readonly y: number | null;
+      readonly tileAddress: TileLocalRuntimeAnchorTileAddress | null;
       readonly projectedCount: number;
       readonly retainedCount: number;
       readonly finalStepCount: number;
+      readonly retainedIdentities: readonly TileLocalRuntimeIdentity[];
     }[];
   };
   readonly retentionAudit: TileRetentionAudit | null;

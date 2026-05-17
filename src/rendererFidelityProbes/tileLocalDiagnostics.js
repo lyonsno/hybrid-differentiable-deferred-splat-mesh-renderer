@@ -8,6 +8,7 @@ export function summarizeTileLocalDiagnostics({
   tileCoverageWeights,
   alphaParamData,
   sourceOpacities,
+  runtimeContributors,
   traceCapacityEvidence,
 } = {}) {
   const maxTileRefs = positiveInteger(plan?.maxTileRefs, "plan.maxTileRefs");
@@ -18,6 +19,7 @@ export function summarizeTileLocalDiagnostics({
   const tileRefs = observedTileRefs.total > 0
     ? observedTileRefs
     : summarizeEstimatedTileRefs(tileRefCustody, tileCount);
+  const normalizedTileRefCustody = normalizeTileRefCustody(tileRefCustody, tileRefs);
   const coverageWeight = summarizeFloatRange(tileCoverageWeights, refLimit);
   const alpha = summarizeAlpha({
     alphaParamData,
@@ -40,11 +42,13 @@ export function summarizeTileLocalDiagnostics({
       tileSizePx: plan.tileSizePx,
     },
     tileRefs,
-    tileRefCustody: normalizeTileRefCustody(tileRefCustody, tileRefs),
+    tileRefCustody: normalizedTileRefCustody,
     runtimeRefBudget: summarizeRuntimeRefBudget({
       plan,
+      tileHeaders,
       tileRefs,
-      tileRefCustody,
+      tileRefCustody: normalizedTileRefCustody,
+      runtimeContributors,
       traceCapacityEvidence,
     }),
     retentionAudit: normalizeRetentionAudit(retentionAudit),
@@ -56,8 +60,10 @@ export function summarizeTileLocalDiagnostics({
 
 function summarizeRuntimeRefBudget({
   plan,
+  tileHeaders,
   tileRefs,
   tileRefCustody,
+  runtimeContributors,
   traceCapacityEvidence,
 }) {
   const tileCount = positiveInteger(plan?.tileColumns, "plan.tileColumns") *
@@ -94,6 +100,13 @@ function summarizeRuntimeRefBudget({
     maxTraceRetainedContributors,
     maxTraceFinalSteps,
     blockingAnchors,
+    frameHeaderAccounting: normalizeFrameHeaderAccounting(tileRefCustody),
+    anchorTileEvidence: summarizeAnchorTileEvidence({
+      plan,
+      tileHeaders,
+      runtimeContributors,
+      anchors,
+    }),
   };
 }
 
@@ -105,10 +118,207 @@ function normalizeTraceCapacityAnchors(anchors) {
     .filter((anchor) => anchor && typeof anchor === "object")
     .map((anchor) => ({
       id: typeof anchor.id === "string" ? anchor.id : "",
+      x: finiteNumberOrNull(anchor.x),
+      y: finiteNumberOrNull(anchor.y),
+      tileAddress: normalizeTileAddress(anchor.tileAddress),
       projectedCount: nonNegativeFiniteInteger(anchor.projectedCount),
       retainedCount: nonNegativeFiniteInteger(anchor.retainedCount),
       finalStepCount: nonNegativeFiniteInteger(anchor.finalStepCount),
+      retainedIdentities: normalizeIdentityList(anchor.retainedIdentities),
     }));
+}
+
+function normalizeFrameHeaderAccounting(tileRefCustody) {
+  return {
+    projectedTileEntryCount: nonNegativeFiniteInteger(tileRefCustody?.projectedTileEntryCount),
+    retainedTileEntryCount: nonNegativeFiniteInteger(tileRefCustody?.retainedTileEntryCount),
+    evictedTileEntryCount: nonNegativeFiniteInteger(tileRefCustody?.evictedTileEntryCount),
+    cappedTileCount: nonNegativeFiniteInteger(tileRefCustody?.cappedTileCount),
+    saturatedRetainedTileCount: nonNegativeFiniteInteger(tileRefCustody?.saturatedRetainedTileCount),
+    maxProjectedRefsPerTile: nonNegativeFiniteInteger(tileRefCustody?.maxProjectedRefsPerTile),
+    maxRetainedRefsPerTile: nonNegativeFiniteInteger(tileRefCustody?.maxRetainedRefsPerTile),
+    headerRefCount: nonNegativeFiniteInteger(tileRefCustody?.headerRefCount),
+    headerAccountingMatches: tileRefCustody?.headerAccountingMatches === true,
+  };
+}
+
+function summarizeAnchorTileEvidence({
+  plan,
+  tileHeaders,
+  runtimeContributors,
+  anchors,
+}) {
+  if (!Array.isArray(anchors) || anchors.length === 0) {
+    return [];
+  }
+  const runtimeRecords = Array.isArray(runtimeContributors) ? runtimeContributors : [];
+  return anchors.map((anchor) => {
+    const tileAddress = normalizeAnchorTileAddress(anchor, plan);
+    const runtimeTileRecords = runtimeRecords.filter((record) => record?.tileIndex === tileAddress.tileIndex);
+    const runtimeTileHeader = completeRuntimeTileHeader({
+      header: readRuntimeTileHeader(tileHeaders, tileAddress.tileIndex),
+      runtimeTileRecords,
+      traceProjectedCount: anchor.projectedCount,
+    });
+    const runtimeIdentities = normalizeIdentityList(runtimeConsumedRecords({
+      runtimeRecords,
+      runtimeTileHeader,
+      tileIndex: tileAddress.tileIndex,
+    }));
+    const traceIdentities = normalizeIdentityList(anchor.retainedIdentities);
+    const traceRetainedIdentityHash = identityHash(traceIdentities);
+    const runtimeConsumedIdentityHash = identityHash(runtimeIdentities);
+    const missingTraceIdentitySample = identityDifference(traceIdentities, runtimeIdentities);
+    const extraRuntimeIdentitySample = identityDifference(runtimeIdentities, traceIdentities);
+
+    return {
+      id: anchor.id,
+      anchorPixel: {
+        x: anchor.x ?? 0,
+        y: anchor.y ?? 0,
+      },
+      tileAddress,
+      traceProjectedCount: anchor.projectedCount,
+      traceRetainedCount: anchor.retainedCount,
+      traceFinalStepCount: anchor.finalStepCount,
+      runtimeTileHeader,
+      runtimeConsumedCount: runtimeIdentities.length,
+      traceRetainedIdentityHash,
+      runtimeConsumedIdentityHash,
+      traceRetainedIdentitySample: identitySample(traceIdentities),
+      runtimeConsumedIdentitySample: identitySample(runtimeIdentities),
+      missingTraceIdentitySample,
+      extraRuntimeIdentitySample,
+      identityMatch: traceIdentities.length === runtimeIdentities.length &&
+        traceRetainedIdentityHash === runtimeConsumedIdentityHash,
+    };
+  });
+}
+
+function normalizeAnchorTileAddress(anchor, plan) {
+  const explicit = normalizeTileAddress(anchor.tileAddress);
+  if (explicit) {
+    return explicit;
+  }
+  const tileSizePx = positiveInteger(plan?.tileSizePx, "plan.tileSizePx");
+  const tileColumns = positiveInteger(plan?.tileColumns, "plan.tileColumns");
+  const tileRows = positiveInteger(plan?.tileRows, "plan.tileRows");
+  const x = Number.isFinite(anchor.x) ? anchor.x : 0;
+  const y = Number.isFinite(anchor.y) ? anchor.y : 0;
+  const tileX = clampInteger(Math.floor(x / tileSizePx), 0, tileColumns - 1);
+  const tileY = clampInteger(Math.floor(y / tileSizePx), 0, tileRows - 1);
+  return {
+    tileSizePx,
+    tileX,
+    tileY,
+    tileIndex: tileY * tileColumns + tileX,
+    localX: x - tileX * tileSizePx,
+    localY: y - tileY * tileSizePx,
+  };
+}
+
+function normalizeTileAddress(tileAddress) {
+  if (!tileAddress || typeof tileAddress !== "object") {
+    return null;
+  }
+  return {
+    tileSizePx: nonNegativeFiniteInteger(tileAddress.tileSizePx),
+    tileX: nonNegativeFiniteInteger(tileAddress.tileX),
+    tileY: nonNegativeFiniteInteger(tileAddress.tileY),
+    tileIndex: nonNegativeFiniteInteger(tileAddress.tileIndex),
+    localX: nonNegativeFiniteInteger(tileAddress.localX),
+    localY: nonNegativeFiniteInteger(tileAddress.localY),
+  };
+}
+
+function readRuntimeTileHeader(tileHeaders, tileIndex) {
+  const base = nonNegativeFiniteInteger(tileIndex) * 4;
+  const contributorOffset = nonNegativeFiniteInteger(tileHeaders?.[base]);
+  const retainedContributorCount = nonNegativeFiniteInteger(tileHeaders?.[base + 1]);
+  const projectedContributorCount = nonNegativeFiniteInteger(tileHeaders?.[base + 2] ?? retainedContributorCount);
+  const droppedContributorCount = Math.max(0, projectedContributorCount - retainedContributorCount);
+  const overflowFlags = nonNegativeFiniteInteger(tileHeaders?.[base + 3] ?? (droppedContributorCount > 0 ? 1 : 0));
+  return {
+    contributorOffset,
+    retainedContributorCount,
+    projectedContributorCount,
+    droppedContributorCount,
+    overflowFlags,
+  };
+}
+
+function completeRuntimeTileHeader({ header, runtimeTileRecords, traceProjectedCount }) {
+  if (header.retainedContributorCount > 0 || runtimeTileRecords.length === 0) {
+    return header;
+  }
+  const retainedContributorCount = runtimeTileRecords.length;
+  const projectedContributorCount = Math.max(nonNegativeFiniteInteger(traceProjectedCount), retainedContributorCount);
+  const droppedContributorCount = Math.max(0, projectedContributorCount - retainedContributorCount);
+  return {
+    contributorOffset: 0,
+    retainedContributorCount,
+    projectedContributorCount,
+    droppedContributorCount,
+    overflowFlags: droppedContributorCount > 0 ? 1 : 0,
+  };
+}
+
+function runtimeConsumedRecords({ runtimeRecords, runtimeTileHeader, tileIndex }) {
+  const start = runtimeTileHeader.contributorOffset;
+  const end = start + runtimeTileHeader.retainedContributorCount;
+  const headerSlice = runtimeRecords
+    .slice(start, end)
+    .filter((record) => !Number.isInteger(record?.tileIndex) || record.tileIndex === tileIndex);
+  if (headerSlice.length === runtimeTileHeader.retainedContributorCount) {
+    return headerSlice;
+  }
+  return runtimeRecords
+    .filter((record) => record?.tileIndex === tileIndex)
+    .slice(0, runtimeTileHeader.retainedContributorCount);
+}
+
+function normalizeIdentityList(identities) {
+  if (!Array.isArray(identities)) {
+    return [];
+  }
+  return identities
+    .map((identity) => ({
+      splatIndex: nonNegativeFiniteInteger(identity?.splatIndex),
+      originalId: nonNegativeFiniteInteger(identity?.originalId),
+    }))
+    .sort(compareIdentities);
+}
+
+function compareIdentities(left, right) {
+  return left.splatIndex - right.splatIndex || left.originalId - right.originalId;
+}
+
+function identitySample(identities, maxSamples = 12) {
+  return normalizeIdentityList(identities).slice(0, maxSamples);
+}
+
+function identityDifference(left, right, maxSamples = 12) {
+  const rightKeys = new Set(normalizeIdentityList(right).map(identityKey));
+  return normalizeIdentityList(left)
+    .filter((identity) => !rightKeys.has(identityKey(identity)))
+    .slice(0, maxSamples);
+}
+
+function identityHash(identities) {
+  const normalized = normalizeIdentityList(identities);
+  let hash = 0x811c9dc5;
+  for (const identity of normalized) {
+    const token = `${identity.splatIndex}:${identity.originalId};`;
+    for (let index = 0; index < token.length; index += 1) {
+      hash ^= token.charCodeAt(index);
+      hash = Math.imul(hash, 0x01000193) >>> 0;
+    }
+  }
+  return `fnv1a32:${hash.toString(16).padStart(8, "0")}`;
+}
+
+function identityKey(identity) {
+  return `${identity.splatIndex}:${identity.originalId}`;
 }
 
 function normalizeRetentionAudit(retentionAudit) {
@@ -378,8 +588,16 @@ function nonNegativeFiniteInteger(value) {
   return Number.isInteger(value) && value >= 0 ? value : 0;
 }
 
+function finiteNumberOrNull(value) {
+  return Number.isFinite(value) ? value : null;
+}
+
 function clamp01(value) {
   return Math.min(Math.max(value, 0), 1);
+}
+
+function clampInteger(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function round(value) {

@@ -1812,6 +1812,7 @@ function refreshTileLocalDiagnostics(
     tileCoverageWeights: state.tileCoverageWeightData,
     alphaParamData: state.alphaParamData,
     sourceOpacities: state.sourceOpacities,
+    runtimeContributors: state.gpuArenaProjectedContributors,
     traceCapacityEvidence: traceCapacityEvidenceFromState(state, perPixelFinalColorAccumulation),
   });
   return state.diagnostics;
@@ -1823,9 +1824,23 @@ function traceCapacityEvidenceFromState(
 ): {
   anchors: {
     id: string;
+    x: number;
+    y: number;
+    tileAddress: {
+      tileSizePx: number;
+      tileX: number;
+      tileY: number;
+      tileIndex: number;
+      localX: number;
+      localY: number;
+    };
     projectedCount: number;
     retainedCount: number;
     finalStepCount: number;
+    retainedIdentities: {
+      splatIndex: number;
+      originalId: number;
+    }[];
   }[];
 } {
   const finalStepCountByAnchorId = new Map(
@@ -1846,21 +1861,38 @@ function traceCapacityEvidenceFromState(
   return {
     anchors: state.perPixelRetainedContributors.map((record) => {
       const traceRecord = record.traceRecord ?? record;
+      const retainedContributors = Array.isArray(traceRecord.retainedContributors)
+        ? traceRecord.retainedContributors
+        : [];
       const finalColorAccumulation = (traceRecord as {
         finalColorAccumulation?: { steps?: unknown[] };
       }).finalColorAccumulation;
       return {
         id: record.anchorPixel.id,
+        x: record.anchorPixel.x,
+        y: record.anchorPixel.y,
+        tileAddress: record.tileAddress,
         projectedCount: Array.isArray(traceRecord.projectedContributors)
           ? traceRecord.projectedContributors.length
           : 0,
-        retainedCount: Array.isArray(traceRecord.retainedContributors)
-          ? traceRecord.retainedContributors.length
-          : 0,
+        retainedCount: retainedContributors.length,
         finalStepCount: finalStepCountByAnchorId.get(record.anchorPixel.id) ??
           (Array.isArray(finalColorAccumulation?.steps) ? finalColorAccumulation.steps.length : 0),
+        retainedIdentities: retainedContributors.map(contributorIdentity),
       };
     }),
+  };
+}
+
+function contributorIdentity(contributor: unknown): { splatIndex: number; originalId: number } {
+  const record = contributor as { splatIndex?: unknown; originalId?: unknown } | null;
+  return {
+    splatIndex: Number.isInteger(record?.splatIndex) && Number(record?.splatIndex) >= 0
+      ? Number(record?.splatIndex)
+      : 0,
+    originalId: Number.isInteger(record?.originalId) && Number(record?.originalId) >= 0
+      ? Number(record?.originalId)
+      : 0,
   };
 }
 
