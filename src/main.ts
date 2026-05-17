@@ -17,6 +17,7 @@ import { createStorageBuffer, createTexture2D, createUniformBuffer } from "./buf
 import {
   buildDeterministicGpuTileProjectionRetentionArena,
   createGpuTileCoveragePlan,
+  getGpuTileCoverageDispatchPlan,
   GPU_TILE_COVERAGE_ALPHA_PARAM_FLOATS_PER_REF,
   GPU_TILE_COVERAGE_FRAME_UNIFORM_BYTES,
   writeGpuTileCoverageFrameUniforms,
@@ -94,6 +95,10 @@ import {
 import {
   compareTraceToRuntimeFinalColor,
 } from "./rendererFidelityProbes/finalColorRuntimeParity.js";
+import {
+  summarizeLiveCompositorBufferReadback,
+  type LiveCompositorBufferReadbackSummary,
+} from "./rendererFidelityProbes/liveCompositorBufferReadback.js";
 import { buildDeadSplatElectorLedger } from "./rendererFidelityProbes/deadSplatElectorLedger.js";
 import { buildRetainedToOrderedSurvivalLedger } from "./rendererFidelityProbes/retainedToOrderedSurvivalLedger.js";
 import { buildGpuLiveAnchorContributorTraces } from "./rendererFidelityProbes/gpuLiveAnchorTrace.js";
@@ -213,6 +218,9 @@ interface TileLocalSceneState {
   runtimeFinalColorReadback?: readonly RuntimeFinalColorReadbackRow[];
   runtimeFinalColorReadbackFrame?: number;
   runtimeFinalColorReadbackPending?: boolean;
+  liveCompositorBufferReadback?: LiveCompositorBufferReadbackSummary;
+  liveCompositorBufferReadbackFrame?: number;
+  liveCompositorBufferReadbackPending?: boolean;
   needsDispatch: boolean;
   lastCompositedAtMs: number;
   lastCompositedFrame: number;
@@ -254,6 +262,41 @@ interface PendingRuntimeFinalColorReadback {
     x: number;
     y: number;
   }[];
+  frameId: number;
+  requestFrame: () => void;
+}
+
+interface PendingLiveCompositorBufferReadback {
+  state: TileLocalSceneState;
+  buffers: {
+    tileHeaders: GPUBuffer;
+    tileRefs: GPUBuffer;
+    tileCoverageWeights: GPUBuffer;
+    alphaParams: GPUBuffer;
+    tileScatterCursors: GPUBuffer;
+  };
+  byteLengths: {
+    tileHeaders: number;
+    tileRefs: number;
+    tileCoverageWeights: number;
+    alphaParams: number;
+    tileScatterCursors: number;
+  };
+  anchors: readonly {
+    id: string;
+    x: number;
+    y: number;
+    tileAddress: {
+      tileSizePx: number;
+      tileX: number;
+      tileY: number;
+      tileIndex: number;
+      localX: number;
+      localY: number;
+    };
+  }[];
+  sourceColors: Float32Array;
+  sourceOpacities: Float32Array;
   frameId: number;
   requestFrame: () => void;
 }
@@ -587,6 +630,7 @@ async function main() {
     gpu.device.queue.writeBuffer(uniformBuffer, 0, uniformData);
 
     const encoder = gpu.device.createCommandEncoder();
+    let liveCompositorBufferReadback: PendingLiveCompositorBufferReadback | null = null;
     const gpuSortRefreshed = shouldRefreshGpuSort(scene.sortState, view, now);
     if (gpuSortRefreshed) {
       writeViewDepthSortInput(gpu.device.queue, scene.gpuSort, scene.attributes.positions, view);
@@ -654,23 +698,59 @@ async function main() {
           : undefined;
         if (tileLocalState.gpuArenaRuntime) {
           tileLocalState.gpuArenaRuntime.dispatch(tileLocalComputePass, tileLocalState.plan);
+          tileLocalComputePass.end();
+          liveCompositorBufferReadback = queueLiveCompositorBufferReadback(
+            gpu.device,
+            encoder,
+            tileLocalState,
+            scene.attributes.colors,
+            scene.effectiveOpacities,
+            frameSerial,
+            requestFrame,
+          );
         }
         const dispatchMode = selectTileLocalCoverageDispatchMode({
           rendererMode: scene.rendererMode,
           arenaBackend: tileLocalState.arenaBackend,
           hasGpuArenaRuntime: Boolean(tileLocalState.gpuArenaRuntime),
         });
+        const compositorPass = tileLocalState.gpuArenaRuntime
+          ? encoder.beginComputePass()
+          : tileLocalComputePass;
         if (dispatchMode === "composite-only") {
-          tileLocalState.pipeline.dispatchComposite(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
+          tileLocalState.pipeline.dispatchComposite(compositorPass, tileLocalState.bindGroup, tileLocalState.plan);
+        } else if (tileLocalState.arenaBackend === "gpu") {
+          const dispatchPlan = getGpuTileCoverageDispatchPlan(tileLocalState.plan);
+          compositorPass.setPipeline(tileLocalState.pipeline.clearTilesPipeline);
+          compositorPass.setBindGroup(0, tileLocalState.bindGroup);
+          compositorPass.dispatchWorkgroups(dispatchPlan.clearTiles.x, dispatchPlan.clearTiles.y, dispatchPlan.clearTiles.z);
+          compositorPass.setPipeline(tileLocalState.pipeline.buildTileRefsPipeline);
+          compositorPass.setBindGroup(0, tileLocalState.bindGroup);
+          compositorPass.dispatchWorkgroups(dispatchPlan.buildTileRefs.x, dispatchPlan.buildTileRefs.y, dispatchPlan.buildTileRefs.z);
+          compositorPass.end();
+          liveCompositorBufferReadback = queueLiveCompositorBufferReadback(
+            gpu.device,
+            encoder,
+            tileLocalState,
+            scene.attributes.colors,
+            scene.effectiveOpacities,
+            frameSerial,
+            requestFrame,
+          );
+          const compositeOnlyPass = encoder.beginComputePass();
+          tileLocalState.pipeline.dispatchComposite(compositeOnlyPass, tileLocalState.bindGroup, tileLocalState.plan);
+          compositeOnlyPass.end();
         } else {
-          tileLocalState.pipeline.dispatch(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
+          tileLocalState.pipeline.dispatch(compositorPass, tileLocalState.bindGroup, tileLocalState.plan);
         }
         if (gpuDispatchEnqueueStartedAtMs !== undefined) {
           tileLocalState.gpuDispatchEnqueueDurationMs = roundRuntimeMetric(
             performance.now() - gpuDispatchEnqueueStartedAtMs
           );
         }
-        tileLocalComputePass.end();
+        if (dispatchMode === "composite-only" || tileLocalState.arenaBackend !== "gpu") {
+          compositorPass.end();
+        }
         tileLocalState.bandDispatchCacheTrace = buildBandDispatchCacheTrace({
           tileColumns: tileLocalState.plan.tileColumns,
           tileRows: tileLocalState.plan.tileRows,
@@ -750,6 +830,9 @@ async function main() {
 
     if (runtimeFinalColorReadback) {
       resolveRuntimeFinalColorReadback(runtimeFinalColorReadback);
+    }
+    if (liveCompositorBufferReadback) {
+      resolveLiveCompositorBufferReadback(liveCompositorBufferReadback);
     }
 
     // Read GPU timings (async, one frame behind)
@@ -1054,6 +1137,175 @@ function resolveRuntimeFinalColorReadback(readback: PendingRuntimeFinalColorRead
       readback.buffer.destroy();
       readback.requestFrame();
     });
+}
+
+function queueLiveCompositorBufferReadback(
+  device: GPUDevice,
+  encoder: GPUCommandEncoder,
+  state: TileLocalSceneState,
+  sourceColors: Float32Array,
+  sourceOpacities: Float32Array,
+  frameId: number,
+  requestFrame: () => void
+): PendingLiveCompositorBufferReadback | null {
+  if (state.debugMode !== "final-color" || state.liveCompositorBufferReadbackPending) {
+    return null;
+  }
+  if (state.arenaBackend !== "gpu") {
+    return null;
+  }
+  if (state.liveCompositorBufferReadbackFrame === frameId) {
+    return null;
+  }
+  const anchors = liveCompositorBufferReadbackAnchors(state);
+  if (anchors.length === 0) {
+    return null;
+  }
+  const byteLengths = {
+    tileHeaders: state.tileHeaderData.byteLength,
+    tileRefs: state.tileEntryCount * 4 * Uint32Array.BYTES_PER_ELEMENT,
+    tileCoverageWeights: state.tileEntryCount * Float32Array.BYTES_PER_ELEMENT,
+    alphaParams: state.alphaParamData.byteLength,
+    tileScatterCursors: state.plan.tileCount * Uint32Array.BYTES_PER_ELEMENT,
+  };
+  const buffers = {
+    tileHeaders: readbackBuffer(device, byteLengths.tileHeaders, "live_compositor_tile_headers_readback"),
+    tileRefs: readbackBuffer(device, byteLengths.tileRefs, "live_compositor_tile_refs_readback"),
+    tileCoverageWeights: readbackBuffer(device, byteLengths.tileCoverageWeights, "live_compositor_tile_coverage_weights_readback"),
+    alphaParams: readbackBuffer(device, byteLengths.alphaParams, "live_compositor_alpha_params_readback"),
+    tileScatterCursors: readbackBuffer(device, byteLengths.tileScatterCursors, "live_compositor_tile_scatter_cursors_readback"),
+  };
+  encoder.copyBufferToBuffer(state.tileHeaderBuffer, 0, buffers.tileHeaders, 0, alignedCopySize(byteLengths.tileHeaders));
+  encoder.copyBufferToBuffer(state.tileRefBuffer, 0, buffers.tileRefs, 0, alignedCopySize(byteLengths.tileRefs));
+  encoder.copyBufferToBuffer(
+    state.tileCoverageWeightBuffer,
+    0,
+    buffers.tileCoverageWeights,
+    0,
+    alignedCopySize(byteLengths.tileCoverageWeights),
+  );
+  encoder.copyBufferToBuffer(state.alphaParamBuffer, 0, buffers.alphaParams, 0, alignedCopySize(byteLengths.alphaParams));
+  encoder.copyBufferToBuffer(
+    state.tileScatterCursorBuffer,
+    0,
+    buffers.tileScatterCursors,
+    0,
+    alignedCopySize(byteLengths.tileScatterCursors),
+  );
+  state.liveCompositorBufferReadbackPending = true;
+  return {
+    state,
+    buffers,
+    byteLengths,
+    anchors,
+    sourceColors: sourceColors.slice(),
+    sourceOpacities: sourceOpacities.slice(),
+    frameId,
+    requestFrame,
+  };
+}
+
+function liveCompositorBufferReadbackAnchors(
+  state: TileLocalSceneState
+): PendingLiveCompositorBufferReadback["anchors"] {
+  return state.perPixelRetainedContributors
+    .map((record) => {
+      const anchor = record.anchorPixel;
+      const tileAddress = record.tileAddress;
+      if (!anchor || !tileAddress || typeof anchor.id !== "string") {
+        return null;
+      }
+      return {
+        id: anchor.id,
+        x: Math.floor(anchor.x),
+        y: Math.floor(anchor.y),
+        tileAddress: {
+          tileSizePx: tileAddress.tileSizePx,
+          tileX: tileAddress.tileX,
+          tileY: tileAddress.tileY,
+          tileIndex: tileAddress.tileIndex,
+          localX: tileAddress.localX,
+          localY: tileAddress.localY,
+        },
+      };
+    })
+    .filter((anchor): anchor is PendingLiveCompositorBufferReadback["anchors"][number] => anchor !== null);
+}
+
+function resolveLiveCompositorBufferReadback(readback: PendingLiveCompositorBufferReadback): void {
+  Promise.all([
+    mapReadbackBuffer(readback.buffers.tileHeaders, readback.byteLengths.tileHeaders),
+    mapReadbackBuffer(readback.buffers.tileRefs, readback.byteLengths.tileRefs),
+    mapReadbackBuffer(readback.buffers.tileCoverageWeights, readback.byteLengths.tileCoverageWeights),
+    mapReadbackBuffer(readback.buffers.alphaParams, readback.byteLengths.alphaParams),
+    mapReadbackBuffer(readback.buffers.tileScatterCursors, readback.byteLengths.tileScatterCursors),
+  ])
+    .then(([tileHeaderBytes, tileRefBytes, tileCoverageWeightBytes, alphaParamBytes, tileScatterCursorBytes]) => {
+      readback.state.liveCompositorBufferReadback = summarizeLiveCompositorBufferReadback({
+        observation: {
+          observationId: "retained-to-ordered-survival-0516-16x256-reconcile",
+          renderer: "tile-local-visible",
+          arenaBackend: "gpu",
+          tileSizePx: readback.state.plan.tileSizePx,
+          maxRefsPerTile: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
+          viewport: {
+            width: readback.state.viewportWidth,
+            height: readback.state.viewportHeight,
+            deviceScale: window.devicePixelRatio,
+          },
+          witnessView: REAL_SCANIVERSE_WITNESS_VIEW,
+        },
+        anchors: readback.anchors,
+        legacyTileHeaders: new Uint32Array(tileHeaderBytes.buffer, tileHeaderBytes.byteOffset, readback.byteLengths.tileHeaders / Uint32Array.BYTES_PER_ELEMENT),
+        legacyTileRefs: new Uint32Array(tileRefBytes.buffer, tileRefBytes.byteOffset, readback.byteLengths.tileRefs / Uint32Array.BYTES_PER_ELEMENT),
+        legacyTileCoverageWeights: new Float32Array(
+          tileCoverageWeightBytes.buffer,
+          tileCoverageWeightBytes.byteOffset,
+          readback.byteLengths.tileCoverageWeights / Float32Array.BYTES_PER_ELEMENT,
+        ),
+        legacyAlphaParams: new Float32Array(alphaParamBytes.buffer, alphaParamBytes.byteOffset, readback.byteLengths.alphaParams / Float32Array.BYTES_PER_ELEMENT),
+        legacyTileScatterCursors: new Uint32Array(
+          tileScatterCursorBytes.buffer,
+          tileScatterCursorBytes.byteOffset,
+          readback.byteLengths.tileScatterCursors / Uint32Array.BYTES_PER_ELEMENT,
+        ),
+        sourceColors: readback.sourceColors,
+        sourceOpacities: readback.sourceOpacities,
+        alphaParamRefCapacity: readback.state.plan.maxTileRefs,
+        frameId: readback.frameId,
+        readbackStage: "after-gpu-arena-dispatch-before-composite-tiles",
+      });
+      readback.state.liveCompositorBufferReadbackFrame = readback.frameId;
+    })
+    .catch(() => {
+      readback.state.liveCompositorBufferReadback = summarizeLiveCompositorBufferReadback({
+        anchors: readback.anchors,
+        frameId: readback.frameId,
+        readbackStage: "after-gpu-arena-dispatch-before-composite-tiles",
+      });
+    })
+    .finally(() => {
+      readback.state.liveCompositorBufferReadbackPending = false;
+      Object.values(readback.buffers).forEach((buffer) => buffer.destroy());
+      readback.requestFrame();
+    });
+}
+
+async function mapReadbackBuffer(buffer: GPUBuffer, byteLength: number): Promise<Uint8Array> {
+  await buffer.mapAsync(GPUMapMode.READ);
+  return new Uint8Array(buffer.getMappedRange().slice(0, byteLength));
+}
+
+function readbackBuffer(device: GPUDevice, byteLength: number, label: string): GPUBuffer {
+  return device.createBuffer({
+    label,
+    size: alignedCopySize(byteLength),
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+  });
+}
+
+function alignedCopySize(byteLength: number): number {
+  return Math.max(4, Math.ceil(Math.max(0, byteLength) / 4) * 4);
 }
 
 function halfFloatToNumber(bits: number): number {
@@ -1472,7 +1724,7 @@ function createEmptyStorageBuffer(device: GPUDevice, size: number, label: string
   return device.createBuffer({
     label,
     size: Math.max(16, size),
-    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
   });
 }
 
@@ -2234,6 +2486,9 @@ function exposeTileLocalRuntimeEvidence(
           runtimeFinalColorReadback: tileLocalState.runtimeFinalColorReadback ?? [],
           runtimeFinalColorReadbackFrame: tileLocalState.runtimeFinalColorReadbackFrame,
           runtimeFinalColorReadbackPending: tileLocalState.runtimeFinalColorReadbackPending === true,
+          liveCompositorBufferReadback: tileLocalState.liveCompositorBufferReadback,
+          liveCompositorBufferReadbackFrame: tileLocalState.liveCompositorBufferReadbackFrame,
+          liveCompositorBufferReadbackPending: tileLocalState.liveCompositorBufferReadbackPending === true,
           finalColorRuntimeParity,
           perPixelDeadSplatElectorLedger,
           perPixelRetainedToOrderedSurvivalLedger,

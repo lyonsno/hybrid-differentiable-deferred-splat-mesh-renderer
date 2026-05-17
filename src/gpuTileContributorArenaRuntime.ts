@@ -266,7 +266,7 @@ function storageBuffer(device: GPUDevice, data: Uint32Array | Float32Array, labe
   const buffer = device.createBuffer({
     label,
     size: Math.max(16, data.byteLength),
-    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
     mappedAtCreation: true,
   });
   new Uint8Array(buffer.getMappedRange()).set(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
@@ -278,7 +278,7 @@ function emptyStorageBuffer(device: GPUDevice, size: number, label: string): GPU
   return device.createBuffer({
     label,
     size,
-    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
   });
 }
 
