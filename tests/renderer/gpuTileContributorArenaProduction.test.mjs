@@ -132,10 +132,31 @@ test("GPU contributor arena WGSL has production count, prefix, and scatter stage
   assert.match(shader, /legacyAlphaParams/);
   assert.match(shader, /atomicAdd\(&projectedCounts\[tileIndex\],\s*1u\)/);
   assert.match(shader, /legacyTileHeaders\[tileIndex\]\s*=\s*vec4u\(runningOffset,\s*projectedCount,\s*projectedCount,\s*0u\)/);
-  assert.match(shader, /atomicAdd\(&scatterCursors\[tileIndex\],\s*1u\)/);
+  assert.match(shader, /let recordIndex = contributorIndex;/);
   assert.match(shader, /legacyTileRefs\[recordIndex\]\s*=\s*vec4u\(splatIndex,\s*originalId,\s*tileIndex,\s*recordIndex\)/);
   assert.doesNotMatch(shader, /@binding\(8\)|@binding\(9\)|@binding\(10\)|@binding\(11\)|@binding\(12\)/);
   assert.doesNotMatch(shader, /TODO\(contributor-arena-contract\)|intentionally inert|does not route first smoke/);
+});
+
+test("GPU contributor arena runtime preserves legacy compositor order before live scatter", () => {
+  const runtimeSource = readFileSync(
+    new URL("../../src/gpuTileContributorArenaRuntime.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(runtimeSource, /function sortGpuArenaContributorsForLegacyStorage/);
+  assert.match(runtimeSource, /const orderedContributors = sortGpuArenaContributorsForLegacyStorage\(contributors\)/);
+  assert.match(runtimeSource, /packGpuArenaProjectedContributors\(orderedContributors\)/);
+});
+
+test("GPU contributor arena scatter writes sorted records deterministically", () => {
+  const shader = readFileSync(new URL("../../src/shaders/gpu_tile_contributor_arena.wgsl", import.meta.url), "utf8");
+  const scatterStart = shader.indexOf("fn scatter_tile_contributors");
+  const scatterSource = shader.slice(scatterStart);
+
+  assert.ok(scatterStart >= 0, "scatter_tile_contributors shader entry point should exist");
+  assert.match(scatterSource, /let recordIndex = contributorIndex;/);
+  assert.doesNotMatch(scatterSource, /atomicAdd\(&scatterCursors\[tileIndex\]/);
 });
 
 test("GPU contributor arena runtime writes legacy compositor buffers for live consumption", () => {
@@ -155,6 +176,7 @@ test("GPU contributor arena runtime writes legacy compositor buffers for live co
   assert.match(shader, /legacyTileRefs/);
   assert.match(shader, /legacyTileCoverageWeights/);
   assert.match(shader, /legacyAlphaParams/);
+  assert.match(runtimeSource, /sortGpuArenaContributorsForLegacyStorage/);
   assert.match(mainSource, /REQUESTED_ARENA_BACKEND/);
   assert.match(mainSource, /gpuArenaRuntime\.dispatch/);
   assert.match(mainSource, /effectiveArenaBackend\s*=\s*tileLocalState\?\.arenaBackend/);

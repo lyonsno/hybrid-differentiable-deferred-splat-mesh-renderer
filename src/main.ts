@@ -28,6 +28,7 @@ import {
   createGpuTileContributorArenaRuntime,
   packGpuArenaProjectedContributors,
   projectGpuArenaToLegacyCompositorBuffers,
+  sortGpuArenaContributorsForLegacyStorage,
   type GpuTileContributorArenaRuntime,
 } from "./gpuTileContributorArenaRuntime.js";
 import { adaptGpuArenaRetainedContributors } from "./gpuArenaRetainedListAdapter.js";
@@ -100,6 +101,7 @@ import {
   formatTileLocalBudgetPair,
   resolveTileLocalBudgetConfig,
 } from "./tileLocalBudgetConfig.js";
+import { selectTileLocalCoverageDispatchMode } from "./tileLocalCoverageDispatchPolicy.js";
 import {
   createSplatPlateRenderer,
   SPLAT_PLATE_FRAME_UNIFORM_BYTES,
@@ -653,7 +655,12 @@ async function main() {
         if (tileLocalState.gpuArenaRuntime) {
           tileLocalState.gpuArenaRuntime.dispatch(tileLocalComputePass, tileLocalState.plan);
         }
-        if (scene.rendererMode === "tile-local-visible" && tileLocalState.arenaBackend !== "gpu") {
+        const dispatchMode = selectTileLocalCoverageDispatchMode({
+          rendererMode: scene.rendererMode,
+          arenaBackend: tileLocalState.arenaBackend,
+          hasGpuArenaRuntime: Boolean(tileLocalState.gpuArenaRuntime),
+        });
+        if (dispatchMode === "composite-only") {
           tileLocalState.pipeline.dispatchComposite(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
         } else {
           tileLocalState.pipeline.dispatch(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
@@ -1711,8 +1718,9 @@ function syncTileLocalAlphaParams(
   }
   if (state.gpuArenaRuntime) {
     const contributors = projectedContributorsWithEffectiveOpacity(state.gpuArenaProjectedContributors, effectiveOpacities);
-    const packed = packGpuArenaProjectedContributors(contributors);
-    const projection = projectGpuArenaToLegacyCompositorBuffers(state.plan, contributors);
+    const orderedContributors = sortGpuArenaContributorsForLegacyStorage(contributors);
+    const packed = packGpuArenaProjectedContributors(orderedContributors);
+    const projection = projectGpuArenaToLegacyCompositorBuffers(state.plan, orderedContributors);
     state.alphaParamData.set(projection.alphaParamData.slice(0, state.alphaParamData.length));
     queue.writeBuffer(state.gpuArenaRuntime.buffers.projectedContributorU32Buffer, 0, packed.u32);
     queue.writeBuffer(state.gpuArenaRuntime.buffers.projectedContributorF32Buffer, 0, packed.f32);

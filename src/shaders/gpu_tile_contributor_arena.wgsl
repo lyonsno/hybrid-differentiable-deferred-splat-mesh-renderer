@@ -98,9 +98,8 @@ fn projected_f32(index: u32, field: u32) -> f32 {
     return;
   }
 
-  let slotInTile = atomicAdd(&scatterCursors[tileIndex], 1u);
   let tileHeader = legacyTileHeaders[tileIndex];
-  let recordIndex = tileHeader.x + slotInTile;
+  let recordIndex = contributorIndex;
   if (recordIndex >= arrayLength(&legacyTileRefs)) {
     legacyTileHeaders[tileIndex] = vec4u(tileHeader.x, tileHeader.y, tileHeader.z, tileHeader.w | 2u);
     return;

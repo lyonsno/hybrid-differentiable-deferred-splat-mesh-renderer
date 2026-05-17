@@ -44,8 +44,9 @@ export function createGpuTileContributorArenaRuntime(
   plan: GpuTileCoveragePlan,
   contributors: readonly GpuTileContributorArenaProjectedContributor[],
 ): GpuTileContributorArenaRuntime {
-  const packed = packGpuArenaProjectedContributors(contributors);
-  const legacyProjection = projectGpuArenaToLegacyCompositorBuffers(plan, contributors);
+  const orderedContributors = sortGpuArenaContributorsForLegacyStorage(contributors);
+  const packed = packGpuArenaProjectedContributors(orderedContributors);
+  const legacyProjection = projectGpuArenaToLegacyCompositorBuffers(plan, orderedContributors);
   const shaderModule = device.createShaderModule({
     label: "gpu_tile_contributor_arena_shader",
     code: gpuTileContributorArenaShader,
@@ -91,11 +92,11 @@ export function createGpuTileContributorArenaRuntime(
     bindGroup,
     buffers,
     legacyProjection,
-    projectedContributorCount: contributors.length,
+    projectedContributorCount: orderedContributors.length,
     dispatch(pass: GPUComputePassEncoder, dispatchPlan: GpuTileCoveragePlan): void {
       const stages = getGpuTileContributorArenaDispatchPlan({
         ...dispatchPlan,
-        splatCount: contributors.length,
+        splatCount: orderedContributors.length,
       });
       dispatchStage(pass, clearPipeline, bindGroup, stages.clearArena);
       dispatchStage(pass, countPipeline, bindGroup, stages.countContributors);
@@ -191,6 +192,12 @@ export function projectGpuArenaToLegacyCompositorBuffers(
     alphaParamData,
     tileRefSplatIds,
   };
+}
+
+export function sortGpuArenaContributorsForLegacyStorage(
+  contributors: readonly GpuTileContributorArenaProjectedContributor[],
+): GpuTileContributorArenaProjectedContributor[] {
+  return [...contributors].sort(compareGpuArenaContributorStorageOrder);
 }
 
 function compareGpuArenaContributorStorageOrder(
