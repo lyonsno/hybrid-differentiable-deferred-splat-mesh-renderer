@@ -90,6 +90,9 @@ import {
   buildPerPixelFinalColorAccumulationTraces,
   type PixelFinalAccumulationTraceRecord,
 } from "./rendererFidelityProbes/finalAccumulationTrace.js";
+import {
+  compareTraceToRuntimeFinalColor,
+} from "./rendererFidelityProbes/finalColorRuntimeParity.js";
 import { buildDeadSplatElectorLedger } from "./rendererFidelityProbes/deadSplatElectorLedger.js";
 import { buildRetainedToOrderedSurvivalLedger } from "./rendererFidelityProbes/retainedToOrderedSurvivalLedger.js";
 import { buildGpuLiveAnchorContributorTraces } from "./rendererFidelityProbes/gpuLiveAnchorTrace.js";
@@ -205,6 +208,9 @@ interface TileLocalSceneState {
   perPixelRetainedContributors: TileLocalPrepassBridge["perPixelRetainedContributors"];
   arenaUnavailableReason?: string;
   gpuDispatchEnqueueDurationMs?: number;
+  runtimeFinalColorReadback?: readonly RuntimeFinalColorReadbackRow[];
+  runtimeFinalColorReadbackFrame?: number;
+  runtimeFinalColorReadbackPending?: boolean;
   needsDispatch: boolean;
   lastCompositedAtMs: number;
   lastCompositedFrame: number;
@@ -221,6 +227,33 @@ interface ArenaRuntimeEvidence {
   unavailableReason?: string;
   skippedReason?: string;
   fallbackReason?: string;
+}
+
+interface RuntimeFinalColorReadbackRow {
+  anchorId: string;
+  anchorPixel: {
+    id: string;
+    x: number;
+    y: number;
+  };
+  rgba: readonly [number, number, number, number];
+  rgba16: readonly [number, number, number, number];
+  textureFormat: "rgba16float";
+  sampleSpace: "linear-float";
+  transferStage: "tile-local-output-texture-before-presentation";
+  frameId: number;
+}
+
+interface PendingRuntimeFinalColorReadback {
+  state: TileLocalSceneState;
+  buffer: GPUBuffer;
+  anchors: readonly {
+    id: string;
+    x: number;
+    y: number;
+  }[];
+  frameId: number;
+  requestFrame: () => void;
 }
 
 type RendererMode = "plate" | "tile-local" | "tile-local-visible";
@@ -657,6 +690,10 @@ async function main() {
       }
     }
 
+    const runtimeFinalColorReadback = scene.tileLocalState
+      ? queueRuntimeFinalColorReadback(gpu.device, encoder, scene.tileLocalState, frameSerial, requestFrame)
+      : null;
+
     const textureView = gpu.context.getCurrentTexture().createView();
 
     const writeTimestamps = ts && !ts.mapping;
@@ -703,6 +740,10 @@ async function main() {
     }
 
     gpu.device.queue.submit([encoder.finish()]);
+
+    if (runtimeFinalColorReadback) {
+      resolveRuntimeFinalColorReadback(runtimeFinalColorReadback);
+    }
 
     // Read GPU timings (async, one frame behind)
     if (writeTimestamps) {
@@ -896,6 +937,136 @@ function createTileLocalSceneState(
     viewportHeight,
     footprintParams
   );
+}
+
+const RUNTIME_FINAL_COLOR_READBACK_BYTES_PER_ROW = 256;
+
+function queueRuntimeFinalColorReadback(
+  device: GPUDevice,
+  encoder: GPUCommandEncoder,
+  state: TileLocalSceneState,
+  frameId: number,
+  requestFrame: () => void
+): PendingRuntimeFinalColorReadback | null {
+  if (state.debugMode !== "final-color" || state.runtimeFinalColorReadbackPending) {
+    return null;
+  }
+  if (state.runtimeFinalColorReadbackFrame === state.lastCompositedFrame) {
+    return null;
+  }
+  const anchors = runtimeFinalColorReadbackAnchors(state);
+  if (anchors.length === 0) {
+    return null;
+  }
+  const buffer = device.createBuffer({
+    label: "tile_local_runtime_final_color_readback",
+    size: anchors.length * RUNTIME_FINAL_COLOR_READBACK_BYTES_PER_ROW,
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+  });
+  anchors.forEach((anchor, index) => {
+    encoder.copyTextureToBuffer(
+      {
+        texture: state.outputTexture,
+        origin: {
+          x: clampInteger(anchor.x, 0, state.viewportWidth - 1),
+          y: clampInteger(anchor.y, 0, state.viewportHeight - 1),
+        },
+      },
+      {
+        buffer,
+        offset: index * RUNTIME_FINAL_COLOR_READBACK_BYTES_PER_ROW,
+        bytesPerRow: RUNTIME_FINAL_COLOR_READBACK_BYTES_PER_ROW,
+        rowsPerImage: 1,
+      },
+      {
+        width: 1,
+        height: 1,
+        depthOrArrayLayers: 1,
+      },
+    );
+  });
+  state.runtimeFinalColorReadbackPending = true;
+  return {
+    state,
+    buffer,
+    anchors,
+    frameId,
+    requestFrame,
+  };
+}
+
+function runtimeFinalColorReadbackAnchors(
+  state: TileLocalSceneState
+): readonly { id: string; x: number; y: number }[] {
+  const anchors = state.traceAnchors ?? state.perPixelRetainedContributors.map((record) => record.anchorPixel);
+  return anchors
+    .filter((anchor) => anchor && typeof anchor.id === "string")
+    .map((anchor) => ({
+      id: anchor.id,
+      x: Math.floor(anchor.x),
+      y: Math.floor(anchor.y),
+    }));
+}
+
+function resolveRuntimeFinalColorReadback(readback: PendingRuntimeFinalColorReadback): void {
+  readback.buffer.mapAsync(GPUMapMode.READ)
+    .then(() => {
+      const mapped = readback.buffer.getMappedRange();
+      const rgba16 = new Uint16Array(mapped.slice(0));
+      readback.state.runtimeFinalColorReadback = readback.anchors.map((anchor, index) => {
+        const base = (index * RUNTIME_FINAL_COLOR_READBACK_BYTES_PER_ROW) / Uint16Array.BYTES_PER_ELEMENT;
+        const packed = [
+          rgba16[base],
+          rgba16[base + 1],
+          rgba16[base + 2],
+          rgba16[base + 3],
+        ] as const;
+        return {
+          anchorId: anchor.id,
+          anchorPixel: anchor,
+          rgba: [
+            halfFloatToNumber(packed[0]),
+            halfFloatToNumber(packed[1]),
+            halfFloatToNumber(packed[2]),
+            halfFloatToNumber(packed[3]),
+          ] as const,
+          rgba16: packed,
+          textureFormat: "rgba16float",
+          sampleSpace: "linear-float",
+          transferStage: "tile-local-output-texture-before-presentation",
+          frameId: readback.frameId,
+        };
+      });
+      readback.state.runtimeFinalColorReadbackFrame = readback.frameId;
+    })
+    .catch(() => {
+      readback.state.runtimeFinalColorReadback = [];
+    })
+    .finally(() => {
+      readback.state.runtimeFinalColorReadbackPending = false;
+      readback.buffer.destroy();
+      readback.requestFrame();
+    });
+}
+
+function halfFloatToNumber(bits: number): number {
+  const sign = (bits & 0x8000) ? -1 : 1;
+  const exponent = (bits >> 10) & 0x1f;
+  const fraction = bits & 0x03ff;
+  if (exponent === 0) {
+    return sign * Math.pow(2, -14) * (fraction / 1024);
+  }
+  if (exponent === 0x1f) {
+    return fraction === 0 ? sign * Infinity : NaN;
+  }
+  return sign * Math.pow(2, exponent - 15) * (1 + fraction / 1024);
+}
+
+function clampInteger(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  return Math.min(max, Math.max(min, Math.trunc(value)));
 }
 
 function createGpuArenaTileLocalSceneState(
@@ -2025,6 +2196,12 @@ function exposeTileLocalRuntimeEvidence(
         )
       )
     : undefined;
+  const finalColorRuntimeParity = tileLocalState
+    ? compareTraceToRuntimeFinalColor({
+        traceAccumulation: perPixelFinalColorAccumulation,
+        runtimeFinalColor: tileLocalState.runtimeFinalColorReadback ?? [],
+      })
+    : undefined;
   const diagnostics = tileLocalState
     ? refreshTileLocalDiagnostics(tileLocalState, perPixelFinalColorAccumulation)
     : undefined;
@@ -2046,6 +2223,10 @@ function exposeTileLocalRuntimeEvidence(
           perPixelProjectedContributors: tileLocalState.perPixelProjectedContributors,
           perPixelRetainedContributors: tileLocalState.perPixelRetainedContributors,
           perPixelFinalColorAccumulation,
+          runtimeFinalColorReadback: tileLocalState.runtimeFinalColorReadback ?? [],
+          runtimeFinalColorReadbackFrame: tileLocalState.runtimeFinalColorReadbackFrame,
+          runtimeFinalColorReadbackPending: tileLocalState.runtimeFinalColorReadbackPending === true,
+          finalColorRuntimeParity,
           perPixelDeadSplatElectorLedger,
           perPixelRetainedToOrderedSurvivalLedger,
           orderingBackend: TILE_LOCAL_ORDERING_BACKEND,
