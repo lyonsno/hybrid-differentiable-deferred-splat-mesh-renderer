@@ -1,5 +1,9 @@
 import { buildGpuTileCoverageBridge } from "./gpuTileCoverageBridge.js";
 import { summarizeCapPressureRetention } from "./rendererFidelityProbes/capPressureRetention.js";
+import {
+  annotateProjectedCoverageTopologyError,
+  describeCpuPrepassRetainedSourceTopology,
+} from "./rendererFidelityProbes/preGuardRetainedSourceTopology.js";
 import { buildProjectedGaussianTileCoverage } from "./rendererFidelityProbes/tileCoverage.js";
 
 export function buildTileLocalPrepassBridge({
@@ -47,22 +51,33 @@ export function buildTileLocalPrepassBridge({
     });
   }
 
-  const coverage = buildProjectedGaussianTileCoverage({
-    viewportWidth,
-    viewportHeight,
-    tileSizePx,
-    samplesPerAxis,
-    maxTileEntries,
-    splats,
-  });
+  let coverage;
+  try {
+    coverage = buildProjectedGaussianTileCoverage({
+      viewportWidth,
+      viewportHeight,
+      tileSizePx,
+      samplesPerAxis,
+      maxTileEntries,
+      splats,
+    });
+  } catch (error) {
+    throw annotateProjectedCoverageTopologyError(error);
+  }
   const orderedCoverage = orderCoverageEntriesForView(coverage, attributes, viewMatrix);
   const bridge = buildGpuTileCoverageBridge({
     ...orderedCoverage,
     sourceSplatCount: attributes.count,
     maxRefsPerTile,
   });
+  const sourceTopologyDescriptor = describeCpuPrepassRetainedSourceTopology({
+    bridge,
+    maxTileEntries,
+    maxRefsPerTile: bridge.maxRefsPerTile,
+  });
   return {
     ...bridge,
+    sourceTopologyDescriptor,
     budgetDiagnostics: summarizeTileLocalPrepassBudgetDiagnostics({
       coverage: orderedCoverage,
       bridge,
