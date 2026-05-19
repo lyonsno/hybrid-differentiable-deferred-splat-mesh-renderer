@@ -160,6 +160,7 @@ function projectedContributorToTraceEntry(contributor) {
     tileX: positiveInteger(contributor?.tileX ?? 0, "tileX"),
     tileY: positiveInteger(contributor?.tileY ?? 0, "tileY"),
     projectedIndex: positiveInteger(contributor?.projectedIndex ?? 0, "projectedIndex"),
+    deferredSurface: null,
   };
 }
 
