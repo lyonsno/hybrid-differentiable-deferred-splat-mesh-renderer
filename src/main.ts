@@ -92,7 +92,7 @@ import {
 } from "./rendererFidelityProbes/finalAccumulationTrace.js";
 import { buildDeadSplatElectorLedger } from "./rendererFidelityProbes/deadSplatElectorLedger.js";
 import { buildRetainedToOrderedSurvivalLedger } from "./rendererFidelityProbes/retainedToOrderedSurvivalLedger.js";
-import { buildGpuLiveAnchorContributorTraces } from "./rendererFidelityProbes/gpuLiveAnchorTrace.js";
+import { buildProjectedGaussianTileCoverage } from "./rendererFidelityProbes/tileCoverage.js";
 import {
   formatTileLocalBudgetPair,
   resolveTileLocalBudgetConfig,
@@ -237,7 +237,25 @@ interface PixelTraceAnchor {
   readonly x: number;
   readonly y: number;
   readonly description: string;
-  readonly canonicalTileAddress: null;
+  readonly canonicalTileAddress: {
+    readonly tileX: number;
+    readonly tileY: number;
+    readonly tileIndex: number;
+    readonly localX: number;
+    readonly localY: number;
+  } | null;
+}
+
+interface CompactRetainedSourceForRuntime {
+  readonly projectedRecords: readonly GpuTileContributorArenaProjectedContributor[];
+  readonly retainedRecords: readonly GpuTileContributorArenaProjectedContributor[];
+  readonly droppedRecords: readonly GpuTileContributorArenaProjectedContributor[];
+  readonly projectedContributorCount: number;
+  readonly retainedContributorCount: number;
+  readonly droppedContributorCount: number;
+  readonly tileRefCustody: TileRefCustodySummary;
+  readonly perPixelProjectedContributors: TileLocalPrepassBridge["perPixelProjectedContributors"];
+  readonly perPixelRetainedContributors: TileLocalPrepassBridge["perPixelRetainedContributors"];
 }
 
 interface SortSettleState {
@@ -620,7 +638,7 @@ async function main() {
         if (tileLocalState.gpuArenaRuntime) {
           tileLocalState.gpuArenaRuntime.dispatch(tileLocalComputePass, tileLocalState.plan);
         }
-        if (scene.rendererMode === "tile-local-visible" && tileLocalState.arenaBackend !== "gpu") {
+        if (tileLocalState.gpuArenaRuntime || (scene.rendererMode === "tile-local-visible" && tileLocalState.arenaBackend !== "gpu")) {
           tileLocalState.pipeline.dispatchComposite(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
         } else {
           tileLocalState.pipeline.dispatch(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
@@ -912,7 +930,27 @@ function createGpuArenaTileLocalSceneState(
   const tileColumns = tileColumnsForViewport(viewportWidth);
   const tileRows = tileRowsForViewport(viewportHeight);
   const tileCount = tileColumns * tileRows;
-  const maxTileRefs = gpuLiveMaxTileRefs(device, tileCount, attributes.count);
+  const compactSource = buildCompactRetainedSourceForRuntime({
+    attributes,
+    effectiveOpacities,
+    viewMatrix,
+    viewProj,
+    viewportWidth,
+    viewportHeight,
+    tileSizePx: TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX,
+    tileColumns,
+    tileRows,
+    splatScale: footprintParams.splatScale,
+    minRadiusPx: footprintParams.minRadiusPx,
+    maxRefsPerTile: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
+    nearFadeEndNdc: footprintParams.nearFadeEndNdc,
+    buildProjectionRetentionArena: buildDeterministicGpuTileProjectionRetentionArena,
+    anchors: TILE_LOCAL_TRACE_ANCHORS ?? [],
+  });
+  if (compactSource.retainedRecords.length === 0) {
+    throw new Error("compact retained source produced no retained contributors for gpu arena runtime");
+  }
+  const maxTileRefs = Math.max(compactSource.retainedRecords.length, attributes.count, 1);
   const plan = createGpuTileCoveragePlan({
     viewportWidth,
     viewportHeight,
@@ -937,6 +975,12 @@ function createGpuArenaTileLocalSceneState(
   if (bufferBlocker) {
     throw new Error(bufferBlocker);
   }
+  const gpuArenaRuntimeBlocker = gpuArenaRuntimeUnavailableReason(device, plan, compactSource.retainedRecords.length);
+  if (gpuArenaRuntimeBlocker) {
+    throw new Error(gpuArenaRuntimeBlocker);
+  }
+  const gpuArenaRuntime = createGpuTileContributorArenaRuntime(device, plan, compactSource.retainedRecords);
+  const legacyProjection = gpuArenaRuntime.legacyProjection;
   const pipeline = createGpuTileCoveragePipelineSkeleton(device, "rgba16float");
   const frameUniformBuffer = createUniformBuffer(
     device,
@@ -944,24 +988,16 @@ function createGpuArenaTileLocalSceneState(
     "tile_local_frame_uniforms"
   );
   const frameUniformData = new Float32Array(GPU_TILE_COVERAGE_FRAME_UNIFORM_BYTES / Float32Array.BYTES_PER_ELEMENT);
-  const tileHeaderBuffer = createEmptyStorageBuffer(device, plan.tileHeaderBytes, "gpu_live_tile_headers");
-  const tileRefBuffer = createEmptyStorageBuffer(device, plan.tileRefBytes, "gpu_live_tile_refs");
-  const tileCoverageWeightBuffer = createEmptyStorageBuffer(
-    device,
-    plan.tileCoverageWeightBytes,
-    "gpu_live_tile_coverage_weights"
-  );
   const tileBuildCountBuffer = createEmptyStorageBuffer(
     device,
     Math.max(16, plan.tileCount * Uint32Array.BYTES_PER_ELEMENT),
-    "gpu_live_tile_build_counts"
+    "gpu_compact_source_tile_build_counts"
   );
   const tileScatterCursorBuffer = createEmptyStorageBuffer(
     device,
     Math.max(16, plan.tileCount * Uint32Array.BYTES_PER_ELEMENT),
-    "gpu_live_tile_scatter_cursors"
+    "gpu_compact_source_tile_scatter_cursors"
   );
-  const alphaParamBuffer = createEmptyStorageBuffer(device, plan.alphaParamBytes, "gpu_live_alpha_params");
   const outputTexture = createTexture2D(
     device,
     viewportWidth,
@@ -978,58 +1014,29 @@ function createGpuArenaTileLocalSceneState(
     opacityBuffer: buffers.opacityBuffer,
     scaleBuffer: buffers.scaleBuffer,
     rotationBuffer: buffers.rotationBuffer,
-    tileHeaderBuffer,
-    tileRefBuffer,
-    tileCoverageWeightBuffer,
+    tileHeaderBuffer: gpuArenaRuntime.buffers.legacyTileHeaderBuffer,
+    tileRefBuffer: gpuArenaRuntime.buffers.legacyTileRefBuffer,
+    tileCoverageWeightBuffer: gpuArenaRuntime.buffers.legacyTileCoverageWeightBuffer,
     tileScatterCursorBuffer,
-    alphaParamBuffer,
+    alphaParamBuffer: gpuArenaRuntime.buffers.legacyAlphaParamBuffer,
     outputColorView: outputView,
   });
-  const tileRefCustody = estimatedGpuLiveTileRefCustody(plan, attributes.count);
+  const tileRefCustody = compactSource.tileRefCustody;
   const retentionAudit = emptyTileRetentionAudit();
-  const budgetDiagnostics = estimatedGpuLiveBudgetDiagnostics(plan, attributes.count);
-  const tileHeaderData = new Uint32Array(Math.max(0, plan.tileCount * 4));
-  const tileCoverageWeightData = new Float32Array(0);
-  const alphaParamData = new Float32Array(8);
+  const budgetDiagnostics = compactRetainedSourceBudgetDiagnostics(plan, compactSource);
+  const alphaParamData = new Float32Array(Math.max(plan.alphaParamBytes / Float32Array.BYTES_PER_ELEMENT, 8));
+  alphaParamData.set(legacyProjection.alphaParamData.slice(0, alphaParamData.length));
   const diagnostics = summarizeTileLocalDiagnostics({
     debugMode: TILE_LOCAL_DEBUG_MODE,
     plan,
-    tileEntryCount: tileRefCustody.retainedTileEntryCount,
-    tileHeaders: tileHeaderData,
+    tileEntryCount: compactSource.retainedRecords.length,
+    tileHeaders: legacyProjection.tileHeaders,
     tileRefCustody,
     retentionAudit,
-    tileCoverageWeights: tileCoverageWeightData,
+    tileCoverageWeights: legacyProjection.tileCoverageWeights,
     alphaParamData,
     sourceOpacities: effectiveOpacities,
-  });
-  const anchorContributorTraces = buildGpuLiveAnchorContributorTraces({
-    attributes,
-    viewMatrix,
-    viewProj,
-    effectiveOpacities,
-    viewportWidth,
-    viewportHeight,
-    tileSizePx: plan.tileSizePx,
-    tileColumns: plan.tileColumns,
-    tileRows: plan.tileRows,
-    splatScale: footprintParams.splatScale,
-    minRadiusPx: footprintParams.minRadiusPx,
-    maxRefsPerTile: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
-    nearFadeEndNdc: footprintParams.nearFadeEndNdc,
-    anchors: TILE_LOCAL_TRACE_ANCHORS,
-    rendererMetadata: {
-      requestedRenderer: "tile-local-visible",
-      effectiveRenderer: "tile-local-visible-gaussian-compositor",
-      requestedArenaBackend: REQUESTED_ARENA_BACKEND,
-      effectiveArenaBackend: "gpu",
-      tileSizePx: plan.tileSizePx,
-      maxRefsPerTile: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
-      viewport: {
-        width: viewportWidth,
-        height: viewportHeight,
-      },
-      traceExtractionBackend: "gpu-live-anchor-mirror",
-    },
+    runtimeContributors: compactSource.retainedRecords,
   });
 
   return {
@@ -1041,33 +1048,33 @@ function createGpuArenaTileLocalSceneState(
     frameUniformBuffer,
     frameUniformData,
     projectedBoundsBuffer: null,
-    tileHeaderBuffer,
-    tileHeaderData,
-    tileRefBuffer,
-    tileCoverageWeightBuffer,
-    tileCoverageWeightData,
+    tileHeaderBuffer: gpuArenaRuntime.buffers.legacyTileHeaderBuffer,
+    tileHeaderData: legacyProjection.tileHeaders,
+    tileRefBuffer: gpuArenaRuntime.buffers.legacyTileRefBuffer,
+    tileCoverageWeightBuffer: gpuArenaRuntime.buffers.legacyTileCoverageWeightBuffer,
+    tileCoverageWeightData: legacyProjection.tileCoverageWeights,
     tileBuildCountBuffer,
     tileScatterCursorBuffer,
-    alphaParamBuffer,
+    alphaParamBuffer: gpuArenaRuntime.buffers.legacyAlphaParamBuffer,
     alphaParamData,
     sourceOpacities: effectiveOpacities,
-    tileRefShapeParams: new Float32Array(0),
+    tileRefShapeParams: legacyProjection.tileRefShapeParams,
     outputTexture,
     outputView,
-    tileEntryCount: tileRefCustody.retainedTileEntryCount,
+    tileEntryCount: compactSource.retainedRecords.length,
     tileRefCustody,
     retentionAudit,
     budgetDiagnostics,
-    tileRefSplatIds: new Uint32Array(0),
+    tileRefSplatIds: legacyProjection.tileRefSplatIds,
     prepassSignature,
     debugMode: TILE_LOCAL_DEBUG_MODE,
     diagnostics,
     arenaBackend: "gpu",
-    gpuArenaRuntime: null,
-    gpuArenaProjectedContributors: anchorContributorTraces.retainedContributors,
+    gpuArenaRuntime,
+    gpuArenaProjectedContributors: compactSource.retainedRecords,
     traceAnchors: TILE_LOCAL_TRACE_ANCHORS,
-    perPixelProjectedContributors: anchorContributorTraces.perPixelProjectedContributors,
-    perPixelRetainedContributors: anchorContributorTraces.perPixelRetainedContributors,
+    perPixelProjectedContributors: compactSource.perPixelProjectedContributors,
+    perPixelRetainedContributors: compactSource.perPixelRetainedContributors,
     arenaUnavailableReason: undefined,
     gpuDispatchEnqueueDurationMs: undefined,
     needsDispatch: true,
@@ -1082,6 +1089,753 @@ function createGpuArenaTileLocalSceneState(
       viewportHeight,
     }),
   };
+}
+
+function buildCompactRetainedSourceForRuntime({
+  attributes,
+  effectiveOpacities,
+  viewMatrix,
+  viewProj,
+  viewportWidth,
+  viewportHeight,
+  tileSizePx,
+  tileColumns,
+  tileRows,
+  splatScale,
+  minRadiusPx,
+  maxRefsPerTile,
+  nearFadeEndNdc,
+  buildProjectionRetentionArena,
+  anchors,
+}: {
+  readonly attributes: SplatAttributes;
+  readonly effectiveOpacities: Float32Array;
+  readonly viewMatrix: Float32Array;
+  readonly viewProj: Float32Array;
+  readonly viewportWidth: number;
+  readonly viewportHeight: number;
+  readonly tileSizePx: number;
+  readonly tileColumns: number;
+  readonly tileRows: number;
+  readonly splatScale: number;
+  readonly minRadiusPx: number;
+  readonly maxRefsPerTile: number;
+  readonly nearFadeEndNdc: number;
+  readonly buildProjectionRetentionArena: typeof buildDeterministicGpuTileProjectionRetentionArena;
+  readonly anchors: readonly PixelTraceAnchor[];
+}): CompactRetainedSourceForRuntime {
+  const splats = projectRuntimeSplatsForCompactSource({
+    attributes,
+    viewProj,
+    viewportWidth,
+    viewportHeight,
+    splatScale,
+    minRadiusPx,
+    nearFadeEndNdc,
+  });
+  const coverage = buildProjectedGaussianTileCoverage({
+    viewportWidth,
+    viewportHeight,
+    tileSizePx,
+    samplesPerAxis: TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES,
+    splats: [...splats],
+  }) as RuntimeCompactTileCoverage;
+  const projectedRecords = projectedCoverageToRuntimeContributors({
+    coverage,
+    attributes,
+    effectiveOpacities,
+    viewMatrix,
+  });
+  const arena = buildProjectionRetentionArena({
+    tileCount: tileColumns * tileRows,
+    maxContributors: projectedRecords.length,
+    maxRefsPerTile,
+    contributors: projectedRecords,
+  });
+  const tileRefCustody = compactTileRefCustody({
+    tileCount: tileColumns * tileRows,
+    tileHeaders: arena.tileHeaderU32,
+    projectedContributorCount: arena.projectedContributorCount,
+    retainedContributorCount: arena.retainedContributorCount,
+    droppedContributorCount: arena.droppedContributorCount,
+    maxRefsPerTile,
+  });
+  const rendererMetadata = {
+    requestedRenderer: "tile-local-visible",
+    effectiveRenderer: "tile-local-visible-gaussian-compositor",
+    requestedArenaBackend: REQUESTED_ARENA_BACKEND,
+    effectiveArenaBackend: "gpu",
+    tileSizePx,
+    maxRefsPerTile,
+    viewport: {
+      width: viewportWidth,
+      height: viewportHeight,
+    },
+    traceExtractionBackend: "compact-retained-source-runtime",
+  };
+
+  return {
+    projectedRecords,
+    retainedRecords: arena.retainedRecords,
+    droppedRecords: arena.droppedRecords,
+    projectedContributorCount: arena.projectedContributorCount,
+    retainedContributorCount: arena.retainedContributorCount,
+    droppedContributorCount: arena.droppedContributorCount,
+    tileRefCustody,
+    perPixelProjectedContributors: compactPerPixelContributorTraces({
+      contributors: projectedRecords,
+      listName: "projectedContributors",
+      viewportWidth,
+      viewportHeight,
+      tileSizePx,
+      tileColumns,
+      tileRows,
+      anchors,
+      rendererMetadata,
+    }) as unknown as TileLocalPrepassBridge["perPixelProjectedContributors"],
+    perPixelRetainedContributors: compactPerPixelContributorTraces({
+      contributors: arena.retainedRecords,
+      projectedContributors: projectedRecords,
+      listName: "retainedContributors",
+      viewportWidth,
+      viewportHeight,
+      tileSizePx,
+      tileColumns,
+      tileRows,
+      anchors,
+      rendererMetadata,
+    }) as unknown as TileLocalPrepassBridge["perPixelRetainedContributors"],
+  };
+}
+
+interface RuntimeCompactTileCoverage {
+  readonly tileColumns: number;
+  readonly tileRows: number;
+  readonly splats: readonly {
+    readonly splatIndex: number;
+    readonly originalId: number;
+    readonly centerPx: readonly [number, number];
+    readonly covariancePx: {
+      readonly xx: number;
+      readonly xy?: number;
+      readonly yy: number;
+    };
+  }[];
+  readonly tileEntries: readonly {
+    readonly tileIndex: number;
+    readonly tileX: number;
+    readonly tileY: number;
+    readonly splatIndex: number;
+    readonly originalId: number;
+    readonly coverageWeight: number;
+  }[];
+}
+
+function projectRuntimeSplatsForCompactSource({
+  attributes,
+  viewProj,
+  viewportWidth,
+  viewportHeight,
+  splatScale,
+  minRadiusPx,
+  nearFadeEndNdc,
+}: {
+  readonly attributes: SplatAttributes;
+  readonly viewProj: Float32Array;
+  readonly viewportWidth: number;
+  readonly viewportHeight: number;
+  readonly splatScale: number;
+  readonly minRadiusPx: number;
+  readonly nearFadeEndNdc: number;
+}): RuntimeCompactTileCoverage["splats"] {
+  const splats: RuntimeCompactTileCoverage["splats"][number][] = [];
+  for (let index = 0; index < attributes.count; index += 1) {
+    const centerPx = projectCompactSourceSplatCenterPx(attributes, viewProj, index, viewportWidth, viewportHeight);
+    if (!centerPx) {
+      continue;
+    }
+    const covariancePx = projectedCompactSourceCovariancePx({
+      attributes,
+      viewProj,
+      index,
+      viewportWidth,
+      viewportHeight,
+      splatScale,
+      minRadiusPx,
+      nearFadeEndNdc,
+    });
+    if (!covariancePx) {
+      continue;
+    }
+    splats.push({
+      splatIndex: index,
+      originalId: attributes.originalIds[index] ?? index,
+      centerPx,
+      covariancePx,
+    });
+  }
+  return splats;
+}
+
+function projectedCoverageToRuntimeContributors({
+  coverage,
+  attributes,
+  effectiveOpacities,
+  viewMatrix,
+}: {
+  readonly coverage: RuntimeCompactTileCoverage;
+  readonly attributes: SplatAttributes;
+  readonly effectiveOpacities: Float32Array;
+  readonly viewMatrix: Float32Array;
+}): readonly GpuTileContributorArenaProjectedContributor[] {
+  const { ranks, depths } = compactSourceBackToFrontDepthEvidence(attributes, viewMatrix);
+  const splatsByIndex = new Map(coverage.splats.map((splat) => [splat.splatIndex, splat]));
+
+  return coverage.tileEntries.map((entry) => {
+    const splat = splatsByIndex.get(entry.splatIndex);
+    const inverseConic = invertCompactSourceCovariance(splat?.covariancePx);
+    const opacity = readCompactSourceOpacity(attributes, effectiveOpacities, entry.splatIndex);
+    const coverageWeight = Math.max(0, finiteOrZero(entry.coverageWeight));
+    const luminance = readCompactSourceLuminance(attributes, entry.splatIndex);
+    return {
+      splatIndex: entry.splatIndex,
+      originalId: entry.originalId,
+      tileIndex: entry.tileIndex,
+      viewRank: ranks[entry.splatIndex] ?? entry.splatIndex,
+      viewDepth: depths[entry.splatIndex] ?? 0,
+      depthBand: 0,
+      coverageWeight,
+      centerPx: splat?.centerPx ?? [0, 0],
+      inverseConic,
+      opacity,
+      coverageAlpha: transferCompactSourceCoverageAlpha(opacity, coverageWeight),
+      transmittanceBefore: 1,
+      retentionWeight: coverageWeight * opacity * luminance,
+      occlusionWeight: coverageWeight * opacity,
+      occlusionDensity: opacity,
+    };
+  });
+}
+
+function compactTileRefCustody({
+  tileCount,
+  tileHeaders,
+  projectedContributorCount,
+  retainedContributorCount,
+  droppedContributorCount,
+  maxRefsPerTile,
+}: {
+  readonly tileCount: number;
+  readonly tileHeaders: Uint32Array;
+  readonly projectedContributorCount: number;
+  readonly retainedContributorCount: number;
+  readonly droppedContributorCount: number;
+  readonly maxRefsPerTile: number;
+}): TileRefCustodySummary {
+  let cappedTileCount = 0;
+  let saturatedRetainedTileCount = 0;
+  let maxProjectedRefsPerTile = 0;
+  let maxRetainedRefsPerTile = 0;
+  for (let tileIndex = 0; tileIndex < tileCount; tileIndex += 1) {
+    const base = tileIndex * 8;
+    const retained = tileHeaders[base + 1] ?? 0;
+    const projected = tileHeaders[base + 2] ?? 0;
+    const dropped = tileHeaders[base + 3] ?? 0;
+    if (dropped > 0) {
+      cappedTileCount += 1;
+    }
+    if (retained >= maxRefsPerTile && projected > retained) {
+      saturatedRetainedTileCount += 1;
+    }
+    maxProjectedRefsPerTile = Math.max(maxProjectedRefsPerTile, projected);
+    maxRetainedRefsPerTile = Math.max(maxRetainedRefsPerTile, retained);
+  }
+  return {
+    projectedTileEntryCount: projectedContributorCount,
+    retainedTileEntryCount: retainedContributorCount,
+    evictedTileEntryCount: droppedContributorCount,
+    cappedTileCount,
+    saturatedRetainedTileCount,
+    maxProjectedRefsPerTile,
+    maxRetainedRefsPerTile,
+    headerRefCount: retainedContributorCount,
+    headerAccountingMatches: true,
+  };
+}
+
+function compactRetainedSourceBudgetDiagnostics(
+  plan: GpuTileCoveragePlan,
+  compactSource: CompactRetainedSourceForRuntime
+): TileLocalPrepassBudgetDiagnostics {
+  const bandCounter = emptyTileLocalBudgetBandCounter();
+  const projectedRefs = compactSource.projectedContributorCount;
+  const retainedRefs = compactSource.retainedContributorCount;
+  const droppedRefs = compactSource.droppedContributorCount;
+  return {
+    version: 1,
+    arenaRefs: {
+      projected: projectedRefs,
+      retained: retainedRefs,
+      dropped: droppedRefs,
+      cappedTileCount: compactSource.tileRefCustody.cappedTileCount,
+      saturatedRetainedTileCount: compactSource.tileRefCustody.saturatedRetainedTileCount,
+      maxProjectedRefsPerTile: compactSource.tileRefCustody.maxProjectedRefsPerTile,
+      maxRetainedRefsPerTile: compactSource.tileRefCustody.maxRetainedRefsPerTile,
+    },
+    overflowReasons: droppedRefs > 0
+      ? [{
+          reason: "per-tile-ref-cap",
+          projectedRefs,
+          retainedRefs,
+          droppedRefs,
+          cappedTileCount: compactSource.tileRefCustody.cappedTileCount,
+          maxRefsPerTile: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
+        }]
+      : [],
+    capPressure: {
+      version: 1,
+      classification: droppedRefs > 0 ? "over-cap" : "within-cap",
+      refs: {
+        projected: projectedRefs,
+        retained: retainedRefs,
+        dropped: droppedRefs,
+        maxRefsPerTile: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
+        tileCount: plan.tileCount,
+      },
+      retainedBands: { front: bandCounter, middle: bandCounter, back: bandCounter },
+      droppedBands: { front: bandCounter, middle: bandCounter, back: bandCounter },
+      overflowReasons: {},
+      lossSignals: {
+        foregroundDroppedRefs: 0,
+        behindSurfaceDroppedRefs: 0,
+        policyReserveDisplacedRefs: 0,
+        highCoverageDroppedRefs: 0,
+        highRetentionDroppedRefs: 0,
+        highOcclusionDroppedRefs: 0,
+      },
+      policyHooks: [],
+    },
+    retainedBands: { front: bandCounter, middle: bandCounter, back: bandCounter },
+    droppedBands: { front: bandCounter, middle: bandCounter, back: bandCounter },
+    heat: {
+      cpu: {
+        projectedRefs,
+        projectedRefsPerTile: plan.tileCount > 0 ? projectedRefs / plan.tileCount : 0,
+        projectedToRetainedRatio: retainedRefs > 0 ? projectedRefs / retainedRefs : 0,
+      },
+      gpu: {
+        retainedRefs,
+        retainedRefBufferBytes: plan.tileRefBytes,
+        coverageWeightBufferBytes: plan.tileCoverageWeightBytes,
+        alphaParamBufferBytes: plan.alphaParamBytes,
+      },
+    },
+  };
+}
+
+function compactPerPixelContributorTraces({
+  contributors,
+  projectedContributors = contributors,
+  listName,
+  viewportWidth,
+  viewportHeight,
+  tileSizePx,
+  tileColumns,
+  tileRows,
+  anchors,
+  rendererMetadata,
+}: {
+  readonly contributors: readonly GpuTileContributorArenaProjectedContributor[];
+  readonly projectedContributors?: readonly GpuTileContributorArenaProjectedContributor[];
+  readonly listName: "projectedContributors" | "retainedContributors";
+  readonly viewportWidth: number;
+  readonly viewportHeight: number;
+  readonly tileSizePx: number;
+  readonly tileColumns: number;
+  readonly tileRows: number;
+  readonly anchors: readonly PixelTraceAnchor[];
+  readonly rendererMetadata: Record<string, unknown>;
+}): readonly Record<string, unknown>[] {
+  return anchors.map((anchor) => {
+    const tileAddress = compactSourceTileAddress(anchor, { tileSizePx, tileColumns, tileRows });
+    const tileContributors = contributors
+      .filter((contributor) => contributor.tileIndex === tileAddress.tileIndex)
+      .filter((contributor) => compactSourceConicPixelWeight(contributor, [anchor.x + 0.5, anchor.y + 0.5]) > 1e-8)
+      .map((contributor) => ({
+        ...contributor,
+        coverageWeight: compactSourceConicPixelWeight(contributor, [anchor.x + 0.5, anchor.y + 0.5]),
+        projectionStatus: "projected",
+        retentionStatus: listName === "retainedContributors" ? "retained" : "projected",
+        retained: listName === "retainedContributors" ? true : undefined,
+      }));
+    const projectedTileContributors = projectedContributors
+      .filter((contributor) => contributor.tileIndex === tileAddress.tileIndex)
+      .filter((contributor) => compactSourceConicPixelWeight(contributor, [anchor.x + 0.5, anchor.y + 0.5]) > 1e-8);
+    const status = tileContributors.length > 0 ? "present" : "absent";
+    const traceRecord = {
+      status,
+      anchorPixel: anchor,
+      tileAddress,
+      rendererMetadata,
+      projectedContributors: listName === "projectedContributors" ? tileContributors : projectedTileContributors,
+      [listName]: tileContributors,
+    };
+    return {
+      status,
+      anchorPixel: anchor,
+      tileAddress,
+      rendererMetadata,
+      traceRecord,
+      viewport: {
+        width: viewportWidth,
+        height: viewportHeight,
+      },
+    };
+  });
+}
+
+function compactSourceTileAddress(
+  anchor: PixelTraceAnchor,
+  { tileSizePx, tileColumns, tileRows }: { readonly tileSizePx: number; readonly tileColumns: number; readonly tileRows: number }
+) {
+  if (anchor.canonicalTileAddress) {
+    return {
+      tileSizePx,
+      ...anchor.canonicalTileAddress,
+    };
+  }
+  const tileX = clampCompactSource(Math.floor(anchor.x / tileSizePx), 0, tileColumns - 1);
+  const tileY = clampCompactSource(Math.floor(anchor.y / tileSizePx), 0, tileRows - 1);
+  return {
+    tileSizePx,
+    tileX,
+    tileY,
+    tileIndex: tileY * tileColumns + tileX,
+    localX: anchor.x - tileX * tileSizePx,
+    localY: anchor.y - tileY * tileSizePx,
+  };
+}
+
+function compactSourceConicPixelWeight(
+  contributor: GpuTileContributorArenaProjectedContributor,
+  pixelCenter: readonly [number, number]
+): number {
+  const dx = pixelCenter[0] - contributor.centerPx[0];
+  const dy = pixelCenter[1] - contributor.centerPx[1];
+  const inverseConic = contributor.inverseConic;
+  const mahalanobis2 = inverseConic[0] * dx * dx + 2 * inverseConic[1] * dx * dy + inverseConic[2] * dy * dy;
+  return Math.exp(-2 * Math.max(mahalanobis2, 0));
+}
+
+function projectCompactSourceSplatCenterPx(
+  attributes: SplatAttributes,
+  viewProj: Float32Array,
+  index: number,
+  viewportWidth: number,
+  viewportHeight: number
+): readonly [number, number] | null {
+  const base = index * 3;
+  const x = attributes.positions[base];
+  const y = attributes.positions[base + 1];
+  const z = attributes.positions[base + 2];
+  const clipX = viewProj[0] * x + viewProj[4] * y + viewProj[8] * z + viewProj[12];
+  const clipY = viewProj[1] * x + viewProj[5] * y + viewProj[9] * z + viewProj[13];
+  const clipZ = viewProj[2] * x + viewProj[6] * y + viewProj[10] * z + viewProj[14];
+  const clipW = viewProj[3] * x + viewProj[7] * y + viewProj[11] * z + viewProj[15];
+  if (!Number.isFinite(clipW) || clipW <= 0 || clipZ < 0 || clipZ > clipW) {
+    return null;
+  }
+  const ndcX = clipX / clipW;
+  const ndcY = clipY / clipW;
+  if (ndcX < -1 || ndcX > 1 || ndcY < -1 || ndcY > 1) {
+    return null;
+  }
+  return [(ndcX * 0.5 + 0.5) * viewportWidth, (0.5 - ndcY * 0.5) * viewportHeight];
+}
+
+function projectedCompactSourceCovariancePx({
+  attributes,
+  viewProj,
+  index,
+  viewportWidth,
+  viewportHeight,
+  splatScale,
+  minRadiusPx,
+  nearFadeEndNdc,
+}: {
+  readonly attributes: SplatAttributes;
+  readonly viewProj: Float32Array;
+  readonly index: number;
+  readonly viewportWidth: number;
+  readonly viewportHeight: number;
+  readonly splatScale: number;
+  readonly minRadiusPx: number;
+  readonly nearFadeEndNdc: number;
+}): { readonly xx: number; readonly xy: number; readonly yy: number } | null {
+  const positionBase = index * 3;
+  const center: readonly [number, number, number] = [
+    attributes.positions[positionBase],
+    attributes.positions[positionBase + 1],
+    attributes.positions[positionBase + 2],
+  ];
+  const centerClip = multiplyCompactSourceMat4Vec4(viewProj, [center[0], center[1], center[2], 1]);
+  if (!Number.isFinite(centerClip[3]) || Math.abs(centerClip[3]) <= 0.0001) {
+    return null;
+  }
+
+  const scale = [
+    Math.exp(attributes.scales?.[positionBase] ?? 0),
+    Math.exp(attributes.scales?.[positionBase + 1] ?? 0),
+    Math.exp(attributes.scales?.[positionBase + 2] ?? 0),
+  ];
+  const rotationBase = index * 4;
+  const rotation = normalizeCompactSourceQuat([
+    attributes.rotations?.[rotationBase] ?? 1,
+    attributes.rotations?.[rotationBase + 1] ?? 0,
+    attributes.rotations?.[rotationBase + 2] ?? 0,
+    attributes.rotations?.[rotationBase + 3] ?? 0,
+  ]);
+  const axes = [
+    scaleCompactSourceVector(rotateCompactSourceAxis(rotation, [1, 0, 0]), scale[0]),
+    scaleCompactSourceVector(rotateCompactSourceAxis(rotation, [0, 1, 0]), scale[1]),
+    scaleCompactSourceVector(rotateCompactSourceAxis(rotation, [0, 0, 1]), scale[2]),
+  ];
+  if (compactSourceNearPlaneSupportCrossesClip({ viewProj, center, centerClip, axes, nearFadeEndNdc })) {
+    return null;
+  }
+
+  const axisScale = splatScale / 600;
+  let xx = 0;
+  let xy = 0;
+  let yy = 0;
+  for (const axis of axes) {
+    const projected = projectCompactSourceAxisJacobianPx(viewProj, axis, centerClip, viewportWidth, viewportHeight);
+    const ax = projected[0] * axisScale;
+    const ay = projected[1] * axisScale;
+    xx += ax * ax;
+    xy += ax * ay;
+    yy += ay * ay;
+  }
+  return floorCompactSourceCovariancePrincipalRadii({ xx, xy, yy }, minRadiusPx);
+}
+
+function floorCompactSourceCovariancePrincipalRadii(
+  covariance: { readonly xx: number; readonly xy: number; readonly yy: number },
+  minRadiusPx: number
+): { readonly xx: number; readonly xy: number; readonly yy: number } {
+  const minVariance = minRadiusPx * minRadiusPx;
+  const determinant = covariance.xx * covariance.yy - covariance.xy * covariance.xy;
+  if (covariance.xx <= 0 || covariance.yy <= 0 || determinant <= 0) {
+    return { xx: minVariance, xy: 0, yy: minVariance };
+  }
+  const trace = covariance.xx + covariance.yy;
+  const discriminant = Math.sqrt(Math.max((covariance.xx - covariance.yy) ** 2 + 4 * covariance.xy * covariance.xy, 0));
+  const majorVariance = 0.5 * (trace + discriminant);
+  const minorVariance = 0.5 * (trace - discriminant);
+  const flooredMajorVariance = Math.max(majorVariance, minVariance);
+  const flooredMinorVariance = Math.max(minorVariance, minVariance);
+  if (flooredMajorVariance === majorVariance && flooredMinorVariance === minorVariance) {
+    return covariance;
+  }
+  const theta = 0.5 * Math.atan2(2 * covariance.xy, covariance.xx - covariance.yy);
+  const cosTheta = Math.cos(theta);
+  const sinTheta = Math.sin(theta);
+  const cos2 = cosTheta * cosTheta;
+  const sin2 = sinTheta * sinTheta;
+  return {
+    xx: flooredMajorVariance * cos2 + flooredMinorVariance * sin2,
+    xy: (flooredMajorVariance - flooredMinorVariance) * cosTheta * sinTheta,
+    yy: flooredMajorVariance * sin2 + flooredMinorVariance * cos2,
+  };
+}
+
+function compactSourceNearPlaneSupportCrossesClip({
+  viewProj,
+  center,
+  centerClip,
+  axes,
+  nearFadeEndNdc,
+}: {
+  readonly viewProj: Float32Array;
+  readonly center: readonly [number, number, number];
+  readonly centerClip: readonly number[];
+  readonly axes: readonly (readonly [number, number, number])[];
+  readonly nearFadeEndNdc: number;
+}): boolean {
+  if (!Number.isFinite(nearFadeEndNdc) || nearFadeEndNdc <= 0) {
+    return false;
+  }
+  const safeW = Math.max(centerClip[3], 0.0001);
+  const centerNdcDepth = centerClip[2] / safeW;
+  if (centerNdcDepth > nearFadeEndNdc) {
+    return false;
+  }
+  for (const axis of axes) {
+    const positiveClip = multiplyCompactSourceMat4Vec4(viewProj, [center[0] + axis[0], center[1] + axis[1], center[2] + axis[2], 1]);
+    const negativeClip = multiplyCompactSourceMat4Vec4(viewProj, [center[0] - axis[0], center[1] - axis[1], center[2] - axis[2], 1]);
+    if (!compactSourceClipInside(positiveClip) || !compactSourceClipInside(negativeClip)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function compactSourceClipInside(clip: readonly number[]): boolean {
+  return Number.isFinite(clip[3]) && clip[3] > 0.0001 && clip[2] >= 0 && clip[2] <= clip[3];
+}
+
+function multiplyCompactSourceMat4Vec4(matrix: Float32Array, vector: readonly [number, number, number, number]): readonly [number, number, number, number] {
+  return [
+    matrix[0] * vector[0] + matrix[4] * vector[1] + matrix[8] * vector[2] + matrix[12] * vector[3],
+    matrix[1] * vector[0] + matrix[5] * vector[1] + matrix[9] * vector[2] + matrix[13] * vector[3],
+    matrix[2] * vector[0] + matrix[6] * vector[1] + matrix[10] * vector[2] + matrix[14] * vector[3],
+    matrix[3] * vector[0] + matrix[7] * vector[1] + matrix[11] * vector[2] + matrix[15] * vector[3],
+  ];
+}
+
+function projectCompactSourceAxisJacobianPx(
+  viewProj: Float32Array,
+  axis: readonly [number, number, number],
+  centerClip: readonly number[],
+  viewportWidth: number,
+  viewportHeight: number
+): readonly [number, number] {
+  const safeW = Math.max(Math.abs(centerClip[3]), 0.0001);
+  const clipW2 = safeW * safeW;
+  const row0: readonly [number, number, number] = [viewProj[0], viewProj[4], viewProj[8]];
+  const row1: readonly [number, number, number] = [viewProj[1], viewProj[5], viewProj[9]];
+  const row3: readonly [number, number, number] = [viewProj[3], viewProj[7], viewProj[11]];
+  const jacobianX: readonly [number, number, number] = [
+    (centerClip[3] * row0[0] - centerClip[0] * row3[0]) / clipW2,
+    (centerClip[3] * row0[1] - centerClip[0] * row3[1]) / clipW2,
+    (centerClip[3] * row0[2] - centerClip[0] * row3[2]) / clipW2,
+  ];
+  const jacobianY: readonly [number, number, number] = [
+    (centerClip[3] * row1[0] - centerClip[1] * row3[0]) / clipW2,
+    (centerClip[3] * row1[1] - centerClip[1] * row3[1]) / clipW2,
+    (centerClip[3] * row1[2] - centerClip[1] * row3[2]) / clipW2,
+  ];
+  return [
+    dotCompactSource(jacobianX, axis) * viewportWidth * 0.5,
+    dotCompactSource(jacobianY, axis) * viewportHeight * 0.5,
+  ];
+}
+
+function normalizeCompactSourceQuat(quat: readonly [number, number, number, number]): readonly [number, number, number, number] {
+  const length = Math.hypot(quat[0], quat[1], quat[2], quat[3]);
+  if (!Number.isFinite(length) || length <= 0.000001) {
+    return [1, 0, 0, 0];
+  }
+  return [quat[0] / length, quat[1] / length, quat[2] / length, quat[3] / length];
+}
+
+function rotateCompactSourceAxis(
+  quat: readonly [number, number, number, number],
+  axis: readonly [number, number, number]
+): readonly [number, number, number] {
+  const u: readonly [number, number, number] = [quat[1], quat[2], quat[3]];
+  const uv = crossCompactSource(u, axis);
+  const uuv = crossCompactSource(u, uv);
+  return [
+    axis[0] + 2 * (quat[0] * uv[0] + uuv[0]),
+    axis[1] + 2 * (quat[0] * uv[1] + uuv[1]),
+    axis[2] + 2 * (quat[0] * uv[2] + uuv[2]),
+  ];
+}
+
+function crossCompactSource(
+  left: readonly [number, number, number],
+  right: readonly [number, number, number]
+): readonly [number, number, number] {
+  return [
+    left[1] * right[2] - left[2] * right[1],
+    left[2] * right[0] - left[0] * right[2],
+    left[0] * right[1] - left[1] * right[0],
+  ];
+}
+
+function scaleCompactSourceVector(
+  vector: readonly [number, number, number],
+  scale: number
+): readonly [number, number, number] {
+  return [vector[0] * scale, vector[1] * scale, vector[2] * scale];
+}
+
+function dotCompactSource(
+  left: readonly [number, number, number],
+  right: readonly [number, number, number]
+): number {
+  return left[0] * right[0] + left[1] * right[1] + left[2] * right[2];
+}
+
+function invertCompactSourceCovariance(
+  covariance: RuntimeCompactTileCoverage["splats"][number]["covariancePx"] | undefined
+): readonly [number, number, number] {
+  const xx = finiteOrZero(covariance?.xx);
+  const xy = finiteOrZero(covariance?.xy);
+  const yy = finiteOrZero(covariance?.yy);
+  const det = xx * yy - xy * xy;
+  if (!Number.isFinite(det) || det <= 1e-12) {
+    return [1, 0, 1];
+  }
+  return [yy / det, -xy / det, xx / det];
+}
+
+function compactSourceBackToFrontDepthEvidence(attributes: SplatAttributes, viewMatrix: Float32Array) {
+  const sortedIds = Array.from({ length: attributes.count }, (_, splatIndex) => ({
+    splatIndex,
+    depth:
+      viewMatrix[2] * attributes.positions[splatIndex * 3] +
+      viewMatrix[6] * attributes.positions[splatIndex * 3 + 1] +
+      viewMatrix[10] * attributes.positions[splatIndex * 3 + 2] +
+      viewMatrix[14],
+  })).sort((left, right) => left.depth - right.depth || left.splatIndex - right.splatIndex);
+  const ranks = new Uint32Array(Math.max(attributes.count, 1));
+  const depths = new Float32Array(Math.max(attributes.count, 1));
+  ranks.fill(0xffffffff);
+  for (const { splatIndex, depth } of sortedIds) {
+    depths[splatIndex] = depth;
+  }
+  for (let rank = 0; rank < sortedIds.length; rank += 1) {
+    ranks[sortedIds[rank].splatIndex] = rank;
+  }
+  return { ranks, depths };
+}
+
+function readCompactSourceOpacity(
+  attributes: SplatAttributes,
+  effectiveOpacities: Float32Array,
+  splatIndex: number
+): number {
+  const source = effectiveOpacities[splatIndex] ?? attributes.opacities?.[splatIndex] ?? 1;
+  return clampCompactSource(source, 0, 0.999);
+}
+
+function readCompactSourceLuminance(attributes: SplatAttributes, splatIndex: number): number {
+  const base = splatIndex * 3;
+  const red = Math.max(0, finiteOrFallback(attributes.colors?.[base], 1));
+  const green = Math.max(0, finiteOrFallback(attributes.colors?.[base + 1], 1));
+  const blue = Math.max(0, finiteOrFallback(attributes.colors?.[base + 2], 1));
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+}
+
+function transferCompactSourceCoverageAlpha(opacity: number, coverageWeight: number): number {
+  if (opacity <= 0 || coverageWeight <= 0) {
+    return 0;
+  }
+  return clampCompactSource(1 - Math.pow(1 - opacity, coverageWeight), 0, 1);
+}
+
+function finiteOrZero(value: number | undefined): number {
+  return Number.isFinite(value) ? Number(value) : 0;
+}
+
+function finiteOrFallback(value: number | undefined, fallback: number): number {
+  return Number.isFinite(value) ? Number(value) : fallback;
+}
+
+function clampCompactSource(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
 function createCpuTileLocalSceneState(
@@ -1766,7 +2520,7 @@ function tileLocalDisabledReasonForAttributes(attributes: SplatAttributes): stri
 }
 
 function isTileLocalBudgetError(err: unknown): boolean {
-  return err instanceof Error && /(projected tile refs exceed budget|gpu tile coverage buffers exceed max storage binding)/.test(err.message);
+  return err instanceof Error && /(projected tile refs exceed budget|gpu tile coverage buffers exceed max storage binding|gpu arena projected contributor buffers exceed max storage binding|compact retained source produced no retained contributors)/.test(err.message);
 }
 
 function errorMessage(err: unknown): string {

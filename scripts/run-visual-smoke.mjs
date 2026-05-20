@@ -3,7 +3,9 @@ import { mkdir, writeFile } from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
 
+import { withTimeout } from "./visual-smoke/async-timeout.mjs";
 import { classifySmokeEvidence } from "./visual-smoke/evidence.mjs";
+import { buildTimeoutFailureCapture } from "./visual-smoke/failure-telemetry.mjs";
 import { analyzePngBuffer } from "./visual-smoke/png-analysis.mjs";
 import {
   buildTileLocalComparisonPlan,
@@ -26,6 +28,9 @@ import {
   parseSmokeKind,
   renderSmokeHandoffSection,
 } from "./visual-smoke/smoke-handoff.mjs";
+
+const PAGE_EVIDENCE_TIMEOUT_MS = 1000;
+const TIMEOUT_SCREENSHOT_MS = 5000;
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
@@ -119,10 +124,52 @@ async function main() {
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: options.timeoutMs });
     const canvas = page.locator("canvas").first();
     await canvas.waitFor({ state: "attached", timeout: options.timeoutMs });
-    await waitForVisualSmokeCaptureReady(page, "", options.timeoutMs);
+    try {
+      await waitForVisualSmokeCaptureReady(page, "", options.timeoutMs);
+    } catch (error) {
+      if (!isVisualSmokeTimeoutError(error)) {
+        throw error;
+      }
+      const failureCapture = await captureTimeoutFailure({
+        page,
+        canvas,
+        options,
+        capture: {
+          id: "canvas",
+          title: "Visual smoke capture",
+          expectedRendererLabel: "",
+          url,
+        },
+        reportDir,
+        error,
+        consoleMessages,
+        pageErrors,
+      });
+      const result = {
+        generatedAt,
+        url,
+        screenshotPath: failureCapture.screenshotPath,
+        analysisPath: path.relative(options.appRoot, analysisPath),
+        reportPath: path.relative(options.appRoot, reportPath),
+        smokeHandoff: buildSmokeHandoff(options),
+        options: publicOptions(options),
+        pageEvidence: failureCapture.pageEvidence,
+        imageAnalysis: failureCapture.imageAnalysis,
+        classification: failureCapture.classification,
+        witnessDiagnostics: failureCapture.witnessDiagnostics,
+        captureFailure: failureCapture.captureFailure,
+        consoleMessages: failureCapture.consoleMessages,
+        pageErrors: failureCapture.pageErrors,
+      };
+      await writeFile(analysisPath, `${JSON.stringify(result, null, 2)}\n`);
+      await writeFile(reportPath, renderMarkdownReport(result));
+      printSummary(result);
+      process.exitCode = 1;
+      return;
+    }
     await page.waitForTimeout(options.settleMs);
 
-    const rawPageEvidence = await collectPageEvidence(page);
+    const rawPageEvidence = await collectPageEvidenceWithTimeout(page);
     const pageEvidence = {
       ...rawPageEvidence,
       ...extractTileLocalPageMetrics(rawPageEvidence),
@@ -298,10 +345,26 @@ async function captureVisualSmoke({ browser, options, capture, reportDir }) {
     await page.goto(capture.url, { waitUntil: "domcontentloaded", timeout: options.timeoutMs });
     const canvas = page.locator("canvas").first();
     await canvas.waitFor({ state: "attached", timeout: options.timeoutMs });
-    await waitForVisualSmokeCaptureReady(page, capture.expectedRendererLabel, options.timeoutMs);
+    try {
+      await waitForVisualSmokeCaptureReady(page, capture.expectedRendererLabel, options.timeoutMs);
+    } catch (error) {
+      if (!isVisualSmokeTimeoutError(error)) {
+        throw error;
+      }
+      return await captureTimeoutFailure({
+        page,
+        canvas,
+        options,
+        capture,
+        reportDir,
+        error,
+        consoleMessages,
+        pageErrors,
+      });
+    }
     await page.waitForTimeout(options.settleMs);
 
-    const rawPageEvidence = await collectPageEvidence(page);
+    const rawPageEvidence = await collectPageEvidenceWithTimeout(page);
     const pageEvidence = {
       ...rawPageEvidence,
       ...extractTileLocalPageMetrics(rawPageEvidence),
@@ -339,11 +402,62 @@ async function captureVisualSmoke({ browser, options, capture, reportDir }) {
   }
 }
 
+async function captureTimeoutFailure({ page, canvas, options, capture, reportDir, error, consoleMessages, pageErrors }) {
+  const rawPageEvidence = error.lastEvidence ?? await collectPageEvidence(page).catch(() => ({}));
+  const pageEvidence = {
+    ...rawPageEvidence,
+    ...extractTileLocalPageMetrics(rawPageEvidence),
+  };
+  const screenshotFile = path.join(reportDir, `${capture.id}-timeout.png`);
+  let screenshotPath;
+  let imageAnalysis;
+
+  try {
+    const clip = await canvasClip(canvas);
+    await page.addStyleTag({
+      content: "#stats,[data-visual-smoke-ignore]{visibility:hidden!important}",
+    });
+    const screenshot = await page.screenshot({ path: screenshotFile, clip, timeout: TIMEOUT_SCREENSHOT_MS });
+    screenshotPath = path.relative(options.appRoot, screenshotFile);
+    imageAnalysis = analyzePngBuffer(screenshot, options.imageThresholds);
+  } catch (canvasScreenshotError) {
+    pageErrors.push(canvasScreenshotError.stack || canvasScreenshotError.message);
+    try {
+      const screenshot = await page.screenshot({ path: screenshotFile, timeout: TIMEOUT_SCREENSHOT_MS });
+      screenshotPath = path.relative(options.appRoot, screenshotFile);
+      imageAnalysis = analyzePngBuffer(screenshot, options.imageThresholds);
+    } catch (pageScreenshotError) {
+      pageErrors.push(pageScreenshotError.stack || pageScreenshotError.message);
+    }
+  }
+
+  return buildTimeoutFailureCapture({
+    capture,
+    error,
+    elapsedMs: error.elapsedMs,
+    pageEvidence,
+    imageAnalysis,
+    screenshotPath,
+    consoleMessages,
+    pageErrors,
+  });
+}
+
 async function waitForVisualSmokeCaptureReady(page, expectedRendererLabel, timeoutMs) {
   const startedAt = Date.now();
   let lastEvidence = {};
   while (Date.now() - startedAt < timeoutMs) {
-    const rawEvidence = await collectPageEvidence(page);
+    let rawEvidence;
+    try {
+      rawEvidence = await collectPageEvidenceWithTimeout(page);
+    } catch (evidenceError) {
+      lastEvidence = {
+        ...lastEvidence,
+        evidenceCollectionError: evidenceError.message,
+      };
+      await page.waitForTimeout(100);
+      continue;
+    }
     lastEvidence = {
       ...rawEvidence,
       ...extractTileLocalPageMetrics(rawEvidence),
@@ -354,11 +468,19 @@ async function waitForVisualSmokeCaptureReady(page, expectedRendererLabel, timeo
     await page.waitForTimeout(100);
   }
 
-  throw new Error(
+  const error = new Error(
     `Timed out waiting for rendered visual smoke evidence${
       expectedRendererLabel ? ` (${expectedRendererLabel})` : ""
     }; last stats: ${JSON.stringify(lastEvidence.statsText ?? "")}`
   );
+  error.name = "VisualSmokeTimeoutError";
+  error.lastEvidence = lastEvidence;
+  error.elapsedMs = Date.now() - startedAt;
+  throw error;
+}
+
+function isVisualSmokeTimeoutError(error) {
+  return error?.name === "VisualSmokeTimeoutError";
 }
 
 async function collectPageEvidence(page) {
@@ -416,6 +538,14 @@ async function collectPageEvidence(page) {
   });
 }
 
+async function collectPageEvidenceWithTimeout(page, timeoutMs = PAGE_EVIDENCE_TIMEOUT_MS) {
+  return await withTimeout(
+    collectPageEvidence(page),
+    timeoutMs,
+    `page evidence collection timed out after ${timeoutMs}ms`
+  );
+}
+
 async function canvasClip(locator) {
   const box = await locator.boundingBox();
   if (!box) {
@@ -441,7 +571,7 @@ function renderMarkdownReport(result) {
 - Status: ${status}
 - Generated: ${result.generatedAt}
 - URL: ${result.url}
-- Screenshot: \`${path.relative(path.dirname(result.reportPath), result.screenshotPath)}\`
+- Screenshot: ${result.screenshotPath ? `\`${path.relative(path.dirname(result.reportPath), result.screenshotPath)}\`` : "not captured"}
 - Analysis JSON: \`${path.relative(path.dirname(result.reportPath), result.analysisPath)}\`
 
 ${renderSmokeHandoffSection(result.smokeHandoff)}
@@ -511,7 +641,7 @@ ${result.captures
     (capture) => `### ${capture.title}
 
 - URL: ${capture.url}
-- Screenshot: \`${path.relative(path.dirname(result.reportPath), capture.screenshotPath)}\`
+- Screenshot: ${renderCaptureScreenshotPath(result, capture)}
 - Renderer label: ${capture.pageEvidence.rendererLabel || "not reported"}
 - FPS: ${capture.pageEvidence.fps || 0}
 - Tile refs: ${capture.pageEvidence.tileLocal?.refs || 0}
@@ -570,7 +700,7 @@ ${result.captures
     (capture) => `### ${capture.title}
 
 - URL: ${capture.url}
-- Screenshot: \`${path.relative(path.dirname(result.reportPath), capture.screenshotPath)}\`
+- Screenshot: ${renderCaptureScreenshotPath(result, capture)}
 - Renderer label: ${capture.pageEvidence.rendererLabel || "not reported"}
 - Tile refs: ${capture.pageEvidence.tileLocal?.refs || 0}
 - Debug mode: ${capture.pageEvidence.tileLocal?.diagnostics?.debugMode || "not reported"}
@@ -672,7 +802,7 @@ ${result.captures
     (capture) => `### ${capture.title}
 
 - URL: ${capture.url}
-- Screenshot: \`${path.relative(path.dirname(result.reportPath), capture.screenshotPath)}\`
+- Screenshot: ${renderCaptureScreenshotPath(result, capture)}
 - Renderer label: ${capture.pageEvidence.rendererLabel || "not reported"}
 - Tile refs: ${capture.pageEvidence.tileLocal?.refs || 0}
 - Debug mode: ${capture.pageEvidence.tileLocal?.diagnostics?.debugMode || "final-color"}
@@ -716,6 +846,12 @@ function printSummary(result) {
   console.log(result.classification.summary);
   console.log(`report: ${result.reportPath}`);
   console.log(`screenshot: ${result.screenshotPath}`);
+}
+
+function renderCaptureScreenshotPath(result, capture) {
+  return capture.screenshotPath
+    ? `\`${path.relative(path.dirname(result.reportPath), capture.screenshotPath)}\``
+    : "not captured";
 }
 
 function formatMetricRatio(value) {

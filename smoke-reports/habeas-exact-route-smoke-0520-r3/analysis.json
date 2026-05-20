@@ -1,0 +1,1251 @@
+{
+  "generatedAt": "2026-05-20T07:07:25.809Z",
+  "baseUrl": "http://127.0.0.1:5188/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible&traceAnchors=fresh-a@1918,780:lacunar-hole;fresh-b@2166,908:lacunar-hole;fresh-c@1734,1044:lacunar-hole;fresh-d@1514,1324:lacunar-hole;fresh-e@1422,1324:lacunar-hole;fresh-f@2134,988:lacunar-hole",
+  "analysisPath": "smoke-reports/habeas-exact-route-smoke-0520-r3/analysis.json",
+  "reportPath": "smoke-reports/habeas-exact-route-smoke-0520-r3/report.md",
+  "smokeHandoff": {
+    "smokeKind": "visual",
+    "decisionRequested": "Judge fixed dessert final-color and debug evidence for renderer-fidelity movement.",
+    "expectedVisualDelta": "fixed-view final-color should move only in the branch's claimed visual direction",
+    "evidenceSurface": "static dessert witness report, analysis.json, final-color capture, and debug captures"
+  },
+  "options": {
+    "appRoot": ".",
+    "host": "127.0.0.1",
+    "url": "http://127.0.0.1:5188/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible&traceAnchors=fresh-a@1918,780:lacunar-hole;fresh-b@2166,908:lacunar-hole;fresh-c@1734,1044:lacunar-hole;fresh-d@1514,1324:lacunar-hole;fresh-e@1422,1324:lacunar-hole;fresh-f@2134,988:lacunar-hole",
+    "reportDir": "smoke-reports/habeas-exact-route-smoke-0520-r3",
+    "requireRealSplat": true,
+    "headless": true,
+    "browserChannel": "chrome",
+    "viewport": {
+      "width": 3456,
+      "height": 1916
+    },
+    "deviceScaleFactor": 1,
+    "timeoutMs": 30000,
+    "settleMs": 5000,
+    "imageThresholds": {},
+    "tileLocalComparison": false,
+    "tileLocalDiagnostics": false,
+    "staticDessertWitness": true,
+    "smokeHandoff": {
+      "smokeKind": "visual",
+      "decisionRequested": "Decide whether this smoke satisfies the branch-specific evidence contract.",
+      "expectedVisualDelta": "not specified",
+      "evidenceSurface": "report.md, analysis.json, page evidence, and captured canvas screenshot"
+    }
+  },
+  "plan": [
+    {
+      "id": "plate-final-color",
+      "title": "Plate baseline final color",
+      "expectedRendererLabel": "plate",
+      "url": "http://127.0.0.1:5188/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&traceAnchors=fresh-a%401918%2C780%3Alacunar-hole%3Bfresh-b%402166%2C908%3Alacunar-hole%3Bfresh-c%401734%2C1044%3Alacunar-hole%3Bfresh-d%401514%2C1324%3Alacunar-hole%3Bfresh-e%401422%2C1324%3Alacunar-hole%3Bfresh-f%402134%2C988%3Alacunar-hole"
+    },
+    {
+      "id": "final-color",
+      "title": "Final color tile-local visible compositor",
+      "expectedRendererLabel": "tile-local-visible",
+      "url": "http://127.0.0.1:5188/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible&traceAnchors=fresh-a%401918%2C780%3Alacunar-hole%3Bfresh-b%402166%2C908%3Alacunar-hole%3Bfresh-c%401734%2C1044%3Alacunar-hole%3Bfresh-d%401514%2C1324%3Alacunar-hole%3Bfresh-e%401422%2C1324%3Alacunar-hole%3Bfresh-f%402134%2C988%3Alacunar-hole"
+    },
+    {
+      "id": "coverage-weight",
+      "title": "Coverage weight heatmap",
+      "expectedRendererLabel": "tile-local-visible-debug-coverage-weight",
+      "url": "http://127.0.0.1:5188/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible&traceAnchors=fresh-a%401918%2C780%3Alacunar-hole%3Bfresh-b%402166%2C908%3Alacunar-hole%3Bfresh-c%401734%2C1044%3Alacunar-hole%3Bfresh-d%401514%2C1324%3Alacunar-hole%3Bfresh-e%401422%2C1324%3Alacunar-hole%3Bfresh-f%402134%2C988%3Alacunar-hole&tileDebug=coverage-weight"
+    },
+    {
+      "id": "accumulated-alpha",
+      "title": "Accumulated alpha heatmap",
+      "expectedRendererLabel": "tile-local-visible-debug-accumulated-alpha",
+      "url": "http://127.0.0.1:5188/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible&traceAnchors=fresh-a%401918%2C780%3Alacunar-hole%3Bfresh-b%402166%2C908%3Alacunar-hole%3Bfresh-c%401734%2C1044%3Alacunar-hole%3Bfresh-d%401514%2C1324%3Alacunar-hole%3Bfresh-e%401422%2C1324%3Alacunar-hole%3Bfresh-f%402134%2C988%3Alacunar-hole&tileDebug=accumulated-alpha"
+    },
+    {
+      "id": "transmittance",
+      "title": "Transmittance heatmap",
+      "expectedRendererLabel": "tile-local-visible-debug-transmittance",
+      "url": "http://127.0.0.1:5188/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible&traceAnchors=fresh-a%401918%2C780%3Alacunar-hole%3Bfresh-b%402166%2C908%3Alacunar-hole%3Bfresh-c%401734%2C1044%3Alacunar-hole%3Bfresh-d%401514%2C1324%3Alacunar-hole%3Bfresh-e%401422%2C1324%3Alacunar-hole%3Bfresh-f%402134%2C988%3Alacunar-hole&tileDebug=transmittance"
+    },
+    {
+      "id": "tile-ref-count",
+      "title": "Tile-ref density heatmap",
+      "expectedRendererLabel": "tile-local-visible-debug-tile-ref-count",
+      "url": "http://127.0.0.1:5188/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible&traceAnchors=fresh-a%401918%2C780%3Alacunar-hole%3Bfresh-b%402166%2C908%3Alacunar-hole%3Bfresh-c%401734%2C1044%3Alacunar-hole%3Bfresh-d%401514%2C1324%3Alacunar-hole%3Bfresh-e%401422%2C1324%3Alacunar-hole%3Bfresh-f%402134%2C988%3Alacunar-hole&tileDebug=tile-ref-count"
+    },
+    {
+      "id": "conic-shape",
+      "title": "Conic major/minor shape heatmap",
+      "expectedRendererLabel": "tile-local-visible-debug-conic-shape",
+      "url": "http://127.0.0.1:5188/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible&traceAnchors=fresh-a%401918%2C780%3Alacunar-hole%3Bfresh-b%402166%2C908%3Alacunar-hole%3Bfresh-c%401734%2C1044%3Alacunar-hole%3Bfresh-d%401514%2C1324%3Alacunar-hole%3Bfresh-e%401422%2C1324%3Alacunar-hole%3Bfresh-f%402134%2C988%3Alacunar-hole&tileDebug=conic-shape"
+    }
+  ],
+  "captures": [
+    {
+      "id": "plate-final-color",
+      "title": "Plate baseline final color",
+      "expectedRendererLabel": "plate",
+      "url": "http://127.0.0.1:5188/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&traceAnchors=fresh-a%401918%2C780%3Alacunar-hole%3Bfresh-b%402166%2C908%3Alacunar-hole%3Bfresh-c%401734%2C1044%3Alacunar-hole%3Bfresh-d%401514%2C1324%3Alacunar-hole%3Bfresh-e%401422%2C1324%3Alacunar-hole%3Bfresh-f%402134%2C988%3Alacunar-hole",
+      "screenshotPath": "smoke-reports/habeas-exact-route-smoke-0520-r3/plate-final-color.png",
+      "pageEvidence": {
+        "ready": true,
+        "sourceKind": "scaniverse_ply",
+        "realScaniverse": true,
+        "realSplatEvidence": true,
+        "synthetic": false,
+        "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+        "splatCount": 94406,
+        "sortedIdCount": 94406,
+        "sortBackend": "gpu-bitonic-cpu-depth-keys",
+        "boundsRadius": 0.22154541313648224,
+        "rendererLabel": "plate",
+        "fps": 0,
+        "tileLocalStatus": "not-applicable",
+        "tileLocalDisabledReason": null,
+        "arenaRuntime": {
+          "requestedArenaBackend": "gpu",
+          "effectiveArenaBackend": "cpu",
+          "unavailableReason": "gpu contributor arena runtime unavailable"
+        },
+        "tileLocal": {
+          "refs": 0,
+          "budget": {}
+        },
+        "witness": {
+          "field": {
+            "scaleSpace": "log",
+            "rotationOrder": "wxyz",
+            "opacitySpace": "unit",
+            "colorSpace": "sh_dc_rgb"
+          },
+          "projection": {
+            "projectionMode": "jacobian-covariance",
+            "maxAnisotropyRatio": 68.87746044164028,
+            "suspiciousSplatCount": 1245,
+            "sampleOriginalIds": [
+              87,
+              88,
+              102,
+              103,
+              131,
+              205,
+              238,
+              255
+            ],
+            "fieldMaxAnisotropyRatio": 190.56626845863002,
+            "fieldSuspiciousSplatCount": 8398,
+            "rotationOrderComparison": {
+              "wxyz": {
+                "rotationOrder": "wxyz",
+                "maxProjectedAnisotropyRatio": 68.87746044164028,
+                "suspiciousProjectedSplatCount": 1245,
+                "projectedSplatCount": 94406,
+                "sampleOriginalIds": [
+                  87,
+                  88,
+                  102,
+                  103,
+                  131,
+                  205,
+                  238,
+                  255
+                ]
+              },
+              "xyzw": {
+                "rotationOrder": "xyzw",
+                "maxProjectedAnisotropyRatio": 77.1933235206813,
+                "suspiciousProjectedSplatCount": 1935,
+                "projectedSplatCount": 94406,
+                "sampleOriginalIds": [
+                  89,
+                  91,
+                  131,
+                  256,
+                  286,
+                  300,
+                  310,
+                  437
+                ]
+              }
+            },
+            "footprint": {
+              "maxMajorRadiusPx": 39058.391918553534,
+              "maxMinorRadiusPx": 2515.6462420401867,
+              "maxAreaPx": 192137977.0964242,
+              "areaCapPx": 66216.96,
+              "majorRadiusCapPx": 1245.4,
+              "highEnergySplatCount": 6159,
+              "projectedSplatCount": 94406,
+              "sampleOriginalIds": [
+                250,
+                767,
+                772,
+                1111,
+                1122,
+                1140,
+                1177,
+                1178
+              ]
+            },
+            "cropSupport": {
+              "rimBand": {
+                "crop": {
+                  "x": 390,
+                  "y": 322,
+                  "width": 500,
+                  "height": 115
+                },
+                "projectedCenterCount": 0,
+                "projectedSupportCount": 0,
+                "nearFloorMinorCount": 0,
+                "maxMajorRadiusPx": 0,
+                "medianMajorRadiusPx": 0,
+                "medianMinorRadiusPx": 0,
+                "supportAreaPxSum": 0,
+                "sampleOriginalIds": []
+              },
+              "porousBody": {
+                "crop": {
+                  "x": 520,
+                  "y": 270,
+                  "width": 260,
+                  "height": 150
+                },
+                "projectedCenterCount": 0,
+                "projectedSupportCount": 0,
+                "nearFloorMinorCount": 0,
+                "maxMajorRadiusPx": 0,
+                "medianMajorRadiusPx": 0,
+                "medianMinorRadiusPx": 0,
+                "supportAreaPxSum": 0,
+                "sampleOriginalIds": []
+              }
+            }
+          },
+          "slab": {
+            "statusCounts": {
+              "axis-crosses-near-plane": 0,
+              "pathological-footprint": 0,
+              "accepted": 94406
+            },
+            "maxMajorRadiusPx": 0,
+            "footprintCapPx": 0.65,
+            "sampleOriginalIds": []
+          },
+          "alpha": {
+            "alphaEnergyPolicy": "bounded-footprint-energy-cap",
+            "nearPlaneAlphaFade": {
+              "startNdc": 0,
+              "endNdc": 0.08
+            },
+            "compositing": "straight-source-over",
+            "ambiguousOverlapCount": 0,
+            "overlapDensity": {
+              "accountingMode": "coverage-aware",
+              "tileSizePx": 48,
+              "alphaMassCap": 1728,
+              "maxTileAlphaMass": 404604.2336065514,
+              "maxTileSplatCount": 3750,
+              "hotTileCount": 2066,
+              "tileEntryCount": 2804715,
+              "maxSplatCoveredTileCount": 1880,
+              "maxCenterTileDroppedCoverageFraction": 0.9997531188901105,
+              "sampleOriginalIds": [
+                0,
+                5,
+                6,
+                17,
+                19,
+                20,
+                22,
+                31
+              ]
+            }
+          },
+          "sort": {
+            "backend": "gpu-bitonic-cpu-depth-keys",
+            "sortedIdCount": 94406
+          },
+          "source": {
+            "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+            "splatCount": 94406,
+            "sortedSampleOriginalIds": []
+          }
+        },
+        "statsText": "3456×1916 | 0 fps | 94,406 real Scaniverse splats | renderer: plate | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 79,805 splats/2066 tiles | arena requested: gpu | arena effective: cpu | arena unavailable: gpu contributor arena runtime unavailable | arena fallback: requested gpu arena backend fell back to the CPU bridge",
+        "title": "Deferred Splat+Mesh Renderer",
+        "bodyText": "3456×1916 | 0 fps | 94,406 real Scaniverse splats | renderer: plate | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 79,805 splats/2066 tiles | arena requested: gpu | arena effective: cpu | arena unavailable: gpu contributor arena runtime unavailable | arena fallback: requested gpu arena backend fell back to the CPU bridge",
+        "canvas": {
+          "width": 3456,
+          "height": 1916,
+          "clientWidth": 3456,
+          "clientHeight": 1916
+        }
+      },
+      "imageAnalysis": {
+        "width": 3456,
+        "height": 1916,
+        "totalPixels": 6621696,
+        "backgroundColor": {
+          "r": 73,
+          "g": 42,
+          "b": 30,
+          "a": 255
+        },
+        "distinctColorCount": 398,
+        "changedPixels": 21035,
+        "changedPixelRatio": 0.003176678603185649,
+        "averageDelta": 2.7313138003517987,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "00000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000101000000000000",
+        "bridgeBlockRatio": 1,
+        "nonblank": true
+      },
+      "classification": {
+        "nonblank": true,
+        "realSplatEvidence": true,
+        "closeable": true,
+        "harnessPassed": true,
+        "sourceKind": "scaniverse_ply",
+        "splatCount": 94406,
+        "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+        "summary": "PASS: nonblank scaniverse_ply capture with 94406 splats from /smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json.",
+        "reasons": []
+      },
+      "witnessDiagnostics": {
+        "consumedContracts": {
+          "fieldAutopsy": "66b4ea26e5d81ac614f4452b8d21308c4e432e1a",
+          "slabSentinel": "ca96409",
+          "conicReckoner": "f9e3498c00d44f2bb70eba1013f11c2f39b1aff1",
+          "alphaLedger": "0474666"
+        },
+        "thresholdPolicy": "witness-only; does not alter visual smoke pass/fail thresholds",
+        "smokeClassification": {
+          "nonblank": true,
+          "realSplatEvidence": true,
+          "closeable": true,
+          "harnessPassed": true,
+          "sourceKind": "scaniverse_ply",
+          "splatCount": 94406,
+          "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+          "summary": "PASS: nonblank scaniverse_ply capture with 94406 splats from /smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json.",
+          "reasons": []
+        },
+        "imageSummary": {
+          "nonblank": true,
+          "changedPixelRatio": 0.003176678603185649
+        },
+        "findings": [
+          {
+            "kind": "projection-anisotropy",
+            "owner": "conic-reckoner",
+            "severity": "suspect",
+            "summary": "Projection anisotropy witness found ratio 68.88 across 1245 splats; footprint witness found 6159 high-energy splats with max major radius 39058.39 px; route to conic-reckoner after field metadata is canonical.",
+            "evidence": {
+              "maxAnisotropyRatio": 68.87746044164028,
+              "suspiciousSplatCount": 1245,
+              "sampleOriginalIds": [
+                87,
+                88,
+                102,
+                103,
+                131,
+                205,
+                238,
+                255
+              ],
+              "footprint": {
+                "maxMajorRadiusPx": 39058.391918553534,
+                "maxMinorRadiusPx": 2515.6462420401867,
+                "maxAreaPx": 192137977.0964242,
+                "areaCapPx": 66216.96,
+                "majorRadiusCapPx": 1245.4,
+                "highEnergySplatCount": 6159,
+                "projectedSplatCount": 94406,
+                "sampleOriginalIds": [
+                  250,
+                  767,
+                  772,
+                  1111,
+                  1122,
+                  1140,
+                  1177,
+                  1178
+                ]
+              }
+            }
+          },
+          {
+            "kind": "compositing-ambiguous",
+            "owner": "alpha-ledger",
+            "severity": "suspect",
+            "summary": "Alpha density witness found 2066 hot tiles with max mass 404604.23.",
+            "evidence": {
+              "alphaEnergyPolicy": "bounded-footprint-energy-cap",
+              "nearPlaneAlphaFade": {
+                "startNdc": 0,
+                "endNdc": 0.08
+              },
+              "compositing": "straight-source-over",
+              "ambiguousOverlapCount": 0,
+              "overlapDensity": {
+                "tileSizePx": 48,
+                "alphaMassCap": 1728,
+                "maxTileAlphaMass": 404604.2336065514,
+                "maxTileSplatCount": 3750,
+                "hotTileCount": 2066,
+                "sampleOriginalIds": [
+                  0,
+                  5,
+                  6,
+                  17,
+                  19,
+                  20,
+                  22,
+                  31
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "consoleMessages": [
+        {
+          "type": "debug",
+          "text": "[vite] connecting..."
+        },
+        {
+          "type": "debug",
+          "text": "[vite] connected."
+        }
+      ],
+      "pageErrors": []
+    },
+    {
+      "id": "final-color",
+      "title": "Final color tile-local visible compositor",
+      "expectedRendererLabel": "tile-local-visible",
+      "url": "http://127.0.0.1:5188/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible&traceAnchors=fresh-a%401918%2C780%3Alacunar-hole%3Bfresh-b%402166%2C908%3Alacunar-hole%3Bfresh-c%401734%2C1044%3Alacunar-hole%3Bfresh-d%401514%2C1324%3Alacunar-hole%3Bfresh-e%401422%2C1324%3Alacunar-hole%3Bfresh-f%402134%2C988%3Alacunar-hole",
+      "pageEvidence": {
+        "tileLocal": {
+          "refs": 0,
+          "budget": {}
+        },
+        "statsText": "Loading real Scaniverse splats...",
+        "title": "Deferred Splat+Mesh Renderer",
+        "bodyText": "Loading real Scaniverse splats...",
+        "canvas": {
+          "width": 300,
+          "height": 150,
+          "clientWidth": 3456,
+          "clientHeight": 1916
+        },
+        "rendererLabel": "",
+        "fps": 0,
+        "arenaRuntime": {},
+        "evidenceCollectionError": "page.evaluate: Target crashed "
+      },
+      "imageAnalysis": {
+        "width": 0,
+        "height": 0,
+        "nonblank": false,
+        "changedPixels": 0,
+        "totalPixels": 0,
+        "changedPixelRatio": 0,
+        "averageDelta": 0,
+        "distinctColorCount": 0,
+        "bridgeBlockRatio": 0
+      },
+      "classification": {
+        "nonblank": false,
+        "realSplatEvidence": false,
+        "closeable": false,
+        "harnessPassed": false,
+        "sourceKind": "",
+        "splatCount": 0,
+        "assetPath": "",
+        "summary": "FAIL: timed out waiting for tile-local-visible evidence.",
+        "reasons": [
+          "visual smoke readiness timed out before the capture became closeable"
+        ]
+      },
+      "witnessDiagnostics": {
+        "thresholdPolicy": "not evaluated after readiness timeout",
+        "findings": [
+          {
+            "kind": "visual-smoke-timeout",
+            "summary": "Timed out waiting for rendered visual smoke evidence (tile-local-visible); last stats: \"Loading real Scaniverse splats...\""
+          }
+        ]
+      },
+      "captureFailure": {
+        "kind": "visual-smoke-timeout",
+        "message": "Timed out waiting for rendered visual smoke evidence (tile-local-visible); last stats: \"Loading real Scaniverse splats...\"",
+        "expectedRendererLabel": "tile-local-visible",
+        "elapsedMs": 30001,
+        "telemetry": {
+          "smoke": true,
+          "witness": false,
+          "tileLocalDiagnostics": false,
+          "statsText": true,
+          "url": true,
+          "viewport": true,
+          "screenshot": false
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "debug",
+          "text": "[vite] connecting..."
+        },
+        {
+          "type": "debug",
+          "text": "[vite] connected."
+        }
+      ],
+      "pageErrors": [
+        "locator.boundingBox: Target crashed \nCall log:\n\u001b[2m  - waiting for locator('canvas').first()\u001b[22m\n\n    at canvasClip (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:550:29)\n    at captureTimeoutFailure (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:416:24)\n    at captureVisualSmoke (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:354:20)\n    at async runStaticDessertWitness (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:312:19)\n    at async main (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:99:23)",
+        "page.screenshot: Target crashed \nCall log:\n\u001b[2m  - taking page screenshot\u001b[22m\n\u001b[2m  - waiting for fonts to load...\u001b[22m\n\u001b[2m  - fonts loaded\u001b[22m\n\n    at captureTimeoutFailure (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:426:37)\n    at async captureVisualSmoke (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:354:14)\n    at async runStaticDessertWitness (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:312:19)\n    at async main (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:99:23)"
+      ]
+    },
+    {
+      "id": "coverage-weight",
+      "title": "Coverage weight heatmap",
+      "expectedRendererLabel": "tile-local-visible-debug-coverage-weight",
+      "url": "http://127.0.0.1:5188/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible&traceAnchors=fresh-a%401918%2C780%3Alacunar-hole%3Bfresh-b%402166%2C908%3Alacunar-hole%3Bfresh-c%401734%2C1044%3Alacunar-hole%3Bfresh-d%401514%2C1324%3Alacunar-hole%3Bfresh-e%401422%2C1324%3Alacunar-hole%3Bfresh-f%402134%2C988%3Alacunar-hole&tileDebug=coverage-weight",
+      "pageEvidence": {
+        "tileLocal": {
+          "refs": 0,
+          "budget": {}
+        },
+        "statsText": "Loading real Scaniverse splats...",
+        "title": "Deferred Splat+Mesh Renderer",
+        "bodyText": "Loading real Scaniverse splats...",
+        "canvas": {
+          "width": 300,
+          "height": 150,
+          "clientWidth": 3456,
+          "clientHeight": 1916
+        },
+        "rendererLabel": "",
+        "fps": 0,
+        "arenaRuntime": {},
+        "evidenceCollectionError": "page.evaluate: Target crashed "
+      },
+      "imageAnalysis": {
+        "width": 0,
+        "height": 0,
+        "nonblank": false,
+        "changedPixels": 0,
+        "totalPixels": 0,
+        "changedPixelRatio": 0,
+        "averageDelta": 0,
+        "distinctColorCount": 0,
+        "bridgeBlockRatio": 0
+      },
+      "classification": {
+        "nonblank": false,
+        "realSplatEvidence": false,
+        "closeable": false,
+        "harnessPassed": false,
+        "sourceKind": "",
+        "splatCount": 0,
+        "assetPath": "",
+        "summary": "FAIL: timed out waiting for tile-local-visible-debug-coverage-weight evidence.",
+        "reasons": [
+          "visual smoke readiness timed out before the capture became closeable"
+        ]
+      },
+      "witnessDiagnostics": {
+        "thresholdPolicy": "not evaluated after readiness timeout",
+        "findings": [
+          {
+            "kind": "visual-smoke-timeout",
+            "summary": "Timed out waiting for rendered visual smoke evidence (tile-local-visible-debug-coverage-weight); last stats: \"Loading real Scaniverse splats...\""
+          }
+        ]
+      },
+      "captureFailure": {
+        "kind": "visual-smoke-timeout",
+        "message": "Timed out waiting for rendered visual smoke evidence (tile-local-visible-debug-coverage-weight); last stats: \"Loading real Scaniverse splats...\"",
+        "expectedRendererLabel": "tile-local-visible-debug-coverage-weight",
+        "elapsedMs": 30001,
+        "telemetry": {
+          "smoke": true,
+          "witness": false,
+          "tileLocalDiagnostics": false,
+          "statsText": true,
+          "url": true,
+          "viewport": true,
+          "screenshot": false
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "debug",
+          "text": "[vite] connecting..."
+        },
+        {
+          "type": "debug",
+          "text": "[vite] connected."
+        }
+      ],
+      "pageErrors": [
+        "locator.boundingBox: Target crashed \nCall log:\n\u001b[2m  - waiting for locator('canvas').first()\u001b[22m\n\n    at canvasClip (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:550:29)\n    at captureTimeoutFailure (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:416:24)\n    at captureVisualSmoke (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:354:20)\n    at async runStaticDessertWitness (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:312:19)\n    at async main (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:99:23)",
+        "page.screenshot: Target crashed \nCall log:\n\u001b[2m  - taking page screenshot\u001b[22m\n\u001b[2m  - waiting for fonts to load...\u001b[22m\n\u001b[2m  - fonts loaded\u001b[22m\n\n    at captureTimeoutFailure (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:426:37)\n    at async captureVisualSmoke (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:354:14)\n    at async runStaticDessertWitness (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:312:19)\n    at async main (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:99:23)"
+      ]
+    },
+    {
+      "id": "accumulated-alpha",
+      "title": "Accumulated alpha heatmap",
+      "expectedRendererLabel": "tile-local-visible-debug-accumulated-alpha",
+      "url": "http://127.0.0.1:5188/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible&traceAnchors=fresh-a%401918%2C780%3Alacunar-hole%3Bfresh-b%402166%2C908%3Alacunar-hole%3Bfresh-c%401734%2C1044%3Alacunar-hole%3Bfresh-d%401514%2C1324%3Alacunar-hole%3Bfresh-e%401422%2C1324%3Alacunar-hole%3Bfresh-f%402134%2C988%3Alacunar-hole&tileDebug=accumulated-alpha",
+      "pageEvidence": {
+        "tileLocal": {
+          "refs": 0,
+          "budget": {}
+        },
+        "statsText": "Loading real Scaniverse splats...",
+        "title": "Deferred Splat+Mesh Renderer",
+        "bodyText": "Loading real Scaniverse splats...",
+        "canvas": {
+          "width": 300,
+          "height": 150,
+          "clientWidth": 3456,
+          "clientHeight": 1916
+        },
+        "rendererLabel": "",
+        "fps": 0,
+        "arenaRuntime": {},
+        "evidenceCollectionError": "page.evaluate: Target crashed "
+      },
+      "imageAnalysis": {
+        "width": 0,
+        "height": 0,
+        "nonblank": false,
+        "changedPixels": 0,
+        "totalPixels": 0,
+        "changedPixelRatio": 0,
+        "averageDelta": 0,
+        "distinctColorCount": 0,
+        "bridgeBlockRatio": 0
+      },
+      "classification": {
+        "nonblank": false,
+        "realSplatEvidence": false,
+        "closeable": false,
+        "harnessPassed": false,
+        "sourceKind": "",
+        "splatCount": 0,
+        "assetPath": "",
+        "summary": "FAIL: timed out waiting for tile-local-visible-debug-accumulated-alpha evidence.",
+        "reasons": [
+          "visual smoke readiness timed out before the capture became closeable"
+        ]
+      },
+      "witnessDiagnostics": {
+        "thresholdPolicy": "not evaluated after readiness timeout",
+        "findings": [
+          {
+            "kind": "visual-smoke-timeout",
+            "summary": "Timed out waiting for rendered visual smoke evidence (tile-local-visible-debug-accumulated-alpha); last stats: \"Loading real Scaniverse splats...\""
+          }
+        ]
+      },
+      "captureFailure": {
+        "kind": "visual-smoke-timeout",
+        "message": "Timed out waiting for rendered visual smoke evidence (tile-local-visible-debug-accumulated-alpha); last stats: \"Loading real Scaniverse splats...\"",
+        "expectedRendererLabel": "tile-local-visible-debug-accumulated-alpha",
+        "elapsedMs": 30038,
+        "telemetry": {
+          "smoke": true,
+          "witness": false,
+          "tileLocalDiagnostics": false,
+          "statsText": true,
+          "url": true,
+          "viewport": true,
+          "screenshot": false
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "debug",
+          "text": "[vite] connecting..."
+        },
+        {
+          "type": "debug",
+          "text": "[vite] connected."
+        }
+      ],
+      "pageErrors": [
+        "locator.boundingBox: Target crashed \nCall log:\n\u001b[2m  - waiting for locator('canvas').first()\u001b[22m\n\n    at canvasClip (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:550:29)\n    at captureTimeoutFailure (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:416:24)\n    at captureVisualSmoke (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:354:20)\n    at async runStaticDessertWitness (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:312:19)\n    at async main (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:99:23)",
+        "page.screenshot: Target crashed \nCall log:\n\u001b[2m  - taking page screenshot\u001b[22m\n\u001b[2m  - waiting for fonts to load...\u001b[22m\n\u001b[2m  - fonts loaded\u001b[22m\n\n    at captureTimeoutFailure (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:426:37)\n    at async captureVisualSmoke (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:354:14)\n    at async runStaticDessertWitness (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:312:19)\n    at async main (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:99:23)"
+      ]
+    },
+    {
+      "id": "transmittance",
+      "title": "Transmittance heatmap",
+      "expectedRendererLabel": "tile-local-visible-debug-transmittance",
+      "url": "http://127.0.0.1:5188/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible&traceAnchors=fresh-a%401918%2C780%3Alacunar-hole%3Bfresh-b%402166%2C908%3Alacunar-hole%3Bfresh-c%401734%2C1044%3Alacunar-hole%3Bfresh-d%401514%2C1324%3Alacunar-hole%3Bfresh-e%401422%2C1324%3Alacunar-hole%3Bfresh-f%402134%2C988%3Alacunar-hole&tileDebug=transmittance",
+      "pageEvidence": {
+        "tileLocal": {
+          "refs": 0,
+          "budget": {}
+        },
+        "statsText": "Loading real Scaniverse splats...",
+        "title": "Deferred Splat+Mesh Renderer",
+        "bodyText": "Loading real Scaniverse splats...",
+        "canvas": {
+          "width": 300,
+          "height": 150,
+          "clientWidth": 3456,
+          "clientHeight": 1916
+        },
+        "rendererLabel": "",
+        "fps": 0,
+        "arenaRuntime": {},
+        "evidenceCollectionError": "page.evaluate: Target crashed "
+      },
+      "imageAnalysis": {
+        "width": 0,
+        "height": 0,
+        "nonblank": false,
+        "changedPixels": 0,
+        "totalPixels": 0,
+        "changedPixelRatio": 0,
+        "averageDelta": 0,
+        "distinctColorCount": 0,
+        "bridgeBlockRatio": 0
+      },
+      "classification": {
+        "nonblank": false,
+        "realSplatEvidence": false,
+        "closeable": false,
+        "harnessPassed": false,
+        "sourceKind": "",
+        "splatCount": 0,
+        "assetPath": "",
+        "summary": "FAIL: timed out waiting for tile-local-visible-debug-transmittance evidence.",
+        "reasons": [
+          "visual smoke readiness timed out before the capture became closeable"
+        ]
+      },
+      "witnessDiagnostics": {
+        "thresholdPolicy": "not evaluated after readiness timeout",
+        "findings": [
+          {
+            "kind": "visual-smoke-timeout",
+            "summary": "Timed out waiting for rendered visual smoke evidence (tile-local-visible-debug-transmittance); last stats: \"Loading real Scaniverse splats...\""
+          }
+        ]
+      },
+      "captureFailure": {
+        "kind": "visual-smoke-timeout",
+        "message": "Timed out waiting for rendered visual smoke evidence (tile-local-visible-debug-transmittance); last stats: \"Loading real Scaniverse splats...\"",
+        "expectedRendererLabel": "tile-local-visible-debug-transmittance",
+        "elapsedMs": 30039,
+        "telemetry": {
+          "smoke": true,
+          "witness": false,
+          "tileLocalDiagnostics": false,
+          "statsText": true,
+          "url": true,
+          "viewport": true,
+          "screenshot": false
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "debug",
+          "text": "[vite] connecting..."
+        },
+        {
+          "type": "debug",
+          "text": "[vite] connected."
+        }
+      ],
+      "pageErrors": [
+        "locator.boundingBox: Target crashed \nCall log:\n\u001b[2m  - waiting for locator('canvas').first()\u001b[22m\n\n    at canvasClip (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:550:29)\n    at captureTimeoutFailure (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:416:24)\n    at captureVisualSmoke (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:354:20)\n    at async runStaticDessertWitness (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:312:19)\n    at async main (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:99:23)",
+        "page.screenshot: Target crashed \nCall log:\n\u001b[2m  - taking page screenshot\u001b[22m\n\u001b[2m  - waiting for fonts to load...\u001b[22m\n\u001b[2m  - fonts loaded\u001b[22m\n\n    at captureTimeoutFailure (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:426:37)\n    at async captureVisualSmoke (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:354:14)\n    at async runStaticDessertWitness (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:312:19)\n    at async main (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:99:23)"
+      ]
+    },
+    {
+      "id": "tile-ref-count",
+      "title": "Tile-ref density heatmap",
+      "expectedRendererLabel": "tile-local-visible-debug-tile-ref-count",
+      "url": "http://127.0.0.1:5188/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible&traceAnchors=fresh-a%401918%2C780%3Alacunar-hole%3Bfresh-b%402166%2C908%3Alacunar-hole%3Bfresh-c%401734%2C1044%3Alacunar-hole%3Bfresh-d%401514%2C1324%3Alacunar-hole%3Bfresh-e%401422%2C1324%3Alacunar-hole%3Bfresh-f%402134%2C988%3Alacunar-hole&tileDebug=tile-ref-count",
+      "pageEvidence": {
+        "tileLocal": {
+          "refs": 0,
+          "budget": {}
+        },
+        "statsText": "Loading real Scaniverse splats...",
+        "title": "Deferred Splat+Mesh Renderer",
+        "bodyText": "Loading real Scaniverse splats...",
+        "canvas": {
+          "width": 300,
+          "height": 150,
+          "clientWidth": 3456,
+          "clientHeight": 1916
+        },
+        "rendererLabel": "",
+        "fps": 0,
+        "arenaRuntime": {},
+        "evidenceCollectionError": "page.evaluate: Target crashed "
+      },
+      "imageAnalysis": {
+        "width": 0,
+        "height": 0,
+        "nonblank": false,
+        "changedPixels": 0,
+        "totalPixels": 0,
+        "changedPixelRatio": 0,
+        "averageDelta": 0,
+        "distinctColorCount": 0,
+        "bridgeBlockRatio": 0
+      },
+      "classification": {
+        "nonblank": false,
+        "realSplatEvidence": false,
+        "closeable": false,
+        "harnessPassed": false,
+        "sourceKind": "",
+        "splatCount": 0,
+        "assetPath": "",
+        "summary": "FAIL: timed out waiting for tile-local-visible-debug-tile-ref-count evidence.",
+        "reasons": [
+          "visual smoke readiness timed out before the capture became closeable"
+        ]
+      },
+      "witnessDiagnostics": {
+        "thresholdPolicy": "not evaluated after readiness timeout",
+        "findings": [
+          {
+            "kind": "visual-smoke-timeout",
+            "summary": "Timed out waiting for rendered visual smoke evidence (tile-local-visible-debug-tile-ref-count); last stats: \"Loading real Scaniverse splats...\""
+          }
+        ]
+      },
+      "captureFailure": {
+        "kind": "visual-smoke-timeout",
+        "message": "Timed out waiting for rendered visual smoke evidence (tile-local-visible-debug-tile-ref-count); last stats: \"Loading real Scaniverse splats...\"",
+        "expectedRendererLabel": "tile-local-visible-debug-tile-ref-count",
+        "elapsedMs": 30005,
+        "telemetry": {
+          "smoke": true,
+          "witness": false,
+          "tileLocalDiagnostics": false,
+          "statsText": true,
+          "url": true,
+          "viewport": true,
+          "screenshot": false
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "debug",
+          "text": "[vite] connecting..."
+        },
+        {
+          "type": "debug",
+          "text": "[vite] connected."
+        }
+      ],
+      "pageErrors": [
+        "locator.boundingBox: Target crashed \nCall log:\n\u001b[2m  - waiting for locator('canvas').first()\u001b[22m\n\n    at canvasClip (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:550:29)\n    at captureTimeoutFailure (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:416:24)\n    at captureVisualSmoke (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:354:20)\n    at async runStaticDessertWitness (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:312:19)\n    at async main (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:99:23)",
+        "page.screenshot: Target crashed \nCall log:\n\u001b[2m  - taking page screenshot\u001b[22m\n\u001b[2m  - waiting for fonts to load...\u001b[22m\n\u001b[2m  - fonts loaded\u001b[22m\n\n    at captureTimeoutFailure (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:426:37)\n    at async captureVisualSmoke (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:354:14)\n    at async runStaticDessertWitness (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:312:19)\n    at async main (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:99:23)"
+      ]
+    },
+    {
+      "id": "conic-shape",
+      "title": "Conic major/minor shape heatmap",
+      "expectedRendererLabel": "tile-local-visible-debug-conic-shape",
+      "url": "http://127.0.0.1:5188/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible&traceAnchors=fresh-a%401918%2C780%3Alacunar-hole%3Bfresh-b%402166%2C908%3Alacunar-hole%3Bfresh-c%401734%2C1044%3Alacunar-hole%3Bfresh-d%401514%2C1324%3Alacunar-hole%3Bfresh-e%401422%2C1324%3Alacunar-hole%3Bfresh-f%402134%2C988%3Alacunar-hole&tileDebug=conic-shape",
+      "pageEvidence": {
+        "tileLocal": {
+          "refs": 0,
+          "budget": {}
+        },
+        "statsText": "Loading real Scaniverse splats...",
+        "title": "Deferred Splat+Mesh Renderer",
+        "bodyText": "Loading real Scaniverse splats...",
+        "canvas": {
+          "width": 300,
+          "height": 150,
+          "clientWidth": 3456,
+          "clientHeight": 1916
+        },
+        "rendererLabel": "",
+        "fps": 0,
+        "arenaRuntime": {},
+        "evidenceCollectionError": "page evidence collection timed out after 1000ms"
+      },
+      "imageAnalysis": {
+        "width": 0,
+        "height": 0,
+        "nonblank": false,
+        "changedPixels": 0,
+        "totalPixels": 0,
+        "changedPixelRatio": 0,
+        "averageDelta": 0,
+        "distinctColorCount": 0,
+        "bridgeBlockRatio": 0
+      },
+      "classification": {
+        "nonblank": false,
+        "realSplatEvidence": false,
+        "closeable": false,
+        "harnessPassed": false,
+        "sourceKind": "",
+        "splatCount": 0,
+        "assetPath": "",
+        "summary": "FAIL: timed out waiting for tile-local-visible-debug-conic-shape evidence.",
+        "reasons": [
+          "visual smoke readiness timed out before the capture became closeable"
+        ]
+      },
+      "witnessDiagnostics": {
+        "thresholdPolicy": "not evaluated after readiness timeout",
+        "findings": [
+          {
+            "kind": "visual-smoke-timeout",
+            "summary": "Timed out waiting for rendered visual smoke evidence (tile-local-visible-debug-conic-shape); last stats: \"Loading real Scaniverse splats...\""
+          }
+        ]
+      },
+      "captureFailure": {
+        "kind": "visual-smoke-timeout",
+        "message": "Timed out waiting for rendered visual smoke evidence (tile-local-visible-debug-conic-shape); last stats: \"Loading real Scaniverse splats...\"",
+        "expectedRendererLabel": "tile-local-visible-debug-conic-shape",
+        "elapsedMs": 31098,
+        "telemetry": {
+          "smoke": true,
+          "witness": false,
+          "tileLocalDiagnostics": false,
+          "statsText": true,
+          "url": true,
+          "viewport": true,
+          "screenshot": false
+        }
+      },
+      "consoleMessages": [
+        {
+          "type": "debug",
+          "text": "[vite] connecting..."
+        },
+        {
+          "type": "debug",
+          "text": "[vite] connected."
+        }
+      ],
+      "pageErrors": [
+        "locator.boundingBox: Target crashed \nCall log:\n\u001b[2m  - waiting for locator('canvas').first()\u001b[22m\n\n    at canvasClip (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:550:29)\n    at captureTimeoutFailure (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:416:24)\n    at captureVisualSmoke (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:354:20)\n    at async runStaticDessertWitness (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:312:19)\n    at async main (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:99:23)",
+        "page.screenshot: Target crashed \nCall log:\n\u001b[2m  - taking page screenshot\u001b[22m\n\u001b[2m  - waiting for fonts to load...\u001b[22m\n\u001b[2m  - fonts loaded\u001b[22m\n\n    at captureTimeoutFailure (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:426:37)\n    at async captureVisualSmoke (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:354:14)\n    at async runStaticDessertWitness (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:312:19)\n    at async main (/private/tmp/hybrid-differentiable-defferred-splat-mesh-renderer-habeas-exact-route-smoke-0520/scripts/run-visual-smoke.mjs:99:23)"
+      ]
+    }
+  ],
+  "classification": {
+    "closeable": false,
+    "summary": {
+      "status": "FAIL",
+      "text": "FAIL: final-color did not pass visual smoke classification."
+    },
+    "metrics": {
+      "fixedView": {
+        "assetPath": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+        "viewport": "3456x1916",
+        "tileGrid": ""
+      },
+      "tileRefs": {
+        "total": 0,
+        "maxPerTile": 0,
+        "nonEmptyTiles": 0
+      },
+      "tileRefCustody": {
+        "projectedTileEntryCount": 0,
+        "retainedTileEntryCount": 0,
+        "evictedTileEntryCount": 0,
+        "cappedTileCount": 0,
+        "saturatedRetainedTileCount": 0,
+        "maxProjectedRefsPerTile": 0,
+        "maxRetainedRefsPerTile": 0,
+        "headerRefCount": 0,
+        "headerAccountingMatches": true
+      },
+      "retentionAudit": {
+        "fullFrame": {
+          "region": "",
+          "tileCount": 0,
+          "cappedTileCount": 0,
+          "projectedTileEntryCount": 0,
+          "currentRetainedEntryCount": 0,
+          "legacyRetainedEntryCount": 0,
+          "addedByPolicyCount": 0,
+          "droppedByPolicyCount": 0,
+          "addedRetentionWeightSum": 0,
+          "droppedRetentionWeightSum": 0,
+          "addedOcclusionWeightSum": 0,
+          "droppedOcclusionWeightSum": 0,
+          "addedByPolicySamples": [],
+          "droppedByPolicySamples": []
+        },
+        "regions": {
+          "porousBody": {
+            "region": "",
+            "tileCount": 0,
+            "cappedTileCount": 0,
+            "projectedTileEntryCount": 0,
+            "currentRetainedEntryCount": 0,
+            "legacyRetainedEntryCount": 0,
+            "addedByPolicyCount": 0,
+            "droppedByPolicyCount": 0,
+            "addedRetentionWeightSum": 0,
+            "droppedRetentionWeightSum": 0,
+            "addedOcclusionWeightSum": 0,
+            "droppedOcclusionWeightSum": 0,
+            "addedByPolicySamples": [],
+            "droppedByPolicySamples": []
+          },
+          "centerLeakBand": {
+            "region": "",
+            "tileCount": 0,
+            "cappedTileCount": 0,
+            "projectedTileEntryCount": 0,
+            "currentRetainedEntryCount": 0,
+            "legacyRetainedEntryCount": 0,
+            "addedByPolicyCount": 0,
+            "droppedByPolicyCount": 0,
+            "addedRetentionWeightSum": 0,
+            "droppedRetentionWeightSum": 0,
+            "addedOcclusionWeightSum": 0,
+            "droppedOcclusionWeightSum": 0,
+            "addedByPolicySamples": [],
+            "droppedByPolicySamples": []
+          }
+        }
+      },
+      "alpha": {
+        "estimatedMaxAccumulatedAlpha": 0,
+        "estimatedMinTransmittance": 0
+      },
+      "rendererBridge": {
+        "plateRendererLabel": "plate",
+        "tileLocalRendererLabel": "",
+        "sameAsset": false,
+        "sameViewport": false,
+        "plateChangedPixelRatio": 0.003176678603185649,
+        "tileLocalChangedPixelRatio": 0,
+        "tileLocalToPlateChangedPixelRatio": 0,
+        "maxTileLocalToPlateChangedPixelRatio": 2
+      },
+      "sourceSupport": {
+        "rimBand": {
+          "crop": {
+            "x": 390,
+            "y": 322,
+            "width": 500,
+            "height": 115
+          },
+          "projectedCenterCount": 0,
+          "projectedSupportCount": 0,
+          "nearFloorMinorCount": 0,
+          "maxMajorRadiusPx": 0,
+          "medianMajorRadiusPx": 0,
+          "medianMinorRadiusPx": 0,
+          "sampleOriginalIds": []
+        },
+        "porousBody": {
+          "crop": {
+            "x": 520,
+            "y": 270,
+            "width": 260,
+            "height": 150
+          },
+          "projectedCenterCount": 0,
+          "projectedSupportCount": 0,
+          "nearFloorMinorCount": 0,
+          "maxMajorRadiusPx": 0,
+          "medianMajorRadiusPx": 0,
+          "medianMinorRadiusPx": 0,
+          "sampleOriginalIds": []
+        }
+      },
+      "conicShape": {
+        "maxMajorRadiusPx": 0,
+        "minMinorRadiusPx": 0,
+        "maxAnisotropy": 0
+      }
+    },
+    "observations": {
+      "visibleHoles": {
+        "status": "captured-for-review",
+        "evidenceIds": [
+          "final-color",
+          "coverage-weight",
+          "conic-shape"
+        ],
+        "boundary": "Porous/non-square final-color gaps are witnessed separately from tile-ref density and alpha transfer."
+      },
+      "plateSeepage": {
+        "status": "captured-for-review",
+        "evidenceIds": [
+          "final-color",
+          "accumulated-alpha",
+          "transmittance"
+        ],
+        "boundary": "Plate/background seepage is witnessed through final color plus alpha/transmittance debug modes, not by opacity tuning."
+      },
+      "budgetSkip": {
+        "status": "separate-high-viewport-observation",
+        "evidenceIds": [],
+        "boundary": "High-viewport stale/cached-frame skips are not collapsed into the fixed 1280x720 final-color artifact.",
+        "repro": "Run the same smoke URL at a high viewport such as 3456x1916 and capture overlay text containing `tile-local skipped: projected tile refs exceed budget`."
+      }
+    },
+    "findings": [
+      {
+        "kind": "capture-smoke-failed",
+        "summary": "final-color did not pass visual smoke classification."
+      },
+      {
+        "kind": "missing-real-splat-evidence",
+        "summary": "final-color did not report real Scaniverse splat evidence."
+      },
+      {
+        "kind": "capture-smoke-failed",
+        "summary": "coverage-weight did not pass visual smoke classification."
+      },
+      {
+        "kind": "missing-real-splat-evidence",
+        "summary": "coverage-weight did not report real Scaniverse splat evidence."
+      },
+      {
+        "kind": "capture-smoke-failed",
+        "summary": "accumulated-alpha did not pass visual smoke classification."
+      },
+      {
+        "kind": "missing-real-splat-evidence",
+        "summary": "accumulated-alpha did not report real Scaniverse splat evidence."
+      },
+      {
+        "kind": "capture-smoke-failed",
+        "summary": "transmittance did not pass visual smoke classification."
+      },
+      {
+        "kind": "missing-real-splat-evidence",
+        "summary": "transmittance did not report real Scaniverse splat evidence."
+      },
+      {
+        "kind": "capture-smoke-failed",
+        "summary": "tile-ref-count did not pass visual smoke classification."
+      },
+      {
+        "kind": "missing-real-splat-evidence",
+        "summary": "tile-ref-count did not report real Scaniverse splat evidence."
+      },
+      {
+        "kind": "capture-smoke-failed",
+        "summary": "conic-shape did not pass visual smoke classification."
+      },
+      {
+        "kind": "missing-real-splat-evidence",
+        "summary": "conic-shape did not report real Scaniverse splat evidence."
+      },
+      {
+        "kind": "final-color-label-mismatch",
+        "summary": "Final-color capture reported renderer label missing."
+      },
+      {
+        "kind": "debug-label-mismatch",
+        "summary": "coverage-weight reported renderer label missing instead of tile-local-visible-debug-coverage-weight."
+      },
+      {
+        "kind": "missing-tile-refs",
+        "summary": "coverage-weight did not report positive retained tile refs."
+      },
+      {
+        "kind": "missing-compact-diagnostics",
+        "summary": "coverage-weight did not expose compact tile-local diagnostics."
+      },
+      {
+        "kind": "debug-label-mismatch",
+        "summary": "accumulated-alpha reported renderer label missing instead of tile-local-visible-debug-accumulated-alpha."
+      },
+      {
+        "kind": "missing-tile-refs",
+        "summary": "accumulated-alpha did not report positive retained tile refs."
+      },
+      {
+        "kind": "missing-compact-diagnostics",
+        "summary": "accumulated-alpha did not expose compact tile-local diagnostics."
+      },
+      {
+        "kind": "debug-label-mismatch",
+        "summary": "transmittance reported renderer label missing instead of tile-local-visible-debug-transmittance."
+      },
+      {
+        "kind": "missing-tile-refs",
+        "summary": "transmittance did not report positive retained tile refs."
+      },
+      {
+        "kind": "missing-compact-diagnostics",
+        "summary": "transmittance did not expose compact tile-local diagnostics."
+      },
+      {
+        "kind": "debug-label-mismatch",
+        "summary": "tile-ref-count reported renderer label missing instead of tile-local-visible-debug-tile-ref-count."
+      },
+      {
+        "kind": "missing-tile-refs",
+        "summary": "tile-ref-count did not report positive retained tile refs."
+      },
+      {
+        "kind": "missing-compact-diagnostics",
+        "summary": "tile-ref-count did not expose compact tile-local diagnostics."
+      },
+      {
+        "kind": "debug-label-mismatch",
+        "summary": "conic-shape reported renderer label missing instead of tile-local-visible-debug-conic-shape."
+      },
+      {
+        "kind": "missing-tile-refs",
+        "summary": "conic-shape did not report positive retained tile refs."
+      },
+      {
+        "kind": "missing-compact-diagnostics",
+        "summary": "conic-shape did not expose compact tile-local diagnostics."
+      },
+      {
+        "kind": "viewport-mismatch",
+        "summary": "Static witness captures reported 2 viewport sizes."
+      },
+      {
+        "kind": "tile-grid-mismatch",
+        "summary": "Static witness captures reported no tile grids."
+      },
+      {
+        "kind": "missing-alpha-range",
+        "summary": "Accumulated-alpha capture did not report positive accumulated alpha."
+      },
+      {
+        "kind": "missing-transmittance-range",
+        "summary": "Transmittance capture did not report remaining transmittance."
+      },
+      {
+        "kind": "missing-ref-density",
+        "summary": "Tile-ref capture did not report total refs and max refs per tile."
+      },
+      {
+        "kind": "missing-conic-shape",
+        "summary": "Conic-shape capture did not report major/minor conic shape evidence."
+      },
+      {
+        "kind": "missing-rim-source-support",
+        "summary": "Static dessert witness did not report crop-local rim source support."
+      },
+      {
+        "kind": "missing-porous-body-source-support",
+        "summary": "Static dessert witness did not report crop-local porous body source support."
+      }
+    ]
+  }
+}
