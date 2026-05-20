@@ -943,6 +943,7 @@ function createGpuArenaTileLocalSceneState(
     splatScale: footprintParams.splatScale,
     minRadiusPx: footprintParams.minRadiusPx,
     maxRefsPerTile: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
+    maxTileEntries: TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES,
     nearFadeEndNdc: footprintParams.nearFadeEndNdc,
     buildProjectionRetentionArena: buildDeterministicGpuTileProjectionRetentionArena,
     anchors: TILE_LOCAL_TRACE_ANCHORS ?? [],
@@ -1104,6 +1105,7 @@ function buildCompactRetainedSourceForRuntime({
   splatScale,
   minRadiusPx,
   maxRefsPerTile,
+  maxTileEntries,
   nearFadeEndNdc,
   buildProjectionRetentionArena,
   anchors,
@@ -1120,6 +1122,7 @@ function buildCompactRetainedSourceForRuntime({
   readonly splatScale: number;
   readonly minRadiusPx: number;
   readonly maxRefsPerTile: number;
+  readonly maxTileEntries: number;
   readonly nearFadeEndNdc: number;
   readonly buildProjectionRetentionArena: typeof buildDeterministicGpuTileProjectionRetentionArena;
   readonly anchors: readonly PixelTraceAnchor[];
@@ -1138,6 +1141,7 @@ function buildCompactRetainedSourceForRuntime({
     viewportHeight,
     tileSizePx,
     samplesPerAxis: TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES,
+    maxTileEntries,
     splats: [...splats],
   }) as RuntimeCompactTileCoverage;
   const projectedRecords = projectedCoverageToRuntimeContributors({
