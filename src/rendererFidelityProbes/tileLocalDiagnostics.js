@@ -123,13 +123,24 @@ function summarizeRuntimeRefBudget({
     (max, anchor) => Math.max(max, anchor.finalStepCount),
     0,
   );
-  const blockingAnchors = anchors.filter(
-    (anchor) => anchor.retainedCount > 0 && effectiveRefsPerTile < anchor.retainedCount,
-  );
+  const anchorTileEvidence = summarizeAnchorTileEvidence({
+    plan,
+    tileHeaders,
+    runtimeContributors,
+    anchors,
+  });
+  const anchorEvidenceById = new Map(anchorTileEvidence.map((anchor) => [anchor.id, anchor]));
+  const resolvedBlockingAnchors = anchors.filter((anchor) => {
+    const evidence = anchorEvidenceById.get(anchor.id);
+    if (evidence?.traceComparisonIdentitySource === "final" && anchor.finalStepCount > 0) {
+      return evidence.runtimeConsumedCount < anchor.finalStepCount || evidence.identityMatch !== true;
+    }
+    return anchor.retainedCount > 0 && effectiveRefsPerTile < anchor.retainedCount;
+  });
 
   let classification = "telemetry-insufficient";
   if (anchors.length > 0) {
-    classification = blockingAnchors.length > 0
+    classification = resolvedBlockingAnchors.length > 0
       ? "runtime-capacity-loss"
       : "no-capacity-discrepancy";
   }
@@ -141,14 +152,9 @@ function summarizeRuntimeRefBudget({
     effectiveRefsPerTile,
     maxTraceRetainedContributors,
     maxTraceFinalSteps,
-    blockingAnchors,
+    blockingAnchors: resolvedBlockingAnchors,
     frameHeaderAccounting: normalizeFrameHeaderAccounting(tileRefCustody),
-    anchorTileEvidence: summarizeAnchorTileEvidence({
-      plan,
-      tileHeaders,
-      runtimeContributors,
-      anchors,
-    }),
+    anchorTileEvidence,
   };
 }
 
@@ -167,6 +173,7 @@ function normalizeTraceCapacityAnchors(anchors) {
       retainedCount: nonNegativeFiniteInteger(anchor.retainedCount),
       finalStepCount: nonNegativeFiniteInteger(anchor.finalStepCount),
       retainedIdentities: normalizeIdentityList(anchor.retainedIdentities),
+      finalIdentities: normalizeIdentityList(anchor.finalIdentities),
     }));
 }
 
@@ -207,11 +214,18 @@ function summarizeAnchorTileEvidence({
       runtimeTileHeader,
       tileIndex: tileAddress.tileIndex,
     }));
-    const traceIdentities = normalizeIdentityList(anchor.retainedIdentities);
-    const traceRetainedIdentityHash = identityHash(traceIdentities);
+    const traceRetainedIdentities = normalizeIdentityList(anchor.retainedIdentities);
+    const traceFinalIdentities = normalizeIdentityList(anchor.finalIdentities);
+    const traceComparisonIdentitySource = traceFinalIdentities.length > 0 ? "final" : "retained";
+    const traceComparisonIdentities = traceComparisonIdentitySource === "final"
+      ? traceFinalIdentities
+      : traceRetainedIdentities;
+    const traceRetainedIdentityHash = identityHash(traceRetainedIdentities);
+    const traceFinalIdentityHash = identityHash(traceFinalIdentities);
+    const traceComparisonIdentityHash = identityHash(traceComparisonIdentities);
     const runtimeConsumedIdentityHash = identityHash(runtimeIdentities);
-    const missingTraceIdentitySample = identityDifference(traceIdentities, runtimeIdentities);
-    const extraRuntimeIdentitySample = identityDifference(runtimeIdentities, traceIdentities);
+    const missingTraceIdentitySample = identityDifference(traceComparisonIdentities, runtimeIdentities);
+    const extraRuntimeIdentitySample = identityDifference(runtimeIdentities, traceComparisonIdentities);
 
     return {
       id: anchor.id,
@@ -226,13 +240,18 @@ function summarizeAnchorTileEvidence({
       runtimeTileHeader,
       runtimeConsumedCount: runtimeIdentities.length,
       traceRetainedIdentityHash,
+      traceFinalIdentityHash,
+      traceComparisonIdentitySource,
+      traceComparisonIdentityHash,
       runtimeConsumedIdentityHash,
-      traceRetainedIdentitySample: identitySample(traceIdentities),
+      traceRetainedIdentitySample: identitySample(traceRetainedIdentities),
+      traceFinalIdentitySample: identitySample(traceFinalIdentities),
+      traceComparisonIdentitySample: identitySample(traceComparisonIdentities),
       runtimeConsumedIdentitySample: identitySample(runtimeIdentities),
       missingTraceIdentitySample,
       extraRuntimeIdentitySample,
-      identityMatch: traceIdentities.length === runtimeIdentities.length &&
-        traceRetainedIdentityHash === runtimeConsumedIdentityHash,
+      identityMatch: traceComparisonIdentities.length === runtimeIdentities.length &&
+        traceComparisonIdentityHash === runtimeConsumedIdentityHash,
     };
   });
 }

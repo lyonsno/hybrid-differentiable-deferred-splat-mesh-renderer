@@ -322,6 +322,71 @@ test("tile-local runtime budget exposes per-anchor live tile identities for trac
   assert.equal(gpuLiveMirrorSummary.runtimeRefBudget.anchorTileEvidence[0].identityMatch, true);
 });
 
+test("tile-local runtime budget compares live identities against final accumulation when available", () => {
+  const runtimeIdentities = [
+    { splatIndex: 10, originalId: 100 },
+    { splatIndex: 11, originalId: 101 },
+    { splatIndex: 12, originalId: 102 },
+    { splatIndex: 13, originalId: 103 },
+  ];
+  const summary = summarizeTileLocalDiagnostics({
+    debugMode: "final-color",
+    plan: {
+      tileColumns: 8,
+      tileRows: 8,
+      tileSizePx: 16,
+      maxTileRefs: 4,
+    },
+    tileEntryCount: runtimeIdentities.length,
+    tileHeaders: Uint32Array.from([
+      0, 4, 4, 0,
+      ...new Array((8 * 8 - 1) * 4).fill(0),
+    ]),
+    tileRefCustody: {
+      projectedTileEntryCount: 11,
+      retainedTileEntryCount: runtimeIdentities.length,
+      evictedTileEntryCount: 7,
+      cappedTileCount: 1,
+      saturatedRetainedTileCount: 1,
+      maxProjectedRefsPerTile: 11,
+      maxRetainedRefsPerTile: 4,
+      headerRefCount: runtimeIdentities.length,
+      headerAccountingMatches: true,
+    },
+    tileCoverageWeights: Float32Array.from([1, 1, 1, 1]),
+    alphaParamData: new Float32Array(8),
+    runtimeContributors: runtimeIdentities.map((identity) => ({
+      ...identity,
+      tileIndex: 0,
+    })),
+    traceCapacityEvidence: {
+      anchors: [
+        {
+          id: "fresh-a",
+          x: 7,
+          y: 9,
+          tileAddress: { tileSizePx: 16, tileX: 0, tileY: 0, tileIndex: 0, localX: 7, localY: 9 },
+          projectedCount: 11,
+          retainedCount: 2,
+          finalStepCount: 4,
+          retainedIdentities: runtimeIdentities.slice(0, 2),
+          finalIdentities: runtimeIdentities,
+        },
+      ],
+    },
+  });
+
+  assert.equal(summary.runtimeRefBudget.classification, "no-capacity-discrepancy");
+  const [anchor] = summary.runtimeRefBudget.anchorTileEvidence;
+  assert.equal(anchor.traceComparisonIdentitySource, "final");
+  assert.equal(anchor.identityMatch, true);
+  assert.equal(anchor.runtimeConsumedCount, 4);
+  assert.equal(anchor.traceRetainedCount, 2);
+  assert.equal(anchor.traceFinalIdentitySample.length, 4);
+  assert.deepEqual(anchor.missingTraceIdentitySample, []);
+  assert.deepEqual(anchor.extraRuntimeIdentitySample, []);
+});
+
 test("tile-local runtime budget repairs legacy runtime headers with trace projected pressure", () => {
   const retainedIdentities = Array.from({ length: 4 }, (_, index) => ({
     splatIndex: 100 + index,

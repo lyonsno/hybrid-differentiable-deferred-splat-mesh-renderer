@@ -3722,6 +3722,21 @@ function traceCapacityEvidenceFromState(
       ] as const;
     }),
   );
+  const finalIdentitiesByAnchorId = new Map(
+    perPixelFinalColorAccumulation.map((trace) => {
+      const anchorPixel = trace.anchorPixel as { id?: string } | undefined;
+      const traceRecord = (trace.traceRecord ?? trace) as {
+        finalColorAccumulation?: { steps?: unknown[] };
+      };
+      const steps = Array.isArray(traceRecord.finalColorAccumulation?.steps)
+        ? traceRecord.finalColorAccumulation.steps
+        : [];
+      return [
+        String(anchorPixel?.id ?? ""),
+        steps.map(contributorIdentity),
+      ] as const;
+    }),
+  );
 
   return {
     anchors: state.perPixelRetainedContributors.map((record) => {
@@ -3744,6 +3759,7 @@ function traceCapacityEvidenceFromState(
         finalStepCount: finalStepCountByAnchorId.get(record.anchorPixel.id) ??
           (Array.isArray(finalColorAccumulation?.steps) ? finalColorAccumulation.steps.length : 0),
         retainedIdentities: retainedContributors.map(contributorIdentity),
+        finalIdentities: finalIdentitiesByAnchorId.get(record.anchorPixel.id) ?? [],
       };
     }),
   };
