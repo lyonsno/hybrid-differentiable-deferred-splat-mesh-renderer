@@ -347,7 +347,9 @@ fn debug_heatmap_color(
   let pixelCenter = vec2f(f32(globalId.x) + 0.5, f32(globalId.y) + 0.5);
   let tileCapacity = tile_ref_capacity_per_tile();
   let gpuScatterCount = atomicLoad(&tileScatterCursors[tileId]);
-  let refLimit = min(max(header.y, gpuScatterCount), tileCapacity);
+  let liveRefCount = select(min(gpuScatterCount, tileCapacity), header.y, header.y > 0u);
+  let flatRemainingRefs = frame.maxTileRefs - min(header.x, frame.maxTileRefs);
+  let refLimit = min(liveRefCount, flatRemainingRefs);
   var composedColor = vec3f(0.02, 0.02, 0.04);
   var remainingTransmission = 1.0;
   var coverageWeightSum = 0.0;

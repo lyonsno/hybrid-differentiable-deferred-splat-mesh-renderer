@@ -19,6 +19,8 @@ import {
   createGpuTileCoveragePlan,
   GPU_TILE_COVERAGE_ALPHA_PARAM_FLOATS_PER_REF,
   GPU_TILE_COVERAGE_FRAME_UNIFORM_BYTES,
+  GPU_TILE_COVERAGE_TILE_HEADER_BYTES,
+  GPU_TILE_COVERAGE_TILE_REF_BYTES,
   writeGpuTileCoverageFrameUniforms,
   type GpuTileContributorArenaProjectedContributor,
   type GpuTileCoverageDebugMode,
@@ -218,6 +220,8 @@ interface TileLocalSceneState {
   bandDispatchCacheTrace: BandDispatchCacheTrace;
   outputTextureReadback?: TileLocalOutputTextureReadback;
   pendingOutputTextureReadback?: PendingTileLocalOutputTextureReadback;
+  compositorInputReadback?: TileLocalCompositorInputReadback;
+  pendingCompositorInputReadback?: PendingTileLocalCompositorInputReadback;
 }
 
 interface ArenaRuntimeEvidence {
@@ -276,6 +280,61 @@ interface PendingTileLocalOutputTextureReadback {
   readonly bytesPerRow: number;
   readonly buffer: GPUBuffer;
   readonly anchors: readonly PixelTraceAnchor[];
+}
+
+interface TileLocalCompositorInputReadback {
+  readonly status: "pending" | "present" | "blocked";
+  readonly frameId: number;
+  readonly anchors: readonly {
+    readonly id: string;
+    readonly pixel: { readonly x: number; readonly y: number };
+    readonly tileAddress: {
+      readonly tileX: number;
+      readonly tileY: number;
+      readonly tileIndex: number;
+      readonly localX: number;
+      readonly localY: number;
+    };
+    readonly header: {
+      readonly firstRefIndex: number;
+      readonly refCount: number;
+      readonly projectedCount: number;
+      readonly droppedCount: number;
+    };
+    readonly gpuScatterCount: number;
+    readonly tileCapacity: number;
+    readonly refLimit: number;
+    readonly liveCompositorRgba: readonly [number, number, number, number];
+    readonly liveCompositorRgba8: readonly [number, number, number, number];
+    readonly remainingTransmission: number;
+    readonly contributors: readonly {
+      readonly layer: number;
+      readonly refIndex: number;
+      readonly splatIndex: number;
+      readonly alphaParamIndex: number;
+      readonly tileCoverageWeight: number;
+      readonly pixelCoverageWeight: number;
+      readonly sourceOpacity: number;
+      readonly coverageAlpha: number;
+      readonly sourceColor: readonly [number, number, number];
+      readonly runningColor: readonly [number, number, number];
+      readonly remainingTransmission: number;
+      readonly status: "accumulated" | "skipped-invalid-splat" | "skipped-zero-tile-coverage";
+    }[];
+  }[];
+  readonly blockedReason?: string;
+}
+
+interface PendingTileLocalCompositorInputReadback {
+  readonly frameId: number;
+  readonly plan: GpuTileCoveragePlan;
+  readonly sourceColors: Float32Array;
+  readonly anchors: readonly PixelTraceAnchor[];
+  readonly tileHeaderBuffer: GPUBuffer;
+  readonly tileRefBuffer: GPUBuffer;
+  readonly tileCoverageWeightBuffer: GPUBuffer;
+  readonly alphaParamBuffer: GPUBuffer;
+  readonly tileScatterCursorBuffer: GPUBuffer;
 }
 
 interface CompactRetainedSourceForRuntime {
@@ -696,6 +755,7 @@ async function main() {
         }
         tileLocalComputePass.end();
         enqueueTileLocalOutputTextureReadback(gpu.device, encoder, tileLocalState, frameSerial);
+        enqueueTileLocalCompositorInputReadback(gpu.device, encoder, tileLocalState, frameSerial, scene.attributes.colors);
         tileLocalState.bandDispatchCacheTrace = buildBandDispatchCacheTrace({
           tileColumns: tileLocalState.plan.tileColumns,
           tileRows: tileLocalState.plan.tileRows,
@@ -770,6 +830,7 @@ async function main() {
     gpu.device.queue.submit([encoder.finish()]);
     if (scene.tileLocalState) {
       resolveTileLocalOutputTextureReadback(scene.tileLocalState);
+      resolveTileLocalCompositorInputReadback(scene.tileLocalState);
     }
 
     // Read GPU timings (async, one frame behind)
@@ -3279,6 +3340,325 @@ function publishTileLocalOutputTextureReadback(readback: TileLocalOutputTextureR
   };
 }
 
+function enqueueTileLocalCompositorInputReadback(
+  device: GPUDevice,
+  encoder: GPUCommandEncoder,
+  state: TileLocalSceneState,
+  frameId: number,
+  sourceColors: Float32Array
+): void {
+  const anchors = state.traceAnchors ?? [];
+  if (state.debugMode !== "final-color" || anchors.length === 0) {
+    return;
+  }
+  if (state.pendingCompositorInputReadback || state.compositorInputReadback?.frameId === frameId) {
+    return;
+  }
+  if (!state.gpuArenaRuntime) {
+    state.compositorInputReadback = {
+      status: "blocked",
+      frameId,
+      anchors: [],
+      blockedReason: "live compositor input readback requires the gpu arena runtime",
+    };
+    publishTileLocalCompositorInputReadback(state.compositorInputReadback);
+    return;
+  }
+
+  const tileHeaderBuffer = createReadbackBuffer(device, state.plan.tileHeaderBytes, "tile_local_compositor_tile_headers_readback");
+  const tileRefBuffer = createReadbackBuffer(device, state.plan.tileRefBytes, "tile_local_compositor_tile_refs_readback");
+  const tileCoverageWeightBuffer = createReadbackBuffer(device, state.plan.tileCoverageWeightBytes, "tile_local_compositor_tile_weights_readback");
+  const alphaParamBuffer = createReadbackBuffer(device, state.plan.alphaParamBytes, "tile_local_compositor_alpha_params_readback");
+  const scatterCursorBytes = Math.max(16, state.plan.tileCount * Uint32Array.BYTES_PER_ELEMENT);
+  const tileScatterCursorBuffer = createReadbackBuffer(device, scatterCursorBytes, "tile_local_compositor_scatter_cursors_readback");
+
+  encoder.copyBufferToBuffer(state.tileHeaderBuffer, 0, tileHeaderBuffer, 0, state.plan.tileHeaderBytes);
+  encoder.copyBufferToBuffer(state.tileRefBuffer, 0, tileRefBuffer, 0, state.plan.tileRefBytes);
+  encoder.copyBufferToBuffer(state.tileCoverageWeightBuffer, 0, tileCoverageWeightBuffer, 0, state.plan.tileCoverageWeightBytes);
+  encoder.copyBufferToBuffer(state.alphaParamBuffer, 0, alphaParamBuffer, 0, state.plan.alphaParamBytes);
+  encoder.copyBufferToBuffer(state.tileScatterCursorBuffer, 0, tileScatterCursorBuffer, 0, scatterCursorBytes);
+
+  state.pendingCompositorInputReadback = {
+    frameId,
+    plan: state.plan,
+    sourceColors,
+    anchors,
+    tileHeaderBuffer,
+    tileRefBuffer,
+    tileCoverageWeightBuffer,
+    alphaParamBuffer,
+    tileScatterCursorBuffer,
+  };
+  state.compositorInputReadback = {
+    status: "pending",
+    frameId,
+    anchors: [],
+  };
+}
+
+function resolveTileLocalCompositorInputReadback(state: TileLocalSceneState): void {
+  const pending = state.pendingCompositorInputReadback;
+  if (!pending) {
+    return;
+  }
+  state.pendingCompositorInputReadback = undefined;
+  const buffers = [
+    pending.tileHeaderBuffer,
+    pending.tileRefBuffer,
+    pending.tileCoverageWeightBuffer,
+    pending.alphaParamBuffer,
+    pending.tileScatterCursorBuffer,
+  ];
+  void Promise.all(buffers.map((buffer) => buffer.mapAsync(GPUMapMode.READ)))
+    .then(() => {
+      const tileHeaders = new Uint32Array(pending.tileHeaderBuffer.getMappedRange());
+      const tileRefs = new Uint32Array(pending.tileRefBuffer.getMappedRange());
+      const tileCoverageWeights = new Float32Array(pending.tileCoverageWeightBuffer.getMappedRange());
+      const alphaParams = new Float32Array(pending.alphaParamBuffer.getMappedRange());
+      const tileScatterCursors = new Uint32Array(pending.tileScatterCursorBuffer.getMappedRange());
+      state.compositorInputReadback = {
+        status: "present",
+        frameId: pending.frameId,
+        anchors: pending.anchors.map((anchor) => readCompositorInputAnchor({
+          anchor,
+          plan: pending.plan,
+          sourceColors: pending.sourceColors,
+          tileHeaders,
+          tileRefs,
+          tileCoverageWeights,
+          alphaParams,
+          tileScatterCursors,
+        })),
+      };
+      publishTileLocalCompositorInputReadback(state.compositorInputReadback);
+      destroyMappedReadbackBuffers(buffers);
+    })
+    .catch((error) => {
+      state.compositorInputReadback = {
+        status: "blocked",
+        frameId: pending.frameId,
+        anchors: [],
+        blockedReason: errorMessage(error),
+      };
+      publishTileLocalCompositorInputReadback(state.compositorInputReadback);
+      destroyReadbackBuffers(buffers);
+    });
+}
+
+function publishTileLocalCompositorInputReadback(readback: TileLocalCompositorInputReadback): void {
+  const runtimeWindow = window as unknown as { __MESH_SPLAT_SMOKE__?: Record<string, unknown> };
+  const smoke = runtimeWindow.__MESH_SPLAT_SMOKE__;
+  if (!smoke || typeof smoke !== "object") {
+    return;
+  }
+  const tileLocal = smoke.tileLocal && typeof smoke.tileLocal === "object"
+    ? smoke.tileLocal as Record<string, unknown>
+    : {};
+  smoke.tileLocal = {
+    ...tileLocal,
+    compositorInputReadback: readback,
+  };
+}
+
+function readCompositorInputAnchor({
+  anchor,
+  plan,
+  sourceColors,
+  tileHeaders,
+  tileRefs,
+  tileCoverageWeights,
+  alphaParams,
+  tileScatterCursors,
+}: {
+  readonly anchor: PixelTraceAnchor;
+  readonly plan: GpuTileCoveragePlan;
+  readonly sourceColors: Float32Array;
+  readonly tileHeaders: Uint32Array;
+  readonly tileRefs: Uint32Array;
+  readonly tileCoverageWeights: Float32Array;
+  readonly alphaParams: Float32Array;
+  readonly tileScatterCursors: Uint32Array;
+}): TileLocalCompositorInputReadback["anchors"][number] {
+  const tileAddress = tileAddressForPixel(anchor, plan);
+  const headerBase = tileAddress.tileIndex * (GPU_TILE_COVERAGE_TILE_HEADER_BYTES / Uint32Array.BYTES_PER_ELEMENT);
+  const firstRefIndex = tileHeaders[headerBase] ?? 0;
+  const refCount = tileHeaders[headerBase + 1] ?? 0;
+  const projectedCount = tileHeaders[headerBase + 2] ?? refCount;
+  const droppedCount = tileHeaders[headerBase + 3] ?? Math.max(0, projectedCount - refCount);
+  const gpuScatterCount = tileScatterCursors[tileAddress.tileIndex] ?? 0;
+  const tileCapacity = Math.max(Math.floor(plan.maxTileRefs / Math.max(plan.tileCount, 1)), 1);
+  const liveRefCount = refCount > 0 ? refCount : Math.min(gpuScatterCount, tileCapacity);
+  const refLimit = Math.min(liveRefCount, Math.max(0, plan.maxTileRefs - firstRefIndex));
+  const pixelCenter = [Math.floor(anchor.x) + 0.5, Math.floor(anchor.y) + 0.5] as const;
+  let runningColor = [0.02, 0.02, 0.04] as [number, number, number];
+  let remainingTransmission = 1;
+  const contributors: TileLocalCompositorInputReadback["anchors"][number]["contributors"] = [];
+
+  for (let layer = 0; layer < refLimit; layer += 1) {
+    const refIndex = firstRefIndex + layer;
+    if (refIndex >= plan.maxTileRefs) {
+      break;
+    }
+    const tileRefBase = refIndex * (GPU_TILE_COVERAGE_TILE_REF_BYTES / Uint32Array.BYTES_PER_ELEMENT);
+    const splatIndex = tileRefs[tileRefBase] ?? plan.splatCount;
+    const alphaParamIndex = Math.min(tileRefs[tileRefBase + 3] ?? refIndex, plan.maxTileRefs - 1);
+    if (splatIndex >= plan.splatCount) {
+      contributors.push({
+        layer,
+        refIndex,
+        splatIndex,
+        alphaParamIndex,
+        tileCoverageWeight: 0,
+        pixelCoverageWeight: 0,
+        sourceOpacity: 0,
+        coverageAlpha: 0,
+        sourceColor: [0, 0, 0],
+        runningColor: runningColor.map(roundColorChannel) as [number, number, number],
+        remainingTransmission: roundColorChannel(remainingTransmission),
+        status: "skipped-invalid-splat",
+      });
+      continue;
+    }
+    const tileCoverageWeight = Math.max(tileCoverageWeights[refIndex] ?? 0, 0);
+    if (tileCoverageWeight <= 0) {
+      contributors.push({
+        layer,
+        refIndex,
+        splatIndex,
+        alphaParamIndex,
+        tileCoverageWeight: 0,
+        pixelCoverageWeight: 0,
+        sourceOpacity: 0,
+        coverageAlpha: 0,
+        sourceColor: readSourceColor(sourceColors, splatIndex),
+        runningColor: runningColor.map(roundColorChannel) as [number, number, number],
+        remainingTransmission: roundColorChannel(remainingTransmission),
+        status: "skipped-zero-tile-coverage",
+      });
+      continue;
+    }
+    const alphaParam = readVec4(alphaParams, alphaParamIndex);
+    const conicParam = readVec4(alphaParams, alphaParamIndex + plan.maxTileRefs);
+    const sourceOpacity = Math.min(clamp01(alphaParam[0]), 0.999);
+    const pixelCoverageWeight = conicPixelWeightFromParams(alphaParam, conicParam, pixelCenter);
+    const coverageAlpha = clamp01(1 - Math.pow(1 - sourceOpacity, pixelCoverageWeight));
+    const sourceColor = readSourceColor(sourceColors, splatIndex);
+    runningColor = sourceColor.map((channel, index) =>
+      channel * coverageAlpha + runningColor[index] * (1 - coverageAlpha)
+    ) as [number, number, number];
+    remainingTransmission *= 1 - coverageAlpha;
+    contributors.push({
+      layer,
+      refIndex,
+      splatIndex,
+      alphaParamIndex,
+      tileCoverageWeight: roundColorChannel(tileCoverageWeight),
+      pixelCoverageWeight: roundColorChannel(pixelCoverageWeight),
+      sourceOpacity: roundColorChannel(sourceOpacity),
+      coverageAlpha: roundColorChannel(coverageAlpha),
+      sourceColor: sourceColor.map(roundColorChannel) as [number, number, number],
+      runningColor: runningColor.map(roundColorChannel) as [number, number, number],
+      remainingTransmission: roundColorChannel(remainingTransmission),
+      status: "accumulated",
+    });
+  }
+
+  const liveCompositorRgba = [
+    roundColorChannel(runningColor[0]),
+    roundColorChannel(runningColor[1]),
+    roundColorChannel(runningColor[2]),
+    roundColorChannel(1 - remainingTransmission),
+  ] as const;
+  return {
+    id: anchor.id,
+    pixel: { x: Math.floor(anchor.x), y: Math.floor(anchor.y) },
+    tileAddress,
+    header: {
+      firstRefIndex,
+      refCount,
+      projectedCount,
+      droppedCount,
+    },
+    gpuScatterCount,
+    tileCapacity,
+    refLimit,
+    liveCompositorRgba,
+    liveCompositorRgba8: liveCompositorRgba.map(floatColorToByte) as [number, number, number, number],
+    remainingTransmission: roundColorChannel(remainingTransmission),
+    contributors,
+  };
+}
+
+function createReadbackBuffer(device: GPUDevice, size: number, label: string): GPUBuffer {
+  return device.createBuffer({
+    label,
+    size: Math.max(16, size),
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+  });
+}
+
+function destroyMappedReadbackBuffers(buffers: readonly GPUBuffer[]): void {
+  for (const buffer of buffers) {
+    buffer.unmap();
+    buffer.destroy();
+  }
+}
+
+function destroyReadbackBuffers(buffers: readonly GPUBuffer[]): void {
+  for (const buffer of buffers) {
+    buffer.destroy();
+  }
+}
+
+function tileAddressForPixel(anchor: PixelTraceAnchor, plan: GpuTileCoveragePlan): TileLocalCompositorInputReadback["anchors"][number]["tileAddress"] {
+  const x = clampInteger(Math.floor(anchor.x), 0, plan.viewportWidth - 1);
+  const y = clampInteger(Math.floor(anchor.y), 0, plan.viewportHeight - 1);
+  const tileX = clampInteger(Math.floor(x / plan.tileSizePx), 0, plan.tileColumns - 1);
+  const tileY = clampInteger(Math.floor(y / plan.tileSizePx), 0, plan.tileRows - 1);
+  return {
+    tileX,
+    tileY,
+    tileIndex: tileY * plan.tileColumns + tileX,
+    localX: x - tileX * plan.tileSizePx,
+    localY: y - tileY * plan.tileSizePx,
+  };
+}
+
+function readVec4(values: Float32Array, vec4Index: number): readonly [number, number, number, number] {
+  const base = vec4Index * 4;
+  return [
+    values[base] ?? 0,
+    values[base + 1] ?? 0,
+    values[base + 2] ?? 0,
+    values[base + 3] ?? 0,
+  ];
+}
+
+function readSourceColor(sourceColors: Float32Array, splatIndex: number): [number, number, number] {
+  const base = splatIndex * 3;
+  return [
+    sourceColors[base] ?? 0,
+    sourceColors[base + 1] ?? 0,
+    sourceColors[base + 2] ?? 0,
+  ];
+}
+
+function conicPixelWeightFromParams(
+  alphaParam: readonly [number, number, number, number],
+  conicParam: readonly [number, number, number, number],
+  pixelCenter: readonly [number, number]
+): number {
+  const dx = pixelCenter[0] - alphaParam[1];
+  const dy = pixelCenter[1] - alphaParam[2];
+  const mahalanobis2 = conicParam[0] * dx * dx + 2 * conicParam[1] * dx * dy + conicParam[2] * dy * dy;
+  return Math.exp(-2 * mahalanobis2);
+}
+
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
 function readOutputTextureAnchor(
   view: DataView,
   pending: PendingTileLocalOutputTextureReadback,
@@ -3335,7 +3715,7 @@ function createEmptyStorageBuffer(device: GPUDevice, size: number, label: string
   return device.createBuffer({
     label,
     size: Math.max(16, size),
-    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
   });
 }
 
@@ -4104,6 +4484,7 @@ function exposeTileLocalRuntimeEvidence(
           perPixelRetainedContributors: tileLocalState.perPixelRetainedContributors,
           perPixelFinalColorAccumulation,
           outputTextureReadback: tileLocalState.outputTextureReadback,
+          compositorInputReadback: tileLocalState.compositorInputReadback,
           perPixelDeadSplatElectorLedger,
           perPixelRetainedToOrderedSurvivalLedger,
           orderingBackend: TILE_LOCAL_ORDERING_BACKEND,

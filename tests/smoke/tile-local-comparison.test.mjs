@@ -224,6 +224,7 @@ test("tile-local comparison waits for pending output texture readback before cap
       freshness: { status: "current" },
       perPixelFinalColorAccumulation: [{ anchorPixel: { id: "fresh-a" } }],
       outputTextureReadback: { status: "pending" },
+      compositorInputReadback: { status: "pending" },
     },
   };
 
@@ -233,12 +234,20 @@ test("tile-local comparison waits for pending output texture readback before cap
   );
 
   pageEvidence.tileLocal.outputTextureReadback = { status: "present", anchors: [] };
+  pageEvidence.tileLocal.compositorInputReadback = { status: "present", anchors: [] };
   assert.equal(
     isVisualSmokeCaptureReady(pageEvidence, { expectedRendererLabel: "tile-local-visible" }),
     true
   );
 
   delete pageEvidence.tileLocal.outputTextureReadback;
+  assert.equal(
+    isVisualSmokeCaptureReady(pageEvidence, { expectedRendererLabel: "tile-local-visible" }),
+    false
+  );
+
+  pageEvidence.tileLocal.outputTextureReadback = { status: "present", anchors: [] };
+  delete pageEvidence.tileLocal.compositorInputReadback;
   assert.equal(
     isVisualSmokeCaptureReady(pageEvidence, { expectedRendererLabel: "tile-local-visible" }),
     false
