@@ -21,7 +21,7 @@ test("requested GPU arena runtime constructs compact retained source without the
   assert.match(gpuFactorySource, /compactSource\.droppedContributorCount/);
 });
 
-test("requested GPU arena compact source keeps projected coverage inside the live ref budget", () => {
+test("requested GPU arena compact source preserves projected overflow diagnostics for retained handoff", () => {
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const gpuFactoryStart = mainSource.indexOf("function createGpuArenaTileLocalSceneState");
   const cpuFactoryStart = mainSource.indexOf("function createCpuTileLocalSceneState");
@@ -43,7 +43,32 @@ test("requested GPU arena compact source keeps projected coverage inside the liv
   );
   assert.match(
     compactSourceSource,
-    /buildProjectedGaussianTileCoverage\(\{[\s\S]*maxTileEntries,/,
-    "compact projected coverage must stop before materializing unbounded high-viewport refs",
+    /buildStreamingCompactRetainedSourceForRuntime/,
+    "compact source construction must stream retained rows without first materializing global projected refs",
+  );
+  assert.match(
+    compactSourceSource,
+    /estimateCompactProjectedTileRefCount/,
+    "compact source construction must estimate projected tile spans before deciding whether the route is dense-budget overflowed",
+  );
+  assert.match(
+    compactSourceSource,
+    /onlyTileIndexes:\s*useAnchorPrefilter\s*\?\s*anchorTileIndexes\s*:\s*null/,
+    "dense exact routes must restrict compact source projection to anchor-relevant splats before covariance construction",
+  );
+  assert.match(
+    compactSourceSource,
+    /candidateSplatIndexes:\s*anchorCandidateSplatIndexes/,
+    "dense exact routes must select bounded anchor-near splat ids before full compact covariance projection",
+  );
+  assert.doesNotMatch(
+    compactSourceSource,
+    /buildProjectedGaussianTileCoverage/,
+    "compact source construction must not call dense projected coverage before retained rows exist",
+  );
+  assert.match(
+    compactSourceSource,
+    /onlyTileIndexes:\s*retainOnlyAnchorTiles\s*\?\s*effectiveAnchorTileIndexes\s*:\s*null/,
+    "overflowed compact routes must restrict the streaming pass to anchor tiles instead of scanning every dense tile ref",
   );
 });

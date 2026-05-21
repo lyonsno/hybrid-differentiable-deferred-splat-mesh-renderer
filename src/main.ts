@@ -92,7 +92,6 @@ import {
 } from "./rendererFidelityProbes/finalAccumulationTrace.js";
 import { buildDeadSplatElectorLedger } from "./rendererFidelityProbes/deadSplatElectorLedger.js";
 import { buildRetainedToOrderedSurvivalLedger } from "./rendererFidelityProbes/retainedToOrderedSurvivalLedger.js";
-import { buildProjectedGaussianTileCoverage } from "./rendererFidelityProbes/tileCoverage.js";
 import {
   classifyTileLocalProjectedRefGuard,
   formatTileLocalBudgetPair,
@@ -146,6 +145,10 @@ const TILE_LOCAL_TRACE_ANCHORS = selectedTileLocalTraceAnchors();
 const TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES = 1;
 const TILE_LOCAL_PROVISIONAL_MAX_SPLATS = 150_000;
 const TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES = 20_000_000;
+const COMPACT_SOURCE_SIGMA_RADIUS = 3;
+const COMPACT_SOURCE_ANCHOR_PREFILTER_MIN_MARGIN_PX = 96;
+const COMPACT_SOURCE_ANCHOR_PREFILTER_MAX_MARGIN_PX = 384;
+const COMPACT_SOURCE_EPSILON = 1e-9;
 const TILE_LOCAL_UNSAFE = selectedTileLocalUnsafeMode();
 const GPU_LIVE_POINT_SIGMA_PX = 10;
 const GPU_LIVE_POINT_SUPPORT_RADIUS_PX = GPU_LIVE_POINT_SIGMA_PX * 3;
@@ -254,6 +257,11 @@ interface CompactRetainedSourceForRuntime {
   readonly projectedContributorCount: number;
   readonly retainedContributorCount: number;
   readonly droppedContributorCount: number;
+  readonly projectedRefBudgetOverflow: {
+    readonly projectedRefs: number;
+    readonly maxProjectedRefs: number;
+    readonly mode: string;
+  } | null;
   readonly tileRefCustody: TileRefCustodySummary;
   readonly perPixelProjectedContributors: TileLocalPrepassBridge["perPixelProjectedContributors"];
   readonly perPixelRetainedContributors: TileLocalPrepassBridge["perPixelRetainedContributors"];
@@ -331,8 +339,14 @@ async function main() {
   const assetPath = selectedSplatAssetPath();
   let activeScene: ActiveSplatScene | null = null;
 
-  function replaceSplatScene(attributes: SplatAttributes, sceneAssetPath: string): void {
+  async function updateSceneLoadStage(label: string): Promise<void> {
+    statsEl.textContent = label;
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
+
+  async function replaceSplatScene(attributes: SplatAttributes, sceneAssetPath: string): Promise<void> {
     const previous = activeScene;
+    await updateSceneLoadStage(`Preparing ${attributes.count.toLocaleString()} splats...`);
     configureCameraForSplatBounds(cam, attributes.bounds);
     if (shapeWitnessFixtureId === null) {
       applyRealScaniverseWitnessView(cam, attributes.bounds, REAL_SCANIVERSE_WITNESS_VIEW);
@@ -346,12 +360,14 @@ async function main() {
       getProjectionMatrix(cam, initialAspect),
       initialView
     );
+    await updateSceneLoadStage(`Creating GPU buffers for ${attributes.count.toLocaleString()} splats...`);
     const gpuSort = createGpuSortPrototype(gpu.device, attributes.count, "first_smoke_gpu_bitonic_sort");
     const sortState = createSortSettleState(initialView);
     const buffers = uploadSplatAttributeBuffers(gpu.device, attributes);
     const effectiveOpacities = new Float32Array(attributes.count);
     const initialSplatScale = shapeWitnessFixtureId !== null ? SHAPE_WITNESS_SPLAT_SCALE : REAL_SCANIVERSE_SPLAT_SCALE;
     const initialMinRadiusPx = shapeWitnessFixtureId !== null ? SHAPE_WITNESS_MIN_RADIUS_PX : REAL_SCANIVERSE_MIN_RADIUS_PX;
+    await updateSceneLoadStage(`Computing alpha density for ${attributes.count.toLocaleString()} splats...`);
     const alphaDensitySummary = writeAlphaDensityCompensatedOpacities(
       effectiveOpacities,
       attributes,
@@ -377,6 +393,7 @@ async function main() {
     let tileLocalState: TileLocalSceneState | null = null;
     if (usesTileLocalPrepass(RENDERER_MODE) && !tileLocalDisabledReason) {
       try {
+        await updateSceneLoadStage(`Building compact tile-local source for ${attributes.count.toLocaleString()} splats...`);
         tileLocalState = createTileLocalSceneState(
           gpu.device,
           attributes,
@@ -460,13 +477,13 @@ async function main() {
         `Valid IDs: shape-witness-{isotropic-circle,edge-on-ribbon,rotated-ellipse,near-plane-slab,dense-foreground}`
       );
       // Fall back to real Scaniverse so the page is not blank.
-      replaceSplatScene(await fetchFirstSmokeSplatPayload(assetPath), assetPath);
+      await replaceSplatScene(await fetchFirstSmokeSplatPayload(assetPath), assetPath);
     } else {
       statsEl.textContent = `Loading shape-witness fixture: ${shapeWitnessFixtureId}...`;
       const fixtureAttributes = splatAttributesFromFixture(fixture);
       // replaceSplatScene uses the bounds-based camera internally; we will override
       // the camera immediately after with the fixture's exact camera specification.
-      replaceSplatScene(fixtureAttributes, `shape-witness:${fullFixtureId}`);
+      await replaceSplatScene(fixtureAttributes, `shape-witness:${fullFixtureId}`);
       // Override camera to fixture specification (replaces the bounds-based camera set above).
       configureCameraForFixture(cam, fixture.camera, fixtureAttributes.bounds);
       // Expose shape-witness smoke evidence with ready: true so the capture harness can proceed.
@@ -475,12 +492,12 @@ async function main() {
       statsEl.textContent = `shape-witness: ${shapeWitnessFixtureId} | renderer: shape-witness | splats: ${fixtureAttributes.count}`;
     }
   } else {
-    replaceSplatScene(await fetchFirstSmokeSplatPayload(assetPath), assetPath);
+    await replaceSplatScene(await fetchFirstSmokeSplatPayload(assetPath), assetPath);
   }
   bindDroppedSplatLoading(canvas, async (file) => {
     statsEl.textContent = `Loading ${file.name}...`;
     try {
-      replaceSplatScene(await loadDroppedSplatFile(file), `local-file:${file.name}`);
+      await replaceSplatScene(await loadDroppedSplatFile(file), `local-file:${file.name}`);
     } catch (err) {
       statsEl.textContent = err instanceof Error ? err.message : String(err);
       requestFrame();
@@ -1128,6 +1145,25 @@ function buildCompactRetainedSourceForRuntime({
   readonly buildProjectionRetentionArena: typeof buildDeterministicGpuTileProjectionRetentionArena;
   readonly anchors: readonly PixelTraceAnchor[];
 }): CompactRetainedSourceForRuntime {
+  const tileCount = tileColumns * tileRows;
+  const anchorTileIndexes = compactSourceAnchorTileIndexes({ anchors, tileSizePx, tileColumns, tileRows });
+  const retainedCapacity = tileCount * maxRefsPerTile;
+  const useAnchorPrefilter = anchorTileIndexes.size > 0 && retainedCapacity <= maxTileEntries && tileCount > 10_000;
+  const anchorCandidateSplatIndexes = useAnchorPrefilter
+    ? selectCompactAnchorCandidateSplatIndexes({
+        attributes,
+        viewProj,
+        viewportWidth,
+        viewportHeight,
+        splatScale,
+        minRadiusPx,
+        tileSizePx,
+        tileColumns,
+        tileRows,
+        anchorTileIndexes,
+        maxCandidatesPerTile: maxRefsPerTile * 4,
+      })
+    : null;
   const splats = projectRuntimeSplatsForCompactSource({
     attributes,
     viewProj,
@@ -1136,34 +1172,11 @@ function buildCompactRetainedSourceForRuntime({
     splatScale,
     minRadiusPx,
     nearFadeEndNdc,
-  });
-  const coverage = buildProjectedGaussianTileCoverage({
-    viewportWidth,
-    viewportHeight,
+    onlyTileIndexes: useAnchorPrefilter ? anchorTileIndexes : null,
     tileSizePx,
-    samplesPerAxis: TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES,
-    maxTileEntries,
-    splats: [...splats],
-  }) as RuntimeCompactTileCoverage;
-  const projectedRecords = projectedCoverageToRuntimeContributors({
-    coverage,
-    attributes,
-    effectiveOpacities,
-    viewMatrix,
-  });
-  const arena = buildProjectionRetentionArena({
-    tileCount: tileColumns * tileRows,
-    maxContributors: projectedRecords.length,
-    maxRefsPerTile,
-    contributors: projectedRecords,
-  });
-  const tileRefCustody = compactTileRefCustody({
-    tileCount: tileColumns * tileRows,
-    tileHeaders: arena.tileHeaderU32,
-    projectedContributorCount: arena.projectedContributorCount,
-    retainedContributorCount: arena.retainedContributorCount,
-    droppedContributorCount: arena.droppedContributorCount,
-    maxRefsPerTile,
+    tileColumns,
+    tileRows,
+    candidateSplatIndexes: anchorCandidateSplatIndexes,
   });
   const rendererMetadata = {
     requestedRenderer: "tile-local-visible",
@@ -1178,17 +1191,182 @@ function buildCompactRetainedSourceForRuntime({
     },
     traceExtractionBackend: "compact-retained-source-runtime",
   };
+  return buildStreamingCompactRetainedSourceForRuntime({
+    splats,
+    attributes,
+    effectiveOpacities,
+    viewMatrix,
+    viewportWidth,
+    viewportHeight,
+    tileSizePx,
+    tileColumns,
+    tileRows,
+    maxRefsPerTile,
+    maxTileEntries,
+    samplesPerAxis: TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES,
+    anchors,
+    anchorTileIndexes,
+    forceAnchorOnly: useAnchorPrefilter,
+    rendererMetadata,
+  });
+}
+
+function buildStreamingCompactRetainedSourceForRuntime({
+  splats,
+  attributes,
+  effectiveOpacities,
+  viewMatrix,
+  viewportWidth,
+  viewportHeight,
+  tileSizePx,
+  tileColumns,
+  tileRows,
+  maxRefsPerTile,
+  maxTileEntries,
+  samplesPerAxis,
+  anchors,
+  anchorTileIndexes,
+  forceAnchorOnly,
+  rendererMetadata,
+}: {
+  readonly splats: RuntimeCompactTileCoverage["splats"];
+  readonly attributes: SplatAttributes;
+  readonly effectiveOpacities: Float32Array;
+  readonly viewMatrix: Float32Array;
+  readonly viewportWidth: number;
+  readonly viewportHeight: number;
+  readonly tileSizePx: number;
+  readonly tileColumns: number;
+  readonly tileRows: number;
+  readonly maxRefsPerTile: number;
+  readonly maxTileEntries: number;
+  readonly samplesPerAxis: number;
+  readonly anchors: readonly PixelTraceAnchor[];
+  readonly anchorTileIndexes?: ReadonlySet<number> | null;
+  readonly forceAnchorOnly?: boolean;
+  readonly rendererMetadata: Record<string, unknown>;
+}): CompactRetainedSourceForRuntime {
+  const tileCount = tileColumns * tileRows;
+  const projectedCounts = new Uint32Array(Math.max(0, tileCount));
+  const effectiveAnchorTileIndexes = anchorTileIndexes ?? compactSourceAnchorTileIndexes({ anchors, tileSizePx, tileColumns, tileRows });
+  const retainedCapacity = tileCount * maxRefsPerTile;
+  const projectedTileRefEstimate = estimateCompactProjectedTileRefCount({
+    splats,
+    viewportWidth,
+    viewportHeight,
+    tileSizePx,
+    maxTileEntries,
+  });
+  const retainOnlyAnchorTiles = Boolean(forceAnchorOnly) || (projectedTileRefEstimate > maxTileEntries && retainedCapacity <= maxTileEntries);
+  const projectedRefBudgetOverflow: CompactRetainedSourceForRuntime["projectedRefBudgetOverflow"] = retainOnlyAnchorTiles
+    ? {
+        projectedRefs: maxTileEntries + 1,
+        maxProjectedRefs: maxTileEntries,
+        mode: "diagnostic-retained-handoff",
+      }
+    : null;
+  const { ranks, depths } = compactSourceBackToFrontDepthEvidence(attributes, viewMatrix);
+  const splatsByIndex = new Map(splats.map((splat) => [splat.splatIndex, splat]));
+  const buckets = new Map<number, CompactStreamingTileBucket>();
+  const anchorProjectedRecords: GpuTileContributorArenaProjectedContributor[] = [];
+  const tileHeaderU32 = new Uint32Array(Math.max(0, tileCount * 8));
+  let projectedIndex = 0;
+
+  streamCompactProjectedTileRefs({
+    splats,
+    viewportWidth,
+    viewportHeight,
+    tileSizePx,
+    tileColumns,
+    samplesPerAxis,
+    onlyTileIndexes: retainOnlyAnchorTiles ? effectiveAnchorTileIndexes : null,
+    onEntry({ splat, tileIndex, tileX, tileY, coverageWeight }) {
+      const currentProjectedIndex = projectedIndex;
+      projectedIndex += 1;
+      projectedCounts[tileIndex] += 1;
+      const shouldRetainTile = !retainOnlyAnchorTiles || effectiveAnchorTileIndexes.has(tileIndex);
+      if (!shouldRetainTile && !effectiveAnchorTileIndexes.has(tileIndex)) {
+        return;
+      }
+      const record = compactCoverageEntryToRuntimeContributor({
+        entry: {
+          tileIndex,
+          tileX,
+          tileY,
+          splatIndex: splat.splatIndex,
+          originalId: splat.originalId,
+          coverageWeight,
+        },
+        projectedIndex: currentProjectedIndex,
+        splatsByIndex,
+        ranks,
+        depths,
+        attributes,
+        effectiveOpacities,
+      });
+      if (effectiveAnchorTileIndexes.has(tileIndex)) {
+        anchorProjectedRecords.push(record);
+      }
+      if (shouldRetainTile) {
+        const bucket = compactStreamingTileBucket(buckets, tileIndex);
+        compactRetainTopRecord(bucket.coverageRecords, record, maxRefsPerTile, compareCompactProjectionRetentionCoverageOrder);
+        compactRetainTopRecord(bucket.retentionRecords, record, Math.max(1, Math.floor(maxRefsPerTile / 2)), compareCompactProjectionRetentionPriority);
+        compactRetainTopRecord(bucket.occlusionRecords, record, Math.max(1, Math.floor(maxRefsPerTile / 2)), compareCompactProjectionOcclusionPriority);
+      }
+    },
+  });
+
+  const retainedRecords: GpuTileContributorArenaProjectedContributor[] = [];
+  for (let tileIndex = 0; tileIndex < tileCount; tileIndex += 1) {
+    const bucket = buckets.get(tileIndex);
+    const projectedCount = projectedCounts[tileIndex] ?? 0;
+    const retainedOffset = retainedRecords.length;
+    let retainedTileRecords: GpuTileContributorArenaProjectedContributor[] = [];
+    if (bucket) {
+      const projectedTileRecords = compactMergedTileCandidateRecords(bucket)
+        .sort(compareCompactProjectionRetentionCoverageOrder);
+      retainedTileRecords = selectCompactProjectionRetentionRecords(
+        projectedTileRecords,
+        maxRefsPerTile,
+        projectedCount,
+      ).sort(compareCompactProjectionRetentionCompositorOrder);
+      retainedRecords.push(...retainedTileRecords);
+    }
+
+    const retainedCount = retainedTileRecords.length;
+    const droppedCount = Math.max(0, projectedCount - retainedCount);
+    const headerBase = tileIndex * 8;
+    tileHeaderU32[headerBase] = retainedOffset;
+    tileHeaderU32[headerBase + 1] = retainedCount;
+    tileHeaderU32[headerBase + 2] = projectedCount;
+    tileHeaderU32[headerBase + 3] = droppedCount;
+    tileHeaderU32[headerBase + 4] = droppedCount > 0 ? 1 : 0;
+    tileHeaderU32[headerBase + 5] = retainedCount === 0 ? 0xffffffff : compactMaxRetainedViewRank(retainedTileRecords);
+  }
+
+  const streamedProjectedContributorCount = projectedIndex;
+  const projectedContributorCount = Math.max(projectedRefBudgetOverflow?.projectedRefs ?? 0, streamedProjectedContributorCount);
+  const droppedContributorCount = Math.max(0, projectedContributorCount - retainedRecords.length);
+  const tileRefCustody = compactTileRefCustody({
+    tileCount,
+    tileHeaders: tileHeaderU32,
+    projectedContributorCount,
+    retainedContributorCount: retainedRecords.length,
+    droppedContributorCount,
+    maxRefsPerTile,
+  });
 
   return {
-    projectedRecords,
-    retainedRecords: arena.retainedRecords,
-    droppedRecords: arena.droppedRecords,
-    projectedContributorCount: arena.projectedContributorCount,
-    retainedContributorCount: arena.retainedContributorCount,
-    droppedContributorCount: arena.droppedContributorCount,
+    projectedRecords: anchorProjectedRecords,
+    retainedRecords,
+    droppedRecords: [],
+    projectedContributorCount,
+    retainedContributorCount: retainedRecords.length,
+    droppedContributorCount,
+    projectedRefBudgetOverflow,
     tileRefCustody,
     perPixelProjectedContributors: compactPerPixelContributorTraces({
-      contributors: projectedRecords,
+      contributors: anchorProjectedRecords,
       listName: "projectedContributors",
       viewportWidth,
       viewportHeight,
@@ -1199,8 +1377,428 @@ function buildCompactRetainedSourceForRuntime({
       rendererMetadata,
     }) as unknown as TileLocalPrepassBridge["perPixelProjectedContributors"],
     perPixelRetainedContributors: compactPerPixelContributorTraces({
-      contributors: arena.retainedRecords,
-      projectedContributors: projectedRecords,
+      contributors: retainedRecords,
+      projectedContributors: anchorProjectedRecords,
+      listName: "retainedContributors",
+      viewportWidth,
+      viewportHeight,
+      tileSizePx,
+      tileColumns,
+      tileRows,
+      anchors,
+      rendererMetadata,
+    }) as unknown as TileLocalPrepassBridge["perPixelRetainedContributors"],
+  };
+}
+
+function estimateCompactProjectedTileRefCount({
+  splats,
+  viewportWidth,
+  viewportHeight,
+  tileSizePx,
+  maxTileEntries,
+}: {
+  readonly splats: RuntimeCompactTileCoverage["splats"];
+  readonly viewportWidth: number;
+  readonly viewportHeight: number;
+  readonly tileSizePx: number;
+  readonly maxTileEntries: number;
+}): number {
+  let projectedTileRefs = 0;
+  for (const splat of splats) {
+    const covariance = compactSourceCovariance(splat.covariancePx);
+    const tileBounds = compactSourceTileBoundsForSplat({
+      centerPx: splat.centerPx,
+      covariance,
+      viewportWidth,
+      viewportHeight,
+      tileSizePx,
+    });
+    projectedTileRefs += (tileBounds.maxTileX - tileBounds.minTileX + 1) * (tileBounds.maxTileY - tileBounds.minTileY + 1);
+    if (projectedTileRefs > maxTileEntries) {
+      return projectedTileRefs;
+    }
+  }
+  return projectedTileRefs;
+}
+
+interface CompactStreamingTileBucket {
+  readonly coverageRecords: GpuTileContributorArenaProjectedContributor[];
+  readonly retentionRecords: GpuTileContributorArenaProjectedContributor[];
+  readonly occlusionRecords: GpuTileContributorArenaProjectedContributor[];
+}
+
+function compactStreamingTileBucket(
+  buckets: Map<number, CompactStreamingTileBucket>,
+  tileIndex: number,
+): CompactStreamingTileBucket {
+  let bucket = buckets.get(tileIndex);
+  if (!bucket) {
+    bucket = {
+      coverageRecords: [],
+      retentionRecords: [],
+      occlusionRecords: [],
+    };
+    buckets.set(tileIndex, bucket);
+  }
+  return bucket;
+}
+
+function compactRetainTopRecord(
+  records: GpuTileContributorArenaProjectedContributor[],
+  record: GpuTileContributorArenaProjectedContributor,
+  limit: number,
+  compareRecords: typeof compareCompactProjectionRetentionCoverageOrder,
+): void {
+  const key = compactProjectionRetentionRecordKey(record);
+  if (records.some((candidate) => compactProjectionRetentionRecordKey(candidate) === key)) {
+    return;
+  }
+  if (records.length < limit) {
+    records.push(record);
+    return;
+  }
+
+  let worstIndex = 0;
+  for (let index = 1; index < records.length; index += 1) {
+    if (compareRecords(records[index], records[worstIndex]) > 0) {
+      worstIndex = index;
+    }
+  }
+  if (compareRecords(record, records[worstIndex]) < 0) {
+    records[worstIndex] = record;
+  }
+}
+
+function compactMergedTileCandidateRecords(
+  bucket: CompactStreamingTileBucket,
+): GpuTileContributorArenaProjectedContributor[] {
+  const records = [];
+  const seen = new Set<string>();
+  for (const record of [...bucket.coverageRecords, ...bucket.retentionRecords, ...bucket.occlusionRecords]) {
+    const key = compactProjectionRetentionRecordKey(record);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    records.push(record);
+  }
+  return records;
+}
+
+function streamCompactProjectedTileRefs({
+  splats,
+  viewportWidth,
+  viewportHeight,
+  tileSizePx,
+  tileColumns,
+  samplesPerAxis,
+  onlyTileIndexes,
+  onEntry,
+}: {
+  readonly splats: RuntimeCompactTileCoverage["splats"];
+  readonly viewportWidth: number;
+  readonly viewportHeight: number;
+  readonly tileSizePx: number;
+  readonly tileColumns: number;
+  readonly samplesPerAxis: number;
+  readonly onlyTileIndexes?: ReadonlySet<number> | null;
+  readonly onEntry: (entry: {
+    readonly splat: RuntimeCompactTileCoverage["splats"][number];
+    readonly tileIndex: number;
+    readonly tileX: number;
+    readonly tileY: number;
+    readonly coverageWeight: number;
+  }) => void;
+}): void {
+  for (const splat of splats) {
+    const covariance = compactSourceCovariance(splat.covariancePx);
+    const tileBounds = compactSourceTileBoundsForSplat({
+      centerPx: splat.centerPx,
+      covariance,
+      viewportWidth,
+      viewportHeight,
+      tileSizePx,
+    });
+    if (onlyTileIndexes) {
+      for (const tileIndex of onlyTileIndexes) {
+        const tileX = tileIndex % tileColumns;
+        const tileY = Math.floor(tileIndex / tileColumns);
+        if (
+          tileX < tileBounds.minTileX ||
+          tileX > tileBounds.maxTileX ||
+          tileY < tileBounds.minTileY ||
+          tileY > tileBounds.maxTileY
+        ) {
+          continue;
+        }
+        const tileMinX = tileX * tileSizePx;
+        const tileMinY = tileY * tileSizePx;
+        const tileMaxX = Math.min(viewportWidth, tileMinX + tileSizePx);
+        const tileMaxY = Math.min(viewportHeight, tileMinY + tileSizePx);
+        const coverageWeight = compactSourceTileCoverageWeight({
+          centerPx: splat.centerPx,
+          covariance,
+          tileMinX,
+          tileMinY,
+          tileMaxX,
+          tileMaxY,
+          samplesPerAxis,
+        });
+        if (coverageWeight <= 0) {
+          continue;
+        }
+        onEntry({ splat, tileIndex, tileX, tileY, coverageWeight });
+      }
+      continue;
+    }
+
+    for (let tileY = tileBounds.minTileY; tileY <= tileBounds.maxTileY; tileY += 1) {
+      for (let tileX = tileBounds.minTileX; tileX <= tileBounds.maxTileX; tileX += 1) {
+        const tileMinX = tileX * tileSizePx;
+        const tileMinY = tileY * tileSizePx;
+        const tileMaxX = Math.min(viewportWidth, tileMinX + tileSizePx);
+        const tileMaxY = Math.min(viewportHeight, tileMinY + tileSizePx);
+        const coverageWeight = compactSourceTileCoverageWeight({
+          centerPx: splat.centerPx,
+          covariance,
+          tileMinX,
+          tileMinY,
+          tileMaxX,
+          tileMaxY,
+          samplesPerAxis,
+        });
+        if (coverageWeight <= 0) {
+          continue;
+        }
+        const tileIndex = tileY * tileColumns + tileX;
+        onEntry({ splat, tileIndex, tileX, tileY, coverageWeight });
+      }
+    }
+  }
+}
+
+function compactSourceCovariance(covariancePx: RuntimeCompactTileCoverage["splats"][number]["covariancePx"]): {
+  readonly xx: number;
+  readonly xy: number;
+  readonly yy: number;
+  readonly determinant: number;
+} {
+  const xx = finiteOrZero(covariancePx.xx);
+  const xy = finiteOrZero(covariancePx.xy ?? 0);
+  const yy = finiteOrZero(covariancePx.yy);
+  const determinant = xx * yy - xy * xy;
+  if (xx <= 0 || yy <= 0 || determinant <= 0) {
+    return { xx: 1, xy: 0, yy: 1, determinant: 1 };
+  }
+  return { xx, xy, yy, determinant };
+}
+
+function compactSourceTileBoundsForSplat({
+  centerPx,
+  covariance,
+  viewportWidth,
+  viewportHeight,
+  tileSizePx,
+}: {
+  readonly centerPx: readonly [number, number];
+  readonly covariance: { readonly xx: number; readonly yy: number };
+  readonly viewportWidth: number;
+  readonly viewportHeight: number;
+  readonly tileSizePx: number;
+}): {
+  readonly minTileX: number;
+  readonly minTileY: number;
+  readonly maxTileX: number;
+  readonly maxTileY: number;
+} {
+  const radiusX = COMPACT_SOURCE_SIGMA_RADIUS * Math.sqrt(Math.max(covariance.xx, 0));
+  const radiusY = COMPACT_SOURCE_SIGMA_RADIUS * Math.sqrt(Math.max(covariance.yy, 0));
+  const minX = compactClamp(centerPx[0] - radiusX, 0, viewportWidth);
+  const maxX = compactClamp(centerPx[0] + radiusX, 0, viewportWidth);
+  const minY = compactClamp(centerPx[1] - radiusY, 0, viewportHeight);
+  const maxY = compactClamp(centerPx[1] + radiusY, 0, viewportHeight);
+  const maxTileXLimit = Math.max(0, Math.ceil(viewportWidth / tileSizePx) - 1);
+  const maxTileYLimit = Math.max(0, Math.ceil(viewportHeight / tileSizePx) - 1);
+  return {
+    minTileX: compactClamp(Math.floor(minX / tileSizePx), 0, maxTileXLimit),
+    minTileY: compactClamp(Math.floor(minY / tileSizePx), 0, maxTileYLimit),
+    maxTileX: compactClamp(Math.floor((maxX - COMPACT_SOURCE_EPSILON) / tileSizePx), 0, maxTileXLimit),
+    maxTileY: compactClamp(Math.floor((maxY - COMPACT_SOURCE_EPSILON) / tileSizePx), 0, maxTileYLimit),
+  };
+}
+
+function compactSourceTileCoverageWeight({
+  centerPx,
+  covariance,
+  tileMinX,
+  tileMinY,
+  tileMaxX,
+  tileMaxY,
+  samplesPerAxis,
+}: {
+  readonly centerPx: readonly [number, number];
+  readonly covariance: { readonly xx: number; readonly xy: number; readonly yy: number; readonly determinant: number };
+  readonly tileMinX: number;
+  readonly tileMinY: number;
+  readonly tileMaxX: number;
+  readonly tileMaxY: number;
+  readonly samplesPerAxis: number;
+}): number {
+  const width = tileMaxX - tileMinX;
+  const height = tileMaxY - tileMinY;
+  if (width <= 0 || height <= 0) {
+    return 0;
+  }
+  let densitySum = 0;
+  for (let yIndex = 0; yIndex < samplesPerAxis; yIndex += 1) {
+    const y = tileMinY + ((yIndex + 0.5) / samplesPerAxis) * height;
+    for (let xIndex = 0; xIndex < samplesPerAxis; xIndex += 1) {
+      const x = tileMinX + ((xIndex + 0.5) / samplesPerAxis) * width;
+      densitySum += compactSourceCovarianceDensity(x, y, centerPx, covariance);
+    }
+  }
+  return (densitySum / (samplesPerAxis * samplesPerAxis)) * width * height;
+}
+
+function compactSourceCovarianceDensity(
+  x: number,
+  y: number,
+  centerPx: readonly [number, number],
+  covariance: { readonly xx: number; readonly xy: number; readonly yy: number; readonly determinant: number },
+): number {
+  const dx = x - centerPx[0];
+  const dy = y - centerPx[1];
+  const invXx = covariance.yy / covariance.determinant;
+  const invXy = -covariance.xy / covariance.determinant;
+  const invYy = covariance.xx / covariance.determinant;
+  const mahalanobis2 = invXx * dx * dx + 2 * invXy * dx * dy + invYy * dy * dy;
+  const normalization = 1 / (2 * Math.PI * Math.sqrt(covariance.determinant));
+  return normalization * Math.exp(-0.5 * mahalanobis2);
+}
+
+function compactClamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function buildBoundedCompactRetainedSourceForRuntime({
+  coverage,
+  attributes,
+  effectiveOpacities,
+  viewMatrix,
+  viewportWidth,
+  viewportHeight,
+  tileSizePx,
+  tileColumns,
+  tileRows,
+  maxRefsPerTile,
+  anchors,
+  rendererMetadata,
+}: {
+  readonly coverage: RuntimeCompactTileCoverage;
+  readonly attributes: SplatAttributes;
+  readonly effectiveOpacities: Float32Array;
+  readonly viewMatrix: Float32Array;
+  readonly viewportWidth: number;
+  readonly viewportHeight: number;
+  readonly tileSizePx: number;
+  readonly tileColumns: number;
+  readonly tileRows: number;
+  readonly maxRefsPerTile: number;
+  readonly anchors: readonly PixelTraceAnchor[];
+  readonly rendererMetadata: Record<string, unknown>;
+}): CompactRetainedSourceForRuntime {
+  const tileCount = tileColumns * tileRows;
+  const { ranks, depths } = compactSourceBackToFrontDepthEvidence(attributes, viewMatrix);
+  const splatsByIndex = new Map(coverage.splats.map((splat) => [splat.splatIndex, splat]));
+  const anchorTileIndexes = compactSourceAnchorTileIndexes({ anchors, tileSizePx, tileColumns, tileRows });
+  const retainedRecords: GpuTileContributorArenaProjectedContributor[] = [];
+  const anchorProjectedRecords: GpuTileContributorArenaProjectedContributor[] = [];
+  const tileHeaderU32 = new Uint32Array(Math.max(0, tileCount * 8));
+  const entries = coverage.tileEntries;
+  let cursor = 0;
+  let droppedContributorCount = 0;
+
+  for (let tileIndex = 0; tileIndex < tileCount; tileIndex += 1) {
+    while (cursor < entries.length && entries[cursor].tileIndex < tileIndex) {
+      cursor += 1;
+    }
+    const start = cursor;
+    while (cursor < entries.length && entries[cursor].tileIndex === tileIndex) {
+      cursor += 1;
+    }
+    if (cursor === start) {
+      continue;
+    }
+
+    const projectedTileRecords: GpuTileContributorArenaProjectedContributor[] = [];
+    for (let entryIndex = start; entryIndex < cursor; entryIndex += 1) {
+      projectedTileRecords.push(compactCoverageEntryToRuntimeContributor({
+        entry: entries[entryIndex],
+        projectedIndex: entryIndex,
+        splatsByIndex,
+        ranks,
+        depths,
+        attributes,
+        effectiveOpacities,
+      }));
+    }
+    projectedTileRecords.sort(compareCompactProjectionRetentionCoverageOrder);
+    if (anchorTileIndexes.has(tileIndex)) {
+      anchorProjectedRecords.push(...projectedTileRecords);
+    }
+
+    const retainedTileRecords = selectCompactProjectionRetentionRecords(projectedTileRecords, maxRefsPerTile)
+      .sort(compareCompactProjectionRetentionCompositorOrder);
+    const retainedOffset = retainedRecords.length;
+    retainedRecords.push(...retainedTileRecords);
+    const projectedCount = projectedTileRecords.length;
+    const retainedCount = retainedTileRecords.length;
+    const droppedCount = Math.max(0, projectedCount - retainedCount);
+    droppedContributorCount += droppedCount;
+
+    const headerBase = tileIndex * 8;
+    tileHeaderU32[headerBase] = retainedOffset;
+    tileHeaderU32[headerBase + 1] = retainedCount;
+    tileHeaderU32[headerBase + 2] = projectedCount;
+    tileHeaderU32[headerBase + 3] = droppedCount;
+    tileHeaderU32[headerBase + 4] = droppedCount > 0 ? 1 : 0;
+    tileHeaderU32[headerBase + 5] = retainedCount === 0 ? 0xffffffff : compactMaxRetainedViewRank(retainedTileRecords);
+  }
+
+  const projectedContributorCount = entries.length;
+  const tileRefCustody = compactTileRefCustody({
+    tileCount,
+    tileHeaders: tileHeaderU32,
+    projectedContributorCount,
+    retainedContributorCount: retainedRecords.length,
+    droppedContributorCount,
+    maxRefsPerTile,
+  });
+
+  return {
+    projectedRecords: anchorProjectedRecords,
+    retainedRecords,
+    droppedRecords: [],
+    projectedContributorCount,
+    retainedContributorCount: retainedRecords.length,
+    droppedContributorCount,
+    projectedRefBudgetOverflow: coverage.projectedRefBudgetOverflow ?? null,
+    tileRefCustody,
+    perPixelProjectedContributors: compactPerPixelContributorTraces({
+      contributors: anchorProjectedRecords,
+      listName: "projectedContributors",
+      viewportWidth,
+      viewportHeight,
+      tileSizePx,
+      tileColumns,
+      tileRows,
+      anchors,
+      rendererMetadata,
+    }) as unknown as TileLocalPrepassBridge["perPixelProjectedContributors"],
+    perPixelRetainedContributors: compactPerPixelContributorTraces({
+      contributors: retainedRecords,
+      projectedContributors: anchorProjectedRecords,
       listName: "retainedContributors",
       viewportWidth,
       viewportHeight,
@@ -1234,6 +1832,117 @@ interface RuntimeCompactTileCoverage {
     readonly originalId: number;
     readonly coverageWeight: number;
   }[];
+  readonly projectedRefBudgetOverflow?: {
+    readonly projectedRefs: number;
+    readonly maxProjectedRefs: number;
+    readonly mode: string;
+  } | null;
+}
+
+function selectCompactAnchorCandidateSplatIndexes({
+  attributes,
+  viewProj,
+  viewportWidth,
+  viewportHeight,
+  splatScale,
+  minRadiusPx,
+  tileSizePx,
+  tileColumns,
+  tileRows,
+  anchorTileIndexes,
+  maxCandidatesPerTile,
+}: {
+  readonly attributes: SplatAttributes;
+  readonly viewProj: Float32Array;
+  readonly viewportWidth: number;
+  readonly viewportHeight: number;
+  readonly splatScale: number;
+  readonly minRadiusPx: number;
+  readonly tileSizePx: number;
+  readonly tileColumns: number;
+  readonly tileRows: number;
+  readonly anchorTileIndexes: ReadonlySet<number>;
+  readonly maxCandidatesPerTile: number;
+}): Set<number> {
+  const candidateBuckets = new Map<number, { splatIndex: number; priority: number }[]>();
+  const anchorTiles = [...anchorTileIndexes].filter((tileIndex) => tileIndex >= 0 && tileIndex < tileColumns * tileRows);
+  for (let splatIndex = 0; splatIndex < attributes.count; splatIndex += 1) {
+    const centerPx = projectCompactSourceSplatCenterPx(attributes, viewProj, splatIndex, viewportWidth, viewportHeight);
+    if (!centerPx) {
+      continue;
+    }
+    const marginPx = compactSourceApproximateSupportMarginPx({
+      attributes,
+      viewProj,
+      index: splatIndex,
+      viewportWidth,
+      viewportHeight,
+      splatScale,
+      minRadiusPx,
+    });
+    for (const tileIndex of anchorTiles) {
+      const tileX = tileIndex % tileColumns;
+      const tileY = Math.floor(tileIndex / tileColumns);
+      const minX = tileX * tileSizePx - marginPx;
+      const minY = tileY * tileSizePx - marginPx;
+      const maxX = (tileX + 1) * tileSizePx + marginPx;
+      const maxY = (tileY + 1) * tileSizePx + marginPx;
+      if (centerPx[0] < minX || centerPx[0] > maxX || centerPx[1] < minY || centerPx[1] > maxY) {
+        continue;
+      }
+      const tileCenterX = tileX * tileSizePx + tileSizePx * 0.5;
+      const tileCenterY = tileY * tileSizePx + tileSizePx * 0.5;
+      const dx = centerPx[0] - tileCenterX;
+      const dy = centerPx[1] - tileCenterY;
+      const opacity = clampCompactSource(attributes.opacities?.[splatIndex] ?? 1, 0, 0.999);
+      const priority = dx * dx + dy * dy - opacity * marginPx * marginPx;
+      const bucket = compactAnchorCandidateBucket(candidateBuckets, tileIndex);
+      compactRetainAnchorCandidate(bucket, { splatIndex, priority }, maxCandidatesPerTile);
+    }
+  }
+
+  const selected = new Set<number>();
+  for (const bucket of candidateBuckets.values()) {
+    for (const candidate of bucket) {
+      selected.add(candidate.splatIndex);
+    }
+  }
+  return selected;
+}
+
+function compactAnchorCandidateBucket(
+  buckets: Map<number, { splatIndex: number; priority: number }[]>,
+  tileIndex: number,
+): { splatIndex: number; priority: number }[] {
+  let bucket = buckets.get(tileIndex);
+  if (!bucket) {
+    bucket = [];
+    buckets.set(tileIndex, bucket);
+  }
+  return bucket;
+}
+
+function compactRetainAnchorCandidate(
+  bucket: { splatIndex: number; priority: number }[],
+  candidate: { splatIndex: number; priority: number },
+  limit: number,
+): void {
+  if (bucket.some((existing) => existing.splatIndex === candidate.splatIndex)) {
+    return;
+  }
+  if (bucket.length < limit) {
+    bucket.push(candidate);
+    return;
+  }
+  let worstIndex = 0;
+  for (let index = 1; index < bucket.length; index += 1) {
+    if (bucket[index].priority > bucket[worstIndex].priority) {
+      worstIndex = index;
+    }
+  }
+  if (candidate.priority < bucket[worstIndex].priority) {
+    bucket[worstIndex] = candidate;
+  }
 }
 
 function projectRuntimeSplatsForCompactSource({
@@ -1244,6 +1953,11 @@ function projectRuntimeSplatsForCompactSource({
   splatScale,
   minRadiusPx,
   nearFadeEndNdc,
+  onlyTileIndexes,
+  tileSizePx,
+  tileColumns,
+  tileRows,
+  candidateSplatIndexes,
 }: {
   readonly attributes: SplatAttributes;
   readonly viewProj: Float32Array;
@@ -1252,11 +1966,41 @@ function projectRuntimeSplatsForCompactSource({
   readonly splatScale: number;
   readonly minRadiusPx: number;
   readonly nearFadeEndNdc: number;
+  readonly onlyTileIndexes?: ReadonlySet<number> | null;
+  readonly tileSizePx?: number;
+  readonly tileColumns?: number;
+  readonly tileRows?: number;
+  readonly candidateSplatIndexes?: ReadonlySet<number> | null;
 }): RuntimeCompactTileCoverage["splats"] {
   const splats: RuntimeCompactTileCoverage["splats"][number][] = [];
-  for (let index = 0; index < attributes.count; index += 1) {
+  const splatIndexes = candidateSplatIndexes ? [...candidateSplatIndexes].sort((left, right) => left - right) : null;
+  const splatIndexCount = splatIndexes?.length ?? attributes.count;
+  for (let cursor = 0; cursor < splatIndexCount; cursor += 1) {
+    const index = splatIndexes?.[cursor] ?? cursor;
     const centerPx = projectCompactSourceSplatCenterPx(attributes, viewProj, index, viewportWidth, viewportHeight);
     if (!centerPx) {
+      continue;
+    }
+    if (
+      onlyTileIndexes &&
+      tileSizePx !== undefined &&
+      tileColumns !== undefined &&
+      tileRows !== undefined &&
+      !compactSourceProjectedCenterMayReachTiles({
+        attributes,
+        viewProj,
+        index,
+        centerPx,
+        viewportWidth,
+        viewportHeight,
+        splatScale,
+        minRadiusPx,
+        tileSizePx,
+        tileColumns,
+        tileRows,
+        onlyTileIndexes,
+      })
+    ) {
       continue;
     }
     const covariancePx = projectedCompactSourceCovariancePx({
@@ -1282,6 +2026,95 @@ function projectRuntimeSplatsForCompactSource({
   return splats;
 }
 
+function compactSourceProjectedCenterMayReachTiles({
+  attributes,
+  viewProj,
+  index,
+  centerPx,
+  viewportWidth,
+  viewportHeight,
+  splatScale,
+  minRadiusPx,
+  tileSizePx,
+  tileColumns,
+  tileRows,
+  onlyTileIndexes,
+}: {
+  readonly attributes: SplatAttributes;
+  readonly viewProj: Float32Array;
+  readonly index: number;
+  readonly centerPx: readonly [number, number];
+  readonly viewportWidth: number;
+  readonly viewportHeight: number;
+  readonly splatScale: number;
+  readonly minRadiusPx: number;
+  readonly tileSizePx: number;
+  readonly tileColumns: number;
+  readonly tileRows: number;
+  readonly onlyTileIndexes: ReadonlySet<number>;
+}): boolean {
+  const marginPx = compactSourceApproximateSupportMarginPx({
+    attributes,
+    viewProj,
+    index,
+    viewportWidth,
+    viewportHeight,
+    splatScale,
+    minRadiusPx,
+  });
+  for (const tileIndex of onlyTileIndexes) {
+    if (tileIndex < 0 || tileIndex >= tileColumns * tileRows) {
+      continue;
+    }
+    const tileX = tileIndex % tileColumns;
+    const tileY = Math.floor(tileIndex / tileColumns);
+    const minX = tileX * tileSizePx - marginPx;
+    const minY = tileY * tileSizePx - marginPx;
+    const maxX = (tileX + 1) * tileSizePx + marginPx;
+    const maxY = (tileY + 1) * tileSizePx + marginPx;
+    if (centerPx[0] >= minX && centerPx[0] <= maxX && centerPx[1] >= minY && centerPx[1] <= maxY) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function compactSourceApproximateSupportMarginPx({
+  attributes,
+  viewProj,
+  index,
+  viewportWidth,
+  viewportHeight,
+  splatScale,
+  minRadiusPx,
+}: {
+  readonly attributes: SplatAttributes;
+  readonly viewProj: Float32Array;
+  readonly index: number;
+  readonly viewportWidth: number;
+  readonly viewportHeight: number;
+  readonly splatScale: number;
+  readonly minRadiusPx: number;
+}): number {
+  const positionBase = index * 3;
+  const x = attributes.positions[positionBase];
+  const y = attributes.positions[positionBase + 1];
+  const z = attributes.positions[positionBase + 2];
+  const clipW = viewProj[3] * x + viewProj[7] * y + viewProj[11] * z + viewProj[15];
+  const scaleX = Math.exp(attributes.scales?.[positionBase] ?? 0);
+  const scaleY = Math.exp(attributes.scales?.[positionBase + 1] ?? 0);
+  const scaleZ = Math.exp(attributes.scales?.[positionBase + 2] ?? 0);
+  const sourceRadius = Math.max(scaleX, scaleY, scaleZ, 0);
+  const viewportScale = Math.max(viewportWidth, viewportHeight) / Math.max(Math.abs(clipW), 0.0001);
+  const projectedRadius = sourceRadius * (splatScale / 600) * viewportScale;
+  const margin = COMPACT_SOURCE_SIGMA_RADIUS * Math.max(minRadiusPx, projectedRadius);
+  return compactClamp(
+    Math.max(COMPACT_SOURCE_ANCHOR_PREFILTER_MIN_MARGIN_PX, margin),
+    COMPACT_SOURCE_ANCHOR_PREFILTER_MIN_MARGIN_PX,
+    COMPACT_SOURCE_ANCHOR_PREFILTER_MAX_MARGIN_PX,
+  );
+}
+
 function projectedCoverageToRuntimeContributors({
   coverage,
   attributes,
@@ -1296,30 +2129,250 @@ function projectedCoverageToRuntimeContributors({
   const { ranks, depths } = compactSourceBackToFrontDepthEvidence(attributes, viewMatrix);
   const splatsByIndex = new Map(coverage.splats.map((splat) => [splat.splatIndex, splat]));
 
-  return coverage.tileEntries.map((entry) => {
-    const splat = splatsByIndex.get(entry.splatIndex);
-    const inverseConic = invertCompactSourceCovariance(splat?.covariancePx);
-    const opacity = readCompactSourceOpacity(attributes, effectiveOpacities, entry.splatIndex);
-    const coverageWeight = Math.max(0, finiteOrZero(entry.coverageWeight));
-    const luminance = readCompactSourceLuminance(attributes, entry.splatIndex);
-    return {
-      splatIndex: entry.splatIndex,
-      originalId: entry.originalId,
-      tileIndex: entry.tileIndex,
-      viewRank: ranks[entry.splatIndex] ?? entry.splatIndex,
-      viewDepth: depths[entry.splatIndex] ?? 0,
-      depthBand: 0,
-      coverageWeight,
-      centerPx: splat?.centerPx ?? [0, 0],
-      inverseConic,
-      opacity,
-      coverageAlpha: transferCompactSourceCoverageAlpha(opacity, coverageWeight),
-      transmittanceBefore: 1,
-      retentionWeight: coverageWeight * opacity * luminance,
-      occlusionWeight: coverageWeight * opacity,
-      occlusionDensity: opacity,
-    };
-  });
+  return coverage.tileEntries.map((entry, projectedIndex) => compactCoverageEntryToRuntimeContributor({
+    entry,
+    projectedIndex,
+    splatsByIndex,
+    ranks,
+    depths,
+    attributes,
+    effectiveOpacities,
+  }));
+}
+
+function compactCoverageEntryToRuntimeContributor({
+  entry,
+  projectedIndex,
+  splatsByIndex,
+  ranks,
+  depths,
+  attributes,
+  effectiveOpacities,
+}: {
+  readonly entry: RuntimeCompactTileCoverage["tileEntries"][number];
+  readonly projectedIndex: number;
+  readonly splatsByIndex: ReadonlyMap<number, RuntimeCompactTileCoverage["splats"][number]>;
+  readonly ranks: readonly number[];
+  readonly depths: readonly number[];
+  readonly attributes: SplatAttributes;
+  readonly effectiveOpacities: Float32Array;
+}): GpuTileContributorArenaProjectedContributor {
+  const splat = splatsByIndex.get(entry.splatIndex);
+  const inverseConic = invertCompactSourceCovariance(splat?.covariancePx);
+  const opacity = readCompactSourceOpacity(attributes, effectiveOpacities, entry.splatIndex);
+  const coverageWeight = Math.max(0, finiteOrZero(entry.coverageWeight));
+  const luminance = readCompactSourceLuminance(attributes, entry.splatIndex);
+  return {
+    splatIndex: entry.splatIndex,
+    originalId: entry.originalId,
+    tileIndex: entry.tileIndex,
+    tileX: entry.tileX,
+    tileY: entry.tileY,
+    projectedIndex,
+    viewRank: ranks[entry.splatIndex] ?? entry.splatIndex,
+    viewDepth: depths[entry.splatIndex] ?? 0,
+    depthBand: 0,
+    coverageWeight,
+    centerPx: splat?.centerPx ?? [0, 0],
+    inverseConic,
+    opacity,
+    coverageAlpha: transferCompactSourceCoverageAlpha(opacity, coverageWeight),
+    transmittanceBefore: 1,
+    retentionWeight: coverageWeight * opacity * luminance,
+    occlusionWeight: coverageWeight * opacity,
+    occlusionDensity: opacity,
+  };
+}
+
+function compactSourceAnchorTileIndexes({
+  anchors,
+  tileSizePx,
+  tileColumns,
+  tileRows,
+}: {
+  readonly anchors: readonly PixelTraceAnchor[];
+  readonly tileSizePx: number;
+  readonly tileColumns: number;
+  readonly tileRows: number;
+}): Set<number> {
+  const tileIndexes = new Set<number>();
+  for (const anchor of anchors) {
+    const canonicalTileIndex = anchor.canonicalTileAddress?.tileIndex;
+    if (Number.isInteger(canonicalTileIndex) && canonicalTileIndex >= 0) {
+      tileIndexes.add(canonicalTileIndex);
+      continue;
+    }
+    const tileX = Math.max(0, Math.min(tileColumns - 1, Math.floor(anchor.x / tileSizePx)));
+    const tileY = Math.max(0, Math.min(tileRows - 1, Math.floor(anchor.y / tileSizePx)));
+    tileIndexes.add(tileY * tileColumns + tileX);
+  }
+  return tileIndexes;
+}
+
+function selectCompactProjectionRetentionRecords(
+  records: readonly GpuTileContributorArenaProjectedContributor[],
+  maxRefsPerTile: number,
+): GpuTileContributorArenaProjectedContributor[] {
+  if (records.length <= maxRefsPerTile) {
+    return [...records];
+  }
+  const selected = records.slice(0, maxRefsPerTile);
+  const reserveCount = compactProjectionRetentionReserveCount(records.length, maxRefsPerTile);
+  const selectedKeys = new Set(selected.map(compactProjectionRetentionRecordKey));
+  const candidates = compactProjectionRetentionCandidates(records, selectedKeys, reserveCount);
+  const reservedKeys = new Set(candidates.map(({ record }) => compactProjectionRetentionRecordKey(record)));
+
+  for (const { record: candidate, comparePriority } of candidates) {
+    const candidateKey = compactProjectionRetentionRecordKey(candidate);
+    if (selectedKeys.has(candidateKey)) {
+      continue;
+    }
+    const replacementIndex = compactProjectionRetentionReplacementIndex(selected, reservedKeys, comparePriority);
+    if (comparePriority(candidate, selected[replacementIndex]) > 0) {
+      continue;
+    }
+    const removedKey = compactProjectionRetentionRecordKey(selected[replacementIndex]);
+    selected[replacementIndex] = candidate;
+    selectedKeys.delete(removedKey);
+    selectedKeys.add(candidateKey);
+  }
+
+  return selected;
+}
+
+function compactProjectionRetentionReserveCount(projectedRefCount: number, maxRefsPerTile: number): number {
+  const baseReserveCount = Math.min(maxRefsPerTile, Math.min(4, Math.max(2, Math.floor(maxRefsPerTile / 8))));
+  if (projectedRefCount <= maxRefsPerTile) {
+    return 0;
+  }
+  const overflowFraction = (projectedRefCount - maxRefsPerTile) / projectedRefCount;
+  const pressureReserveCount = Math.floor(maxRefsPerTile * Math.min(0.5, overflowFraction));
+  return Math.min(maxRefsPerTile, Math.max(baseReserveCount, pressureReserveCount));
+}
+
+function compactProjectionRetentionCandidates(
+  records: readonly GpuTileContributorArenaProjectedContributor[],
+  selectedKeys: ReadonlySet<string>,
+  reserveCount: number,
+): readonly {
+  readonly record: GpuTileContributorArenaProjectedContributor;
+  readonly comparePriority: typeof compareCompactProjectionRetentionPriority;
+}[] {
+  const pools = [
+    { records: [...records].sort(compareCompactProjectionRetentionPriority), comparePriority: compareCompactProjectionRetentionPriority },
+    { records: [...records].sort(compareCompactProjectionOcclusionPriority), comparePriority: compareCompactProjectionOcclusionPriority },
+  ];
+  const candidates: {
+    readonly record: GpuTileContributorArenaProjectedContributor;
+    readonly comparePriority: typeof compareCompactProjectionRetentionPriority;
+  }[] = [];
+  const candidatePriorityKeys = new Set<string>();
+  const cursors = new Array(pools.length).fill(0);
+
+  while (candidates.length < reserveCount) {
+    let added = false;
+    for (let poolIndex = 0; poolIndex < pools.length && candidates.length < reserveCount; poolIndex += 1) {
+      const pool = pools[poolIndex].records;
+      while (cursors[poolIndex] < pool.length) {
+        const record = pool[cursors[poolIndex]];
+        cursors[poolIndex] += 1;
+        const key = compactProjectionRetentionRecordKey(record);
+        const priorityKey = `${poolIndex}:${key}`;
+        if (selectedKeys.has(key) || candidatePriorityKeys.has(priorityKey)) {
+          continue;
+        }
+        candidates.push({ record, comparePriority: pools[poolIndex].comparePriority });
+        candidatePriorityKeys.add(priorityKey);
+        added = true;
+        break;
+      }
+    }
+    if (!added) {
+      break;
+    }
+  }
+
+  return candidates;
+}
+
+function compactProjectionRetentionReplacementIndex(
+  selected: readonly GpuTileContributorArenaProjectedContributor[],
+  reservedKeys: ReadonlySet<string>,
+  comparePriority: typeof compareCompactProjectionRetentionPriority,
+): number {
+  let replacementIndex = -1;
+  for (let index = 0; index < selected.length; index += 1) {
+    if (reservedKeys.has(compactProjectionRetentionRecordKey(selected[index]))) {
+      continue;
+    }
+    if (replacementIndex === -1 || comparePriority(selected[index], selected[replacementIndex]) > 0) {
+      replacementIndex = index;
+    }
+  }
+  return replacementIndex === -1 ? selected.length - 1 : replacementIndex;
+}
+
+function compareCompactProjectionRetentionCoverageOrder(
+  left: GpuTileContributorArenaProjectedContributor,
+  right: GpuTileContributorArenaProjectedContributor,
+): number {
+  return (
+    left.tileIndex - right.tileIndex ||
+    right.coverageWeight - left.coverageWeight ||
+    left.viewRank - right.viewRank ||
+    left.splatIndex - right.splatIndex ||
+    left.originalId - right.originalId
+  );
+}
+
+function compareCompactProjectionRetentionCompositorOrder(
+  left: GpuTileContributorArenaProjectedContributor,
+  right: GpuTileContributorArenaProjectedContributor,
+): number {
+  return (
+    left.tileIndex - right.tileIndex ||
+    left.viewRank - right.viewRank ||
+    left.viewDepth - right.viewDepth ||
+    left.splatIndex - right.splatIndex ||
+    left.originalId - right.originalId
+  );
+}
+
+function compareCompactProjectionRetentionPriority(
+  left: GpuTileContributorArenaProjectedContributor,
+  right: GpuTileContributorArenaProjectedContributor,
+): number {
+  return (
+    right.retentionWeight - left.retentionWeight ||
+    right.coverageWeight - left.coverageWeight ||
+    left.viewRank - right.viewRank ||
+    left.splatIndex - right.splatIndex ||
+    left.originalId - right.originalId
+  );
+}
+
+function compareCompactProjectionOcclusionPriority(
+  left: GpuTileContributorArenaProjectedContributor,
+  right: GpuTileContributorArenaProjectedContributor,
+): number {
+  const leftDensity = finiteOrZero(left.occlusionDensity);
+  const rightDensity = finiteOrZero(right.occlusionDensity);
+  return (
+    rightDensity - leftDensity ||
+    right.occlusionWeight - left.occlusionWeight ||
+    right.coverageWeight - left.coverageWeight ||
+    left.viewRank - right.viewRank ||
+    left.splatIndex - right.splatIndex ||
+    left.originalId - right.originalId
+  );
+}
+
+function compactProjectionRetentionRecordKey(contributor: GpuTileContributorArenaProjectedContributor): string {
+  return `${contributor.tileIndex}:${contributor.splatIndex}:${contributor.originalId}`;
+}
+
+function compactMaxRetainedViewRank(records: readonly GpuTileContributorArenaProjectedContributor[]): number {
+  return records.reduce((maximum, record) => Math.max(maximum, record.viewRank), 0);
 }
 
 function compactTileRefCustody({
@@ -1376,6 +2429,24 @@ function compactRetainedSourceBudgetDiagnostics(
   const projectedRefs = compactSource.projectedContributorCount;
   const retainedRefs = compactSource.retainedContributorCount;
   const droppedRefs = compactSource.droppedContributorCount;
+  const overflowReasons = [];
+  if (compactSource.projectedRefBudgetOverflow) {
+    overflowReasons.push({
+      reason: "projected-ref-budget",
+      projectedRefs: compactSource.projectedRefBudgetOverflow.projectedRefs,
+      maxProjectedRefs: compactSource.projectedRefBudgetOverflow.maxProjectedRefs,
+    });
+  }
+  if (droppedRefs > 0) {
+    overflowReasons.push({
+      reason: "per-tile-ref-cap",
+      projectedRefs,
+      retainedRefs,
+      droppedRefs,
+      cappedTileCount: compactSource.tileRefCustody.cappedTileCount,
+      maxRefsPerTile: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
+    });
+  }
   return {
     version: 1,
     arenaRefs: {
@@ -1387,16 +2458,7 @@ function compactRetainedSourceBudgetDiagnostics(
       maxProjectedRefsPerTile: compactSource.tileRefCustody.maxProjectedRefsPerTile,
       maxRetainedRefsPerTile: compactSource.tileRefCustody.maxRetainedRefsPerTile,
     },
-    overflowReasons: droppedRefs > 0
-      ? [{
-          reason: "per-tile-ref-cap",
-          projectedRefs,
-          retainedRefs,
-          droppedRefs,
-          cappedTileCount: compactSource.tileRefCustody.cappedTileCount,
-          maxRefsPerTile: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
-        }]
-      : [],
+    overflowReasons,
     capPressure: {
       version: 1,
       classification: droppedRefs > 0 ? "over-cap" : "within-cap",
