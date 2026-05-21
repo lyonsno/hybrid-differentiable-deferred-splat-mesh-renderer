@@ -121,3 +121,12 @@ test("tile-local texture presenter samples the offscreen tile-local output", () 
   assert.match(shader, /@vertex/);
   assert.match(shader, /@fragment/);
 });
+
+test("tile-local visible smoke exposes anchor-local output texture readback before presentation", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+
+  assert.match(source, /outputTextureReadback/);
+  assert.match(source, /copyTextureToBuffer/);
+  assert.match(source, /halfFloatToNumber/);
+  assert.match(source, /outputTextureRgba8/);
+});

@@ -216,6 +216,8 @@ interface TileLocalSceneState {
   lastCompositedFrame: number;
   lastCompositedSignature: string;
   bandDispatchCacheTrace: BandDispatchCacheTrace;
+  outputTextureReadback?: TileLocalOutputTextureReadback;
+  pendingOutputTextureReadback?: PendingTileLocalOutputTextureReadback;
 }
 
 interface ArenaRuntimeEvidence {
@@ -250,6 +252,30 @@ interface PixelTraceAnchor {
     readonly localX: number;
     readonly localY: number;
   } | null;
+}
+
+interface TileLocalOutputTextureReadback {
+  readonly status: "pending" | "present" | "blocked";
+  readonly format: "rgba16float";
+  readonly frameId: number;
+  readonly width: number;
+  readonly height: number;
+  readonly anchors: readonly {
+    readonly id: string;
+    readonly pixel: { readonly x: number; readonly y: number };
+    readonly outputTextureRgba: readonly [number, number, number, number];
+    readonly outputTextureRgba8: readonly [number, number, number, number];
+  }[];
+  readonly blockedReason?: string;
+}
+
+interface PendingTileLocalOutputTextureReadback {
+  readonly frameId: number;
+  readonly width: number;
+  readonly height: number;
+  readonly bytesPerRow: number;
+  readonly buffer: GPUBuffer;
+  readonly anchors: readonly PixelTraceAnchor[];
 }
 
 interface CompactRetainedSourceForRuntime {
@@ -669,6 +695,7 @@ async function main() {
           );
         }
         tileLocalComputePass.end();
+        enqueueTileLocalOutputTextureReadback(gpu.device, encoder, tileLocalState, frameSerial);
         tileLocalState.bandDispatchCacheTrace = buildBandDispatchCacheTrace({
           tileColumns: tileLocalState.plan.tileColumns,
           tileRows: tileLocalState.plan.tileRows,
@@ -741,6 +768,9 @@ async function main() {
     }
 
     gpu.device.queue.submit([encoder.finish()]);
+    if (scene.tileLocalState) {
+      resolveTileLocalOutputTextureReadback(scene.tileLocalState);
+    }
 
     // Read GPU timings (async, one frame behind)
     if (writeTimestamps) {
@@ -3155,6 +3185,152 @@ function roundRuntimeMetric(value: number): number {
   return Number.isFinite(value) ? Number(value.toFixed(3)) : 0;
 }
 
+function enqueueTileLocalOutputTextureReadback(
+  device: GPUDevice,
+  encoder: GPUCommandEncoder,
+  state: TileLocalSceneState,
+  frameId: number
+): void {
+  const anchors = state.traceAnchors ?? [];
+  if (state.debugMode !== "final-color" || anchors.length === 0) {
+    return;
+  }
+  if (state.pendingOutputTextureReadback || state.outputTextureReadback?.frameId === frameId) {
+    return;
+  }
+  const bytesPerPixel = 8;
+  const bytesPerRow = alignTo(state.viewportWidth * bytesPerPixel, 256);
+  const buffer = device.createBuffer({
+    label: "tile_local_output_texture_anchor_readback",
+    size: Math.max(16, bytesPerRow * state.viewportHeight),
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+  });
+  encoder.copyTextureToBuffer(
+    { texture: state.outputTexture },
+    { buffer, bytesPerRow, rowsPerImage: state.viewportHeight },
+    { width: state.viewportWidth, height: state.viewportHeight, depthOrArrayLayers: 1 },
+  );
+  state.pendingOutputTextureReadback = {
+    frameId,
+    width: state.viewportWidth,
+    height: state.viewportHeight,
+    bytesPerRow,
+    buffer,
+    anchors,
+  };
+  state.outputTextureReadback = {
+    status: "pending",
+    format: "rgba16float",
+    frameId,
+    width: state.viewportWidth,
+    height: state.viewportHeight,
+    anchors: [],
+  };
+}
+
+function resolveTileLocalOutputTextureReadback(state: TileLocalSceneState): void {
+  const pending = state.pendingOutputTextureReadback;
+  if (!pending) {
+    return;
+  }
+  state.pendingOutputTextureReadback = undefined;
+  void pending.buffer.mapAsync(GPUMapMode.READ)
+    .then(() => {
+      const view = new DataView(pending.buffer.getMappedRange());
+      state.outputTextureReadback = {
+        status: "present",
+        format: "rgba16float",
+        frameId: pending.frameId,
+        width: pending.width,
+        height: pending.height,
+        anchors: pending.anchors.map((anchor) => readOutputTextureAnchor(view, pending, anchor)),
+      };
+      publishTileLocalOutputTextureReadback(state.outputTextureReadback);
+      pending.buffer.unmap();
+      pending.buffer.destroy();
+    })
+    .catch((error) => {
+      state.outputTextureReadback = {
+        status: "blocked",
+        format: "rgba16float",
+        frameId: pending.frameId,
+        width: pending.width,
+        height: pending.height,
+        anchors: [],
+        blockedReason: errorMessage(error),
+      };
+      publishTileLocalOutputTextureReadback(state.outputTextureReadback);
+      pending.buffer.destroy();
+    });
+}
+
+function publishTileLocalOutputTextureReadback(readback: TileLocalOutputTextureReadback): void {
+  const runtimeWindow = window as unknown as { __MESH_SPLAT_SMOKE__?: Record<string, unknown> };
+  const smoke = runtimeWindow.__MESH_SPLAT_SMOKE__;
+  if (!smoke || typeof smoke !== "object") {
+    return;
+  }
+  const tileLocal = smoke.tileLocal && typeof smoke.tileLocal === "object"
+    ? smoke.tileLocal as Record<string, unknown>
+    : {};
+  smoke.tileLocal = {
+    ...tileLocal,
+    outputTextureReadback: readback,
+  };
+}
+
+function readOutputTextureAnchor(
+  view: DataView,
+  pending: PendingTileLocalOutputTextureReadback,
+  anchor: PixelTraceAnchor
+): TileLocalOutputTextureReadback["anchors"][number] {
+  const x = clampInteger(Math.floor(anchor.x), 0, pending.width - 1);
+  const y = clampInteger(Math.floor(anchor.y), 0, pending.height - 1);
+  const offset = y * pending.bytesPerRow + x * 8;
+  const rgba = [
+    halfFloatToNumber(view.getUint16(offset, true)),
+    halfFloatToNumber(view.getUint16(offset + 2, true)),
+    halfFloatToNumber(view.getUint16(offset + 4, true)),
+    halfFloatToNumber(view.getUint16(offset + 6, true)),
+  ] as const;
+  return {
+    id: anchor.id,
+    pixel: { x, y },
+    outputTextureRgba: rgba.map(roundColorChannel) as [number, number, number, number],
+    outputTextureRgba8: rgba.map(floatColorToByte) as [number, number, number, number],
+  };
+}
+
+function alignTo(value: number, alignment: number): number {
+  return Math.ceil(value / alignment) * alignment;
+}
+
+function halfFloatToNumber(bits: number): number {
+  const sign = (bits & 0x8000) ? -1 : 1;
+  const exponent = (bits >> 10) & 0x1f;
+  const fraction = bits & 0x03ff;
+  if (exponent === 0) {
+    return sign * Math.pow(2, -14) * (fraction / 1024);
+  }
+  if (exponent === 0x1f) {
+    return fraction === 0 ? sign * Number.POSITIVE_INFINITY : Number.NaN;
+  }
+  return sign * Math.pow(2, exponent - 15) * (1 + fraction / 1024);
+}
+
+function roundColorChannel(value: number): number {
+  return Number.isFinite(value) ? Number(value.toFixed(6)) : 0;
+}
+
+function floatColorToByte(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(255, Math.round(value * 255)));
+}
+
+function clampInteger(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
 function createEmptyStorageBuffer(device: GPUDevice, size: number, label: string): GPUBuffer {
   return device.createBuffer({
     label,
@@ -3927,6 +4103,7 @@ function exposeTileLocalRuntimeEvidence(
           perPixelProjectedContributors: tileLocalState.perPixelProjectedContributors,
           perPixelRetainedContributors: tileLocalState.perPixelRetainedContributors,
           perPixelFinalColorAccumulation,
+          outputTextureReadback: tileLocalState.outputTextureReadback,
           perPixelDeadSplatElectorLedger,
           perPixelRetainedToOrderedSurvivalLedger,
           orderingBackend: TILE_LOCAL_ORDERING_BACKEND,

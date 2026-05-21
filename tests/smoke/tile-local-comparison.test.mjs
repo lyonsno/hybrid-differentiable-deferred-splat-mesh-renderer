@@ -210,6 +210,41 @@ test("tile-local comparison treats GPU-allocated refs as positive evidence when 
   );
 });
 
+test("tile-local comparison waits for pending output texture readback before capture", () => {
+  const pageEvidence = {
+    ready: true,
+    rendererLabel: "tile-local-visible-gaussian-compositor",
+    statsText:
+      "3456x1916 | 60 fps | renderer: tile-local-visible-gaussian-compositor | tile-local: 216x120 tiles/157952 refs",
+    canvas: { width: 3456, height: 1916, clientWidth: 3456, clientHeight: 1916 },
+    tileLocal: {
+      refs: 157952,
+      tileColumns: 216,
+      tileRows: 120,
+      freshness: { status: "current" },
+      perPixelFinalColorAccumulation: [{ anchorPixel: { id: "fresh-a" } }],
+      outputTextureReadback: { status: "pending" },
+    },
+  };
+
+  assert.equal(
+    isVisualSmokeCaptureReady(pageEvidence, { expectedRendererLabel: "tile-local-visible" }),
+    false
+  );
+
+  pageEvidence.tileLocal.outputTextureReadback = { status: "present", anchors: [] };
+  assert.equal(
+    isVisualSmokeCaptureReady(pageEvidence, { expectedRendererLabel: "tile-local-visible" }),
+    true
+  );
+
+  delete pageEvidence.tileLocal.outputTextureReadback;
+  assert.equal(
+    isVisualSmokeCaptureReady(pageEvidence, { expectedRendererLabel: "tile-local-visible" }),
+    false
+  );
+});
+
 test("tile-local comparison catches visible mode falling back to the plate renderer", () => {
   const result = classifyTileLocalComparison({
     captures: [
