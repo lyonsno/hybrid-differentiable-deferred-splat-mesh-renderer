@@ -14,6 +14,7 @@ export function buildTileLocalPrepassBridge({
   minRadiusPx,
   maxRefsPerTile,
   maxTileEntries,
+  projectedRefBudgetMode = "throw",
   nearFadeEndNdc,
 }) {
   if (!viewMatrix || viewMatrix.length !== 16) {
@@ -53,6 +54,7 @@ export function buildTileLocalPrepassBridge({
     tileSizePx,
     samplesPerAxis,
     maxTileEntries,
+    projectedRefBudgetMode,
     splats,
   });
   const orderedCoverage = orderCoverageEntriesForView(coverage, attributes, viewMatrix);
@@ -96,11 +98,12 @@ export function summarizeTileLocalPrepassBudgetDiagnostics({
       maxRefsPerTile: nonNegativeFiniteInteger(maxRefsPerTile),
     });
   }
-  if (projectedRefs > maxTileEntries) {
+  const projectedBudgetOverflow = coverage?.projectedRefBudgetOverflow ?? null;
+  if (projectedBudgetOverflow || projectedRefs > maxTileEntries) {
     overflowReasons.push({
       reason: "projected-ref-budget",
-      projectedRefs,
-      maxProjectedRefs: maxTileEntries,
+      projectedRefs: nonNegativeFiniteInteger(projectedBudgetOverflow?.projectedRefs ?? projectedRefs),
+      maxProjectedRefs: nonNegativeFiniteInteger(projectedBudgetOverflow?.maxProjectedRefs ?? maxTileEntries),
     });
   }
   if (custody.headerAccountingMatches === false) {
@@ -152,6 +155,7 @@ export function captureTileLocalPrepassBridgeSignature({
   minRadiusPx,
   maxRefsPerTile,
   maxTileEntries,
+  projectedRefBudgetMode,
   nearFadeEndNdc,
 }) {
   return JSON.stringify({
@@ -165,6 +169,7 @@ export function captureTileLocalPrepassBridgeSignature({
     minRadiusPx,
     maxRefsPerTile: maxRefsPerTile ?? null,
     maxTileEntries: maxTileEntries ?? null,
+    projectedRefBudgetMode: projectedRefBudgetMode ?? null,
     nearFadeEndNdc: nearFadeEndNdc ?? null,
   });
 }

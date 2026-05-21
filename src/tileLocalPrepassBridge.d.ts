@@ -71,6 +71,8 @@ export interface TileLocalPrepassBudgetDiagnostics {
   };
 }
 
+export type TileLocalProjectedRefBudgetMode = "throw" | "diagnostic-retained-handoff";
+
 export interface TileLocalPrepassBridge extends GpuTileCoverageBridge {
   readonly budgetDiagnostics: TileLocalPrepassBudgetDiagnostics;
 }
@@ -87,6 +89,7 @@ export function buildTileLocalPrepassBridge(input: {
   readonly minRadiusPx: number;
   readonly maxRefsPerTile?: number;
   readonly maxTileEntries?: number;
+  readonly projectedRefBudgetMode?: TileLocalProjectedRefBudgetMode;
   readonly nearFadeEndNdc?: number;
 }): TileLocalPrepassBridge;
 
@@ -108,6 +111,7 @@ export function captureTileLocalPrepassBridgeSignature(input: {
   readonly minRadiusPx: number;
   readonly maxRefsPerTile?: number;
   readonly maxTileEntries?: number;
+  readonly projectedRefBudgetMode?: TileLocalProjectedRefBudgetMode;
   readonly nearFadeEndNdc?: number;
 }): string;
 
@@ -124,6 +128,7 @@ export function tileLocalPrepassBridgeSignatureChanged(
     readonly minRadiusPx: number;
     readonly maxRefsPerTile?: number;
     readonly maxTileEntries?: number;
+    readonly projectedRefBudgetMode?: TileLocalProjectedRefBudgetMode;
     readonly nearFadeEndNdc?: number;
   }
 ): boolean;
