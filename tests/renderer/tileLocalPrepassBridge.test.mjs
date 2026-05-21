@@ -282,6 +282,45 @@ test("tile-local prepass bridge stops before pathological projected ref growth",
   );
 });
 
+test("tile-local retained handoff proceeds while preserving projected-ref overflow diagnostics", () => {
+  const count = 12;
+  const positions = new Float32Array(count * 3);
+  const scales = new Float32Array(count * 3);
+  const originalIds = new Uint32Array(count);
+  for (let index = 0; index < count; index += 1) {
+    positions.set([0, 0, 0.5], index * 3);
+    scales.set([Math.log(4), Math.log(4), 0], index * 3);
+    originalIds[index] = index;
+  }
+
+  const bridge = buildTileLocalPrepassBridge({
+    attributes: { count, positions, scales, originalIds },
+    viewMatrix: identityViewProj,
+    viewProj: identityViewProj,
+    viewportWidth: 256,
+    viewportHeight: 256,
+    tileSizePx: 8,
+    samplesPerAxis: 1,
+    splatScale: 80,
+    minRadiusPx: 1,
+    maxRefsPerTile: 8,
+    maxTileEntries: 128,
+    projectedRefBudgetMode: "diagnostic-retained-handoff",
+  });
+
+  const projectedOverflow = bridge.budgetDiagnostics.overflowReasons.find(
+    (reason) => reason.reason === "projected-ref-budget"
+  );
+  const retainedCapacity = bridge.tileColumns * bridge.tileRows * bridge.maxRefsPerTile;
+
+  assert.equal(bridge.tileEntryCount > 128, true);
+  assert.equal(bridge.retainedTileEntryCount <= retainedCapacity, true);
+  assert.equal(projectedOverflow.projectedRefs, 129);
+  assert.equal(projectedOverflow.maxProjectedRefs, 128);
+  assert.equal(bridge.budgetDiagnostics.arenaRefs.projected, bridge.tileRefCustody.projectedTileEntryCount);
+  assert.equal(bridge.budgetDiagnostics.arenaRefs.retained, bridge.tileRefCustody.retainedTileEntryCount);
+});
+
 test("tile-local prepass bridge skips near-plane support crossings before tile ref growth", () => {
   const attributes = {
     count: 2,

@@ -100,6 +100,7 @@ export function buildProjectedGaussianTileCoverage({
   sigmaRadius = DEFAULT_SIGMA_RADIUS,
   samplesPerAxis = DEFAULT_SAMPLES_PER_AXIS,
   maxTileEntries = Number.POSITIVE_INFINITY,
+  projectedRefBudgetMode = "throw",
   splats,
 }) {
   readPositiveFinite(viewportWidth, "viewportWidth");
@@ -113,6 +114,9 @@ export function buildProjectedGaussianTileCoverage({
   if (maxTileEntries !== Number.POSITIVE_INFINITY) {
     readPositiveFinite(maxTileEntries, "maxTileEntries");
   }
+  if (!["throw", "diagnostic-retained-handoff"].includes(projectedRefBudgetMode)) {
+    throw new Error("projectedRefBudgetMode must be throw or diagnostic-retained-handoff");
+  }
   if (!Array.isArray(splats)) {
     throw new Error("splats must be an array");
   }
@@ -121,6 +125,7 @@ export function buildProjectedGaussianTileCoverage({
   const tileRows = Math.max(1, Math.ceil(viewportHeight / tileSizePx));
   const splatCoverages = [];
   const tileEntries = [];
+  let projectedRefBudgetOverflow = null;
 
   for (const splat of splats) {
     const splatIndex = readNonNegativeInteger(splat.splatIndex, "splatIndex");
@@ -166,7 +171,14 @@ export function buildProjectedGaussianTileCoverage({
         splatTiles.push(entry);
         tileEntries.push(entry);
         if (tileEntries.length > maxTileEntries) {
-          throw new Error(`projected tile refs exceed budget: ${tileEntries.length} > ${maxTileEntries}`);
+          if (projectedRefBudgetMode === "throw") {
+            throw new Error(`projected tile refs exceed budget: ${tileEntries.length} > ${maxTileEntries}`);
+          }
+          projectedRefBudgetOverflow ??= {
+            projectedRefs: tileEntries.length,
+            maxProjectedRefs: maxTileEntries,
+            mode: projectedRefBudgetMode,
+          };
         }
         if (tileIndex === centerTile.tileIndex) {
           centerTile.coverageWeight = coverageWeight;
@@ -198,6 +210,7 @@ export function buildProjectedGaussianTileCoverage({
     samplesPerAxis,
     splats: splatCoverages,
     tileEntries,
+    projectedRefBudgetOverflow,
   };
 }
 

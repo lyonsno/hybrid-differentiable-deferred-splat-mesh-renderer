@@ -94,6 +94,7 @@ import { buildDeadSplatElectorLedger } from "./rendererFidelityProbes/deadSplatE
 import { buildRetainedToOrderedSurvivalLedger } from "./rendererFidelityProbes/retainedToOrderedSurvivalLedger.js";
 import { buildGpuLiveAnchorContributorTraces } from "./rendererFidelityProbes/gpuLiveAnchorTrace.js";
 import {
+  classifyTileLocalProjectedRefGuard,
   formatTileLocalBudgetPair,
   resolveTileLocalBudgetConfig,
 } from "./tileLocalBudgetConfig.js";
@@ -2169,6 +2170,17 @@ function tileLocalBudgetEvidence(
   viewportHeight: number
 ) {
   const parsed = parseTileLocalBudgetSkipReason(tileLocalLastSkipReason);
+  const guardPolicy = parsed
+    ? classifyTileLocalProjectedRefGuard({
+        requestedArenaBackend: REQUESTED_ARENA_BACKEND,
+        projectedRefs: parsed.skippedProjectedRefs,
+        maxProjectedRefs: parsed.maxProjectedRefs,
+        viewportWidth,
+        viewportHeight,
+        tileSizePx: TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX,
+        maxRefsPerTile: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
+      })
+    : null;
   return {
     status: parsed ? "skipped" : "current",
     tileSizePx: TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX,
@@ -2181,6 +2193,7 @@ function tileLocalBudgetEvidence(
     skippedProjectedRefs: parsed?.skippedProjectedRefs ?? null,
     skipReason: tileLocalLastSkipReason,
     overflowReasons: parsed ? ["projected-ref-budget"] : [],
+    guardPolicy,
   };
 }
 
