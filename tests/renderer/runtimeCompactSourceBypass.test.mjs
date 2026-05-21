@@ -61,6 +61,11 @@ test("requested GPU arena compact source preserves projected overflow diagnostic
     /candidateSplatIndexes:\s*anchorCandidateSplatIndexes/,
     "dense exact routes must select bounded anchor-near splat ids before full compact covariance projection",
   );
+  assert.match(
+    compactSourceSource,
+    /compactSourceAnchorTileNeighborhoodIndexes/,
+    "dense exact routes must retain bounded anchor neighborhoods so row-producing diagnostics can still render nonblank canvas evidence",
+  );
   assert.doesNotMatch(
     compactSourceSource,
     /buildProjectedGaussianTileCoverage/,

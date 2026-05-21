@@ -146,6 +146,7 @@ const TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES = 1;
 const TILE_LOCAL_PROVISIONAL_MAX_SPLATS = 150_000;
 const TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES = 20_000_000;
 const COMPACT_SOURCE_SIGMA_RADIUS = 3;
+const COMPACT_SOURCE_ANCHOR_TILE_NEIGHBORHOOD_RADIUS = 2;
 const COMPACT_SOURCE_ANCHOR_PREFILTER_MIN_MARGIN_PX = 96;
 const COMPACT_SOURCE_ANCHOR_PREFILTER_MAX_MARGIN_PX = 384;
 const COMPACT_SOURCE_EPSILON = 1e-9;
@@ -1146,7 +1147,13 @@ function buildCompactRetainedSourceForRuntime({
   readonly anchors: readonly PixelTraceAnchor[];
 }): CompactRetainedSourceForRuntime {
   const tileCount = tileColumns * tileRows;
-  const anchorTileIndexes = compactSourceAnchorTileIndexes({ anchors, tileSizePx, tileColumns, tileRows });
+  const anchorTileIndexes = compactSourceAnchorTileNeighborhoodIndexes({
+    anchors,
+    tileSizePx,
+    tileColumns,
+    tileRows,
+    radiusTiles: COMPACT_SOURCE_ANCHOR_TILE_NEIGHBORHOOD_RADIUS,
+  });
   const retainedCapacity = tileCount * maxRefsPerTile;
   const useAnchorPrefilter = anchorTileIndexes.size > 0 && retainedCapacity <= maxTileEntries && tileCount > 10_000;
   const anchorCandidateSplatIndexes = useAnchorPrefilter
@@ -2205,6 +2212,34 @@ function compactSourceAnchorTileIndexes({
     const tileX = Math.max(0, Math.min(tileColumns - 1, Math.floor(anchor.x / tileSizePx)));
     const tileY = Math.max(0, Math.min(tileRows - 1, Math.floor(anchor.y / tileSizePx)));
     tileIndexes.add(tileY * tileColumns + tileX);
+  }
+  return tileIndexes;
+}
+
+function compactSourceAnchorTileNeighborhoodIndexes({
+  anchors,
+  tileSizePx,
+  tileColumns,
+  tileRows,
+  radiusTiles,
+}: {
+  readonly anchors: readonly PixelTraceAnchor[];
+  readonly tileSizePx: number;
+  readonly tileColumns: number;
+  readonly tileRows: number;
+  readonly radiusTiles: number;
+}): Set<number> {
+  const centers = compactSourceAnchorTileIndexes({ anchors, tileSizePx, tileColumns, tileRows });
+  const tileIndexes = new Set<number>();
+  const radius = Math.max(0, Math.floor(radiusTiles));
+  for (const centerTileIndex of centers) {
+    const centerTileX = centerTileIndex % tileColumns;
+    const centerTileY = Math.floor(centerTileIndex / tileColumns);
+    for (let tileY = Math.max(0, centerTileY - radius); tileY <= Math.min(tileRows - 1, centerTileY + radius); tileY += 1) {
+      for (let tileX = Math.max(0, centerTileX - radius); tileX <= Math.min(tileColumns - 1, centerTileX + radius); tileX += 1) {
+        tileIndexes.add(tileY * tileColumns + tileX);
+      }
+    }
   }
   return tileIndexes;
 }
