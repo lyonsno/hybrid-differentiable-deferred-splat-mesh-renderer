@@ -32,6 +32,14 @@ export function summarizeTileLocalDiagnostics({
     tileRefs,
   });
   const conicShape = summarizeConicShape(alphaParamData, refLimit, maxTileRefs);
+  const runtimeRefBudget = summarizeRuntimeRefBudget({
+    plan,
+    tileHeaders,
+    tileRefs,
+    tileRefCustody: normalizedTileRefCustody,
+    runtimeContributors,
+    traceCapacityEvidence,
+  });
 
   return {
     version: 1,
@@ -43,18 +51,52 @@ export function summarizeTileLocalDiagnostics({
     },
     tileRefs,
     tileRefCustody: normalizedTileRefCustody,
-    runtimeRefBudget: summarizeRuntimeRefBudget({
-      plan,
-      tileHeaders,
+    runtimeRefBudget,
+    presentationFootprint: summarizePresentationFootprint({
+      tileCount,
       tileRefs,
-      tileRefCustody: normalizedTileRefCustody,
-      runtimeContributors,
-      traceCapacityEvidence,
+      runtimeRefBudget,
     }),
     retentionAudit: normalizeRetentionAudit(retentionAudit),
     coverageWeight,
     alpha,
     conicShape,
+  };
+}
+
+function summarizePresentationFootprint({ tileCount, tileRefs, runtimeRefBudget }) {
+  const frameTileCount = nonNegativeFiniteInteger(tileCount);
+  const nonEmptyTileCount = nonNegativeFiniteInteger(tileRefs?.nonEmptyTiles);
+  const retainedRefCount = nonNegativeFiniteInteger(tileRefs?.total);
+  const nonEmptyTileRatio = frameTileCount > 0 ? round(nonEmptyTileCount / frameTileCount) : 0;
+  const anchorEvidence = Array.isArray(runtimeRefBudget?.anchorTileEvidence)
+    ? runtimeRefBudget.anchorTileEvidence
+    : [];
+  const anchorFinalRowsPresent = anchorEvidence.some((anchor) =>
+    nonNegativeFiniteInteger(anchor?.traceFinalStepCount) > 0
+  );
+  const sparseFootprint = frameTileCount > 0 && nonEmptyTileRatio > 0 && nonEmptyTileRatio < 0.01;
+
+  let classification = "telemetry-insufficient";
+  let blocker = "";
+  if (retainedRefCount <= 0 || nonEmptyTileCount <= 0) {
+    classification = "no-retained-output";
+    blocker = "No retained runtime tile refs are present for final-color presentation.";
+  } else if (anchorFinalRowsPresent && sparseFootprint) {
+    classification = "anchor-neighborhood-only-output";
+    blocker = "Compact rows are present at traced anchors, but retained tiles cover less than 1% of the frame, so the global final-color canvas can remain below the nonblank threshold.";
+  } else if (anchorEvidence.length > 0) {
+    classification = "frame-footprint-present";
+  }
+
+  return {
+    classification,
+    frameTileCount,
+    nonEmptyTileCount,
+    nonEmptyTileRatio,
+    retainedRefCount,
+    anchorFinalRowsPresent,
+    blocker,
   };
 }
 

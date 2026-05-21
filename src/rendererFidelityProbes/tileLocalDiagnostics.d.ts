@@ -109,6 +109,19 @@ export interface TileLocalDiagnosticSummary {
       readonly retainedIdentities: readonly TileLocalRuntimeIdentity[];
     }[];
   };
+  readonly presentationFootprint: {
+    readonly classification:
+      | "anchor-neighborhood-only-output"
+      | "frame-footprint-present"
+      | "no-retained-output"
+      | "telemetry-insufficient";
+    readonly frameTileCount: number;
+    readonly nonEmptyTileCount: number;
+    readonly nonEmptyTileRatio: number;
+    readonly retainedRefCount: number;
+    readonly anchorFinalRowsPresent: boolean;
+    readonly blocker: string;
+  };
   readonly retentionAudit: TileRetentionAudit | null;
   readonly coverageWeight: {
     readonly min: number;

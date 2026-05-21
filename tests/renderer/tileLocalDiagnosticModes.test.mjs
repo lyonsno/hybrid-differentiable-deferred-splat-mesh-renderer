@@ -384,6 +384,57 @@ test("tile-local runtime budget repairs legacy runtime headers with trace projec
   assert.equal(anchor.identityMatch, true);
 });
 
+test("tile-local diagnostics classify anchor-only retained footprints as presentation blockers", () => {
+  const tileColumns = 216;
+  const tileRows = 120;
+  const tileCount = tileColumns * tileRows;
+  const tileHeaders = new Uint32Array(tileCount * 4);
+  for (let tileIndex = 0; tileIndex < 150; tileIndex += 1) {
+    tileHeaders[tileIndex * 4] = tileIndex * 256;
+    tileHeaders[tileIndex * 4 + 1] = 256;
+    tileHeaders[tileIndex * 4 + 2] = 900;
+    tileHeaders[tileIndex * 4 + 3] = 1;
+  }
+
+  const summary = summarizeTileLocalDiagnostics({
+    debugMode: "final-color",
+    plan: {
+      tileColumns,
+      tileRows,
+      tileSizePx: 16,
+      maxTileRefs: 38_400,
+    },
+    tileEntryCount: 38_400,
+    tileHeaders,
+    tileRefCustody: {
+      projectedTileEntryCount: 20_000_001,
+      retainedTileEntryCount: 38_400,
+      evictedTileEntryCount: 19_961_601,
+      cappedTileCount: 150,
+      saturatedRetainedTileCount: 150,
+      maxProjectedRefsPerTile: 1422,
+      maxRetainedRefsPerTile: 256,
+      headerRefCount: 38_400,
+      headerAccountingMatches: true,
+    },
+    tileCoverageWeights: Float32Array.from({ length: 38_400 }, () => 0.05),
+    alphaParamData: Float32Array.from({ length: 38_400 * 8 }, (_, index) => index % 4 === 0 ? 0.48 : 0),
+    traceCapacityEvidence: {
+      anchors: [
+        { id: "fresh-a", projectedCount: 690, retainedCount: 242, finalStepCount: 256 },
+        { id: "fresh-f", projectedCount: 909, retainedCount: 245, finalStepCount: 256 },
+      ],
+    },
+  });
+
+  assert.equal(summary.presentationFootprint.classification, "anchor-neighborhood-only-output");
+  assert.equal(summary.presentationFootprint.frameTileCount, 25_920);
+  assert.equal(summary.presentationFootprint.nonEmptyTileCount, 150);
+  assert.equal(summary.presentationFootprint.nonEmptyTileRatio < 0.01, true);
+  assert.equal(summary.presentationFootprint.anchorFinalRowsPresent, true);
+  assert.match(summary.presentationFootprint.blocker, /compact rows are present/i);
+});
+
 test("tile-local diagnostic shader branches are debug-only and preserve final color as mode zero", () => {
   const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
 
