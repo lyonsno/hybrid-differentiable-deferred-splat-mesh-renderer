@@ -1,3 +1,5 @@
+import { decodePng } from "./png-analysis.mjs";
+
 const OBSERVATION_IDENTITY_FIELDS = [
   "branch",
   "commit",
@@ -17,6 +19,62 @@ export const TRACE_CANVAS_PARITY_KINDS = Object.freeze({
   observationMismatch: "observation-mismatch",
   calibrationBlocked: "trace-canvas-calibration-blocked",
 });
+
+export function buildTraceCanvasParityEvidence({
+  pageEvidence = {},
+  pngBuffer,
+  image,
+  url = "",
+  viewport = {},
+  tolerance = { maxChannelDelta: 3, channelOrder: "rgba8" },
+} = {}) {
+  const decoded = image ?? (pngBuffer ? decodePng(pngBuffer) : null);
+  const finalRows = normalizeFinalColorRows(pageEvidence?.tileLocal?.perPixelFinalColorAccumulation);
+  const canvas = pageEvidence?.canvas && typeof pageEvidence.canvas === "object" ? pageEvidence.canvas : {};
+  if (!decoded || finalRows.length === 0 || !Number.isFinite(Number(canvas.width)) || !Number.isFinite(Number(canvas.height))) {
+    return undefined;
+  }
+
+  const sampleScale = {
+    x: decoded.width / Math.max(1, Number(canvas.width)),
+    y: decoded.height / Math.max(1, Number(canvas.height)),
+  };
+  const maxChannelDelta = finiteNumber(tolerance.maxChannelDelta) ?? 3;
+  const channelOrder = stringValue(tolerance.channelOrder) || "rgba8";
+  const anchors = finalRows.map((row) => {
+    const sampleX = clampInteger(Math.floor((row.x + 0.5) * sampleScale.x), 0, decoded.width - 1);
+    const sampleY = clampInteger(Math.floor((row.y + 0.5) * sampleScale.y), 0, decoded.height - 1);
+    const sampledRgba8 = readRgba8(decoded, sampleX, sampleY);
+    const predictedRgba8 = rgbaFloatTo8(row.outputColor);
+    const deltaRgba8 = sampledRgba8.map((channel, index) => channel - predictedRgba8[index]);
+    const maxDelta = maxChannelDeltaFromDelta(deltaRgba8);
+    return {
+      id: row.id,
+      anchorPixel: { x: row.x, y: row.y },
+      samplePixel: { x: sampleX, y: sampleY },
+      predictedRgba8,
+      sampledRgba8,
+      deltaRgba8,
+      maxDelta,
+      status: maxDelta <= maxChannelDelta ? "match" : "mismatch",
+    };
+  });
+
+  const identity = observationIdentity({ pageEvidence, url, viewport });
+  return {
+    observationId: observationIdFromIdentity(identity),
+    comparisonClass: "exact-route-trace-final-vs-canvas",
+    expectedObservationIdentity: identity,
+    actualObservationIdentity: identity,
+    identityDiffs: [],
+    sampleScale,
+    tolerance: {
+      maxChannelDelta,
+      channelOrder,
+    },
+    anchors,
+  };
+}
 
 export function classifyTraceCanvasParityWitness(traceCanvasParity = {}) {
   const comparisonClass = stringValue(traceCanvasParity.comparisonClass);
@@ -120,6 +178,100 @@ function normalizeObservationIdentity(identity = {}) {
     }
   }
   return normalized;
+}
+
+function normalizeFinalColorRows(rows) {
+  if (!Array.isArray(rows)) {
+    return [];
+  }
+  return rows
+    .map((row) => {
+      const record = row?.traceRecord && typeof row.traceRecord === "object" ? row.traceRecord : row;
+      const anchorPixel = row?.anchorPixel && typeof row.anchorPixel === "object"
+        ? row.anchorPixel
+        : record?.anchorPixel;
+      const outputColor = record?.finalColorAccumulation?.outputColor;
+      return {
+        id: stringValue(anchorPixel?.id),
+        x: finiteNumber(anchorPixel?.x),
+        y: finiteNumber(anchorPixel?.y),
+        outputColor: Array.isArray(outputColor) ? outputColor : [],
+      };
+    })
+    .filter((row) =>
+      row.id.length > 0 &&
+      Number.isFinite(row.x) &&
+      Number.isFinite(row.y) &&
+      row.outputColor.length === 4
+    );
+}
+
+function observationIdentity({ pageEvidence = {}, url = "", viewport = {} } = {}) {
+  const parsed = parseUrlParams(url);
+  const tileLocal = pageEvidence.tileLocal && typeof pageEvidence.tileLocal === "object" ? pageEvidence.tileLocal : {};
+  const budget = tileLocal.budget && typeof tileLocal.budget === "object" ? tileLocal.budget : {};
+  return normalizeObservationIdentity({
+    url,
+    viewport: {
+      width: finiteNumber(viewport.width) ?? finiteNumber(pageEvidence.canvas?.width),
+      height: finiteNumber(viewport.height) ?? finiteNumber(pageEvidence.canvas?.height),
+    },
+    renderer: stringValue(pageEvidence.rendererLabel) || parsed.renderer,
+    arenaBackend: stringValue(pageEvidence.arenaRuntime?.effectiveArenaBackend) || parsed.arenaBackend,
+    tileSizePx: finiteNumber(budget.tileSizePx) ?? finiteNumber(parsed.tileSizePx),
+    maxRefsPerTile: finiteNumber(budget.maxRefsPerTile) ?? finiteNumber(parsed.maxRefsPerTile),
+    witnessView: parsed.witnessView,
+  });
+}
+
+function observationIdFromIdentity(identity) {
+  const viewport = identity.viewport && typeof identity.viewport === "object"
+    ? `${identity.viewport.width ?? "?"}x${identity.viewport.height ?? "?"}`
+    : "unknown-viewport";
+  return [
+    "exact-route",
+    viewport,
+    identity.witnessView || "unknown-view",
+    identity.renderer || "unknown-renderer",
+    identity.arenaBackend || "unknown-arena",
+    `${identity.tileSizePx ?? "?"}x${identity.maxRefsPerTile ?? "?"}`,
+  ].join(":");
+}
+
+function parseUrlParams(url) {
+  try {
+    const parsed = new URL(url);
+    return {
+      renderer: parsed.searchParams.get("renderer") ?? "",
+      arenaBackend: parsed.searchParams.get("arenaBackend") ?? "",
+      tileSizePx: parsed.searchParams.get("tileSizePx") ?? "",
+      maxRefsPerTile: parsed.searchParams.get("maxRefsPerTile") ?? "",
+      witnessView: parsed.searchParams.get("witnessView") ?? "",
+    };
+  } catch {
+    return {};
+  }
+}
+
+function rgbaFloatTo8(value) {
+  return [0, 1, 2, 3].map((index) =>
+    clampInteger(Math.round(Math.max(0, Math.min(1, finiteNumber(value[index]) ?? 0)) * 255), 0, 255)
+  );
+}
+
+function readRgba8(image, x, y) {
+  const offset = (y * image.width + x) * 4;
+  return [
+    image.rgba[offset],
+    image.rgba[offset + 1],
+    image.rgba[offset + 2],
+    image.rgba[offset + 3],
+  ];
+}
+
+function clampInteger(value, min, max) {
+  if (!Number.isFinite(value)) return min;
+  return Math.max(min, Math.min(max, Math.trunc(value)));
 }
 
 function normalizeIdentityDiffs(identityDiffs, expectedObservationIdentity, actualObservationIdentity) {

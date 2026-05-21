@@ -28,6 +28,7 @@ import {
   parseSmokeKind,
   renderSmokeHandoffSection,
 } from "./visual-smoke/smoke-handoff.mjs";
+import { buildTraceCanvasParityEvidence } from "./visual-smoke/trace-canvas-parity.mjs";
 
 const PAGE_EVIDENCE_TIMEOUT_MS = 1000;
 const TIMEOUT_SCREENSHOT_MS = 5000;
@@ -170,7 +171,7 @@ async function main() {
     await page.waitForTimeout(options.settleMs);
 
     const rawPageEvidence = await collectPageEvidenceWithTimeout(page);
-    const pageEvidence = {
+    let pageEvidence = {
       ...rawPageEvidence,
       ...extractTileLocalPageMetrics(rawPageEvidence),
     };
@@ -180,6 +181,12 @@ async function main() {
     });
     const screenshot = await page.screenshot({ path: screenshotPath, clip });
     const imageAnalysis = analyzePngBuffer(screenshot, options.imageThresholds);
+    pageEvidence = attachTraceCanvasParityEvidence({
+      pageEvidence,
+      screenshot,
+      url,
+      viewport: options.viewport,
+    });
     const classification = classifySmokeEvidence({
       pageEvidence,
       imageAnalysis,
@@ -365,7 +372,7 @@ async function captureVisualSmoke({ browser, options, capture, reportDir }) {
     await page.waitForTimeout(options.settleMs);
 
     const rawPageEvidence = await collectPageEvidenceWithTimeout(page);
-    const pageEvidence = {
+    let pageEvidence = {
       ...rawPageEvidence,
       ...extractTileLocalPageMetrics(rawPageEvidence),
     };
@@ -376,6 +383,12 @@ async function captureVisualSmoke({ browser, options, capture, reportDir }) {
     const screenshotPath = path.join(reportDir, `${capture.id}.png`);
     const screenshot = await page.screenshot({ path: screenshotPath, clip });
     const imageAnalysis = analyzePngBuffer(screenshot, options.imageThresholds);
+    pageEvidence = attachTraceCanvasParityEvidence({
+      pageEvidence,
+      screenshot,
+      url: capture.url,
+      viewport: options.viewport,
+    });
     const classification = classifySmokeEvidence({
       pageEvidence,
       imageAnalysis,
@@ -477,6 +490,25 @@ async function waitForVisualSmokeCaptureReady(page, expectedRendererLabel, timeo
   error.lastEvidence = lastEvidence;
   error.elapsedMs = Date.now() - startedAt;
   throw error;
+}
+
+function attachTraceCanvasParityEvidence({ pageEvidence, screenshot, url, viewport }) {
+  const traceCanvasParity = buildTraceCanvasParityEvidence({
+    pageEvidence,
+    pngBuffer: screenshot,
+    url,
+    viewport,
+  });
+  if (!traceCanvasParity) {
+    return pageEvidence;
+  }
+  return {
+    ...pageEvidence,
+    witness: {
+      ...(pageEvidence.witness && typeof pageEvidence.witness === "object" ? pageEvidence.witness : {}),
+      traceCanvasParity,
+    },
+  };
 }
 
 function isVisualSmokeTimeoutError(error) {
