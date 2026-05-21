@@ -53,8 +53,13 @@ test("requested GPU arena compact source preserves projected overflow diagnostic
   );
   assert.match(
     compactSourceSource,
-    /onlyTileIndexes:\s*useAnchorPrefilter\s*\?\s*anchorTileIndexes\s*:\s*null/,
-    "dense exact routes must restrict compact source projection to anchor-relevant splats before covariance construction",
+    /const\s+retainedTileIndexes\s*=\s*useAnchorPrefilter\s*\?\s*presentationTileIndexes\s*:\s*anchorTileIndexes/,
+    "dense exact routes must separate traced anchor evidence from the wider retained presentation footprint",
+  );
+  assert.match(
+    compactSourceSource,
+    /onlyTileIndexes:\s*useAnchorPrefilter\s*\?\s*retainedTileIndexes\s*:\s*null/,
+    "dense exact routes must restrict compact source projection to retained presentation tiles before covariance construction",
   );
   assert.match(
     compactSourceSource,
@@ -65,6 +70,16 @@ test("requested GPU arena compact source preserves projected overflow diagnostic
     compactSourceSource,
     /compactSourceAnchorTileNeighborhoodIndexes/,
     "dense exact routes must retain bounded anchor neighborhoods so row-producing diagnostics can still render nonblank canvas evidence",
+  );
+  assert.match(
+    compactSourceSource,
+    /COMPACT_SOURCE_PRESENTATION_TILE_NEIGHBORHOOD_RADIUS/,
+    "dense exact routes must distinguish the anchor evidence neighborhood from the wider retained presentation footprint",
+  );
+  assert.match(
+    compactSourceSource,
+    /maxCandidatesPerTile:\s*useAnchorPrefilter\s*\?\s*maxRefsPerTile\s*:\s*maxRefsPerTile\s*\*\s*4/,
+    "widened presentation footprint must tighten candidate selection instead of replaying the radius expansion timeout",
   );
   assert.doesNotMatch(
     compactSourceSource,

@@ -147,6 +147,7 @@ const TILE_LOCAL_PROVISIONAL_MAX_SPLATS = 150_000;
 const TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES = 20_000_000;
 const COMPACT_SOURCE_SIGMA_RADIUS = 3;
 const COMPACT_SOURCE_ANCHOR_TILE_NEIGHBORHOOD_RADIUS = 2;
+const COMPACT_SOURCE_PRESENTATION_TILE_NEIGHBORHOOD_RADIUS = 5;
 const COMPACT_SOURCE_ANCHOR_PREFILTER_MIN_MARGIN_PX = 96;
 const COMPACT_SOURCE_ANCHOR_PREFILTER_MAX_MARGIN_PX = 384;
 const COMPACT_SOURCE_EPSILON = 1e-9;
@@ -1154,8 +1155,16 @@ function buildCompactRetainedSourceForRuntime({
     tileRows,
     radiusTiles: COMPACT_SOURCE_ANCHOR_TILE_NEIGHBORHOOD_RADIUS,
   });
+  const presentationTileIndexes = compactSourceAnchorTileNeighborhoodIndexes({
+    anchors,
+    tileSizePx,
+    tileColumns,
+    tileRows,
+    radiusTiles: COMPACT_SOURCE_PRESENTATION_TILE_NEIGHBORHOOD_RADIUS,
+  });
   const retainedCapacity = tileCount * maxRefsPerTile;
   const useAnchorPrefilter = anchorTileIndexes.size > 0 && retainedCapacity <= maxTileEntries && tileCount > 10_000;
+  const retainedTileIndexes = useAnchorPrefilter ? presentationTileIndexes : anchorTileIndexes;
   const anchorCandidateSplatIndexes = useAnchorPrefilter
     ? selectCompactAnchorCandidateSplatIndexes({
         attributes,
@@ -1167,8 +1176,8 @@ function buildCompactRetainedSourceForRuntime({
         tileSizePx,
         tileColumns,
         tileRows,
-        anchorTileIndexes,
-        maxCandidatesPerTile: maxRefsPerTile * 4,
+        anchorTileIndexes: retainedTileIndexes,
+        maxCandidatesPerTile: useAnchorPrefilter ? maxRefsPerTile : maxRefsPerTile * 4,
       })
     : null;
   const splats = projectRuntimeSplatsForCompactSource({
@@ -1179,7 +1188,7 @@ function buildCompactRetainedSourceForRuntime({
     splatScale,
     minRadiusPx,
     nearFadeEndNdc,
-    onlyTileIndexes: useAnchorPrefilter ? anchorTileIndexes : null,
+    onlyTileIndexes: useAnchorPrefilter ? retainedTileIndexes : null,
     tileSizePx,
     tileColumns,
     tileRows,
@@ -1212,7 +1221,7 @@ function buildCompactRetainedSourceForRuntime({
     maxTileEntries,
     samplesPerAxis: TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES,
     anchors,
-    anchorTileIndexes,
+    anchorTileIndexes: retainedTileIndexes,
     forceAnchorOnly: useAnchorPrefilter,
     rendererMetadata,
   });
