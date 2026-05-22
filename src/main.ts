@@ -311,11 +311,17 @@ interface TileLocalCompositorInputReadback {
       readonly layer: number;
       readonly refIndex: number;
       readonly splatIndex: number;
+      readonly originalId: number;
       readonly alphaParamIndex: number;
+      readonly centerPx: readonly [number, number];
+      readonly inverseConic: readonly [number, number, number];
+      readonly coverageWeight: number;
       readonly tileCoverageWeight: number;
       readonly pixelCoverageWeight: number;
       readonly sourceOpacity: number;
       readonly coverageAlpha: number;
+      readonly transmittanceBefore: number;
+      readonly transmittanceAfter: number;
       readonly sourceColor: readonly [number, number, number];
       readonly runningColor: readonly [number, number, number];
       readonly remainingTransmission: number;
@@ -3492,7 +3498,7 @@ function readCompositorInputAnchor({
   const pixelCenter = [Math.floor(anchor.x) + 0.5, Math.floor(anchor.y) + 0.5] as const;
   let runningColor = [0.02, 0.02, 0.04] as [number, number, number];
   let remainingTransmission = 1;
-  const contributors: TileLocalCompositorInputReadback["anchors"][number]["contributors"] = [];
+  const contributors: Array<TileLocalCompositorInputReadback["anchors"][number]["contributors"][number]> = [];
 
   for (let layer = 0; layer < refLimit; layer += 1) {
     const refIndex = firstRefIndex + layer;
@@ -3501,17 +3507,24 @@ function readCompositorInputAnchor({
     }
     const tileRefBase = refIndex * (GPU_TILE_COVERAGE_TILE_REF_BYTES / Uint32Array.BYTES_PER_ELEMENT);
     const splatIndex = tileRefs[tileRefBase] ?? plan.splatCount;
+    const originalId = tileRefs[tileRefBase + 1] ?? splatIndex;
     const alphaParamIndex = Math.min(tileRefs[tileRefBase + 3] ?? refIndex, plan.maxTileRefs - 1);
     if (splatIndex >= plan.splatCount) {
       contributors.push({
         layer,
         refIndex,
         splatIndex,
+        originalId,
         alphaParamIndex,
+        centerPx: [0, 0],
+        inverseConic: [0, 0, 0],
+        coverageWeight: 0,
         tileCoverageWeight: 0,
         pixelCoverageWeight: 0,
         sourceOpacity: 0,
         coverageAlpha: 0,
+        transmittanceBefore: roundColorChannel(remainingTransmission),
+        transmittanceAfter: roundColorChannel(remainingTransmission),
         sourceColor: [0, 0, 0],
         runningColor: runningColor.map(roundColorChannel) as [number, number, number],
         remainingTransmission: roundColorChannel(remainingTransmission),
@@ -3521,15 +3534,24 @@ function readCompositorInputAnchor({
     }
     const tileCoverageWeight = Math.max(tileCoverageWeights[refIndex] ?? 0, 0);
     if (tileCoverageWeight <= 0) {
+      const alphaParam = readVec4(alphaParams, alphaParamIndex);
+      const conicParam = readVec4(alphaParams, alphaParamIndex + plan.maxTileRefs);
+      const sourceOpacity = Math.min(clamp01(alphaParam[0]), 0.999);
       contributors.push({
         layer,
         refIndex,
         splatIndex,
+        originalId,
         alphaParamIndex,
+        centerPx: [roundColorChannel(alphaParam[1]), roundColorChannel(alphaParam[2])],
+        inverseConic: [roundColorChannel(conicParam[0]), roundColorChannel(conicParam[1]), roundColorChannel(conicParam[2])],
+        coverageWeight: 0,
         tileCoverageWeight: 0,
         pixelCoverageWeight: 0,
-        sourceOpacity: 0,
+        sourceOpacity: roundColorChannel(sourceOpacity),
         coverageAlpha: 0,
+        transmittanceBefore: roundColorChannel(remainingTransmission),
+        transmittanceAfter: roundColorChannel(remainingTransmission),
         sourceColor: readSourceColor(sourceColors, splatIndex),
         runningColor: runningColor.map(roundColorChannel) as [number, number, number],
         remainingTransmission: roundColorChannel(remainingTransmission),
@@ -3543,6 +3565,7 @@ function readCompositorInputAnchor({
     const pixelCoverageWeight = conicPixelWeightFromParams(alphaParam, conicParam, pixelCenter);
     const coverageAlpha = clamp01(1 - Math.pow(1 - sourceOpacity, pixelCoverageWeight));
     const sourceColor = readSourceColor(sourceColors, splatIndex);
+    const transmittanceBefore = remainingTransmission;
     runningColor = sourceColor.map((channel, index) =>
       channel * coverageAlpha + runningColor[index] * (1 - coverageAlpha)
     ) as [number, number, number];
@@ -3551,11 +3574,17 @@ function readCompositorInputAnchor({
       layer,
       refIndex,
       splatIndex,
+      originalId,
       alphaParamIndex,
+      centerPx: [roundColorChannel(alphaParam[1]), roundColorChannel(alphaParam[2])],
+      inverseConic: [roundColorChannel(conicParam[0]), roundColorChannel(conicParam[1]), roundColorChannel(conicParam[2])],
+      coverageWeight: roundColorChannel(tileCoverageWeight),
       tileCoverageWeight: roundColorChannel(tileCoverageWeight),
       pixelCoverageWeight: roundColorChannel(pixelCoverageWeight),
       sourceOpacity: roundColorChannel(sourceOpacity),
       coverageAlpha: roundColorChannel(coverageAlpha),
+      transmittanceBefore: roundColorChannel(transmittanceBefore),
+      transmittanceAfter: roundColorChannel(remainingTransmission),
       sourceColor: sourceColor.map(roundColorChannel) as [number, number, number],
       runningColor: runningColor.map(roundColorChannel) as [number, number, number],
       remainingTransmission: roundColorChannel(remainingTransmission),

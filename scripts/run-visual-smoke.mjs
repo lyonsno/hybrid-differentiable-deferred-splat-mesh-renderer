@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 import { mkdir, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import net from "node:net";
 import path from "node:path";
 
 import { withTimeout } from "./visual-smoke/async-timeout.mjs";
 import { classifySmokeEvidence } from "./visual-smoke/evidence.mjs";
 import { buildTimeoutFailureCapture } from "./visual-smoke/failure-telemetry.mjs";
-import { analyzePngBuffer } from "./visual-smoke/png-analysis.mjs";
+import { analyzePngBuffer, decodePng } from "./visual-smoke/png-analysis.mjs";
 import {
   buildTileLocalComparisonPlan,
   classifyTileLocalComparison,
@@ -29,6 +30,7 @@ import {
   renderSmokeHandoffSection,
 } from "./visual-smoke/smoke-handoff.mjs";
 import { buildTraceCanvasParityEvidence } from "./visual-smoke/trace-canvas-parity.mjs";
+import { buildLivePixelPatchTraceEvidence } from "../src/rendererFidelityProbes/livePixelPatchTrace.js";
 
 const PAGE_EVIDENCE_TIMEOUT_MS = 1000;
 const TIMEOUT_SCREENSHOT_MS = 5000;
@@ -44,6 +46,7 @@ async function main() {
   const screenshotPath = path.join(reportDir, "canvas.png");
   const analysisPath = path.join(reportDir, "analysis.json");
   const reportPath = path.join(reportDir, "report.md");
+  const gitIdentity = gitIdentityForPath(options.appRoot);
 
   const consoleMessages = [];
   const pageErrors = [];
@@ -186,6 +189,13 @@ async function main() {
       screenshot,
       url,
       viewport: options.viewport,
+    });
+    pageEvidence = attachLivePixelPatchTraceEvidence({
+      pageEvidence,
+      screenshot,
+      url,
+      viewport: options.viewport,
+      gitIdentity,
     });
     const classification = classifySmokeEvidence({
       pageEvidence,
@@ -509,6 +519,38 @@ function attachTraceCanvasParityEvidence({ pageEvidence, screenshot, url, viewpo
       traceCanvasParity,
     },
   };
+}
+
+function attachLivePixelPatchTraceEvidence({ pageEvidence, screenshot, url, viewport, gitIdentity }) {
+  const livePixelPatchTrace = buildLivePixelPatchTraceEvidence({
+    pageEvidence,
+    image: decodePng(screenshot),
+    url,
+    viewport,
+    branch: gitIdentity.branch,
+    commit: gitIdentity.commit,
+  });
+  if (!livePixelPatchTrace) {
+    return pageEvidence;
+  }
+  return {
+    ...pageEvidence,
+    witness: {
+      ...(pageEvidence.witness && typeof pageEvidence.witness === "object" ? pageEvidence.witness : {}),
+      livePixelPatchTrace,
+    },
+  };
+}
+
+function gitIdentityForPath(cwd) {
+  try {
+    return {
+      branch: execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd, encoding: "utf8" }).trim(),
+      commit: execFileSync("git", ["rev-parse", "--short", "HEAD"], { cwd, encoding: "utf8" }).trim(),
+    };
+  } catch {
+    return { branch: null, commit: null };
+  }
 }
 
 function isVisualSmokeTimeoutError(error) {
