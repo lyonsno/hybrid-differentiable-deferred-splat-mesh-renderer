@@ -1,0 +1,349 @@
+{
+  "comparisonClass": "trace-anchor-visual-inertness-witness",
+  "target": {
+    "id": "dark-lacunar-hole",
+    "x": 2008,
+    "y": 928
+  },
+  "crop": {
+    "x": 1912,
+    "y": 832,
+    "width": 193,
+    "height": 193
+  },
+  "neighborhood": {
+    "x": 2000,
+    "y": 920,
+    "width": 17,
+    "height": 17
+  },
+  "wholeFrame": {
+    "width": 3456,
+    "height": 1916,
+    "totalPixels": 6621696
+  },
+  "variants": [
+    {
+      "id": "baseline-no-trace",
+      "title": "No traceAnchors baseline",
+      "route": {
+        "url": "http://127.0.0.1:61742/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible",
+        "traceAnchors": "",
+        "asset": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+        "witnessView": "dessert-porous-close",
+        "requestedRenderer": "tile-local-visible",
+        "effectiveRenderer": "tile-local-visible-budget-disabled-plate",
+        "requestedArenaBackend": "gpu",
+        "effectiveArenaBackend": "cpu",
+        "tileSizePx": 16,
+        "maxRefsPerTile": 256,
+        "viewport": {
+          "width": 3456,
+          "height": 1916
+        },
+        "backingScale": null,
+        "frameId": null,
+        "debugMode": null,
+        "branch": null,
+        "commit": null
+      },
+      "image": {
+        "width": 3456,
+        "height": 1916
+      }
+    },
+    {
+      "id": "traced-dark-lacuna-triad",
+      "title": "Traced dark-lacuna triad",
+      "route": {
+        "url": "http://127.0.0.1:61742/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible&traceAnchors=dark-lacunar-hole@2008,928:porous-body-hole;sealed-neighbor@2064,896:sealed-neighbor;rim-plate@1462,1390:plate-rim-edge",
+        "traceAnchors": "dark-lacunar-hole@2008,928:porous-body-hole;sealed-neighbor@2064,896:sealed-neighbor;rim-plate@1462,1390:plate-rim-edge",
+        "asset": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+        "witnessView": "dessert-porous-close",
+        "requestedRenderer": "tile-local-visible",
+        "effectiveRenderer": "tile-local-visible-gaussian-compositor",
+        "requestedArenaBackend": "gpu",
+        "effectiveArenaBackend": "gpu",
+        "tileSizePx": 16,
+        "maxRefsPerTile": 256,
+        "viewport": {
+          "width": 3456,
+          "height": 1916
+        },
+        "backingScale": {
+          "x": 1,
+          "y": 1
+        },
+        "frameId": 1,
+        "debugMode": "final-color",
+        "branch": "cc/trace-anchor-visual-inertness-witness-0522",
+        "commit": "9521f16"
+      },
+      "image": {
+        "width": 3456,
+        "height": 1916
+      }
+    },
+    {
+      "id": "single-dark-lacuna-anchor",
+      "title": "Single dark-lacuna anchor",
+      "route": {
+        "url": "http://127.0.0.1:61742/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible&traceAnchors=dark-lacunar-hole@2008,928:porous-body-hole",
+        "traceAnchors": "dark-lacunar-hole@2008,928:porous-body-hole",
+        "asset": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+        "witnessView": "dessert-porous-close",
+        "requestedRenderer": "tile-local-visible",
+        "effectiveRenderer": "tile-local-visible-gaussian-compositor",
+        "requestedArenaBackend": "gpu",
+        "effectiveArenaBackend": "gpu",
+        "tileSizePx": 16,
+        "maxRefsPerTile": 256,
+        "viewport": {
+          "width": 3456,
+          "height": 1916
+        },
+        "backingScale": {
+          "x": 1,
+          "y": 1
+        },
+        "frameId": 1,
+        "debugMode": "final-color",
+        "branch": "cc/trace-anchor-visual-inertness-witness-0522",
+        "commit": "9521f16"
+      },
+      "image": {
+        "width": 3456,
+        "height": 1916
+      }
+    }
+  ],
+  "comparisons": [
+    {
+      "beforeVariantId": "baseline-no-trace",
+      "afterVariantId": "traced-dark-lacuna-triad",
+      "wholeFrame": {
+        "x": 0,
+        "y": 0,
+        "width": 3456,
+        "height": 1916,
+        "totalPixels": 6621696,
+        "changedPixels": 6621696,
+        "changedPixelRatio": 1,
+        "averageRgbDelta": 42.832999,
+        "maxRgbDelta": 152,
+        "maxChannelDelta": 172
+      },
+      "crop": {
+        "x": 1912,
+        "y": 832,
+        "width": 193,
+        "height": 193,
+        "totalPixels": 37249,
+        "changedPixels": 37249,
+        "changedPixelRatio": 1,
+        "averageRgbDelta": 73.125614,
+        "maxRgbDelta": 115,
+        "maxChannelDelta": 158
+      },
+      "outsideCrop": {
+        "totalPixels": 6584447,
+        "changedPixels": 6584447,
+        "changedPixelRatio": 1
+      },
+      "target": {
+        "id": "dark-lacunar-hole",
+        "x": 2008,
+        "y": 928,
+        "before": {
+          "variantId": "baseline-no-trace",
+          "rgba8": [
+            80,
+            43,
+            28,
+            255
+          ]
+        },
+        "after": {
+          "variantId": "traced-dark-lacuna-triad",
+          "rgba8": [
+            220,
+            142,
+            86,
+            255
+          ]
+        },
+        "deltaRgba8": [
+          140,
+          99,
+          58,
+          0
+        ],
+        "rgbLumaDelta": 99
+      },
+      "neighborhood": {
+        "radius": 8,
+        "before": {
+          "x": 2000,
+          "y": 920,
+          "width": 17,
+          "height": 17,
+          "totalPixels": 289,
+          "meanRgba8": [
+            80,
+            43,
+            28,
+            255
+          ],
+          "minRgbLuma": 50,
+          "maxRgbLuma": 50
+        },
+        "after": {
+          "x": 2000,
+          "y": 920,
+          "width": 17,
+          "height": 17,
+          "totalPixels": 289,
+          "meanRgba8": [
+            216,
+            138,
+            80,
+            255
+          ],
+          "minRgbLuma": 134,
+          "maxRgbLuma": 150
+        },
+        "delta": {
+          "x": 2000,
+          "y": 920,
+          "width": 17,
+          "height": 17,
+          "totalPixels": 289,
+          "changedPixels": 289,
+          "changedPixelRatio": 1,
+          "averageRgbDelta": 94.529412,
+          "maxRgbDelta": 100,
+          "maxChannelDelta": 141
+        }
+      }
+    },
+    {
+      "beforeVariantId": "baseline-no-trace",
+      "afterVariantId": "single-dark-lacuna-anchor",
+      "wholeFrame": {
+        "x": 0,
+        "y": 0,
+        "width": 3456,
+        "height": 1916,
+        "totalPixels": 6621696,
+        "changedPixels": 6621696,
+        "changedPixelRatio": 1,
+        "averageRgbDelta": 42.661967,
+        "maxRgbDelta": 115,
+        "maxChannelDelta": 161
+      },
+      "crop": {
+        "x": 1912,
+        "y": 832,
+        "width": 193,
+        "height": 193,
+        "totalPixels": 37249,
+        "changedPixels": 37249,
+        "changedPixelRatio": 1,
+        "averageRgbDelta": 70.611882,
+        "maxRgbDelta": 115,
+        "maxChannelDelta": 161
+      },
+      "outsideCrop": {
+        "totalPixels": 6584447,
+        "changedPixels": 6584447,
+        "changedPixelRatio": 1
+      },
+      "target": {
+        "id": "dark-lacunar-hole",
+        "x": 2008,
+        "y": 928,
+        "before": {
+          "variantId": "baseline-no-trace",
+          "rgba8": [
+            80,
+            43,
+            28,
+            255
+          ]
+        },
+        "after": {
+          "variantId": "single-dark-lacuna-anchor",
+          "rgba8": [
+            210,
+            129,
+            71,
+            255
+          ]
+        },
+        "deltaRgba8": [
+          130,
+          86,
+          43,
+          0
+        ],
+        "rgbLumaDelta": 86
+      },
+      "neighborhood": {
+        "radius": 8,
+        "before": {
+          "x": 2000,
+          "y": 920,
+          "width": 17,
+          "height": 17,
+          "totalPixels": 289,
+          "meanRgba8": [
+            80,
+            43,
+            28,
+            255
+          ],
+          "minRgbLuma": 50,
+          "maxRgbLuma": 50
+        },
+        "after": {
+          "x": 2000,
+          "y": 920,
+          "width": 17,
+          "height": 17,
+          "totalPixels": 289,
+          "meanRgba8": [
+            195,
+            117,
+            65,
+            255
+          ],
+          "minRgbLuma": 111,
+          "maxRgbLuma": 145
+        },
+        "delta": {
+          "x": 2000,
+          "y": 920,
+          "width": 17,
+          "height": 17,
+          "totalPixels": 289,
+          "changedPixels": 289,
+          "changedPixelRatio": 1,
+          "averageRgbDelta": 75.224913,
+          "maxRgbDelta": 95,
+          "maxChannelDelta": 137
+        }
+      }
+    }
+  ],
+  "classification": "trace-anchor-global-route-perturbation",
+  "artifacts": {
+    "fullFrameContactSheet": "smoke-reports/trace-anchor-visual-inertness-witness-0522-comparison/trace-anchor-full-frame-contact-sheet.png",
+    "fullFrameDiff": "smoke-reports/trace-anchor-visual-inertness-witness-0522-comparison/trace-anchor-full-frame-diff.png",
+    "cropContactSheet": "smoke-reports/trace-anchor-visual-inertness-witness-0522-comparison/trace-anchor-crop-contact-sheet.png",
+    "cropDiff": "smoke-reports/trace-anchor-visual-inertness-witness-0522-comparison/trace-anchor-crop-diff.png",
+    "targetMarker": {
+      "x": 2008,
+      "y": 928
+    }
+  }
+}

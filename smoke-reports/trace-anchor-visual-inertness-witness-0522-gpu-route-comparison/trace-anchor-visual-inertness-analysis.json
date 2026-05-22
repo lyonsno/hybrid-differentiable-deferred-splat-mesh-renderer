@@ -1,0 +1,352 @@
+{
+  "comparisonClass": "trace-anchor-visual-inertness-witness",
+  "target": {
+    "id": "dark-lacunar-hole",
+    "x": 2008,
+    "y": 928
+  },
+  "crop": {
+    "x": 1912,
+    "y": 832,
+    "width": 193,
+    "height": 193
+  },
+  "neighborhood": {
+    "x": 2000,
+    "y": 920,
+    "width": 17,
+    "height": 17
+  },
+  "wholeFrame": {
+    "width": 3456,
+    "height": 1916,
+    "totalPixels": 6621696
+  },
+  "variants": [
+    {
+      "id": "prior-gpu-nontarget-anchors",
+      "title": "Prior GPU route without dark-lacuna target",
+      "route": {
+        "url": "http://127.0.0.1:61742/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible&traceAnchors=porous-hole@2018,720:porous-body-hole;porous-sealed-neighbor@1990,760:sealed-neighbor;rim-edge@1514,1324:plate-rim-edge",
+        "traceAnchors": "porous-hole@2018,720:porous-body-hole;porous-sealed-neighbor@1990,760:sealed-neighbor;rim-edge@1514,1324:plate-rim-edge",
+        "asset": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+        "witnessView": "dessert-porous-close",
+        "requestedRenderer": "tile-local-visible",
+        "effectiveRenderer": "tile-local-visible-gaussian-compositor",
+        "requestedArenaBackend": "gpu",
+        "effectiveArenaBackend": "gpu",
+        "tileSizePx": 16,
+        "maxRefsPerTile": 256,
+        "viewport": {
+          "width": 3456,
+          "height": 1916
+        },
+        "backingScale": {
+          "x": 1,
+          "y": 1
+        },
+        "frameId": 1,
+        "debugMode": "final-color",
+        "branch": "cc/trace-anchor-visual-inertness-witness-0522",
+        "commit": "9521f16"
+      },
+      "image": {
+        "width": 3456,
+        "height": 1916
+      }
+    },
+    {
+      "id": "traced-dark-lacuna-triad",
+      "title": "Traced dark-lacuna triad",
+      "route": {
+        "url": "http://127.0.0.1:61742/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible&traceAnchors=dark-lacunar-hole@2008,928:porous-body-hole;sealed-neighbor@2064,896:sealed-neighbor;rim-plate@1462,1390:plate-rim-edge",
+        "traceAnchors": "dark-lacunar-hole@2008,928:porous-body-hole;sealed-neighbor@2064,896:sealed-neighbor;rim-plate@1462,1390:plate-rim-edge",
+        "asset": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+        "witnessView": "dessert-porous-close",
+        "requestedRenderer": "tile-local-visible",
+        "effectiveRenderer": "tile-local-visible-gaussian-compositor",
+        "requestedArenaBackend": "gpu",
+        "effectiveArenaBackend": "gpu",
+        "tileSizePx": 16,
+        "maxRefsPerTile": 256,
+        "viewport": {
+          "width": 3456,
+          "height": 1916
+        },
+        "backingScale": {
+          "x": 1,
+          "y": 1
+        },
+        "frameId": 1,
+        "debugMode": "final-color",
+        "branch": "cc/trace-anchor-visual-inertness-witness-0522",
+        "commit": "9521f16"
+      },
+      "image": {
+        "width": 3456,
+        "height": 1916
+      }
+    },
+    {
+      "id": "single-dark-lacuna-anchor",
+      "title": "Single dark-lacuna anchor",
+      "route": {
+        "url": "http://127.0.0.1:61742/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible&traceAnchors=dark-lacunar-hole@2008,928:porous-body-hole",
+        "traceAnchors": "dark-lacunar-hole@2008,928:porous-body-hole",
+        "asset": "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+        "witnessView": "dessert-porous-close",
+        "requestedRenderer": "tile-local-visible",
+        "effectiveRenderer": "tile-local-visible-gaussian-compositor",
+        "requestedArenaBackend": "gpu",
+        "effectiveArenaBackend": "gpu",
+        "tileSizePx": 16,
+        "maxRefsPerTile": 256,
+        "viewport": {
+          "width": 3456,
+          "height": 1916
+        },
+        "backingScale": {
+          "x": 1,
+          "y": 1
+        },
+        "frameId": 1,
+        "debugMode": "final-color",
+        "branch": "cc/trace-anchor-visual-inertness-witness-0522",
+        "commit": "9521f16"
+      },
+      "image": {
+        "width": 3456,
+        "height": 1916
+      }
+    }
+  ],
+  "comparisons": [
+    {
+      "beforeVariantId": "prior-gpu-nontarget-anchors",
+      "afterVariantId": "traced-dark-lacuna-triad",
+      "wholeFrame": {
+        "x": 0,
+        "y": 0,
+        "width": 3456,
+        "height": 1916,
+        "totalPixels": 6621696,
+        "changedPixels": 131581,
+        "changedPixelRatio": 0.01987119312031238,
+        "averageRgbDelta": 1.909636,
+        "maxRgbDelta": 184,
+        "maxChannelDelta": 240
+      },
+      "crop": {
+        "x": 1912,
+        "y": 832,
+        "width": 193,
+        "height": 193,
+        "totalPixels": 37249,
+        "changedPixels": 35360,
+        "changedPixelRatio": 0.9492872291873607,
+        "averageRgbDelta": 109.25692,
+        "maxRgbDelta": 159,
+        "maxChannelDelta": 233
+      },
+      "outsideCrop": {
+        "totalPixels": 6584447,
+        "changedPixels": 96221,
+        "changedPixelRatio": 0.014613376035982976
+      },
+      "target": {
+        "id": "dark-lacunar-hole",
+        "x": 2008,
+        "y": 928,
+        "before": {
+          "variantId": "prior-gpu-nontarget-anchors",
+          "rgba8": [
+            5,
+            5,
+            10,
+            255
+          ]
+        },
+        "after": {
+          "variantId": "traced-dark-lacuna-triad",
+          "rgba8": [
+            220,
+            142,
+            86,
+            255
+          ]
+        },
+        "deltaRgba8": [
+          215,
+          137,
+          76,
+          0
+        ],
+        "rgbLumaDelta": 143
+      },
+      "neighborhood": {
+        "radius": 8,
+        "before": {
+          "x": 2000,
+          "y": 920,
+          "width": 17,
+          "height": 17,
+          "totalPixels": 289,
+          "meanRgba8": [
+            5,
+            5,
+            10,
+            255
+          ],
+          "minRgbLuma": 7,
+          "maxRgbLuma": 7
+        },
+        "after": {
+          "x": 2000,
+          "y": 920,
+          "width": 17,
+          "height": 17,
+          "totalPixels": 289,
+          "meanRgba8": [
+            216,
+            138,
+            80,
+            255
+          ],
+          "minRgbLuma": 134,
+          "maxRgbLuma": 150
+        },
+        "delta": {
+          "x": 2000,
+          "y": 920,
+          "width": 17,
+          "height": 17,
+          "totalPixels": 289,
+          "changedPixels": 289,
+          "changedPixelRatio": 1,
+          "averageRgbDelta": 138.16263,
+          "maxRgbDelta": 144,
+          "maxChannelDelta": 216
+        }
+      }
+    },
+    {
+      "beforeVariantId": "prior-gpu-nontarget-anchors",
+      "afterVariantId": "single-dark-lacuna-anchor",
+      "wholeFrame": {
+        "x": 0,
+        "y": 0,
+        "width": 3456,
+        "height": 1916,
+        "totalPixels": 6621696,
+        "changedPixels": 103168,
+        "changedPixelRatio": 0.01558029846130055,
+        "averageRgbDelta": 1.6483,
+        "maxRgbDelta": 185,
+        "maxChannelDelta": 240
+      },
+      "crop": {
+        "x": 1912,
+        "y": 832,
+        "width": 193,
+        "height": 193,
+        "totalPixels": 37249,
+        "changedPixels": 33664,
+        "changedPixelRatio": 0.9037558055249806,
+        "averageRgbDelta": 108.159655,
+        "maxRgbDelta": 159,
+        "maxChannelDelta": 236
+      },
+      "outsideCrop": {
+        "totalPixels": 6584447,
+        "changedPixels": 69504,
+        "changedPixelRatio": 0.010555783955736905
+      },
+      "target": {
+        "id": "dark-lacunar-hole",
+        "x": 2008,
+        "y": 928,
+        "before": {
+          "variantId": "prior-gpu-nontarget-anchors",
+          "rgba8": [
+            5,
+            5,
+            10,
+            255
+          ]
+        },
+        "after": {
+          "variantId": "single-dark-lacuna-anchor",
+          "rgba8": [
+            210,
+            129,
+            71,
+            255
+          ]
+        },
+        "deltaRgba8": [
+          205,
+          124,
+          61,
+          0
+        ],
+        "rgbLumaDelta": 130
+      },
+      "neighborhood": {
+        "radius": 8,
+        "before": {
+          "x": 2000,
+          "y": 920,
+          "width": 17,
+          "height": 17,
+          "totalPixels": 289,
+          "meanRgba8": [
+            5,
+            5,
+            10,
+            255
+          ],
+          "minRgbLuma": 7,
+          "maxRgbLuma": 7
+        },
+        "after": {
+          "x": 2000,
+          "y": 920,
+          "width": 17,
+          "height": 17,
+          "totalPixels": 289,
+          "meanRgba8": [
+            195,
+            117,
+            65,
+            255
+          ],
+          "minRgbLuma": 111,
+          "maxRgbLuma": 145
+        },
+        "delta": {
+          "x": 2000,
+          "y": 920,
+          "width": 17,
+          "height": 17,
+          "totalPixels": 289,
+          "changedPixels": 289,
+          "changedPixelRatio": 1,
+          "averageRgbDelta": 118.944637,
+          "maxRgbDelta": 139,
+          "maxChannelDelta": 212
+        }
+      }
+    }
+  ],
+  "classification": "trace-anchor-global-route-perturbation",
+  "artifacts": {
+    "fullFrameContactSheet": "smoke-reports/trace-anchor-visual-inertness-witness-0522-gpu-route-comparison/trace-anchor-full-frame-contact-sheet.png",
+    "fullFrameDiff": "smoke-reports/trace-anchor-visual-inertness-witness-0522-gpu-route-comparison/trace-anchor-full-frame-diff.png",
+    "cropContactSheet": "smoke-reports/trace-anchor-visual-inertness-witness-0522-gpu-route-comparison/trace-anchor-crop-contact-sheet.png",
+    "cropDiff": "smoke-reports/trace-anchor-visual-inertness-witness-0522-gpu-route-comparison/trace-anchor-crop-diff.png",
+    "targetMarker": {
+      "x": 2008,
+      "y": 928
+    }
+  }
+}
