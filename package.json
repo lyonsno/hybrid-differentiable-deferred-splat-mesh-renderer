@@ -13,7 +13,8 @@
     "test:smoke": "node --test tests/smoke/*.test.mjs",
     "test:shape-gate": "node --test tests/smoke/pixel-shape-gate.test.mjs",
     "smoke:visual": "node scripts/run-visual-smoke.mjs",
-    "smoke:visual:real": "node scripts/run-visual-smoke.mjs --require-real-splat"
+    "smoke:visual:real": "node scripts/run-visual-smoke.mjs --require-real-splat",
+    "smoke:visual:filmstrip": "node scripts/visual-smoke/operator-filmstrip.mjs"
   },
   "devDependencies": {
     "@webgpu/types": "^0.1.69",
