@@ -13,6 +13,9 @@ wheels/
 node_modules/
 dist/
 
+# Visual-smoke output
+smoke-reports/
+
 # OS
 .DS_Store
 uv.lock

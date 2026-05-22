@@ -155,6 +155,8 @@ npm run smoke:visual:real -- --tile-local-comparison --out-dir /tmp/tile-local-v
 npm run smoke:visual:real -- --static-dessert-witness --out-dir /tmp/static-dessert-witness
 ```
 
+The CLI default `smoke-reports/` output is ignored by default so full visual-smoke captures do not enter ordinary source commits by accident. When a branch needs durable evidence, promote compact evidence under `docs/renderer-fidelity/` or another intentionally reviewed artifact path, and keep the heavy JSON/PNG/report dump local unless the commit explicitly selects it.
+
 When reporting smoke results, include the smoke kind, the decision requested, the expected visual delta, and the evidence surface. A telemetry-only branch may be mergeable while the renderer remains visually bad; do not ask for human visual approval unless the branch claims a visual delta.
 
 Telemetry handoffs can make that explicit in the harness:

@@ -89,3 +89,12 @@ test("visual smoke docs describe telemetry handoff flags", () => {
   assert.match(contract, /--expected-visual-delta/);
   assert.match(contract, /--evidence-surface/);
 });
+
+test("visual smoke reports stay out of ordinary source commits by default", () => {
+  const gitignore = readFileSync(new URL("../../.gitignore", import.meta.url), "utf8");
+  const readme = readFileSync(new URL("../../README.md", import.meta.url), "utf8");
+
+  assert.match(gitignore, /^smoke-reports\/$/m);
+  assert.match(readme, /smoke-reports\/.*ignored by default/);
+  assert.match(readme, /promote compact evidence/);
+});
