@@ -30,6 +30,7 @@ export function buildTraceCanvasParityEvidence({
 } = {}) {
   const decoded = image ?? (pngBuffer ? decodePng(pngBuffer) : null);
   const finalRows = normalizeFinalColorRows(pageEvidence?.tileLocal?.perPixelFinalColorAccumulation);
+  const liveCompositorInput = normalizeLiveCompositorInputReadback(pageEvidence?.tileLocal?.compositorInputReadback);
   const canvas = pageEvidence?.canvas && typeof pageEvidence.canvas === "object" ? pageEvidence.canvas : {};
   if (!decoded || finalRows.length === 0 || !Number.isFinite(Number(canvas.width)) || !Number.isFinite(Number(canvas.height))) {
     return undefined;
@@ -41,14 +42,24 @@ export function buildTraceCanvasParityEvidence({
   };
   const maxChannelDelta = finiteNumber(tolerance.maxChannelDelta) ?? 3;
   const channelOrder = stringValue(tolerance.channelOrder) || "rgba8";
+  const useLiveCompositorPrediction =
+    liveCompositorInput.status === "present" &&
+    finalRows.every((row) => liveCompositorInput.anchorsById.get(row.id)?.liveCompositorRgba8.length === 4);
+  const predictionSource = useLiveCompositorPrediction ? "live-compositor-input-readback" : "cpu-final-trace";
   const anchors = finalRows.map((row) => {
     const sampleX = clampInteger(Math.floor((row.x + 0.5) * sampleScale.x), 0, decoded.width - 1);
     const sampleY = clampInteger(Math.floor((row.y + 0.5) * sampleScale.y), 0, decoded.height - 1);
     const sampledRgba8 = readRgba8(decoded, sampleX, sampleY);
-    const predictedRgba8 = rgbaFloatTo8(row.outputColor);
+    const cpuFinalTraceRgba8 = rgbaFloatTo8(row.outputColor);
+    const liveRow = liveCompositorInput.anchorsById.get(row.id);
+    const liveCompositorRgba8 = liveRow?.liveCompositorRgba8 ?? [];
+    const predictedRgba8 = useLiveCompositorPrediction ? liveCompositorRgba8 : cpuFinalTraceRgba8;
     const deltaRgba8 = sampledRgba8.map((channel, index) => channel - predictedRgba8[index]);
     const maxDelta = maxChannelDeltaFromDelta(deltaRgba8);
-    return {
+    const traceModelVsLiveDeltaRgba8 = liveCompositorRgba8.length === 4
+      ? liveCompositorRgba8.map((channel, index) => channel - cpuFinalTraceRgba8[index])
+      : [];
+    return removeUndefinedProperties({
       id: row.id,
       anchorPixel: { x: row.x, y: row.y },
       samplePixel: { x: sampleX, y: sampleY },
@@ -57,13 +68,32 @@ export function buildTraceCanvasParityEvidence({
       deltaRgba8,
       maxDelta,
       status: maxDelta <= maxChannelDelta ? "match" : "mismatch",
-    };
+      predictionSource,
+      cpuFinalTraceRgba8: useLiveCompositorPrediction ? cpuFinalTraceRgba8 : undefined,
+      liveCompositorRgba8: liveCompositorRgba8.length === 4 ? liveCompositorRgba8 : undefined,
+      traceModelVsLiveDeltaRgba8: traceModelVsLiveDeltaRgba8.length === 4 ? traceModelVsLiveDeltaRgba8 : undefined,
+      traceModelVsLiveMaxDelta: traceModelVsLiveDeltaRgba8.length === 4
+        ? maxChannelDeltaFromDelta(traceModelVsLiveDeltaRgba8)
+        : undefined,
+      liveCompositorInput: liveRow
+        ? {
+            refLimit: liveRow.refLimit,
+            header: liveRow.header,
+          }
+        : undefined,
+    });
   });
+  const traceModelVsLive = summarizeTraceModelVsLive(anchors, maxChannelDelta);
 
   const identity = observationIdentity({ pageEvidence, url, viewport });
   return {
     observationId: observationIdFromIdentity(identity),
-    comparisonClass: "exact-route-trace-final-vs-canvas",
+    comparisonClass: useLiveCompositorPrediction
+      ? "exact-route-live-compositor-input-vs-canvas"
+      : "exact-route-trace-final-vs-canvas",
+    predictionSource,
+    liveCompositorInputReadbackStatus: liveCompositorInput.status,
+    traceModelVsLive,
     expectedObservationIdentity: identity,
     actualObservationIdentity: identity,
     identityDiffs: [],
@@ -78,6 +108,9 @@ export function buildTraceCanvasParityEvidence({
 
 export function classifyTraceCanvasParityWitness(traceCanvasParity = {}) {
   const comparisonClass = stringValue(traceCanvasParity.comparisonClass);
+  const predictionSource = stringValue(traceCanvasParity.predictionSource);
+  const liveCompositorInputReadbackStatus = stringValue(traceCanvasParity.liveCompositorInputReadbackStatus);
+  const traceModelVsLive = normalizeTraceModelVsLive(traceCanvasParity.traceModelVsLive);
   const observationId = stringValue(traceCanvasParity.observationId);
   const expectedObservationIdentity = normalizeObservationIdentity(traceCanvasParity.expectedObservationIdentity);
   const actualObservationIdentity = normalizeObservationIdentity(traceCanvasParity.actualObservationIdentity);
@@ -108,6 +141,9 @@ export function classifyTraceCanvasParityWitness(traceCanvasParity = {}) {
       evidence: {
         observationId,
         comparisonClass,
+        predictionSource,
+        liveCompositorInputReadbackStatus,
+        traceModelVsLive,
         expectedObservationIdentity,
         actualObservationIdentity,
         identityDiffs,
@@ -129,6 +165,9 @@ export function classifyTraceCanvasParityWitness(traceCanvasParity = {}) {
       evidence: {
         observationId,
         comparisonClass,
+        predictionSource,
+        liveCompositorInputReadbackStatus,
+        traceModelVsLive,
         expectedObservationIdentity,
         actualObservationIdentity,
         identityDiffs,
@@ -151,11 +190,14 @@ export function classifyTraceCanvasParityWitness(traceCanvasParity = {}) {
     severity: status === TRACE_CANVAS_PARITY_KINDS.match ? "pass" : "blocked",
     summary:
       status === TRACE_CANVAS_PARITY_KINDS.match
-        ? `Trace/canvas parity matched for ${observationId} across ${anchors.length} anchors.`
-        : `Trace/canvas parity mismatch for ${observationId}: ${mismatchAnchors.length}/${anchors.length} anchors exceeded max channel delta ${tolerance.maxChannelDelta}; max delta ${maxDelta}.`,
+        ? `Canvas parity matched ${comparisonClass} for ${observationId} across ${anchors.length} anchors.`
+        : `Canvas parity mismatch for ${comparisonClass} at ${observationId}: ${mismatchAnchors.length}/${anchors.length} anchors exceeded max channel delta ${tolerance.maxChannelDelta}; max delta ${maxDelta}.`,
     evidence: {
       observationId,
       comparisonClass,
+      predictionSource,
+      liveCompositorInputReadbackStatus,
+      traceModelVsLive,
       expectedObservationIdentity,
       actualObservationIdentity,
       identityDiffs: [],
@@ -204,6 +246,73 @@ function normalizeFinalColorRows(rows) {
       Number.isFinite(row.y) &&
       row.outputColor.length === 4
     );
+}
+
+function normalizeLiveCompositorInputReadback(readback = {}) {
+  const anchorsById = new Map();
+  const anchors = Array.isArray(readback?.anchors) ? readback.anchors : [];
+  for (const anchor of anchors) {
+    const id = stringValue(anchor?.id);
+    const liveCompositorRgba8 = normalizeRgba8(anchor?.liveCompositorRgba8);
+    if (!id || liveCompositorRgba8.length !== 4) {
+      continue;
+    }
+    anchorsById.set(id, {
+      id,
+      liveCompositorRgba8,
+      refLimit: finiteNumber(anchor?.refLimit),
+      header: normalizeCompositorHeader(anchor?.header),
+    });
+  }
+  return {
+    status: stringValue(readback?.status),
+    anchorsById,
+  };
+}
+
+function normalizeCompositorHeader(header = {}) {
+  if (!header || typeof header !== "object") {
+    return undefined;
+  }
+  return removeUndefinedProperties({
+    firstRefIndex: finiteNumber(header.firstRefIndex),
+    refCount: finiteNumber(header.refCount),
+    projectedCount: finiteNumber(header.projectedCount),
+    droppedCount: finiteNumber(header.droppedCount),
+  });
+}
+
+function summarizeTraceModelVsLive(anchors, maxChannelDelta) {
+  const comparedAnchors = anchors.filter((anchor) => Array.isArray(anchor.traceModelVsLiveDeltaRgba8));
+  if (comparedAnchors.length === 0) {
+    return {
+      status: "not-compared",
+      mismatchAnchors: [],
+      maxDelta: 0,
+    };
+  }
+  const mismatchAnchors = comparedAnchors
+    .filter((anchor) => anchor.traceModelVsLiveMaxDelta > maxChannelDelta)
+    .map((anchor) => anchor.id);
+  return {
+    status: mismatchAnchors.length > 0 ? "mismatch" : "match",
+    mismatchAnchors,
+    maxDelta: comparedAnchors.reduce(
+      (max, anchor) => Math.max(max, finiteNumber(anchor.traceModelVsLiveMaxDelta) ?? 0),
+      0,
+    ),
+  };
+}
+
+function normalizeTraceModelVsLive(value = {}) {
+  const mismatchAnchors = Array.isArray(value?.mismatchAnchors)
+    ? value.mismatchAnchors.map((anchor) => stringValue(anchor)).filter(Boolean)
+    : [];
+  return {
+    status: stringValue(value?.status),
+    mismatchAnchors,
+    maxDelta: finiteNumber(value?.maxDelta) ?? 0,
+  };
 }
 
 function observationIdentity({ pageEvidence = {}, url = "", viewport = {} } = {}) {
@@ -314,14 +423,20 @@ function normalizeAnchors(anchors = [], maxChannelDelta = Number.NaN) {
       const sampledRgba8 = normalizeRgba8(anchor?.sampledRgba8);
       const deltaRgba8 = normalizeDelta(anchor?.deltaRgba8, predictedRgba8, sampledRgba8);
       const maxDelta = finiteNumber(anchor?.maxDelta) ?? maxChannelDeltaFromDelta(deltaRgba8);
-      return {
+      return removeUndefinedProperties({
         id: stringValue(anchor?.id),
         predictedRgba8,
         sampledRgba8,
         deltaRgba8,
         maxDelta,
         status: maxDelta <= maxChannelDelta ? "match" : "mismatch",
-      };
+        predictionSource: stringValue(anchor?.predictionSource) || undefined,
+        cpuFinalTraceRgba8: normalizeOptionalRgba8(anchor?.cpuFinalTraceRgba8),
+        liveCompositorRgba8: normalizeOptionalRgba8(anchor?.liveCompositorRgba8),
+        traceModelVsLiveDeltaRgba8: normalizeOptionalDelta(anchor?.traceModelVsLiveDeltaRgba8),
+        traceModelVsLiveMaxDelta: finiteNumber(anchor?.traceModelVsLiveMaxDelta),
+        liveCompositorInput: normalizeLiveCompositorInputSummary(anchor?.liveCompositorInput),
+      });
     })
     .filter((anchor) => anchor.id.length > 0);
 }
@@ -331,6 +446,28 @@ function normalizeRgba8(value) {
     return [];
   }
   return value.map((channel) => Math.max(0, Math.min(255, Math.trunc(finiteNumber(channel) ?? 0))));
+}
+
+function normalizeOptionalRgba8(value) {
+  const normalized = normalizeRgba8(value);
+  return normalized.length === 4 ? normalized : undefined;
+}
+
+function normalizeOptionalDelta(value) {
+  if (!Array.isArray(value) || value.length !== 4) {
+    return undefined;
+  }
+  return value.map((channel) => Math.trunc(finiteNumber(channel) ?? 0));
+}
+
+function normalizeLiveCompositorInputSummary(input = {}) {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  return removeUndefinedProperties({
+    refLimit: finiteNumber(input.refLimit),
+    header: normalizeCompositorHeader(input.header),
+  });
 }
 
 function normalizeDelta(deltaRgba8, predictedRgba8, sampledRgba8) {
@@ -365,4 +502,10 @@ function stringifyValue(value) {
 
 function deepEqual(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function removeUndefinedProperties(value) {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entry]) => entry !== undefined)
+  );
 }

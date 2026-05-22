@@ -98,3 +98,75 @@ test("trace-canvas parity evidence samples canvas pixels against final accumulat
   });
   assert.equal(result.findings.some((finding) => finding.owner === "trace-canvas-parity"), false);
 });
+
+test("trace-canvas parity evidence can use live compositor input rows without hiding CPU trace disagreement", () => {
+  const witness = buildTraceCanvasParityEvidence({
+    url: "http://127.0.0.1:5188/?witnessView=dessert-porous-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible",
+    viewport: { width: 1, height: 1 },
+    pageEvidence: {
+      rendererLabel: "tile-local-visible-gaussian-compositor",
+      arenaRuntime: { effectiveArenaBackend: "gpu" },
+      canvas: { width: 1, height: 1, clientWidth: 1, clientHeight: 1 },
+      tileLocal: {
+        budget: { tileSizePx: 16, maxRefsPerTile: 256 },
+        perPixelFinalColorAccumulation: [
+          {
+            anchorPixel: { id: "fresh-a", x: 0, y: 0 },
+            finalColorAccumulation: { outputColor: [151 / 255, 88 / 255, 53 / 255, 1] },
+          },
+        ],
+        compositorInputReadback: {
+          status: "present",
+          anchors: [
+            {
+              id: "fresh-a",
+              pixel: { x: 0, y: 0 },
+              liveCompositorRgba8: [221, 143, 84, 255],
+              refLimit: 256,
+              header: { firstRefIndex: 15360, refCount: 256, projectedCount: 256, droppedCount: 0 },
+            },
+          ],
+        },
+      },
+    },
+    image: {
+      width: 1,
+      height: 1,
+      rgba: Buffer.from([221, 143, 84, 255]),
+    },
+  });
+
+  assert.equal(witness.comparisonClass, "exact-route-live-compositor-input-vs-canvas");
+  assert.equal(witness.predictionSource, "live-compositor-input-readback");
+  assert.equal(witness.liveCompositorInputReadbackStatus, "present");
+  assert.deepEqual(witness.traceModelVsLive, {
+    status: "mismatch",
+    mismatchAnchors: ["fresh-a"],
+    maxDelta: 70,
+  });
+  assert.deepEqual(witness.anchors[0], {
+    id: "fresh-a",
+    anchorPixel: { x: 0, y: 0 },
+    samplePixel: { x: 0, y: 0 },
+    predictedRgba8: [221, 143, 84, 255],
+    sampledRgba8: [221, 143, 84, 255],
+    deltaRgba8: [0, 0, 0, 0],
+    maxDelta: 0,
+    status: "match",
+    predictionSource: "live-compositor-input-readback",
+    cpuFinalTraceRgba8: [151, 88, 53, 255],
+    liveCompositorRgba8: [221, 143, 84, 255],
+    traceModelVsLiveDeltaRgba8: [70, 55, 31, 0],
+    traceModelVsLiveMaxDelta: 70,
+    liveCompositorInput: {
+      refLimit: 256,
+      header: { firstRefIndex: 15360, refCount: 256, projectedCount: 256, droppedCount: 0 },
+    },
+  });
+
+  const result = classifyWitnessCapture({
+    pageEvidence: { witness: { traceCanvasParity: witness } },
+    imageAnalysis: { nonblank: true, changedPixelRatio: 1 },
+  });
+  assert.equal(result.findings.some((finding) => finding.owner === "trace-canvas-parity"), false);
+});
