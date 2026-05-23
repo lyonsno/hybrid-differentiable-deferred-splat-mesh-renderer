@@ -1429,6 +1429,9 @@ function buildStreamingCompactRetainedSourceForRuntime({
     forceAnchorOnly: Boolean(forceAnchorOnly),
     allowAnchorOnlyBudgetFallback: Boolean(allowAnchorOnlyBudgetFallback),
     anchorTileCount: sourceTileIndexes.size,
+    // The estimate above already applied the per-splat tile cap. If that
+    // bounded estimate still overflows, the route is genuinely too large for
+    // this projected-ref budget and must not be reclassified as bounded-safe.
   });
   if (compactSourceBudget.shouldThrowProjectedRefBudgetError) {
     throw new Error(

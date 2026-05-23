@@ -99,6 +99,49 @@ test("compact source construction classifies full-scene overflow as a bounded pr
   assert.match(verdict.diagnostic, /bounded presentation source/i);
 });
 
+test("compact source construction keeps already-bounded full-scene overflow as a blocker", () => {
+  const verdict = classifyCompactSourceConstructionBudget({
+    projectedRefs: 20_000_001,
+    maxProjectedRefs: 20_000_000,
+    retainedBudgetRefs: 6_635_520,
+    presentationScope: "full-scene",
+    forceAnchorOnly: false,
+    allowAnchorOnlyBudgetFallback: false,
+    anchorTileCount: 0,
+  });
+
+  assert.equal(verdict.classification, "compact-source-full-scene-overflow");
+  assert.equal(verdict.shouldBoundSplatTileFootprints, false);
+  assert.equal(verdict.shouldThrowProjectedRefBudgetError, true);
+  assert.match(verdict.diagnostic, /would walk dense projected tile refs/i);
+});
+
+test("main classifies the post-bound compact source estimate as hard budget evidence", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const streamingStart = source.indexOf("function buildStreamingCompactRetainedSourceForRuntime");
+  const streamingEnd = source.indexOf("function estimateCompactProjectedTileRefCount");
+
+  assert.ok(streamingStart >= 0, "streaming compact source builder should exist");
+  assert.ok(streamingEnd > streamingStart, "streaming compact source builder slice should be bounded");
+
+  const streamingSource = source.slice(streamingStart, streamingEnd);
+  const estimateStart = streamingSource.indexOf("estimateCompactProjectedTileRefCount");
+  const classifyStart = streamingSource.indexOf("classifyCompactSourceConstructionBudget");
+
+  assert.ok(estimateStart >= 0, "streaming builder should estimate compact projected tile refs");
+  assert.ok(classifyStart > estimateStart, "streaming builder should classify the already-bounded estimate");
+  assert.match(
+    streamingSource.slice(estimateStart, classifyStart),
+    /maxTilesPerSplat/,
+    "the projected-ref estimate should apply maxTilesPerSplat before classification",
+  );
+  assert.doesNotMatch(
+    streamingSource.slice(classifyStart, streamingSource.indexOf("});", classifyStart)),
+    /maxTilesPerSplat/,
+    "the classifier should not reclassify an already-bounded overflow as bounded-safe",
+  );
+});
+
 test("compact source construction keeps anchor-bounded overflow on the retained diagnostic route", () => {
   const verdict = classifyCompactSourceConstructionBudget({
     projectedRefs: 20_000_001,
