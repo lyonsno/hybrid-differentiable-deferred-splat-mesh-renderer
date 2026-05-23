@@ -52,3 +52,43 @@ export interface TileLocalProjectedRefGuardClassification {
 export function classifyTileLocalProjectedRefGuard(
   input?: TileLocalProjectedRefGuardInput
 ): TileLocalProjectedRefGuardClassification;
+
+export interface CompactSourceConstructionBudgetInput {
+  readonly projectedRefs?: number;
+  readonly maxProjectedRefs?: number;
+  readonly retainedBudgetRefs?: number;
+  readonly presentationScope?: string;
+  readonly forceAnchorOnly?: boolean;
+  readonly allowAnchorOnlyBudgetFallback?: boolean;
+  readonly anchorTileCount?: number;
+}
+
+export interface CompactSourceConstructionBudgetClassification {
+  readonly classification:
+    | "compact-source-valid"
+    | "compact-source-anchor-bounded-overflow"
+    | "compact-source-full-scene-overflow"
+    | "compact-source-underinstrumented";
+  readonly guardedQuantity: "compact-source-dense-projected-tile-refs";
+  readonly presentationScope: "full-scene" | "anchor-neighborhood";
+  readonly projectedRefs: number | null;
+  readonly maxProjectedRefs: number | null;
+  readonly retainedBudgetRefs: number | null;
+  readonly anchorTileCount: number | null;
+  readonly projectedOverflow: boolean | null;
+  readonly retainedBudgetWithinProjectedLimit: boolean | null;
+  readonly forceAnchorOnly: boolean;
+  readonly allowAnchorOnlyBudgetFallback: boolean;
+  readonly shouldRestrictToAnchorTiles: boolean;
+  readonly shouldThrowProjectedRefBudgetError: boolean;
+  readonly projectedRefBudgetOverflow: {
+    readonly projectedRefs: number;
+    readonly maxProjectedRefs: number;
+    readonly mode: "diagnostic-retained-handoff";
+  } | null;
+  readonly diagnostic: string;
+}
+
+export function classifyCompactSourceConstructionBudget(
+  input?: CompactSourceConstructionBudgetInput
+): CompactSourceConstructionBudgetClassification;

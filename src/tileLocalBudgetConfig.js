@@ -93,6 +93,60 @@ export function classifyTileLocalProjectedRefGuard(input = {}) {
   };
 }
 
+export function classifyCompactSourceConstructionBudget(input = {}) {
+  const projectedRefs = readNonNegativeFiniteInteger(input.projectedRefs);
+  const maxProjectedRefs = readNonNegativeFiniteInteger(input.maxProjectedRefs);
+  const retainedBudgetRefs = readNonNegativeFiniteInteger(input.retainedBudgetRefs);
+  const anchorTileCount = readNonNegativeFiniteInteger(input.anchorTileCount);
+  const presentationScope = input.presentationScope === "anchor-neighborhood" ? "anchor-neighborhood" : "full-scene";
+  const forceAnchorOnly = input.forceAnchorOnly === true;
+  const allowAnchorOnlyBudgetFallback = input.allowAnchorOnlyBudgetFallback === true;
+  const hasRequiredNumbers = [projectedRefs, maxProjectedRefs, retainedBudgetRefs, anchorTileCount].every(Number.isFinite);
+  const projectedOverflow = hasRequiredNumbers ? projectedRefs > maxProjectedRefs : null;
+  const retainedBudgetWithinProjectedLimit = hasRequiredNumbers ? retainedBudgetRefs <= maxProjectedRefs : null;
+  const hasAnchorTiles = Number.isFinite(anchorTileCount) && anchorTileCount > 0;
+  const shouldRestrictToAnchorTiles = hasRequiredNumbers &&
+    projectedOverflow === true &&
+    hasAnchorTiles &&
+    (forceAnchorOnly || (allowAnchorOnlyBudgetFallback && retainedBudgetWithinProjectedLimit));
+  let classification = "compact-source-underinstrumented";
+
+  if (hasRequiredNumbers && !projectedOverflow) {
+    classification = "compact-source-valid";
+  } else if (shouldRestrictToAnchorTiles) {
+    classification = "compact-source-anchor-bounded-overflow";
+  } else if (hasRequiredNumbers) {
+    classification = "compact-source-full-scene-overflow";
+  }
+
+  return {
+    classification,
+    guardedQuantity: "compact-source-dense-projected-tile-refs",
+    presentationScope,
+    projectedRefs: Number.isFinite(projectedRefs) ? projectedRefs : null,
+    maxProjectedRefs: Number.isFinite(maxProjectedRefs) ? maxProjectedRefs : null,
+    retainedBudgetRefs: Number.isFinite(retainedBudgetRefs) ? retainedBudgetRefs : null,
+    anchorTileCount: Number.isFinite(anchorTileCount) ? anchorTileCount : null,
+    projectedOverflow,
+    retainedBudgetWithinProjectedLimit,
+    forceAnchorOnly,
+    allowAnchorOnlyBudgetFallback,
+    shouldRestrictToAnchorTiles,
+    shouldThrowProjectedRefBudgetError: classification === "compact-source-full-scene-overflow",
+    projectedRefBudgetOverflow: shouldRestrictToAnchorTiles
+      ? {
+          projectedRefs,
+          maxProjectedRefs,
+          mode: "diagnostic-retained-handoff",
+        }
+      : null,
+    diagnostic:
+      classification === "compact-source-full-scene-overflow"
+        ? "full-scene compact source construction would walk dense projected tile refs before retained-list handoff"
+        : "compact source construction is bounded before retained-list handoff or lacks enough evidence to classify",
+  };
+}
+
 function normalizeSearchParams(input) {
   if (input instanceof URLSearchParams) {
     return input;

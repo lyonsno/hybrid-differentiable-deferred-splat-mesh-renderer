@@ -92,3 +92,24 @@ test("requested GPU arena compact source preserves projected overflow diagnostic
     "overflowed compact routes must restrict the streaming pass to anchor tiles instead of scanning every dense tile ref",
   );
 });
+
+test("full-scene compact source rejects unbounded construction before covariance projection", () => {
+  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const compactSourceStart = mainSource.indexOf("function buildCompactRetainedSourceForRuntime");
+  const compactSourceEnd = mainSource.indexOf("function buildStreamingCompactRetainedSourceForRuntime");
+
+  assert.ok(compactSourceStart >= 0, "compact source builder should exist");
+  assert.ok(compactSourceEnd > compactSourceStart, "compact source pre-streaming slice should be bounded");
+
+  const compactSourceSource = mainSource.slice(compactSourceStart, compactSourceEnd);
+  const constructionGuard = compactSourceSource.indexOf("fullSceneConstructionRefUpperBound");
+  const projectionStart = compactSourceSource.indexOf("projectRuntimeSplatsForCompactSource");
+
+  assert.ok(constructionGuard >= 0, "full-scene compact source should expose a construction upper-bound guard");
+  assert.ok(projectionStart > constructionGuard, "construction guard must run before expensive covariance projection");
+  assert.match(
+    compactSourceSource,
+    /projected tile refs exceed budget:[\s\S]*bounded presentation source required before retained handoff/,
+    "the fallback reason must name compact source construction, not retained handoff capacity",
+  );
+});

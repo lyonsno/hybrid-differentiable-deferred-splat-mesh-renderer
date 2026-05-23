@@ -95,6 +95,7 @@ import {
 import { buildDeadSplatElectorLedger } from "./rendererFidelityProbes/deadSplatElectorLedger.js";
 import { buildRetainedToOrderedSurvivalLedger } from "./rendererFidelityProbes/retainedToOrderedSurvivalLedger.js";
 import {
+  classifyCompactSourceConstructionBudget,
   classifyTileLocalProjectedRefGuard,
   formatTileLocalBudgetPair,
   resolveTileLocalBudgetConfig,
@@ -1294,6 +1295,14 @@ function buildCompactRetainedSourceForRuntime({
         anchorTileIndexes: retainedTileIndexes,
       })
     : null;
+  const fullSceneConstructionRefUpperBound = presentationScope === "full-scene" && !useAnchorPrefilter
+    ? attributes.count * tileCount
+    : 0;
+  if (fullSceneConstructionRefUpperBound > maxTileEntries) {
+    throw new Error(
+      `projected tile refs exceed budget: ${fullSceneConstructionRefUpperBound.toLocaleString()} > ${maxTileEntries.toLocaleString()} (full-scene compact source construction upper bound; bounded presentation source required before retained handoff)`
+    );
+  }
   const splats = projectRuntimeSplatsForCompactSource({
     attributes,
     viewProj,
@@ -1394,15 +1403,23 @@ function buildStreamingCompactRetainedSourceForRuntime({
     tileSizePx,
     maxTileEntries,
   });
-  const retainOnlyAnchorTiles = Boolean(forceAnchorOnly) ||
-    (Boolean(allowAnchorOnlyBudgetFallback) && projectedTileRefEstimate > maxTileEntries && retainedCapacity <= maxTileEntries);
-  const projectedRefBudgetOverflow: CompactRetainedSourceForRuntime["projectedRefBudgetOverflow"] = retainOnlyAnchorTiles
-    ? {
-        projectedRefs: maxTileEntries + 1,
-        maxProjectedRefs: maxTileEntries,
-        mode: "diagnostic-retained-handoff",
-      }
-    : null;
+  const compactSourceBudget = classifyCompactSourceConstructionBudget({
+    projectedRefs: projectedTileRefEstimate,
+    maxProjectedRefs: maxTileEntries,
+    retainedBudgetRefs: retainedCapacity,
+    presentationScope: allowAnchorOnlyBudgetFallback ? "anchor-neighborhood" : "full-scene",
+    forceAnchorOnly: Boolean(forceAnchorOnly),
+    allowAnchorOnlyBudgetFallback: Boolean(allowAnchorOnlyBudgetFallback),
+    anchorTileCount: sourceTileIndexes.size,
+  });
+  if (compactSourceBudget.shouldThrowProjectedRefBudgetError) {
+    throw new Error(
+      `projected tile refs exceed budget: ${projectedTileRefEstimate.toLocaleString()} > ${maxTileEntries.toLocaleString()} (compact source construction requires bounded presentation source before retained handoff)`
+    );
+  }
+  const retainOnlyAnchorTiles = compactSourceBudget.shouldRestrictToAnchorTiles;
+  const projectedRefBudgetOverflow: CompactRetainedSourceForRuntime["projectedRefBudgetOverflow"] =
+    compactSourceBudget.projectedRefBudgetOverflow;
   const { ranks, depths } = compactSourceBackToFrontDepthEvidence(attributes, viewMatrix);
   const splatsByIndex = new Map(splats.map((splat) => [splat.splatIndex, splat]));
   const buckets = new Map<number, CompactStreamingTileBucket>();

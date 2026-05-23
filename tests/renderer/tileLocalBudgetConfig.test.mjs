@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   DEFAULT_TILE_LOCAL_BUDGET_CONFIG,
+  classifyCompactSourceConstructionBudget,
   classifyTileLocalProjectedRefGuard,
   resolveTileLocalBudgetConfig,
 } from "../../src/tileLocalBudgetConfig.js";
@@ -74,4 +75,40 @@ test("projected-ref guard classifies exact-route retained handoff by finite capa
   assert.equal(verdict.maxProjectedRefs, 20_000_000);
   assert.equal(`${verdict.projectedRefs} > ${verdict.maxProjectedRefs}`, "20000001 > 20000000");
   assert.equal(verdict.raisesCap, false);
+});
+
+test("compact source construction classifies full-scene overflow before retained handoff", () => {
+  const verdict = classifyCompactSourceConstructionBudget({
+    projectedRefs: 20_000_001,
+    maxProjectedRefs: 20_000_000,
+    retainedBudgetRefs: 6_635_520,
+    presentationScope: "full-scene",
+    forceAnchorOnly: false,
+    allowAnchorOnlyBudgetFallback: false,
+    anchorTileCount: 0,
+  });
+
+  assert.equal(verdict.classification, "compact-source-full-scene-overflow");
+  assert.equal(verdict.projectedOverflow, true);
+  assert.equal(verdict.retainedBudgetWithinProjectedLimit, true);
+  assert.equal(verdict.shouldRestrictToAnchorTiles, false);
+  assert.equal(verdict.shouldThrowProjectedRefBudgetError, true);
+  assert.match(verdict.diagnostic, /source construction/i);
+});
+
+test("compact source construction keeps anchor-bounded overflow on the retained diagnostic route", () => {
+  const verdict = classifyCompactSourceConstructionBudget({
+    projectedRefs: 20_000_001,
+    maxProjectedRefs: 20_000_000,
+    retainedBudgetRefs: 6_635_520,
+    presentationScope: "anchor-neighborhood",
+    forceAnchorOnly: false,
+    allowAnchorOnlyBudgetFallback: true,
+    anchorTileCount: 24,
+  });
+
+  assert.equal(verdict.classification, "compact-source-anchor-bounded-overflow");
+  assert.equal(verdict.shouldRestrictToAnchorTiles, true);
+  assert.equal(verdict.shouldThrowProjectedRefBudgetError, false);
+  assert.equal(verdict.projectedRefBudgetOverflow?.mode, "diagnostic-retained-handoff");
 });
