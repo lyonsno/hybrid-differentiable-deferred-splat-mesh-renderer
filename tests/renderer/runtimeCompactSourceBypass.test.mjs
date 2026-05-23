@@ -53,7 +53,7 @@ test("requested GPU arena compact source preserves projected overflow diagnostic
   );
   assert.match(
     compactSourceSource,
-    /const\s+retainedTileIndexes\s*=\s*useAnchorPrefilter\s*\?\s*presentationTileIndexes\s*:\s*anchorTileIndexes/,
+    /const\s+retainedTileIndexes\s*=\s*useAnchorPrefilter\s*\?\s*presentationTileIndexes\s*:\s*traceAnchorTileIndexes/,
     "dense exact routes must separate traced anchor evidence from the wider retained presentation footprint",
   );
   assert.match(
@@ -78,8 +78,8 @@ test("requested GPU arena compact source preserves projected overflow diagnostic
   );
   assert.match(
     compactSourceSource,
-    /maxCandidatesPerTile:\s*useAnchorPrefilter\s*\?\s*maxRefsPerTile\s*:\s*maxRefsPerTile\s*\*\s*4/,
-    "widened presentation footprint must tighten candidate selection instead of replaying the radius expansion timeout",
+    /selectCompactAnchorCandidateSplatIndexes/,
+    "widened presentation footprint must bound candidate selection instead of replaying the radius expansion timeout",
   );
   assert.doesNotMatch(
     compactSourceSource,
@@ -88,7 +88,7 @@ test("requested GPU arena compact source preserves projected overflow diagnostic
   );
   assert.match(
     compactSourceSource,
-    /onlyTileIndexes:\s*retainOnlyAnchorTiles\s*\?\s*effectiveAnchorTileIndexes\s*:\s*null/,
+    /onlyTileIndexes:\s*retainOnlyAnchorTiles\s*\?\s*sourceTileIndexes\s*:\s*null/,
     "overflowed compact routes must restrict the streaming pass to anchor tiles instead of scanning every dense tile ref",
   );
 });

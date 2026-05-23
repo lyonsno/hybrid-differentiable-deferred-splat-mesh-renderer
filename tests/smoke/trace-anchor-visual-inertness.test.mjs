@@ -16,8 +16,24 @@ test("trace-anchor visual inertness witness preserves whole-frame, crop, and tar
 
   const witness = buildTraceAnchorVisualInertnessWitness({
     variants: [
-      { id: "baseline", title: "No traceAnchors", image: baseline, route: { traceAnchors: "" } },
-      { id: "traced", title: "Dark lacuna traced", image: traced, route: { traceAnchors: "dark-lacunar-hole@2,2" } },
+      {
+        id: "baseline",
+        title: "No traceAnchors",
+        image: baseline,
+        route: {
+          presentationAnchors: "stable-footprint@2,2",
+          traceAnchors: "",
+        },
+      },
+      {
+        id: "traced",
+        title: "Dark lacuna traced",
+        image: traced,
+        route: {
+          presentationAnchors: "stable-footprint@2,2",
+          traceAnchors: "dark-lacunar-hole@2,2",
+        },
+      },
     ],
     target: { id: "dark-lacunar-hole", x: 2, y: 2 },
     cropRadius: 1,
@@ -34,6 +50,9 @@ test("trace-anchor visual inertness witness preserves whole-frame, crop, and tar
   assert.deepEqual(witness.comparisons[0].target.deltaRgba8, [157, 88, 43, 0]);
   assert.equal(witness.comparisons[0].target.rgbLumaDelta, 96);
   assert.equal(witness.comparisons[0].outsideCrop.changedPixels, 1);
+  assert.equal(witness.variants[0].route.presentationAnchors, "stable-footprint@2,2");
+  assert.equal(witness.variants[1].route.presentationAnchors, "stable-footprint@2,2");
+  assert.equal(witness.variants[1].route.traceAnchors, "dark-lacunar-hole@2,2");
   assert.equal(witness.artifacts.fullFrameContactSheet.width, 15);
   assert.equal(witness.artifacts.fullFrameContactSheet.height, 5);
   assert.equal(witness.artifacts.cropContactSheet.width, 9);

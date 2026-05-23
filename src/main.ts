@@ -144,6 +144,8 @@ const TILE_LOCAL_BUDGET_CONFIG = resolveTileLocalBudgetConfig(new URLSearchParam
 const TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX = TILE_LOCAL_BUDGET_CONFIG.tileSizePx;
 const TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE = TILE_LOCAL_BUDGET_CONFIG.maxRefsPerTile;
 const TILE_LOCAL_TRACE_ANCHORS = selectedTileLocalTraceAnchors();
+const TILE_LOCAL_PRESENTATION_ANCHORS = selectedTileLocalPresentationAnchors();
+const TILE_LOCAL_PRESENTATION_SCOPE = selectedTileLocalPresentationScope();
 const TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES = 1;
 const TILE_LOCAL_PROVISIONAL_MAX_SPLATS = 150_000;
 const TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES = 20_000_000;
@@ -208,6 +210,8 @@ interface TileLocalSceneState {
   arenaBackend: "cpu" | "gpu";
   gpuArenaRuntime: GpuTileContributorArenaRuntime | null;
   gpuArenaProjectedContributors: readonly GpuTileContributorArenaProjectedContributor[];
+  presentationAnchors?: readonly PixelTraceAnchor[];
+  presentationScope: TileLocalPresentationScope;
   traceAnchors?: readonly PixelTraceAnchor[];
   perPixelProjectedContributors: TileLocalPrepassBridge["perPixelProjectedContributors"];
   perPixelRetainedContributors: TileLocalPrepassBridge["perPixelRetainedContributors"];
@@ -242,6 +246,8 @@ interface RuntimeFootprintParams {
   readonly minRadiusPx: number;
   readonly nearFadeEndNdc: number;
 }
+
+type TileLocalPresentationScope = "full-scene" | "anchor-neighborhood";
 
 interface PixelTraceAnchor {
   readonly id: string;
@@ -1063,7 +1069,9 @@ function createGpuArenaTileLocalSceneState(
     maxTileEntries: TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES,
     nearFadeEndNdc: footprintParams.nearFadeEndNdc,
     buildProjectionRetentionArena: buildDeterministicGpuTileProjectionRetentionArena,
-    anchors: TILE_LOCAL_TRACE_ANCHORS ?? [],
+    traceAnchors: TILE_LOCAL_TRACE_ANCHORS ?? [],
+    presentationAnchors: TILE_LOCAL_PRESENTATION_ANCHORS ?? [],
+    presentationScope: TILE_LOCAL_PRESENTATION_SCOPE,
   });
   if (compactSource.retainedRecords.length === 0) {
     throw new Error("compact retained source produced no retained contributors for gpu arena runtime");
@@ -1190,6 +1198,8 @@ function createGpuArenaTileLocalSceneState(
     arenaBackend: "gpu",
     gpuArenaRuntime,
     gpuArenaProjectedContributors: compactSource.retainedRecords,
+    presentationAnchors: TILE_LOCAL_PRESENTATION_ANCHORS,
+    presentationScope: TILE_LOCAL_PRESENTATION_SCOPE,
     traceAnchors: TILE_LOCAL_TRACE_ANCHORS,
     perPixelProjectedContributors: compactSource.perPixelProjectedContributors,
     perPixelRetainedContributors: compactSource.perPixelRetainedContributors,
@@ -1225,7 +1235,9 @@ function buildCompactRetainedSourceForRuntime({
   maxTileEntries,
   nearFadeEndNdc,
   buildProjectionRetentionArena,
-  anchors,
+  traceAnchors,
+  presentationAnchors,
+  presentationScope,
 }: {
   readonly attributes: SplatAttributes;
   readonly effectiveOpacities: Float32Array;
@@ -1242,26 +1254,32 @@ function buildCompactRetainedSourceForRuntime({
   readonly maxTileEntries: number;
   readonly nearFadeEndNdc: number;
   readonly buildProjectionRetentionArena: typeof buildDeterministicGpuTileProjectionRetentionArena;
-  readonly anchors: readonly PixelTraceAnchor[];
+  readonly traceAnchors: readonly PixelTraceAnchor[];
+  readonly presentationAnchors: readonly PixelTraceAnchor[];
+  readonly presentationScope: TileLocalPresentationScope;
 }): CompactRetainedSourceForRuntime {
   const tileCount = tileColumns * tileRows;
-  const anchorTileIndexes = compactSourceAnchorTileNeighborhoodIndexes({
-    anchors,
+  const traceAnchorTileIndexes = compactSourceAnchorTileNeighborhoodIndexes({
+    anchors: traceAnchors,
     tileSizePx,
     tileColumns,
     tileRows,
     radiusTiles: COMPACT_SOURCE_ANCHOR_TILE_NEIGHBORHOOD_RADIUS,
   });
+  const presentationSelectorAnchors = presentationAnchors.length > 0 ? presentationAnchors : traceAnchors;
   const presentationTileIndexes = compactSourceAnchorTileNeighborhoodIndexes({
-    anchors,
+    anchors: presentationSelectorAnchors,
     tileSizePx,
     tileColumns,
     tileRows,
     radiusTiles: COMPACT_SOURCE_PRESENTATION_TILE_NEIGHBORHOOD_RADIUS,
   });
   const retainedCapacity = tileCount * maxRefsPerTile;
-  const useAnchorPrefilter = anchorTileIndexes.size > 0 && retainedCapacity <= maxTileEntries && tileCount > 10_000;
-  const retainedTileIndexes = useAnchorPrefilter ? presentationTileIndexes : anchorTileIndexes;
+  const useAnchorPrefilter = presentationScope === "anchor-neighborhood" &&
+    presentationTileIndexes.size > 0 &&
+    retainedCapacity <= maxTileEntries &&
+    tileCount > 10_000;
+  const retainedTileIndexes = useAnchorPrefilter ? presentationTileIndexes : traceAnchorTileIndexes;
   const anchorCandidateSplatIndexes = useAnchorPrefilter
     ? selectCompactAnchorCandidateSplatIndexes({
         attributes,
@@ -1274,7 +1292,6 @@ function buildCompactRetainedSourceForRuntime({
         tileColumns,
         tileRows,
         anchorTileIndexes: retainedTileIndexes,
-        maxCandidatesPerTile: useAnchorPrefilter ? maxRefsPerTile : maxRefsPerTile * 4,
       })
     : null;
   const splats = projectRuntimeSplatsForCompactSource({
@@ -1317,9 +1334,11 @@ function buildCompactRetainedSourceForRuntime({
     maxRefsPerTile,
     maxTileEntries,
     samplesPerAxis: TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES,
-    anchors,
+    anchors: traceAnchors,
     anchorTileIndexes: retainedTileIndexes,
+    traceAnchorTileIndexes: traceAnchorTileIndexes,
     forceAnchorOnly: useAnchorPrefilter,
+    allowAnchorOnlyBudgetFallback: presentationScope === "anchor-neighborhood",
     rendererMetadata,
   });
 }
@@ -1339,7 +1358,9 @@ function buildStreamingCompactRetainedSourceForRuntime({
   samplesPerAxis,
   anchors,
   anchorTileIndexes,
+  traceAnchorTileIndexes,
   forceAnchorOnly,
+  allowAnchorOnlyBudgetFallback,
   rendererMetadata,
 }: {
   readonly splats: RuntimeCompactTileCoverage["splats"];
@@ -1356,12 +1377,15 @@ function buildStreamingCompactRetainedSourceForRuntime({
   readonly samplesPerAxis: number;
   readonly anchors: readonly PixelTraceAnchor[];
   readonly anchorTileIndexes?: ReadonlySet<number> | null;
+  readonly traceAnchorTileIndexes?: ReadonlySet<number> | null;
   readonly forceAnchorOnly?: boolean;
+  readonly allowAnchorOnlyBudgetFallback?: boolean;
   readonly rendererMetadata: Record<string, unknown>;
 }): CompactRetainedSourceForRuntime {
   const tileCount = tileColumns * tileRows;
   const projectedCounts = new Uint32Array(Math.max(0, tileCount));
-  const effectiveAnchorTileIndexes = anchorTileIndexes ?? compactSourceAnchorTileIndexes({ anchors, tileSizePx, tileColumns, tileRows });
+  const sourceTileIndexes = anchorTileIndexes ?? compactSourceAnchorTileIndexes({ anchors, tileSizePx, tileColumns, tileRows });
+  const traceTileIndexes = traceAnchorTileIndexes ?? sourceTileIndexes;
   const retainedCapacity = tileCount * maxRefsPerTile;
   const projectedTileRefEstimate = estimateCompactProjectedTileRefCount({
     splats,
@@ -1370,7 +1394,8 @@ function buildStreamingCompactRetainedSourceForRuntime({
     tileSizePx,
     maxTileEntries,
   });
-  const retainOnlyAnchorTiles = Boolean(forceAnchorOnly) || (projectedTileRefEstimate > maxTileEntries && retainedCapacity <= maxTileEntries);
+  const retainOnlyAnchorTiles = Boolean(forceAnchorOnly) ||
+    (Boolean(allowAnchorOnlyBudgetFallback) && projectedTileRefEstimate > maxTileEntries && retainedCapacity <= maxTileEntries);
   const projectedRefBudgetOverflow: CompactRetainedSourceForRuntime["projectedRefBudgetOverflow"] = retainOnlyAnchorTiles
     ? {
         projectedRefs: maxTileEntries + 1,
@@ -1392,13 +1417,14 @@ function buildStreamingCompactRetainedSourceForRuntime({
     tileSizePx,
     tileColumns,
     samplesPerAxis,
-    onlyTileIndexes: retainOnlyAnchorTiles ? effectiveAnchorTileIndexes : null,
+    onlyTileIndexes: retainOnlyAnchorTiles ? sourceTileIndexes : null,
     onEntry({ splat, tileIndex, tileX, tileY, coverageWeight }) {
       const currentProjectedIndex = projectedIndex;
       projectedIndex += 1;
       projectedCounts[tileIndex] += 1;
-      const shouldRetainTile = !retainOnlyAnchorTiles || effectiveAnchorTileIndexes.has(tileIndex);
-      if (!shouldRetainTile && !effectiveAnchorTileIndexes.has(tileIndex)) {
+      const shouldRetainTile = !retainOnlyAnchorTiles || sourceTileIndexes.has(tileIndex);
+      const shouldTraceTile = traceTileIndexes.has(tileIndex);
+      if (!shouldRetainTile && !shouldTraceTile) {
         return;
       }
       const record = compactCoverageEntryToRuntimeContributor({
@@ -1417,7 +1443,7 @@ function buildStreamingCompactRetainedSourceForRuntime({
         attributes,
         effectiveOpacities,
       });
-      if (effectiveAnchorTileIndexes.has(tileIndex)) {
+      if (shouldTraceTile) {
         anchorProjectedRecords.push(record);
       }
       if (shouldRetainTile) {
@@ -1624,6 +1650,10 @@ function streamCompactProjectedTileRefs({
     readonly coverageWeight: number;
   }) => void;
 }): void {
+  const selectedTileRows = onlyTileIndexes ? compactSourceSelectedTileRows(onlyTileIndexes, tileColumns) : null;
+  if (onlyTileIndexes && !selectedTileRows) {
+    return;
+  }
   for (const splat of splats) {
     const covariance = compactSourceCovariance(splat.covariancePx);
     const tileBounds = compactSourceTileBoundsForSplat({
@@ -1633,58 +1663,34 @@ function streamCompactProjectedTileRefs({
       viewportHeight,
       tileSizePx,
     });
-    if (onlyTileIndexes) {
-      for (const tileIndex of onlyTileIndexes) {
-        const tileX = tileIndex % tileColumns;
-        const tileY = Math.floor(tileIndex / tileColumns);
-        if (
-          tileX < tileBounds.minTileX ||
-          tileX > tileBounds.maxTileX ||
-          tileY < tileBounds.minTileY ||
-          tileY > tileBounds.maxTileY
-        ) {
-          continue;
-        }
-        const tileMinX = tileX * tileSizePx;
-        const tileMinY = tileY * tileSizePx;
-        const tileMaxX = Math.min(viewportWidth, tileMinX + tileSizePx);
-        const tileMaxY = Math.min(viewportHeight, tileMinY + tileSizePx);
-        const coverageWeight = compactSourceTileCoverageWeight({
-          centerPx: splat.centerPx,
-          covariance,
-          tileMinX,
-          tileMinY,
-          tileMaxX,
-          tileMaxY,
-          samplesPerAxis,
-        });
-        if (coverageWeight <= 0) {
-          continue;
-        }
-        onEntry({ splat, tileIndex, tileX, tileY, coverageWeight });
-      }
-      continue;
-    }
-
-    for (let tileY = tileBounds.minTileY; tileY <= tileBounds.maxTileY; tileY += 1) {
-      for (let tileX = tileBounds.minTileX; tileX <= tileBounds.maxTileX; tileX += 1) {
-        const tileMinX = tileX * tileSizePx;
-        const tileMinY = tileY * tileSizePx;
-        const tileMaxX = Math.min(viewportWidth, tileMinX + tileSizePx);
-        const tileMaxY = Math.min(viewportHeight, tileMinY + tileSizePx);
-        const coverageWeight = compactSourceTileCoverageWeight({
-          centerPx: splat.centerPx,
-          covariance,
-          tileMinX,
-          tileMinY,
-          tileMaxX,
-          tileMaxY,
-          samplesPerAxis,
-        });
-        if (coverageWeight <= 0) {
+    const minTileX = selectedTileRows ? Math.max(tileBounds.minTileX, selectedTileRows.minTileX) : tileBounds.minTileX;
+    const maxTileX = selectedTileRows ? Math.min(tileBounds.maxTileX, selectedTileRows.maxTileX) : tileBounds.maxTileX;
+    const minTileY = selectedTileRows ? Math.max(tileBounds.minTileY, selectedTileRows.minTileY) : tileBounds.minTileY;
+    const maxTileY = selectedTileRows ? Math.min(tileBounds.maxTileY, selectedTileRows.maxTileY) : tileBounds.maxTileY;
+    for (let tileY = minTileY; tileY <= maxTileY; tileY += 1) {
+      const rowTileXs = selectedTileRows?.tileXsByRow.get(tileY);
+      const tileXs = rowTileXs ?? compactSourceTileXRange(minTileX, maxTileX);
+      for (const tileX of tileXs) {
+        if (tileX < minTileX || tileX > maxTileX) {
           continue;
         }
         const tileIndex = tileY * tileColumns + tileX;
+        const tileMinX = tileX * tileSizePx;
+        const tileMinY = tileY * tileSizePx;
+        const tileMaxX = Math.min(viewportWidth, tileMinX + tileSizePx);
+        const tileMaxY = Math.min(viewportHeight, tileMinY + tileSizePx);
+        const coverageWeight = compactSourceTileCoverageWeight({
+          centerPx: splat.centerPx,
+          covariance,
+          tileMinX,
+          tileMinY,
+          tileMaxX,
+          tileMaxY,
+          samplesPerAxis,
+        });
+        if (coverageWeight <= 0) {
+          continue;
+        }
         onEntry({ splat, tileIndex, tileX, tileY, coverageWeight });
       }
     }
@@ -1963,7 +1969,6 @@ function selectCompactAnchorCandidateSplatIndexes({
   tileColumns,
   tileRows,
   anchorTileIndexes,
-  maxCandidatesPerTile,
 }: {
   readonly attributes: SplatAttributes;
   readonly viewProj: Float32Array;
@@ -1975,10 +1980,12 @@ function selectCompactAnchorCandidateSplatIndexes({
   readonly tileColumns: number;
   readonly tileRows: number;
   readonly anchorTileIndexes: ReadonlySet<number>;
-  readonly maxCandidatesPerTile: number;
 }): Set<number> {
-  const candidateBuckets = new Map<number, { splatIndex: number; priority: number }[]>();
-  const anchorTiles = [...anchorTileIndexes].filter((tileIndex) => tileIndex >= 0 && tileIndex < tileColumns * tileRows);
+  const selectionBounds = compactSourceSelectedTileBounds(anchorTileIndexes, tileColumns, tileRows, tileSizePx);
+  if (!selectionBounds) {
+    return new Set();
+  }
+  const selected = new Set<number>();
   for (let splatIndex = 0; splatIndex < attributes.count; splatIndex += 1) {
     const centerPx = projectCompactSourceSplatCenterPx(attributes, viewProj, splatIndex, viewportWidth, viewportHeight);
     if (!centerPx) {
@@ -1993,69 +2000,105 @@ function selectCompactAnchorCandidateSplatIndexes({
       splatScale,
       minRadiusPx,
     });
-    for (const tileIndex of anchorTiles) {
-      const tileX = tileIndex % tileColumns;
-      const tileY = Math.floor(tileIndex / tileColumns);
-      const minX = tileX * tileSizePx - marginPx;
-      const minY = tileY * tileSizePx - marginPx;
-      const maxX = (tileX + 1) * tileSizePx + marginPx;
-      const maxY = (tileY + 1) * tileSizePx + marginPx;
-      if (centerPx[0] < minX || centerPx[0] > maxX || centerPx[1] < minY || centerPx[1] > maxY) {
-        continue;
-      }
-      const tileCenterX = tileX * tileSizePx + tileSizePx * 0.5;
-      const tileCenterY = tileY * tileSizePx + tileSizePx * 0.5;
-      const dx = centerPx[0] - tileCenterX;
-      const dy = centerPx[1] - tileCenterY;
-      const opacity = clampCompactSource(attributes.opacities?.[splatIndex] ?? 1, 0, 0.999);
-      const priority = dx * dx + dy * dy - opacity * marginPx * marginPx;
-      const bucket = compactAnchorCandidateBucket(candidateBuckets, tileIndex);
-      compactRetainAnchorCandidate(bucket, { splatIndex, priority }, maxCandidatesPerTile);
+    if (
+      centerPx[0] + marginPx < selectionBounds.minX ||
+      centerPx[0] - marginPx > selectionBounds.maxX ||
+      centerPx[1] + marginPx < selectionBounds.minY ||
+      centerPx[1] - marginPx > selectionBounds.maxY
+    ) {
+      continue;
     }
-  }
-
-  const selected = new Set<number>();
-  for (const bucket of candidateBuckets.values()) {
-    for (const candidate of bucket) {
-      selected.add(candidate.splatIndex);
-    }
+    selected.add(splatIndex);
   }
   return selected;
 }
 
-function compactAnchorCandidateBucket(
-  buckets: Map<number, { splatIndex: number; priority: number }[]>,
-  tileIndex: number,
-): { splatIndex: number; priority: number }[] {
-  let bucket = buckets.get(tileIndex);
-  if (!bucket) {
-    bucket = [];
-    buckets.set(tileIndex, bucket);
+function compactSourceSelectedTileBounds(
+  tileIndexes: ReadonlySet<number>,
+  tileColumns: number,
+  tileRows: number,
+  tileSizePx: number,
+): { minX: number; minY: number; maxX: number; maxY: number } | null {
+  const tileBounds = compactSourceSelectedTileGridBounds(tileIndexes, tileColumns, tileRows);
+  if (!tileBounds) {
+    return null;
   }
-  return bucket;
+  return {
+    minX: tileBounds.minTileX * tileSizePx,
+    minY: tileBounds.minTileY * tileSizePx,
+    maxX: compactClamp(tileBounds.maxTileX + 1, 0, tileColumns) * tileSizePx,
+    maxY: compactClamp(tileBounds.maxTileY + 1, 0, tileRows) * tileSizePx,
+  };
 }
 
-function compactRetainAnchorCandidate(
-  bucket: { splatIndex: number; priority: number }[],
-  candidate: { splatIndex: number; priority: number },
-  limit: number,
-): void {
-  if (bucket.some((existing) => existing.splatIndex === candidate.splatIndex)) {
-    return;
+function compactSourceSelectedTileGridBounds(
+  tileIndexes: ReadonlySet<number>,
+  tileColumns: number,
+  tileRows = Number.POSITIVE_INFINITY,
+): { minTileX: number; minTileY: number; maxTileX: number; maxTileY: number } | null {
+  let minTileX = Number.POSITIVE_INFINITY;
+  let minTileY = Number.POSITIVE_INFINITY;
+  let maxTileX = Number.NEGATIVE_INFINITY;
+  let maxTileY = Number.NEGATIVE_INFINITY;
+  for (const tileIndex of tileIndexes) {
+    if (tileIndex < 0 || tileIndex >= tileColumns * tileRows) {
+      continue;
+    }
+    const tileX = tileIndex % tileColumns;
+    const tileY = Math.floor(tileIndex / tileColumns);
+    minTileX = Math.min(minTileX, tileX);
+    minTileY = Math.min(minTileY, tileY);
+    maxTileX = Math.max(maxTileX, tileX);
+    maxTileY = Math.max(maxTileY, tileY);
   }
-  if (bucket.length < limit) {
-    bucket.push(candidate);
-    return;
+  if (!Number.isFinite(minTileX) || !Number.isFinite(minTileY) || !Number.isFinite(maxTileX) || !Number.isFinite(maxTileY)) {
+    return null;
   }
-  let worstIndex = 0;
-  for (let index = 1; index < bucket.length; index += 1) {
-    if (bucket[index].priority > bucket[worstIndex].priority) {
-      worstIndex = index;
+  return {
+    minTileX: compactClamp(minTileX, 0, Math.max(0, tileColumns - 1)),
+    minTileY: compactClamp(minTileY, 0, Math.max(0, tileRows - 1)),
+    maxTileX: compactClamp(maxTileX, 0, Math.max(0, tileColumns - 1)),
+    maxTileY: compactClamp(maxTileY, 0, Math.max(0, tileRows - 1)),
+  };
+}
+
+function compactSourceSelectedTileRows(
+  tileIndexes: ReadonlySet<number>,
+  tileColumns: number,
+): {
+  readonly minTileX: number;
+  readonly minTileY: number;
+  readonly maxTileX: number;
+  readonly maxTileY: number;
+  readonly tileXsByRow: ReadonlyMap<number, readonly number[]>;
+} | null {
+  const bounds = compactSourceSelectedTileGridBounds(tileIndexes, tileColumns);
+  if (!bounds) {
+    return null;
+  }
+  const tileXsByRow = new Map<number, number[]>();
+  for (const tileIndex of tileIndexes) {
+    const tileX = tileIndex % tileColumns;
+    const tileY = Math.floor(tileIndex / tileColumns);
+    const row = tileXsByRow.get(tileY);
+    if (row) {
+      row.push(tileX);
+    } else {
+      tileXsByRow.set(tileY, [tileX]);
     }
   }
-  if (candidate.priority < bucket[worstIndex].priority) {
-    bucket[worstIndex] = candidate;
+  for (const row of tileXsByRow.values()) {
+    row.sort((left, right) => left - right);
   }
+  return { ...bounds, tileXsByRow };
+}
+
+function compactSourceTileXRange(minTileX: number, maxTileX: number): number[] {
+  const tileXs = [];
+  for (let tileX = minTileX; tileX <= maxTileX; tileX += 1) {
+    tileXs.push(tileX);
+  }
+  return tileXs;
 }
 
 function projectRuntimeSplatsForCompactSource({
@@ -2088,6 +2131,15 @@ function projectRuntimeSplatsForCompactSource({
   const splats: RuntimeCompactTileCoverage["splats"][number][] = [];
   const splatIndexes = candidateSplatIndexes ? [...candidateSplatIndexes].sort((left, right) => left - right) : null;
   const splatIndexCount = splatIndexes?.length ?? attributes.count;
+  const selectedTileBounds = onlyTileIndexes &&
+      tileSizePx !== undefined &&
+      tileColumns !== undefined &&
+      tileRows !== undefined
+    ? compactSourceSelectedTileBounds(onlyTileIndexes, tileColumns, tileRows, tileSizePx)
+    : null;
+  if (onlyTileIndexes && !selectedTileBounds) {
+    return splats;
+  }
   for (let cursor = 0; cursor < splatIndexCount; cursor += 1) {
     const index = splatIndexes?.[cursor] ?? cursor;
     const centerPx = projectCompactSourceSplatCenterPx(attributes, viewProj, index, viewportWidth, viewportHeight);
@@ -2096,10 +2148,8 @@ function projectRuntimeSplatsForCompactSource({
     }
     if (
       onlyTileIndexes &&
-      tileSizePx !== undefined &&
-      tileColumns !== undefined &&
-      tileRows !== undefined &&
-      !compactSourceProjectedCenterMayReachTiles({
+      selectedTileBounds &&
+      !compactSourceProjectedCenterMayReachTileBounds({
         attributes,
         viewProj,
         index,
@@ -2108,10 +2158,7 @@ function projectRuntimeSplatsForCompactSource({
         viewportHeight,
         splatScale,
         minRadiusPx,
-        tileSizePx,
-        tileColumns,
-        tileRows,
-        onlyTileIndexes,
+        selectedTileBounds,
       })
     ) {
       continue;
@@ -2139,7 +2186,7 @@ function projectRuntimeSplatsForCompactSource({
   return splats;
 }
 
-function compactSourceProjectedCenterMayReachTiles({
+function compactSourceProjectedCenterMayReachTileBounds({
   attributes,
   viewProj,
   index,
@@ -2148,10 +2195,7 @@ function compactSourceProjectedCenterMayReachTiles({
   viewportHeight,
   splatScale,
   minRadiusPx,
-  tileSizePx,
-  tileColumns,
-  tileRows,
-  onlyTileIndexes,
+  selectedTileBounds,
 }: {
   readonly attributes: SplatAttributes;
   readonly viewProj: Float32Array;
@@ -2161,10 +2205,7 @@ function compactSourceProjectedCenterMayReachTiles({
   readonly viewportHeight: number;
   readonly splatScale: number;
   readonly minRadiusPx: number;
-  readonly tileSizePx: number;
-  readonly tileColumns: number;
-  readonly tileRows: number;
-  readonly onlyTileIndexes: ReadonlySet<number>;
+  readonly selectedTileBounds: { minX: number; minY: number; maxX: number; maxY: number };
 }): boolean {
   const marginPx = compactSourceApproximateSupportMarginPx({
     attributes,
@@ -2175,21 +2216,12 @@ function compactSourceProjectedCenterMayReachTiles({
     splatScale,
     minRadiusPx,
   });
-  for (const tileIndex of onlyTileIndexes) {
-    if (tileIndex < 0 || tileIndex >= tileColumns * tileRows) {
-      continue;
-    }
-    const tileX = tileIndex % tileColumns;
-    const tileY = Math.floor(tileIndex / tileColumns);
-    const minX = tileX * tileSizePx - marginPx;
-    const minY = tileY * tileSizePx - marginPx;
-    const maxX = (tileX + 1) * tileSizePx + marginPx;
-    const maxY = (tileY + 1) * tileSizePx + marginPx;
-    if (centerPx[0] >= minX && centerPx[0] <= maxX && centerPx[1] >= minY && centerPx[1] <= maxY) {
-      return true;
-    }
-  }
-  return false;
+  return !(
+    centerPx[0] + marginPx < selectedTileBounds.minX ||
+    centerPx[0] - marginPx > selectedTileBounds.maxX ||
+    centerPx[1] + marginPx < selectedTileBounds.minY ||
+    centerPx[1] - marginPx > selectedTileBounds.maxY
+  );
 }
 
 function compactSourceApproximateSupportMarginPx({
@@ -4100,6 +4132,31 @@ function selectedTileLocalUnsafeMode(): boolean {
 function selectedTileLocalTraceAnchors(): readonly PixelTraceAnchor[] | undefined {
   const params = new URLSearchParams(window.location.search);
   const raw = params.get("traceAnchors") ?? params.get("traceAnchor");
+  return parseTileLocalTraceAnchorList(raw);
+}
+
+function selectedTileLocalPresentationAnchors(): readonly PixelTraceAnchor[] | undefined {
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get("presentationAnchors") ??
+    params.get("presentationAnchor") ??
+    params.get("tileLocalPresentationAnchors") ??
+    params.get("tileLocalPresentationAnchor");
+  return parseTileLocalTraceAnchorList(raw);
+}
+
+function selectedTileLocalPresentationScope(): TileLocalPresentationScope {
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get("presentationScope") ??
+    params.get("presentationMode") ??
+    params.get("tileLocalPresentationScope") ??
+    params.get("tileLocalPresentationMode");
+  if (raw === "anchor-neighborhood" || raw === "anchor" || raw === "anchors") {
+    return "anchor-neighborhood";
+  }
+  return "full-scene";
+}
+
+function parseTileLocalTraceAnchorList(raw: string | null): readonly PixelTraceAnchor[] | undefined {
   if (!raw) {
     return undefined;
   }
@@ -4512,6 +4569,9 @@ function exposeTileLocalRuntimeEvidence(
           perPixelProjectedContributors: tileLocalState.perPixelProjectedContributors,
           perPixelRetainedContributors: tileLocalState.perPixelRetainedContributors,
           perPixelFinalColorAccumulation,
+          presentationAnchors: tileLocalState.presentationAnchors,
+          presentationScope: tileLocalState.presentationScope,
+          traceAnchors: tileLocalState.traceAnchors,
           outputTextureReadback: tileLocalState.outputTextureReadback,
           compositorInputReadback: tileLocalState.compositorInputReadback,
           perPixelDeadSplatElectorLedger,

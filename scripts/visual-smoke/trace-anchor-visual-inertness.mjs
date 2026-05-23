@@ -441,17 +441,24 @@ async function loadVariant({ id, title, imagePath, analysisPath }) {
 function routeIdentityFromAnalysis(analysis) {
   const pageEvidence = analysis.pageEvidence ?? {};
   const liveTrace = pageEvidence.witness?.livePixelPatchTrace;
+  const url = new URL(analysis.url ?? "http://invalid/");
   return {
     url: analysis.url,
-    traceAnchors: new URL(analysis.url ?? "http://invalid/").searchParams.get("traceAnchors") ?? "",
-    asset: new URL(analysis.url ?? "http://invalid/").searchParams.get("asset") ?? pageEvidence.assetPath ?? null,
-    witnessView: new URL(analysis.url ?? "http://invalid/").searchParams.get("witnessView") ?? null,
-    requestedRenderer: new URL(analysis.url ?? "http://invalid/").searchParams.get("renderer") ?? null,
+    presentationAnchors: url.searchParams.get("presentationAnchors") ??
+      url.searchParams.get("presentationAnchor") ??
+      url.searchParams.get("tileLocalPresentationAnchors") ??
+      url.searchParams.get("tileLocalPresentationAnchor") ??
+      pageEvidence.tileLocal?.presentationAnchors ??
+      "",
+    traceAnchors: url.searchParams.get("traceAnchors") ?? "",
+    asset: url.searchParams.get("asset") ?? pageEvidence.assetPath ?? null,
+    witnessView: url.searchParams.get("witnessView") ?? null,
+    requestedRenderer: url.searchParams.get("renderer") ?? null,
     effectiveRenderer: pageEvidence.rendererLabel ?? liveTrace?.routeIdentity?.effectiveRenderer ?? null,
-    requestedArenaBackend: new URL(analysis.url ?? "http://invalid/").searchParams.get("arenaBackend") ?? null,
+    requestedArenaBackend: url.searchParams.get("arenaBackend") ?? null,
     effectiveArenaBackend: pageEvidence.arenaRuntime?.effectiveArenaBackend ?? liveTrace?.routeIdentity?.effectiveArenaBackend ?? null,
-    tileSizePx: Number(new URL(analysis.url ?? "http://invalid/").searchParams.get("tileSizePx") ?? pageEvidence.tileLocal?.budget?.tileSizePx ?? NaN) || null,
-    maxRefsPerTile: Number(new URL(analysis.url ?? "http://invalid/").searchParams.get("maxRefsPerTile") ?? pageEvidence.tileLocal?.budget?.maxRefsPerTile ?? NaN) || null,
+    tileSizePx: Number(url.searchParams.get("tileSizePx") ?? pageEvidence.tileLocal?.budget?.tileSizePx ?? NaN) || null,
+    maxRefsPerTile: Number(url.searchParams.get("maxRefsPerTile") ?? pageEvidence.tileLocal?.budget?.maxRefsPerTile ?? NaN) || null,
     viewport: analysis.options?.viewport ?? liveTrace?.routeIdentity?.viewport ?? null,
     backingScale: liveTrace?.routeIdentity?.backingScale ?? null,
     frameId: pageEvidence.tileLocal?.outputTextureReadback?.frameId ?? pageEvidence.tileLocal?.compositorInputReadback?.frameId ?? null,
