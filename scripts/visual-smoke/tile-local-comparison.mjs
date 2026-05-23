@@ -272,10 +272,11 @@ export function isVisualSmokeCaptureReady(pageEvidence = {}, { expectedRendererL
       tileLocal.perPixelFinalColorAccumulation.length > 0;
     const readbackStatus = tileLocal.outputTextureReadback?.status;
     const compositorInputReadbackStatus = tileLocal.compositorInputReadback?.status;
-    if (hasFinalRows && !["present", "blocked"].includes(readbackStatus)) {
+    const hasAnyReadbackSurface = readbackStatus !== undefined || compositorInputReadbackStatus !== undefined;
+    if (hasFinalRows && hasAnyReadbackSurface && !["present", "blocked"].includes(readbackStatus)) {
       return false;
     }
-    if (hasFinalRows && !["present", "blocked"].includes(compositorInputReadbackStatus)) {
+    if (hasFinalRows && hasAnyReadbackSurface && !["present", "blocked"].includes(compositorInputReadbackStatus)) {
       return false;
     }
   }

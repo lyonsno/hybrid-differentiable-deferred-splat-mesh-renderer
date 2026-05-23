@@ -137,6 +137,34 @@ test("tile-local comparison refuses stale cached tile-local output after a skipp
   );
 });
 
+test("tile-local visual readiness does not require optional trace readbacks for current visual frames", () => {
+  const pageEvidence = {
+    ready: true,
+    sourceKind: "scaniverse_ply",
+    splatCount: 94406,
+    rendererLabel: "tile-local-visible-gaussian-compositor",
+    statsText:
+      "1280x720 | 0 fps | renderer: tile-local-visible-gaussian-compositor | tile-local: 80x45 tiles/37590 refs | arena effective: gpu",
+    canvas: { width: 1280, height: 720, clientWidth: 1280, clientHeight: 720 },
+    tileLocalStatus: "current",
+    tileLocal: {
+      status: "current",
+      refs: 37590,
+      perPixelFinalColorAccumulation: [
+        {
+          status: "blocked",
+          blockers: [{ field: "finalColorAccumulation.steps", reason: "diagnostic trace missing contributors" }],
+        },
+      ],
+    },
+  };
+
+  assert.equal(
+    isVisualSmokeCaptureReady(pageEvidence, { expectedRendererLabel: "tile-local-visible" }),
+    true
+  );
+});
+
 test("tile-local comparison preserves initial high-viewport budget skip evidence without stale-cache labeling", () => {
   const pageEvidence = {
     ready: true,

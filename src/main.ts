@@ -153,6 +153,7 @@ const TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES = 20_000_000;
 const COMPACT_SOURCE_SIGMA_RADIUS = 3;
 const COMPACT_SOURCE_ANCHOR_TILE_NEIGHBORHOOD_RADIUS = 2;
 const COMPACT_SOURCE_PRESENTATION_TILE_NEIGHBORHOOD_RADIUS = 5;
+const COMPACT_SOURCE_FULL_SCENE_MAX_TILES_PER_SPLAT = 9;
 const COMPACT_SOURCE_ANCHOR_PREFILTER_MIN_MARGIN_PX = 96;
 const COMPACT_SOURCE_ANCHOR_PREFILTER_MAX_MARGIN_PX = 384;
 const COMPACT_SOURCE_EPSILON = 1e-9;
@@ -1298,11 +1299,24 @@ function buildCompactRetainedSourceForRuntime({
   const fullSceneConstructionRefUpperBound = presentationScope === "full-scene" && !useAnchorPrefilter
     ? attributes.count * tileCount
     : 0;
-  if (fullSceneConstructionRefUpperBound > maxTileEntries) {
+  const fullSceneConstructionBudget = classifyCompactSourceConstructionBudget({
+    projectedRefs: fullSceneConstructionRefUpperBound,
+    maxProjectedRefs: maxTileEntries,
+    retainedBudgetRefs: retainedCapacity,
+    presentationScope,
+    forceAnchorOnly: false,
+    allowAnchorOnlyBudgetFallback: false,
+    anchorTileCount: 0,
+    maxTilesPerSplat: COMPACT_SOURCE_FULL_SCENE_MAX_TILES_PER_SPLAT,
+  });
+  if (fullSceneConstructionBudget.shouldThrowProjectedRefBudgetError) {
     throw new Error(
-      `projected tile refs exceed budget: ${fullSceneConstructionRefUpperBound.toLocaleString()} > ${maxTileEntries.toLocaleString()} (full-scene compact source construction upper bound; bounded presentation source required before retained handoff)`
+      `projected tile refs exceed budget: ${fullSceneConstructionRefUpperBound.toLocaleString()} > ${maxTileEntries.toLocaleString()} (compact source construction remains unbounded; bounded presentation source unavailable before retained handoff)`
     );
   }
+  const fullSceneConstructionMaxTilesPerSplat = fullSceneConstructionBudget.shouldBoundSplatTileFootprints
+    ? COMPACT_SOURCE_FULL_SCENE_MAX_TILES_PER_SPLAT
+    : null;
   const splats = projectRuntimeSplatsForCompactSource({
     attributes,
     viewProj,
@@ -1348,6 +1362,7 @@ function buildCompactRetainedSourceForRuntime({
     traceAnchorTileIndexes: traceAnchorTileIndexes,
     forceAnchorOnly: useAnchorPrefilter,
     allowAnchorOnlyBudgetFallback: presentationScope === "anchor-neighborhood",
+    maxTilesPerSplat: fullSceneConstructionMaxTilesPerSplat,
     rendererMetadata,
   });
 }
@@ -1370,6 +1385,7 @@ function buildStreamingCompactRetainedSourceForRuntime({
   traceAnchorTileIndexes,
   forceAnchorOnly,
   allowAnchorOnlyBudgetFallback,
+  maxTilesPerSplat,
   rendererMetadata,
 }: {
   readonly splats: RuntimeCompactTileCoverage["splats"];
@@ -1389,6 +1405,7 @@ function buildStreamingCompactRetainedSourceForRuntime({
   readonly traceAnchorTileIndexes?: ReadonlySet<number> | null;
   readonly forceAnchorOnly?: boolean;
   readonly allowAnchorOnlyBudgetFallback?: boolean;
+  readonly maxTilesPerSplat?: number | null;
   readonly rendererMetadata: Record<string, unknown>;
 }): CompactRetainedSourceForRuntime {
   const tileCount = tileColumns * tileRows;
@@ -1402,6 +1419,7 @@ function buildStreamingCompactRetainedSourceForRuntime({
     viewportHeight,
     tileSizePx,
     maxTileEntries,
+    maxTilesPerSplat,
   });
   const compactSourceBudget = classifyCompactSourceConstructionBudget({
     projectedRefs: projectedTileRefEstimate,
@@ -1435,6 +1453,7 @@ function buildStreamingCompactRetainedSourceForRuntime({
     tileColumns,
     samplesPerAxis,
     onlyTileIndexes: retainOnlyAnchorTiles ? sourceTileIndexes : null,
+    maxTilesPerSplat,
     onEntry({ splat, tileIndex, tileX, tileY, coverageWeight }) {
       const currentProjectedIndex = projectedIndex;
       projectedIndex += 1;
@@ -1553,12 +1572,14 @@ function estimateCompactProjectedTileRefCount({
   viewportHeight,
   tileSizePx,
   maxTileEntries,
+  maxTilesPerSplat,
 }: {
   readonly splats: RuntimeCompactTileCoverage["splats"];
   readonly viewportWidth: number;
   readonly viewportHeight: number;
   readonly tileSizePx: number;
   readonly maxTileEntries: number;
+  readonly maxTilesPerSplat?: number | null;
 }): number {
   let projectedTileRefs = 0;
   for (const splat of splats) {
@@ -1570,7 +1591,12 @@ function estimateCompactProjectedTileRefCount({
       viewportHeight,
       tileSizePx,
     });
-    projectedTileRefs += (tileBounds.maxTileX - tileBounds.minTileX + 1) * (tileBounds.maxTileY - tileBounds.minTileY + 1);
+    projectedTileRefs += compactSourceBoundedTileRefCount({
+      tileBounds,
+      centerPx: splat.centerPx,
+      tileSizePx,
+      maxTilesPerSplat,
+    });
     if (projectedTileRefs > maxTileEntries) {
       return projectedTileRefs;
     }
@@ -1650,6 +1676,7 @@ function streamCompactProjectedTileRefs({
   tileColumns,
   samplesPerAxis,
   onlyTileIndexes,
+  maxTilesPerSplat,
   onEntry,
 }: {
   readonly splats: RuntimeCompactTileCoverage["splats"];
@@ -1659,6 +1686,7 @@ function streamCompactProjectedTileRefs({
   readonly tileColumns: number;
   readonly samplesPerAxis: number;
   readonly onlyTileIndexes?: ReadonlySet<number> | null;
+  readonly maxTilesPerSplat?: number | null;
   readonly onEntry: (entry: {
     readonly splat: RuntimeCompactTileCoverage["splats"][number];
     readonly tileIndex: number;
@@ -1680,10 +1708,16 @@ function streamCompactProjectedTileRefs({
       viewportHeight,
       tileSizePx,
     });
-    const minTileX = selectedTileRows ? Math.max(tileBounds.minTileX, selectedTileRows.minTileX) : tileBounds.minTileX;
-    const maxTileX = selectedTileRows ? Math.min(tileBounds.maxTileX, selectedTileRows.maxTileX) : tileBounds.maxTileX;
-    const minTileY = selectedTileRows ? Math.max(tileBounds.minTileY, selectedTileRows.minTileY) : tileBounds.minTileY;
-    const maxTileY = selectedTileRows ? Math.min(tileBounds.maxTileY, selectedTileRows.maxTileY) : tileBounds.maxTileY;
+    const boundedTileBounds = compactSourceBoundedTileBounds({
+      tileBounds,
+      centerPx: splat.centerPx,
+      tileSizePx,
+      maxTilesPerSplat,
+    });
+    const minTileX = selectedTileRows ? Math.max(boundedTileBounds.minTileX, selectedTileRows.minTileX) : boundedTileBounds.minTileX;
+    const maxTileX = selectedTileRows ? Math.min(boundedTileBounds.maxTileX, selectedTileRows.maxTileX) : boundedTileBounds.maxTileX;
+    const minTileY = selectedTileRows ? Math.max(boundedTileBounds.minTileY, selectedTileRows.minTileY) : boundedTileBounds.minTileY;
+    const maxTileY = selectedTileRows ? Math.min(boundedTileBounds.maxTileY, selectedTileRows.maxTileY) : boundedTileBounds.maxTileY;
     for (let tileY = minTileY; tileY <= maxTileY; tileY += 1) {
       const rowTileXs = selectedTileRows?.tileXsByRow.get(tileY);
       const tileXs = rowTileXs ?? compactSourceTileXRange(minTileX, maxTileX);
@@ -1712,6 +1746,63 @@ function streamCompactProjectedTileRefs({
       }
     }
   }
+}
+
+function compactSourceBoundedTileRefCount({
+  tileBounds,
+  centerPx,
+  tileSizePx,
+  maxTilesPerSplat,
+}: {
+  readonly tileBounds: {
+    readonly minTileX: number;
+    readonly minTileY: number;
+    readonly maxTileX: number;
+    readonly maxTileY: number;
+  };
+  readonly centerPx: readonly [number, number];
+  readonly tileSizePx: number;
+  readonly maxTilesPerSplat?: number | null;
+}): number {
+  const boundedTileBounds = compactSourceBoundedTileBounds({
+    tileBounds,
+    centerPx,
+    tileSizePx,
+    maxTilesPerSplat,
+  });
+  return (boundedTileBounds.maxTileX - boundedTileBounds.minTileX + 1) *
+    (boundedTileBounds.maxTileY - boundedTileBounds.minTileY + 1);
+}
+
+function compactSourceBoundedTileBounds({
+  tileBounds,
+  centerPx,
+  tileSizePx,
+  maxTilesPerSplat,
+}: {
+  readonly tileBounds: {
+    readonly minTileX: number;
+    readonly minTileY: number;
+    readonly maxTileX: number;
+    readonly maxTileY: number;
+  };
+  readonly centerPx: readonly [number, number];
+  readonly tileSizePx: number;
+  readonly maxTilesPerSplat?: number | null;
+}): typeof tileBounds {
+  const tileLimit = Math.floor(Number(maxTilesPerSplat ?? 0));
+  if (!Number.isFinite(tileLimit) || tileLimit <= 0) {
+    return tileBounds;
+  }
+  const radiusTiles = Math.max(0, Math.floor((Math.sqrt(tileLimit) - 1) / 2));
+  const centerTileX = compactClamp(Math.floor(centerPx[0] / tileSizePx), tileBounds.minTileX, tileBounds.maxTileX);
+  const centerTileY = compactClamp(Math.floor(centerPx[1] / tileSizePx), tileBounds.minTileY, tileBounds.maxTileY);
+  return {
+    minTileX: Math.max(tileBounds.minTileX, centerTileX - radiusTiles),
+    minTileY: Math.max(tileBounds.minTileY, centerTileY - radiusTiles),
+    maxTileX: Math.min(tileBounds.maxTileX, centerTileX + radiusTiles),
+    maxTileY: Math.min(tileBounds.maxTileY, centerTileY + radiusTiles),
+  };
 }
 
 function compactSourceCovariance(covariancePx: RuntimeCompactTileCoverage["splats"][number]["covariancePx"]): {

@@ -93,7 +93,7 @@ test("requested GPU arena compact source preserves projected overflow diagnostic
   );
 });
 
-test("full-scene compact source rejects unbounded construction before covariance projection", () => {
+test("full-scene compact source bounds construction before covariance projection", () => {
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const compactSourceStart = mainSource.indexOf("function buildCompactRetainedSourceForRuntime");
   const compactSourceEnd = mainSource.indexOf("function buildStreamingCompactRetainedSourceForRuntime");
@@ -102,14 +102,21 @@ test("full-scene compact source rejects unbounded construction before covariance
   assert.ok(compactSourceEnd > compactSourceStart, "compact source pre-streaming slice should be bounded");
 
   const compactSourceSource = mainSource.slice(compactSourceStart, compactSourceEnd);
-  const constructionGuard = compactSourceSource.indexOf("fullSceneConstructionRefUpperBound");
+  const constructionGuard = compactSourceSource.indexOf("fullSceneConstructionBudget");
+  const constructionBound = compactSourceSource.indexOf("fullSceneConstructionMaxTilesPerSplat");
   const projectionStart = compactSourceSource.indexOf("projectRuntimeSplatsForCompactSource");
 
-  assert.ok(constructionGuard >= 0, "full-scene compact source should expose a construction upper-bound guard");
-  assert.ok(projectionStart > constructionGuard, "construction guard must run before expensive covariance projection");
+  assert.ok(constructionGuard >= 0, "full-scene compact source should expose a construction budget decision");
+  assert.ok(constructionBound > constructionGuard, "full-scene budget pressure should produce a per-splat tile bound");
+  assert.ok(projectionStart > constructionBound, "construction bound must be decided before expensive covariance projection");
   assert.match(
     compactSourceSource,
-    /projected tile refs exceed budget:[\s\S]*bounded presentation source required before retained handoff/,
-    "the fallback reason must name compact source construction, not retained handoff capacity",
+    /maxTilesPerSplat:\s*fullSceneConstructionMaxTilesPerSplat/,
+    "bounded full-scene construction must pass the per-splat tile bound into compact source row construction",
+  );
+  assert.doesNotMatch(
+    compactSourceSource,
+    /full-scene compact source construction upper bound/,
+    "full-scene pressure should no longer force plate fallback before trying a bounded GPU source",
   );
 });

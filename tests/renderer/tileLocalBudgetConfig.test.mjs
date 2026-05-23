@@ -77,7 +77,7 @@ test("projected-ref guard classifies exact-route retained handoff by finite capa
   assert.equal(verdict.raisesCap, false);
 });
 
-test("compact source construction classifies full-scene overflow before retained handoff", () => {
+test("compact source construction classifies full-scene overflow as a bounded presentation source", () => {
   const verdict = classifyCompactSourceConstructionBudget({
     projectedRefs: 20_000_001,
     maxProjectedRefs: 20_000_000,
@@ -86,14 +86,17 @@ test("compact source construction classifies full-scene overflow before retained
     forceAnchorOnly: false,
     allowAnchorOnlyBudgetFallback: false,
     anchorTileCount: 0,
+    maxTilesPerSplat: 9,
   });
 
-  assert.equal(verdict.classification, "compact-source-full-scene-overflow");
+  assert.equal(verdict.classification, "compact-source-full-scene-bounded-overflow");
   assert.equal(verdict.projectedOverflow, true);
   assert.equal(verdict.retainedBudgetWithinProjectedLimit, true);
   assert.equal(verdict.shouldRestrictToAnchorTiles, false);
-  assert.equal(verdict.shouldThrowProjectedRefBudgetError, true);
-  assert.match(verdict.diagnostic, /source construction/i);
+  assert.equal(verdict.shouldBoundSplatTileFootprints, true);
+  assert.equal(verdict.maxTilesPerSplat, 9);
+  assert.equal(verdict.shouldThrowProjectedRefBudgetError, false);
+  assert.match(verdict.diagnostic, /bounded presentation source/i);
 });
 
 test("compact source construction keeps anchor-bounded overflow on the retained diagnostic route", () => {

@@ -98,6 +98,7 @@ export function classifyCompactSourceConstructionBudget(input = {}) {
   const maxProjectedRefs = readNonNegativeFiniteInteger(input.maxProjectedRefs);
   const retainedBudgetRefs = readNonNegativeFiniteInteger(input.retainedBudgetRefs);
   const anchorTileCount = readNonNegativeFiniteInteger(input.anchorTileCount);
+  const maxTilesPerSplat = readNonNegativeFiniteInteger(input.maxTilesPerSplat);
   const presentationScope = input.presentationScope === "anchor-neighborhood" ? "anchor-neighborhood" : "full-scene";
   const forceAnchorOnly = input.forceAnchorOnly === true;
   const allowAnchorOnlyBudgetFallback = input.allowAnchorOnlyBudgetFallback === true;
@@ -105,16 +106,25 @@ export function classifyCompactSourceConstructionBudget(input = {}) {
   const projectedOverflow = hasRequiredNumbers ? projectedRefs > maxProjectedRefs : null;
   const retainedBudgetWithinProjectedLimit = hasRequiredNumbers ? retainedBudgetRefs <= maxProjectedRefs : null;
   const hasAnchorTiles = Number.isFinite(anchorTileCount) && anchorTileCount > 0;
+  const hasFullSceneBound = presentationScope === "full-scene" &&
+    Number.isFinite(maxTilesPerSplat) &&
+    maxTilesPerSplat > 0;
   const shouldRestrictToAnchorTiles = hasRequiredNumbers &&
     projectedOverflow === true &&
     hasAnchorTiles &&
     (forceAnchorOnly || (allowAnchorOnlyBudgetFallback && retainedBudgetWithinProjectedLimit));
+  const shouldBoundSplatTileFootprints = hasRequiredNumbers &&
+    projectedOverflow === true &&
+    !shouldRestrictToAnchorTiles &&
+    hasFullSceneBound;
   let classification = "compact-source-underinstrumented";
 
   if (hasRequiredNumbers && !projectedOverflow) {
     classification = "compact-source-valid";
   } else if (shouldRestrictToAnchorTiles) {
     classification = "compact-source-anchor-bounded-overflow";
+  } else if (shouldBoundSplatTileFootprints) {
+    classification = "compact-source-full-scene-bounded-overflow";
   } else if (hasRequiredNumbers) {
     classification = "compact-source-full-scene-overflow";
   }
@@ -127,11 +137,13 @@ export function classifyCompactSourceConstructionBudget(input = {}) {
     maxProjectedRefs: Number.isFinite(maxProjectedRefs) ? maxProjectedRefs : null,
     retainedBudgetRefs: Number.isFinite(retainedBudgetRefs) ? retainedBudgetRefs : null,
     anchorTileCount: Number.isFinite(anchorTileCount) ? anchorTileCount : null,
+    maxTilesPerSplat: Number.isFinite(maxTilesPerSplat) ? maxTilesPerSplat : null,
     projectedOverflow,
     retainedBudgetWithinProjectedLimit,
     forceAnchorOnly,
     allowAnchorOnlyBudgetFallback,
     shouldRestrictToAnchorTiles,
+    shouldBoundSplatTileFootprints,
     shouldThrowProjectedRefBudgetError: classification === "compact-source-full-scene-overflow",
     projectedRefBudgetOverflow: shouldRestrictToAnchorTiles
       ? {
@@ -143,6 +155,8 @@ export function classifyCompactSourceConstructionBudget(input = {}) {
     diagnostic:
       classification === "compact-source-full-scene-overflow"
         ? "full-scene compact source construction would walk dense projected tile refs before retained-list handoff"
+        : classification === "compact-source-full-scene-bounded-overflow"
+          ? "full-scene compact source construction uses a bounded presentation source before retained-list handoff"
         : "compact source construction is bounded before retained-list handoff or lacks enough evidence to classify",
   };
 }

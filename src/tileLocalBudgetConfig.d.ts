@@ -61,12 +61,14 @@ export interface CompactSourceConstructionBudgetInput {
   readonly forceAnchorOnly?: boolean;
   readonly allowAnchorOnlyBudgetFallback?: boolean;
   readonly anchorTileCount?: number;
+  readonly maxTilesPerSplat?: number;
 }
 
 export interface CompactSourceConstructionBudgetClassification {
   readonly classification:
     | "compact-source-valid"
     | "compact-source-anchor-bounded-overflow"
+    | "compact-source-full-scene-bounded-overflow"
     | "compact-source-full-scene-overflow"
     | "compact-source-underinstrumented";
   readonly guardedQuantity: "compact-source-dense-projected-tile-refs";
@@ -75,11 +77,13 @@ export interface CompactSourceConstructionBudgetClassification {
   readonly maxProjectedRefs: number | null;
   readonly retainedBudgetRefs: number | null;
   readonly anchorTileCount: number | null;
+  readonly maxTilesPerSplat: number | null;
   readonly projectedOverflow: boolean | null;
   readonly retainedBudgetWithinProjectedLimit: boolean | null;
   readonly forceAnchorOnly: boolean;
   readonly allowAnchorOnlyBudgetFallback: boolean;
   readonly shouldRestrictToAnchorTiles: boolean;
+  readonly shouldBoundSplatTileFootprints: boolean;
   readonly shouldThrowProjectedRefBudgetError: boolean;
   readonly projectedRefBudgetOverflow: {
     readonly projectedRefs: number;
