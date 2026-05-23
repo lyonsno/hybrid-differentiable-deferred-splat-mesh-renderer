@@ -322,6 +322,71 @@ test("tile-local runtime budget exposes per-anchor live tile identities for trac
   assert.equal(gpuLiveMirrorSummary.runtimeRefBudget.anchorTileEvidence[0].identityMatch, true);
 });
 
+test("tile-local runtime budget compares live identities against final accumulation when available", () => {
+  const runtimeIdentities = [
+    { splatIndex: 10, originalId: 100 },
+    { splatIndex: 11, originalId: 101 },
+    { splatIndex: 12, originalId: 102 },
+    { splatIndex: 13, originalId: 103 },
+  ];
+  const summary = summarizeTileLocalDiagnostics({
+    debugMode: "final-color",
+    plan: {
+      tileColumns: 8,
+      tileRows: 8,
+      tileSizePx: 16,
+      maxTileRefs: 4,
+    },
+    tileEntryCount: runtimeIdentities.length,
+    tileHeaders: Uint32Array.from([
+      0, 4, 4, 0,
+      ...new Array((8 * 8 - 1) * 4).fill(0),
+    ]),
+    tileRefCustody: {
+      projectedTileEntryCount: 11,
+      retainedTileEntryCount: runtimeIdentities.length,
+      evictedTileEntryCount: 7,
+      cappedTileCount: 1,
+      saturatedRetainedTileCount: 1,
+      maxProjectedRefsPerTile: 11,
+      maxRetainedRefsPerTile: 4,
+      headerRefCount: runtimeIdentities.length,
+      headerAccountingMatches: true,
+    },
+    tileCoverageWeights: Float32Array.from([1, 1, 1, 1]),
+    alphaParamData: new Float32Array(8),
+    runtimeContributors: runtimeIdentities.map((identity) => ({
+      ...identity,
+      tileIndex: 0,
+    })),
+    traceCapacityEvidence: {
+      anchors: [
+        {
+          id: "fresh-a",
+          x: 7,
+          y: 9,
+          tileAddress: { tileSizePx: 16, tileX: 0, tileY: 0, tileIndex: 0, localX: 7, localY: 9 },
+          projectedCount: 11,
+          retainedCount: 2,
+          finalStepCount: 4,
+          retainedIdentities: runtimeIdentities.slice(0, 2),
+          finalIdentities: runtimeIdentities,
+        },
+      ],
+    },
+  });
+
+  assert.equal(summary.runtimeRefBudget.classification, "no-capacity-discrepancy");
+  const [anchor] = summary.runtimeRefBudget.anchorTileEvidence;
+  assert.equal(anchor.traceComparisonIdentitySource, "final");
+  assert.equal(anchor.identityMatch, true);
+  assert.equal(anchor.runtimeConsumedCount, 4);
+  assert.equal(anchor.traceRetainedCount, 2);
+  assert.equal(anchor.traceFinalIdentitySample.length, 4);
+  assert.deepEqual(anchor.missingTraceIdentitySample, []);
+  assert.deepEqual(anchor.extraRuntimeIdentitySample, []);
+});
+
 test("tile-local runtime budget repairs legacy runtime headers with trace projected pressure", () => {
   const retainedIdentities = Array.from({ length: 4 }, (_, index) => ({
     splatIndex: 100 + index,
@@ -382,6 +447,57 @@ test("tile-local runtime budget repairs legacy runtime headers with trace projec
   });
   assert.equal(anchor.runtimeConsumedCount, 4);
   assert.equal(anchor.identityMatch, true);
+});
+
+test("tile-local diagnostics classify anchor-only retained footprints as presentation blockers", () => {
+  const tileColumns = 216;
+  const tileRows = 120;
+  const tileCount = tileColumns * tileRows;
+  const tileHeaders = new Uint32Array(tileCount * 4);
+  for (let tileIndex = 0; tileIndex < 150; tileIndex += 1) {
+    tileHeaders[tileIndex * 4] = tileIndex * 256;
+    tileHeaders[tileIndex * 4 + 1] = 256;
+    tileHeaders[tileIndex * 4 + 2] = 900;
+    tileHeaders[tileIndex * 4 + 3] = 1;
+  }
+
+  const summary = summarizeTileLocalDiagnostics({
+    debugMode: "final-color",
+    plan: {
+      tileColumns,
+      tileRows,
+      tileSizePx: 16,
+      maxTileRefs: 38_400,
+    },
+    tileEntryCount: 38_400,
+    tileHeaders,
+    tileRefCustody: {
+      projectedTileEntryCount: 20_000_001,
+      retainedTileEntryCount: 38_400,
+      evictedTileEntryCount: 19_961_601,
+      cappedTileCount: 150,
+      saturatedRetainedTileCount: 150,
+      maxProjectedRefsPerTile: 1422,
+      maxRetainedRefsPerTile: 256,
+      headerRefCount: 38_400,
+      headerAccountingMatches: true,
+    },
+    tileCoverageWeights: Float32Array.from({ length: 38_400 }, () => 0.05),
+    alphaParamData: Float32Array.from({ length: 38_400 * 8 }, (_, index) => index % 4 === 0 ? 0.48 : 0),
+    traceCapacityEvidence: {
+      anchors: [
+        { id: "fresh-a", projectedCount: 690, retainedCount: 242, finalStepCount: 256 },
+        { id: "fresh-f", projectedCount: 909, retainedCount: 245, finalStepCount: 256 },
+      ],
+    },
+  });
+
+  assert.equal(summary.presentationFootprint.classification, "anchor-neighborhood-only-output");
+  assert.equal(summary.presentationFootprint.frameTileCount, 25_920);
+  assert.equal(summary.presentationFootprint.nonEmptyTileCount, 150);
+  assert.equal(summary.presentationFootprint.nonEmptyTileRatio < 0.01, true);
+  assert.equal(summary.presentationFootprint.anchorFinalRowsPresent, true);
+  assert.match(summary.presentationFootprint.blocker, /compact rows are present/i);
 });
 
 test("tile-local diagnostic shader branches are debug-only and preserve final color as mode zero", () => {

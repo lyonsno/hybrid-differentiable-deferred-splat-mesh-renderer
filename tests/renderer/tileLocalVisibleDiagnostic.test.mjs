@@ -65,7 +65,9 @@ test("tile-local visible compositor consumes the retained tile header count with
 
   assert.doesNotMatch(shader, /min\(header\.y,\s*32u\)/);
   assert.match(shader, /let tileCapacity = tile_ref_capacity_per_tile\(\)/);
-  assert.match(shader, /let refLimit = min\(max\(header\.y,\s*gpuScatterCount\),\s*tileCapacity\)/);
+  assert.match(shader, /let liveRefCount = select\(min\(gpuScatterCount,\s*tileCapacity\),\s*header\.y,\s*header\.y > 0u\)/);
+  assert.match(shader, /let flatRemainingRefs = frame\.maxTileRefs - min\(header\.x,\s*frame\.maxTileRefs\)/);
+  assert.match(shader, /let refLimit = min\(liveRefCount,\s*flatRemainingRefs\)/);
   assert.match(source, /visible-compositor cap/);
   assert.match(source, /visibleCompositedRefLimit/);
 });
@@ -120,4 +122,24 @@ test("tile-local texture presenter samples the offscreen tile-local output", () 
   assert.match(shader, /textureSample/);
   assert.match(shader, /@vertex/);
   assert.match(shader, /@fragment/);
+});
+
+test("tile-local visible smoke exposes anchor-local output texture readback before presentation", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+
+  assert.match(source, /outputTextureReadback/);
+  assert.match(source, /copyTextureToBuffer/);
+  assert.match(source, /halfFloatToNumber/);
+  assert.match(source, /outputTextureRgba8/);
+});
+
+test("tile-local visible smoke reconstructs anchor colors from live compositor input buffers", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const runtimeSource = readFileSync(new URL("../../src/gpuTileContributorArenaRuntime.ts", import.meta.url), "utf8");
+
+  assert.match(source, /compositorInputReadback/);
+  assert.match(source, /copyBufferToBuffer/);
+  assert.match(source, /liveCompositorRgba8/);
+  assert.match(source, /pixelCoverageWeight/);
+  assert.match(runtimeSource, /GPUBufferUsage\.COPY_SRC/);
 });

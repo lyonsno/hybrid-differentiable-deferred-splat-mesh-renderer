@@ -266,6 +266,19 @@ export function isVisualSmokeCaptureReady(pageEvidence = {}, { expectedRendererL
   if (expectedRendererLabel && !rendererLabelMatches(metrics.rendererLabel, expectedRendererLabel)) return false;
   if (expectedRendererLabel.includes("tile-local") && tileLocalPresentationIsStale(metrics)) return false;
   if (expectedRendererLabel.includes("tile-local") && metrics.tileLocal.refs <= 0) return false;
+  if (expectedRendererLabel.includes("tile-local")) {
+    const tileLocal = pageEvidence.tileLocal && typeof pageEvidence.tileLocal === "object" ? pageEvidence.tileLocal : {};
+    const hasFinalRows = Array.isArray(tileLocal.perPixelFinalColorAccumulation) &&
+      tileLocal.perPixelFinalColorAccumulation.length > 0;
+    const readbackStatus = tileLocal.outputTextureReadback?.status;
+    const compositorInputReadbackStatus = tileLocal.compositorInputReadback?.status;
+    if (hasFinalRows && !["present", "blocked"].includes(readbackStatus)) {
+      return false;
+    }
+    if (hasFinalRows && !["present", "blocked"].includes(compositorInputReadbackStatus)) {
+      return false;
+    }
+  }
   return true;
 }
 

@@ -3,7 +3,9 @@ import { Buffer } from "node:buffer";
 import { test } from "node:test";
 import { deflateSync } from "node:zlib";
 
+import { withTimeout } from "../../scripts/visual-smoke/async-timeout.mjs";
 import { classifySmokeEvidence } from "../../scripts/visual-smoke/evidence.mjs";
+import { buildTimeoutFailureCapture } from "../../scripts/visual-smoke/failure-telemetry.mjs";
 import { analyzePngBuffer } from "../../scripts/visual-smoke/png-analysis.mjs";
 
 test("PNG analysis treats a uniform capture as blank", () => {
@@ -57,6 +59,54 @@ test("evidence classification accepts nonblank real Scaniverse splat captures", 
   assert.equal(result.realSplatEvidence, true);
   assert.equal(result.closeable, true);
   assert.match(result.summary, /scaniverse/i);
+});
+
+test("timeout failure capture preserves exact-route smoke telemetry", () => {
+  const capture = buildTimeoutFailureCapture({
+    capture: {
+      id: "final-color",
+      title: "Visible tile-local compositor",
+      expectedRendererLabel: "tile-local-visible",
+      url:
+        "http://127.0.0.1:5188/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&tileSizePx=16&maxRefsPerTile=256&arenaBackend=gpu&renderer=tile-local-visible",
+    },
+    error: new Error("Timed out waiting for rendered visual smoke evidence (tile-local-visible)"),
+    elapsedMs: 30000,
+    pageEvidence: {
+      sourceKind: "real_scaniverse_ply",
+      rendererLabel: "plate",
+      statsText:
+        "3456x1916 | 60 fps | renderer: plate | tile-local disabled: projected tile refs exceed budget: 20000001 > 20000000",
+      tileLocalDiagnostics: { debugMode: "final-color", tileRefs: { total: 6635520 } },
+      witness: { view: "dessert-porous-close", anchors: ["fresh-a"] },
+      canvas: { width: 3456, height: 1916, clientWidth: 3456, clientHeight: 1916 },
+    },
+    imageAnalysis: { nonblank: true, changedPixelRatio: 0.21 },
+    screenshotPath: "smoke-reports/exact-route/final-color-timeout.png",
+    consoleMessages: [{ type: "warning", text: "slow tile-local route" }],
+    pageErrors: [],
+  });
+
+  assert.equal(capture.id, "final-color");
+  assert.equal(capture.classification.harnessPassed, false);
+  assert.equal(capture.captureFailure.kind, "visual-smoke-timeout");
+  assert.equal(capture.captureFailure.expectedRendererLabel, "tile-local-visible");
+  assert.equal(capture.captureFailure.elapsedMs, 30000);
+  assert.equal(capture.captureFailure.telemetry.smoke, true);
+  assert.equal(capture.captureFailure.telemetry.witness, true);
+  assert.equal(capture.captureFailure.telemetry.tileLocalDiagnostics, true);
+  assert.equal(capture.captureFailure.telemetry.statsText, true);
+  assert.equal(capture.captureFailure.telemetry.screenshot, true);
+  assert.match(capture.pageEvidence.statsText, /20000001 > 20000000/);
+  assert.equal(capture.pageEvidence.witness.view, "dessert-porous-close");
+  assert.equal(capture.screenshotPath, "smoke-reports/exact-route/final-color-timeout.png");
+});
+
+test("async timeout wrapper rejects stuck page evidence collection", async () => {
+  await assert.rejects(
+    withTimeout(new Promise(() => {}), 5, "page evidence collection timed out"),
+    /page evidence collection timed out/
+  );
 });
 
 function makePng(width, height, pixelAt) {

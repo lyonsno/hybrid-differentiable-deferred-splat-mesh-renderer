@@ -31,6 +31,68 @@ export function formatTileLocalBudgetPair(config) {
   return `${config.tileSizePx}px/${config.maxRefsPerTile} refs`;
 }
 
+export function classifyTileLocalProjectedRefGuard(input = {}) {
+  const projectedRefs = readNonNegativeFiniteInteger(input.projectedRefs);
+  const maxProjectedRefs = readNonNegativeFiniteInteger(input.maxProjectedRefs);
+  const viewportWidth = readPositiveFiniteInteger(input.viewportWidth);
+  const viewportHeight = readPositiveFiniteInteger(input.viewportHeight);
+  const tileSizePx = readPositiveFiniteInteger(input.tileSizePx);
+  const maxRefsPerTile = readPositiveFiniteInteger(input.maxRefsPerTile);
+  const requestedArenaBackend = input.requestedArenaBackend ?? "unknown";
+  const handoffSource = input.handoffSource ?? (requestedArenaBackend === "gpu" ? "retained-list" : "dense-projected-list");
+  const hasRequiredNumbers = [
+    projectedRefs,
+    maxProjectedRefs,
+    viewportWidth,
+    viewportHeight,
+    tileSizePx,
+    maxRefsPerTile,
+  ].every(Number.isFinite);
+  const tileColumns = hasRequiredNumbers ? Math.ceil(viewportWidth / tileSizePx) : null;
+  const tileRows = hasRequiredNumbers ? Math.ceil(viewportHeight / tileSizePx) : null;
+  const tileCount = hasRequiredNumbers ? tileColumns * tileRows : null;
+  const retainedBudgetRefs = hasRequiredNumbers ? tileCount * maxRefsPerTile : null;
+  const projectedOverflow = hasRequiredNumbers ? projectedRefs > maxProjectedRefs : null;
+  const retainedBudgetWithinProjectedLimit = hasRequiredNumbers ? retainedBudgetRefs <= maxProjectedRefs : null;
+  const retainedHandoff = handoffSource === "retained-list";
+  let classification = "guard-underinstrumented";
+
+  if (hasRequiredNumbers && !projectedOverflow) {
+    classification = "guard-valid-blocker";
+  } else if (hasRequiredNumbers && retainedHandoff && retainedBudgetWithinProjectedLimit) {
+    classification = "guard-misapplied-to-retained-handoff";
+  } else if (hasRequiredNumbers && retainedHandoff) {
+    classification = "guard-needs-dynamic-budget";
+  } else if (hasRequiredNumbers) {
+    classification = "guard-valid-blocker";
+  }
+
+  return {
+    classification,
+    guardedQuantity: "dense-projected-tile-refs",
+    handoffQuantity: retainedHandoff ? "per-tile-retained-ref-capacity" : "dense-projected-tile-refs",
+    requestedArenaBackend,
+    handoffSource,
+    projectedRefs: Number.isFinite(projectedRefs) ? projectedRefs : null,
+    maxProjectedRefs: Number.isFinite(maxProjectedRefs) ? maxProjectedRefs : null,
+    projectedOverflow,
+    tileSizePx: Number.isFinite(tileSizePx) ? tileSizePx : null,
+    maxRefsPerTile: Number.isFinite(maxRefsPerTile) ? maxRefsPerTile : null,
+    viewportWidth: Number.isFinite(viewportWidth) ? viewportWidth : null,
+    viewportHeight: Number.isFinite(viewportHeight) ? viewportHeight : null,
+    tileColumns,
+    tileRows,
+    tileCount,
+    retainedBudgetRefs,
+    retainedBudgetWithinProjectedLimit,
+    raisesCap: false,
+    diagnostic:
+      classification === "guard-misapplied-to-retained-handoff"
+        ? "projected-ref guard is accounting dense projected refs before retained-list handoff capacity"
+        : "projected-ref guard classification preserves the existing cap and requires explicit policy before routing",
+  };
+}
+
 function normalizeSearchParams(input) {
   if (input instanceof URLSearchParams) {
     return input;
@@ -46,6 +108,22 @@ function readPositiveInteger(value, label) {
     return `${label} must be a positive integer`;
   }
   return Number(value);
+}
+
+function readPositiveFiniteInteger(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) {
+    return Number.NaN;
+  }
+  return Math.floor(number);
+}
+
+function readNonNegativeFiniteInteger(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0) {
+    return Number.NaN;
+  }
+  return Math.floor(number);
 }
 
 function fallbackConfig(invalidReason) {

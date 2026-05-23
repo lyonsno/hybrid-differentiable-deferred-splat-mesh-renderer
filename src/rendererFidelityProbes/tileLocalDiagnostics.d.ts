@@ -26,6 +26,7 @@ export interface TileLocalDiagnosticSummaryInput {
       readonly retainedCount?: number;
       readonly finalStepCount?: number;
       readonly retainedIdentities?: readonly TileLocalRuntimeIdentity[];
+      readonly finalIdentities?: readonly TileLocalRuntimeIdentity[];
     }[];
   };
 }
@@ -65,8 +66,13 @@ export interface TileLocalRuntimeAnchorTileEvidence {
   readonly runtimeTileHeader: TileLocalRuntimeTileHeaderSummary;
   readonly runtimeConsumedCount: number;
   readonly traceRetainedIdentityHash: string;
+  readonly traceFinalIdentityHash: string;
+  readonly traceComparisonIdentitySource: "final" | "retained";
+  readonly traceComparisonIdentityHash: string;
   readonly runtimeConsumedIdentityHash: string;
   readonly traceRetainedIdentitySample: readonly TileLocalRuntimeIdentity[];
+  readonly traceFinalIdentitySample: readonly TileLocalRuntimeIdentity[];
+  readonly traceComparisonIdentitySample: readonly TileLocalRuntimeIdentity[];
   readonly runtimeConsumedIdentitySample: readonly TileLocalRuntimeIdentity[];
   readonly missingTraceIdentitySample: readonly TileLocalRuntimeIdentity[];
   readonly extraRuntimeIdentitySample: readonly TileLocalRuntimeIdentity[];
@@ -107,7 +113,21 @@ export interface TileLocalDiagnosticSummary {
       readonly retainedCount: number;
       readonly finalStepCount: number;
       readonly retainedIdentities: readonly TileLocalRuntimeIdentity[];
+      readonly finalIdentities: readonly TileLocalRuntimeIdentity[];
     }[];
+  };
+  readonly presentationFootprint: {
+    readonly classification:
+      | "anchor-neighborhood-only-output"
+      | "frame-footprint-present"
+      | "no-retained-output"
+      | "telemetry-insufficient";
+    readonly frameTileCount: number;
+    readonly nonEmptyTileCount: number;
+    readonly nonEmptyTileRatio: number;
+    readonly retainedRefCount: number;
+    readonly anchorFinalRowsPresent: boolean;
+    readonly blocker: string;
   };
   readonly retentionAudit: TileRetentionAudit | null;
   readonly coverageWeight: {
