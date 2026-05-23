@@ -197,7 +197,7 @@ async function main() {
     }
     await page.waitForTimeout(options.settleMs);
 
-    const rawPageEvidence = await collectPageEvidenceWithTimeout(page);
+    const rawPageEvidence = await collectPageEvidenceWithTimeout(page, timeoutMs);
     let pageEvidence = {
       ...rawPageEvidence,
       ...extractTileLocalPageMetrics(rawPageEvidence),
@@ -374,10 +374,7 @@ async function runStaticDessertWitness({ browser, options, baseUrl, reportDir, a
 
 async function runOperatorWitnessLoop({ browser, options, baseUrl, reportDir, analysisPath, reportPath, generatedAt }) {
   const plan = buildOperatorWitnessLoopPlan(baseUrl, { timeoutMs: options.timeoutMs });
-  const captures = [];
-  for (const capture of plan) {
-    captures.push(await captureVisualSmoke({ browser, options, capture, reportDir }));
-  }
+  const captures = await captureOperatorWitnessSession({ browser, options, plan, reportDir });
   const contactSheetPath = await writeOperatorWitnessContactSheet({
     captures,
     appRoot: options.appRoot,
@@ -402,6 +399,157 @@ async function runOperatorWitnessLoop({ browser, options, baseUrl, reportDir, an
     captures,
     classification,
   };
+}
+
+async function captureOperatorWitnessSession({ browser, options, plan, reportDir }) {
+  if (plan.length === 0) {
+    return [];
+  }
+
+  const timeoutMs = Math.max(...plan.map((capture) => capture.timeoutMs ?? options.timeoutMs));
+  const consoleMessages = [];
+  const pageErrors = [];
+  const page = await browser.newPage({
+    viewport: options.viewport,
+    deviceScaleFactor: options.deviceScaleFactor,
+  });
+  page.on("console", (message) => consoleMessages.push({ type: message.type(), text: message.text() }));
+  page.on("pageerror", (error) => pageErrors.push(error.stack || error.message));
+  let canvas;
+
+  try {
+    await page.goto(plan[0].url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+    canvas = page.locator("canvas").first();
+    await canvas.waitFor({ state: "attached", timeout: timeoutMs });
+    await waitForVisualSmokeCaptureReady(page, plan[0].expectedRendererLabel, timeoutMs);
+
+    const captures = [];
+    for (const capture of plan) {
+      const captureResult = await captureOperatorWitnessFrame({
+        page,
+        canvas,
+        options,
+        capture,
+        reportDir,
+        consoleMessages,
+        pageErrors,
+      });
+      captures.push(captureResult);
+      if (captureResult.captureFailure) {
+        break;
+      }
+    }
+    return captures;
+  } catch (error) {
+    if (!isRecoverableVisualSmokeTimeout(error)) {
+      throw error;
+    }
+    return [await captureTimeoutFailureWithRoute({
+      page,
+      canvas,
+      options,
+      capture: plan[0],
+      reportDir,
+      error: normalizeVisualSmokeTimeoutError(error, timeoutMs),
+      consoleMessages,
+      pageErrors,
+    })];
+  } finally {
+    await page.close();
+  }
+}
+
+async function captureOperatorWitnessFrame({
+  page,
+  canvas,
+  options,
+  capture,
+  reportDir,
+  consoleMessages,
+  pageErrors,
+}) {
+  const timeoutMs = capture.timeoutMs ?? options.timeoutMs;
+  try {
+    const viewRevision = await applyOperatorWitnessView(page, capture.witnessView ?? "default", timeoutMs);
+    await waitForVisualSmokeCaptureReady(page, capture.expectedRendererLabel, timeoutMs, {
+      operatorWitness: {
+        witnessView: capture.witnessView ?? "default",
+        minRevision: viewRevision,
+      },
+    });
+    await page.waitForTimeout(options.settleMs);
+    if (Array.isArray(capture.interactions) && capture.interactions.length > 0) {
+      const interactionRevision = await applyCaptureInteractions({ page, canvas, interactions: capture.interactions, timeoutMs });
+      await waitForVisualSmokeCaptureReady(page, capture.expectedRendererLabel, timeoutMs, interactionRevision !== null
+        ? {
+            operatorWitness: {
+              witnessView: capture.witnessView ?? "default",
+              minRevision: interactionRevision,
+            },
+          }
+        : {});
+      await page.waitForTimeout(options.settleMs);
+    }
+
+    const rawPageEvidence = await collectPageEvidenceWithTimeout(page, timeoutMs);
+    let pageEvidence = {
+      ...rawPageEvidence,
+      ...extractTileLocalPageMetrics(rawPageEvidence),
+    };
+    const clip = await canvasClip(canvas, capture.timeoutCanvasClipMs);
+    await page.addStyleTag({
+      content: "#stats,[data-visual-smoke-ignore]{visibility:hidden!important}",
+    });
+    const screenshotPath = path.join(reportDir, `${capture.id}.png`);
+    const screenshot = await page.screenshot({
+      path: screenshotPath,
+      clip,
+      timeout: capture.timeoutScreenshotMs ?? TIMEOUT_SCREENSHOT_MS,
+    });
+    const imageAnalysis = analyzePngBuffer(screenshot, options.imageThresholds);
+    pageEvidence = attachTraceCanvasParityEvidence({
+      pageEvidence,
+      screenshot,
+      url: capture.url,
+      viewport: options.viewport,
+    });
+    const classification = classifySmokeEvidence({
+      pageEvidence,
+      imageAnalysis,
+      requireRealSplat: options.requireRealSplat,
+    });
+    const witnessDiagnostics = classifyWitnessCapture({
+      pageEvidence,
+      imageAnalysis,
+      smokeClassification: classification,
+    });
+
+    return {
+      ...capture,
+      screenshotPath: path.relative(options.appRoot, screenshotPath),
+      routeIdentity: routeIdentityFromCapture(capture, pageEvidence, options),
+      pageEvidence,
+      imageAnalysis,
+      classification,
+      witnessDiagnostics,
+      consoleMessages: [...consoleMessages],
+      pageErrors: [...pageErrors],
+    };
+  } catch (error) {
+    if (!isRecoverableVisualSmokeTimeout(error)) {
+      throw error;
+    }
+    return await captureTimeoutFailureWithRoute({
+      page,
+      canvas,
+      options,
+      capture,
+      reportDir,
+      error: normalizeVisualSmokeTimeoutError(error, timeoutMs),
+      consoleMessages,
+      pageErrors,
+    });
+  }
 }
 
 async function captureVisualSmoke({ browser, options, capture, reportDir }) {
@@ -514,8 +662,69 @@ async function captureTimeoutFailureWithRoute({
   };
 }
 
-async function applyCaptureInteractions({ page, canvas, interactions }) {
-  const box = await canvas.boundingBox();
+async function applyOperatorWitnessView(page, witnessView, timeoutMs) {
+  const result = await withTimeout(
+    page.evaluate((mode) => {
+      const setter = globalThis.__MESH_SPLAT_SET_WITNESS_VIEW__;
+      if (typeof setter !== "function") {
+        return { applied: false, reason: "missing __MESH_SPLAT_SET_WITNESS_VIEW__" };
+      }
+      return setter(mode);
+    }, witnessView),
+    timeoutMs,
+    `operator witness view switch timed out after ${timeoutMs}ms`
+  );
+  if (!result || result.applied !== true) {
+    throw new Error(`Operator witness view switch failed: ${result?.reason ?? "unknown failure"}`);
+  }
+  return Number.isFinite(result.revision) ? result.revision : 0;
+}
+
+async function applyCaptureInteractions({ page, canvas, interactions, timeoutMs = 30000 }) {
+  let appliedRevision = null;
+  let handledByHook = true;
+  for (const interaction of interactions) {
+    const revision = await applyOperatorWitnessInteraction({ page, interaction, timeoutMs });
+    if (revision === null) {
+      handledByHook = false;
+      break;
+    }
+    appliedRevision = Math.max(appliedRevision ?? revision, revision);
+  }
+  if (appliedRevision !== null && handledByHook) {
+    return appliedRevision;
+  }
+  return await withTimeout(
+    runCaptureInteractions({ page, canvas, interactions, timeoutMs }),
+    timeoutMs,
+    `operator witness interactions timed out after ${timeoutMs}ms`
+  );
+}
+
+async function applyOperatorWitnessInteraction({ page, interaction, timeoutMs }) {
+  const result = await withTimeout(
+    page.evaluate((captureInteraction) => {
+      const applyInteraction = globalThis.__MESH_SPLAT_APPLY_WITNESS_INTERACTION__;
+      if (typeof applyInteraction !== "function") {
+        return { applied: false, reason: "missing __MESH_SPLAT_APPLY_WITNESS_INTERACTION__" };
+      }
+      return applyInteraction(captureInteraction);
+    }, interaction),
+    timeoutMs,
+    `operator witness interaction hook timed out after ${timeoutMs}ms`
+  );
+  if (!result || result.applied !== true) {
+    return null;
+  }
+  return Number.isFinite(result.revision) ? result.revision : 0;
+}
+
+async function runCaptureInteractions({ page, canvas, interactions, timeoutMs }) {
+  const box = await withTimeout(
+    canvas.boundingBox(),
+    timeoutMs,
+    `operator witness interaction canvas lookup timed out after ${timeoutMs}ms`
+  );
   if (!box) {
     throw new Error("Canvas is not visible, so operator witness interactions cannot run");
   }
@@ -577,7 +786,7 @@ async function captureTimeoutFailure({ page, canvas, options, capture, reportDir
   });
 }
 
-async function waitForVisualSmokeCaptureReady(page, expectedRendererLabel, timeoutMs) {
+async function waitForVisualSmokeCaptureReady(page, expectedRendererLabel, timeoutMs, readiness = {}) {
   const startedAt = Date.now();
   let lastEvidence = {};
   while (Date.now() - startedAt < timeoutMs) {
@@ -596,7 +805,10 @@ async function waitForVisualSmokeCaptureReady(page, expectedRendererLabel, timeo
       ...rawEvidence,
       ...extractTileLocalPageMetrics(rawEvidence),
     };
-    if (isVisualSmokeCaptureReady(lastEvidence, { expectedRendererLabel })) {
+    if (
+      isVisualSmokeCaptureReady(lastEvidence, { expectedRendererLabel }) &&
+      operatorWitnessReadinessMatches(lastEvidence, readiness.operatorWitness)
+    ) {
       return lastEvidence;
     }
     await page.waitForTimeout(100);
@@ -611,6 +823,22 @@ async function waitForVisualSmokeCaptureReady(page, expectedRendererLabel, timeo
   error.lastEvidence = lastEvidence;
   error.elapsedMs = Date.now() - startedAt;
   throw error;
+}
+
+function operatorWitnessReadinessMatches(pageEvidence, expectation) {
+  if (!expectation) {
+    return true;
+  }
+  const witness = pageEvidence.operatorWitness && typeof pageEvidence.operatorWitness === "object"
+    ? pageEvidence.operatorWitness
+    : {};
+  if (expectation.witnessView && witness.witnessView !== expectation.witnessView) {
+    return false;
+  }
+  if (Number.isFinite(expectation.minRevision) && !(Number(witness.revision) >= expectation.minRevision)) {
+    return false;
+  }
+  return true;
 }
 
 function attachTraceCanvasParityEvidence({ pageEvidence, screenshot, url, viewport }) {
@@ -666,6 +894,30 @@ function gitIdentityForPath(cwd) {
 
 function isVisualSmokeTimeoutError(error) {
   return error?.name === "VisualSmokeTimeoutError";
+}
+
+function isRecoverableVisualSmokeTimeout(error) {
+  if (isVisualSmokeTimeoutError(error)) {
+    return true;
+  }
+  if (error?.name === "TimeoutError") {
+    return true;
+  }
+  return typeof error?.message === "string" && /\b(?:timed out|Timeout \d+ms exceeded)\b/.test(error.message);
+}
+
+function normalizeVisualSmokeTimeoutError(error, timeoutMs) {
+  if (isVisualSmokeTimeoutError(error)) {
+    return error;
+  }
+  const normalized = new Error(error?.message ?? `visual smoke capture timed out after ${timeoutMs}ms`);
+  normalized.name = "VisualSmokeTimeoutError";
+  normalized.elapsedMs = Number.isFinite(error?.elapsedMs) ? error.elapsedMs : timeoutMs;
+  normalized.lastEvidence = error?.lastEvidence;
+  if (error?.stack) {
+    normalized.stack = error.stack;
+  }
+  return normalized;
 }
 
 async function collectPageEvidence(page) {
@@ -1314,7 +1566,7 @@ function routeIdentityFromCapture(capture, pageEvidence, options) {
     captureId: capture.id,
     evidenceRole: capture.evidenceRole || "operator-visual",
     assetPath: url.searchParams.get("asset") || pageEvidence.assetPath || null,
-    witnessView: url.searchParams.get("witnessView") || url.searchParams.get("view") || "default",
+    witnessView: capture.witnessView || url.searchParams.get("witnessView") || url.searchParams.get("view") || "default",
     renderer: url.searchParams.get("renderer") || pageEvidence.rendererLabel || null,
     arenaBackend: url.searchParams.get("arenaBackend") || pageEvidence.arenaRuntime?.requestedArenaBackend || null,
     effectiveArenaBackend: pageEvidence.arenaRuntime?.effectiveArenaBackend || null,

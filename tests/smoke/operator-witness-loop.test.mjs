@@ -25,13 +25,24 @@ test("operator witness loop plan captures whole render before close crops and in
     ]
   );
   assert.equal(plan[0].url, `${BASE_URL}&renderer=tile-local-visible`);
-  assert.match(plan[1].url, /witnessView=dessert-close/);
-  assert.match(plan[2].url, /witnessView=dessert-porous-close/);
+  assert.deepEqual(
+    plan.map((capture) => capture.witnessView),
+    ["default", "dessert-close", "dessert-porous-close", "dessert-porous-close", "dessert-porous-close"]
+  );
   assert.ok(plan.every((capture) => capture.timeoutMs === 15000));
   assert.ok(plan.every((capture) => capture.timeoutCanvasClipMs === 1500));
   assert.ok(plan.every((capture) => capture.timeoutScreenshotMs === 2500));
   assert.deepEqual(plan[3].interactions, [{ type: "drag", button: "left", dx: -120, dy: 0 }]);
   assert.deepEqual(plan[4].interactions, [{ type: "drag", button: "left", dx: 120, dy: 0 }]);
+});
+
+test("operator witness loop plan keeps one canonical page route for warmed captures", () => {
+  const plan = buildOperatorWitnessLoopPlan(BASE_URL);
+
+  assert.deepEqual(
+    [...new Set(plan.map((capture) => capture.url))],
+    [`${BASE_URL}&renderer=tile-local-visible`]
+  );
 });
 
 test("operator witness loop plan keeps trace diagnostics out of the visual route", () => {
@@ -171,18 +182,103 @@ test("visual smoke CLI exposes an operator witness loop batch mode", () => {
 
 test("visual smoke CLI routes both initial and post-interaction readiness timeouts into reports", () => {
   const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
-  const initialWait = source.indexOf("await waitForVisualSmokeCaptureReady(page, capture.expectedRendererLabel, timeoutMs);");
-  const interactionWait = source.indexOf(
-    "await waitForVisualSmokeCaptureReady(page, capture.expectedRendererLabel, timeoutMs);",
-    initialWait + 1
-  );
-  const catchStart = source.indexOf("} catch (error) {", initialWait);
-  const routedFailure = source.indexOf("captureTimeoutFailureWithRoute", catchStart);
+  const frameStart = source.indexOf("async function captureOperatorWitnessFrame");
+  const frameEnd = source.indexOf("async function captureVisualSmoke", frameStart);
+  const frameSource = source.slice(frameStart, frameEnd);
+  const initialWait = frameSource.indexOf("await waitForVisualSmokeCaptureReady(page, capture.expectedRendererLabel, timeoutMs, {");
+  const interactionWait = frameSource.indexOf("const interactionRevision = await applyCaptureInteractions", initialWait + 1);
+  const catchStart = frameSource.indexOf("} catch (error) {", initialWait);
+  const routedFailure = frameSource.indexOf("captureTimeoutFailureWithRoute", catchStart);
 
   assert.ok(initialWait > 0);
   assert.ok(interactionWait > initialWait);
   assert.ok(catchStart > interactionWait);
   assert.ok(routedFailure > catchStart);
+});
+
+test("operator witness frame collection uses the capture timeout instead of the 1s generic evidence cap", () => {
+  const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
+  const frameStart = source.indexOf("async function captureOperatorWitnessFrame");
+  const frameEnd = source.indexOf("async function captureVisualSmoke", frameStart);
+  const frameSource = source.slice(frameStart, frameEnd);
+
+  assert.match(frameSource, /collectPageEvidenceWithTimeout\(page, timeoutMs\)/);
+});
+
+test("operator witness frame screenshots are bounded by the capture screenshot timeout", () => {
+  const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
+  const frameStart = source.indexOf("async function captureOperatorWitnessFrame");
+  const frameEnd = source.indexOf("async function captureVisualSmoke", frameStart);
+  const frameSource = source.slice(frameStart, frameEnd);
+
+  assert.match(
+    frameSource,
+    /page\.screenshot\(\{\s*path: screenshotPath,\s*clip,\s*timeout: capture\.timeoutScreenshotMs \?\? TIMEOUT_SCREENSHOT_MS,\s*\}\)/
+  );
+});
+
+test("operator witness harness timeouts are routed into failure captures", () => {
+  const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
+  const frameStart = source.indexOf("async function captureOperatorWitnessFrame");
+  const frameEnd = source.indexOf("async function captureVisualSmoke", frameStart);
+  const frameSource = source.slice(frameStart, frameEnd);
+
+  assert.match(frameSource, /if \(!isRecoverableVisualSmokeTimeout\(error\)\) \{/);
+  assert.match(frameSource, /error: normalizeVisualSmokeTimeoutError\(error, timeoutMs\),/);
+});
+
+test("operator witness initial page readiness timeouts produce a first-capture failure report", () => {
+  const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
+  const sessionStart = source.indexOf("async function captureOperatorWitnessSession");
+  const sessionEnd = source.indexOf("async function captureOperatorWitnessFrame", sessionStart);
+  const sessionSource = source.slice(sessionStart, sessionEnd);
+
+  assert.match(sessionSource, /canvas = page\.locator\("canvas"\)\.first\(\);/);
+  assert.match(sessionSource, /captureTimeoutFailureWithRoute\(\{/);
+  assert.match(sessionSource, /capture: plan\[0\],/);
+  assert.match(sessionSource, /error: normalizeVisualSmokeTimeoutError\(error, timeoutMs\),/);
+});
+
+test("operator witness interactions bound their canvas lookup by the capture timeout", () => {
+  const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
+  const frameStart = source.indexOf("async function captureOperatorWitnessFrame");
+  const frameEnd = source.indexOf("async function captureVisualSmoke", frameStart);
+  const frameSource = source.slice(frameStart, frameEnd);
+  const interactionStart = source.indexOf("async function applyCaptureInteractions");
+  const interactionEnd = source.indexOf("async function captureTimeoutFailure", interactionStart);
+  const interactionSource = source.slice(interactionStart, interactionEnd);
+
+  assert.match(frameSource, /applyCaptureInteractions\(\{ page, canvas, interactions: capture\.interactions, timeoutMs \}\)/);
+  assert.match(
+    interactionSource,
+    /withTimeout\(\s*canvas\.boundingBox\(\),\s*timeoutMs,\s*`operator witness interaction canvas lookup timed out after \$\{timeoutMs\}ms`\s*\)/
+  );
+  assert.match(
+    interactionSource,
+    /withTimeout\(\s*runCaptureInteractions\(\{ page, canvas, interactions, timeoutMs \}\),\s*timeoutMs,\s*`operator witness interactions timed out after \$\{timeoutMs\}ms`\s*\)/
+  );
+});
+
+test("operator witness interactions use the app-side camera hook before mouse fallback", () => {
+  const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
+  const interactionStart = source.indexOf("async function applyCaptureInteractions");
+  const interactionEnd = source.indexOf("async function captureTimeoutFailure", interactionStart);
+  const interactionSource = source.slice(interactionStart, interactionEnd);
+  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+
+  assert.match(interactionSource, /applyOperatorWitnessInteraction\(\{ page, interaction, timeoutMs \}\)/);
+  assert.match(interactionSource, /if \(appliedRevision !== null && handledByHook\) \{/);
+  assert.match(mainSource, /__MESH_SPLAT_APPLY_WITNESS_INTERACTION__/);
+});
+
+test("operator witness session stops after a timeout capture to avoid racing the same page", () => {
+  const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
+  const sessionStart = source.indexOf("async function captureOperatorWitnessSession");
+  const sessionEnd = source.indexOf("async function captureOperatorWitnessFrame", sessionStart);
+  const sessionSource = source.slice(sessionStart, sessionEnd);
+
+  assert.match(sessionSource, /const captureResult = await captureOperatorWitnessFrame\(\{/);
+  assert.match(sessionSource, /if \(captureResult\.captureFailure\) \{\s*break;\s*\}/);
 });
 
 function witnessCapture(

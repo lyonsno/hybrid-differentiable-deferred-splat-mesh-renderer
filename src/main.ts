@@ -10,6 +10,8 @@ import {
   createCamera,
   getProjectionMatrix,
   getViewMatrix,
+  panCamera,
+  rotateCameraView,
   updateCamera,
 } from "./camera.js";
 import { handleDoubleClickPivot } from "./clickToPivot.js";
@@ -435,10 +437,91 @@ async function main() {
   let fpsAccum = 0;
   let displayFps = 0;
   let gpuTimings: Map<string, number> = new Map();
+  let operatorWitnessViewMode: RealScaniverseWitnessViewMode = REAL_SCANIVERSE_WITNESS_VIEW;
+  let operatorWitnessRevision = 0;
 
   statsEl.textContent = "Loading real Scaniverse splats...";
   const assetPath = selectedSplatAssetPath();
   let activeScene: ActiveSplatScene | null = null;
+
+  const runtimeWindow = window as unknown as {
+    __MESH_SPLAT_SET_WITNESS_VIEW__?: (mode: string) => {
+      applied: boolean;
+      witnessView?: RealScaniverseWitnessViewMode;
+      revision?: number;
+      reason?: string;
+    };
+    __MESH_SPLAT_APPLY_WITNESS_INTERACTION__?: (interaction: {
+      type?: string;
+      button?: string;
+      dx?: number;
+      dy?: number;
+    }) => {
+      applied: boolean;
+      witnessView?: RealScaniverseWitnessViewMode;
+      revision?: number;
+      reason?: string;
+    };
+  };
+  runtimeWindow.__MESH_SPLAT_SET_WITNESS_VIEW__ = (mode: string) => {
+    if (shapeWitnessFixtureId !== null) {
+      return { applied: false, reason: "operator witness view switching is only available for real Scaniverse smoke" };
+    }
+    if (!activeScene) {
+      return { applied: false, reason: "scene is not loaded" };
+    }
+    const nextMode = normalizeOperatorWitnessViewMode(mode);
+    configureCameraForSplatBounds(cam, activeScene.attributes.bounds);
+    applyRealScaniverseWitnessView(cam, activeScene.attributes.bounds, nextMode);
+    updateCamera(cam, 0);
+    activeScene.sortState.needsSort = true;
+    if (activeScene.tileLocalState) {
+      activeScene.tileLocalState.needsDispatch = true;
+    }
+    operatorWitnessViewMode = nextMode;
+    operatorWitnessRevision++;
+    requestFrame();
+    return {
+      applied: true,
+      witnessView: operatorWitnessViewMode,
+      revision: operatorWitnessRevision,
+    };
+  };
+  runtimeWindow.__MESH_SPLAT_APPLY_WITNESS_INTERACTION__ = (interaction) => {
+    if (shapeWitnessFixtureId !== null) {
+      return { applied: false, reason: "operator witness interactions are only available for real Scaniverse smoke" };
+    }
+    if (!activeScene) {
+      return { applied: false, reason: "scene is not loaded" };
+    }
+    if (!interaction || interaction.type !== "drag") {
+      return { applied: false, reason: `unsupported operator witness interaction: ${interaction?.type ?? "unknown"}` };
+    }
+    const dx = Number(interaction.dx ?? 0);
+    const dy = Number(interaction.dy ?? 0);
+    if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
+      return { applied: false, reason: "operator witness drag delta must be finite" };
+    }
+
+    const button = interaction.button === "middle" || interaction.button === "right" ? interaction.button : "left";
+    if (button === "middle" || button === "right") {
+      panCamera(cam, dx, dy, canvas.clientWidth || canvas.width || 1, canvas.clientHeight || canvas.height || 1);
+    } else {
+      rotateCameraView(cam, dx, dy);
+    }
+    updateCamera(cam, 0);
+    activeScene.sortState.needsSort = true;
+    if (activeScene.tileLocalState) {
+      activeScene.tileLocalState.needsDispatch = true;
+    }
+    operatorWitnessRevision++;
+    requestFrame();
+    return {
+      applied: true,
+      witnessView: operatorWitnessViewMode,
+      revision: operatorWitnessRevision,
+    };
+  };
 
   async function updateSceneLoadStage(label: string): Promise<void> {
     statsEl.textContent = label;
@@ -943,7 +1026,12 @@ async function main() {
       now,
       width,
       height,
-      scene.attributes.colors
+      scene.attributes.colors,
+      {
+        witnessView: operatorWitnessViewMode,
+        revision: operatorWitnessRevision,
+        frameSerial,
+      }
     );
 
     if (shouldContinueRendering({
@@ -4235,6 +4323,13 @@ function selectedRealScaniverseWitnessViewMode(): RealScaniverseWitnessViewMode 
   return "default";
 }
 
+function normalizeOperatorWitnessViewMode(mode: string): RealScaniverseWitnessViewMode {
+  if (mode === "dessert-close" || mode === "dessert-porous-close") {
+    return mode;
+  }
+  return "default";
+}
+
 function selectedTileLocalUnsafeMode(): boolean {
   const params = new URLSearchParams(window.location.search);
   return params.has("tileLocalUnsafe") || params.get("tileLocalBudget") === "unsafe";
@@ -4540,7 +4635,12 @@ function exposeTileLocalRuntimeEvidence(
   nowMs: number,
   viewportWidth: number,
   viewportHeight: number,
-  sourceColors: Float32Array
+  sourceColors: Float32Array,
+  operatorWitness?: {
+    readonly witnessView: RealScaniverseWitnessViewMode;
+    readonly revision: number;
+    readonly frameSerial: number;
+  }
 ): void {
   const runtimeWindow = window as unknown as {
     __MESH_SPLAT_SMOKE__?: Record<string, unknown>;
@@ -4670,6 +4770,7 @@ function exposeTileLocalRuntimeEvidence(
     tileLocalDisabledReason,
     tileLocalLastSkipReason,
     arenaRuntime,
+    operatorWitness,
     tileLocal: tileLocalState && diagnostics
       ? {
           status: tileLocalStatus,

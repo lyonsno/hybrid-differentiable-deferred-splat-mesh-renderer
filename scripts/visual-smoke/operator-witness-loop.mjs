@@ -165,16 +165,13 @@ function visualCapture(baseUrl, { id, title, evidenceRole, witnessView, timeoutM
   scrubVisualRoute(url);
   applyCanonicalOperatorVisualRoute(url);
   url.searchParams.set("renderer", "tile-local-visible");
-  if (witnessView) {
-    url.searchParams.set("witnessView", witnessView);
-  } else {
-    url.searchParams.delete("witnessView");
-    url.searchParams.delete("view");
-  }
+  url.searchParams.delete("witnessView");
+  url.searchParams.delete("view");
   return {
     id,
     title,
     evidenceRole,
+    witnessView: witnessView ?? "default",
     expectedRendererLabel: "tile-local-visible",
     timeoutMs,
     timeoutCanvasClipMs: OPERATOR_TIMEOUT_CANVAS_CLIP_MS,
