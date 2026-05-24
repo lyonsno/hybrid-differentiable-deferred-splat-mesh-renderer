@@ -6,6 +6,7 @@ import {
   OPERATOR_WITNESS_CAPTURE_IDS,
   buildOperatorWitnessLoopPlan,
   classifyOperatorWitnessLoop,
+  summarizeOperatorWitnessTiming,
 } from "../../scripts/visual-smoke/operator-witness-loop.mjs";
 
 const BASE_URL =
@@ -195,6 +196,47 @@ test("operator witness loop classifier summarizes capture timing bottlenecks", (
     name: "readiness",
     elapsedMs: 1600,
   });
+});
+
+test("operator witness timing summary preserves app-side frame stage attribution", () => {
+  const timing = summarizeOperatorWitnessTiming([
+    witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.dessertClose, {
+      timing: {
+        totalMs: 1800,
+        stages: [{ name: "view-readiness", elapsedMs: 1600 }],
+      },
+      pageEvidence: {
+        operatorWitness: {
+          frameSerial: 7,
+          frameTimings: {
+            totalMs: 1420,
+            stages: [
+              { name: "alpha-density", elapsedMs: 20 },
+              { name: "tile-local-scene-state", elapsedMs: 1310 },
+              { name: "evidence-exposure", elapsedMs: 90 },
+            ],
+          },
+        },
+      },
+    }),
+  ]);
+
+  assert.deepEqual(timing.slowestAppFrameStage, {
+    captureId: OPERATOR_WITNESS_CAPTURE_IDS.dessertClose,
+    name: "tile-local-scene-state",
+    elapsedMs: 1310,
+    frameSerial: 7,
+  });
+});
+
+test("operator witness report prints the slowest app-side frame stage", () => {
+  const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
+  const reportStart = source.indexOf("function renderOperatorWitnessLoopReport");
+  const reportEnd = source.indexOf("function renderOperatorTimingTable", reportStart);
+  const reportSource = source.slice(reportStart, reportEnd);
+
+  assert.match(reportSource, /Slowest app frame stage:/);
+  assert.match(reportSource, /timing\.slowestAppFrameStage/);
 });
 
 test("operator witness loop classifier rejects otherwise-valid captures on stale CPU or 6px routes", () => {

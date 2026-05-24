@@ -167,10 +167,35 @@ export function summarizeOperatorWitnessTiming(captures = []) {
     }
     return slowest;
   }, null);
+  const appFrameCaptures = captures
+    .map((capture) => ({
+      id: capture.id,
+      frameSerial: finiteNumber(capture.pageEvidence?.operatorWitness?.frameSerial),
+      stages: Array.isArray(capture.pageEvidence?.operatorWitness?.frameTimings?.stages)
+        ? capture.pageEvidence.operatorWitness.frameTimings.stages
+        : [],
+    }))
+    .filter((capture) => capture.stages.length > 0);
+  const slowestAppFrameStage = appFrameCaptures.reduce((slowest, capture) => {
+    for (const stage of capture.stages) {
+      const elapsedMs = finiteNumber(stage.elapsedMs);
+      if (elapsedMs === null) continue;
+      if (!slowest || elapsedMs > slowest.elapsedMs) {
+        slowest = {
+          captureId: capture.id,
+          name: stage.name,
+          elapsedMs,
+          frameSerial: capture.frameSerial ?? 0,
+        };
+      }
+    }
+    return slowest;
+  }, null);
   return {
     totalCaptureMs,
     slowestCapture,
     slowestStage,
+    slowestAppFrameStage,
     captures: timedCaptures.map((capture) => ({
       id: capture.id,
       totalMs: capture.totalMs ?? 0,

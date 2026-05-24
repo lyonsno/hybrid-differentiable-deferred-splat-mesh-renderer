@@ -377,9 +377,60 @@ interface SortSettleState {
   needsSort: boolean;
 }
 
+interface FrameTimingStage {
+  readonly name: string;
+  readonly elapsedMs: number;
+}
+
+interface FrameTimingDraft {
+  readonly startedAtMs: number;
+  readonly stages: FrameTimingStage[];
+}
+
+interface FrameTimingSummary {
+  readonly totalMs: number;
+  readonly stages: readonly FrameTimingStage[];
+}
+
 interface AlphaDensityState {
   refreshState: AlphaDensityRefreshState;
   summary: AlphaDensityCompensationSummary;
+}
+
+function startFrameTiming(startedAtMs = performance.now()): FrameTimingDraft {
+  return { startedAtMs, stages: [] };
+}
+
+function timeFrameStage<T>(timing: FrameTimingDraft, name: string, fn: () => T): T {
+  const startedAtMs = performance.now();
+  try {
+    return fn();
+  } finally {
+    timing.stages.push({
+      name,
+      elapsedMs: roundRuntimeMetric(performance.now() - startedAtMs),
+    });
+  }
+}
+
+function finishFrameTiming(timing: FrameTimingDraft): FrameTimingSummary {
+  return {
+    totalMs: roundRuntimeMetric(performance.now() - timing.startedAtMs),
+    stages: timing.stages,
+  };
+}
+
+function exposeOperatorWitnessFrameTimings(frameTimings: FrameTimingSummary): void {
+  const runtimeWindow = window as unknown as {
+    __MESH_SPLAT_SMOKE__?: {
+      operatorWitness?: Record<string, unknown>;
+    };
+  };
+  const operatorWitness = runtimeWindow.__MESH_SPLAT_SMOKE__?.operatorWitness;
+  if (!operatorWitness) {
+    return;
+  }
+  operatorWitness.frameTimings = frameTimings;
 }
 
 async function main() {
@@ -691,6 +742,7 @@ async function main() {
   async function frame() {
     markRenderFrameFinished(renderDemand);
     const now = performance.now();
+    const frameTiming = startFrameTiming(now);
     const dt = (now - lastTime) / 1000;
     lastTime = now;
     const scene = activeScene;
@@ -741,25 +793,27 @@ async function main() {
     const activeSplatScale = shapeWitnessFixtureId !== null ? SHAPE_WITNESS_SPLAT_SCALE : REAL_SCANIVERSE_SPLAT_SCALE;
     const activeMinRadiusPx = shapeWitnessFixtureId !== null ? SHAPE_WITNESS_MIN_RADIUS_PX : REAL_SCANIVERSE_MIN_RADIUS_PX;
     if (alphaRefreshed) {
-      scene.alphaDensityState.summary = writeAlphaDensityCompensatedOpacities(
-        scene.effectiveOpacities,
-        scene.attributes,
-        viewProj,
-        width,
-        height,
-        activeSplatScale,
-        activeMinRadiusPx,
-        ALPHA_DENSITY_MODE
-      );
-      gpu.device.queue.writeBuffer(scene.buffers.opacityBuffer, 0, scene.effectiveOpacities);
-      if (scene.tileLocalState) {
-        syncTileLocalAlphaParams(gpu.device.queue, scene.tileLocalState, scene.effectiveOpacities);
-        scene.tileLocalState.needsDispatch = true;
-      }
+      timeFrameStage(frameTiming, "alpha-density", () => {
+        scene.alphaDensityState.summary = writeAlphaDensityCompensatedOpacities(
+          scene.effectiveOpacities,
+          scene.attributes,
+          viewProj,
+          width,
+          height,
+          activeSplatScale,
+          activeMinRadiusPx,
+          ALPHA_DENSITY_MODE
+        );
+        gpu.device.queue.writeBuffer(scene.buffers.opacityBuffer, 0, scene.effectiveOpacities);
+        if (scene.tileLocalState) {
+          syncTileLocalAlphaParams(gpu.device.queue, scene.tileLocalState, scene.effectiveOpacities);
+          scene.tileLocalState.needsDispatch = true;
+        }
+      });
     }
     const activeNearFadeStart = shapeWitnessFixtureId !== null ? SHAPE_WITNESS_NEAR_FADE_START : REAL_SCANIVERSE_NEAR_FADE_START_NDC;
     const activeNearFadeEnd = shapeWitnessFixtureId !== null ? SHAPE_WITNESS_NEAR_FADE_END : REAL_SCANIVERSE_NEAR_FADE_END_NDC;
-    writeSplatPlateFrameUniforms(
+    timeFrameStage(frameTiming, "frame-uniforms", () => writeSplatPlateFrameUniforms(
       uniformData,
       viewProj,
       width,
@@ -768,17 +822,21 @@ async function main() {
       activeMinRadiusPx,
       activeNearFadeStart,
       activeNearFadeEnd
-    );
-    gpu.device.queue.writeBuffer(uniformBuffer, 0, uniformData);
+    ));
+    timeFrameStage(frameTiming, "uniform-upload", () => {
+      gpu.device.queue.writeBuffer(uniformBuffer, 0, uniformData);
+    });
 
     const encoder = gpu.device.createCommandEncoder();
     const gpuSortRefreshed = shouldRefreshGpuSort(scene.sortState, view, now);
     if (gpuSortRefreshed) {
-      writeViewDepthSortInput(gpu.device.queue, scene.gpuSort, scene.attributes.positions, view);
-      encodeGpuSortPrototype(encoder, scene.gpuSort);
-      if (scene.tileLocalState) {
-        scene.tileLocalState.needsDispatch = true;
-      }
+      timeFrameStage(frameTiming, "gpu-sort-refresh", () => {
+        writeViewDepthSortInput(gpu.device.queue, scene.gpuSort, scene.attributes.positions, view);
+        encodeGpuSortPrototype(encoder, scene.gpuSort);
+        if (scene.tileLocalState) {
+          scene.tileLocalState.needsDispatch = true;
+        }
+      });
     }
     const pendingGpuSort = gpuSortRefreshPending(scene.sortState, view);
     const pendingAlphaDensity = scene.alphaDensityState.refreshState.needsRefresh;
@@ -804,55 +862,59 @@ async function main() {
       pendingAlphaDensity,
     })) {
       try {
-        const tileLocalState = ensureTileLocalSceneState(
-          gpu.device,
-          scene,
-          scene.tileLocalState,
-          view,
-          viewProj,
-          width,
-          height,
-          true,
-          {
-            splatScale: activeSplatScale,
-            minRadiusPx: activeMinRadiusPx,
-            nearFadeEndNdc: activeNearFadeEnd,
-          }
+        const tileLocalState = timeFrameStage(frameTiming, "tile-local-scene-state", () =>
+          ensureTileLocalSceneState(
+            gpu.device,
+            scene,
+            scene.tileLocalState!,
+            view,
+            viewProj,
+            width,
+            height,
+            true,
+            {
+              splatScale: activeSplatScale,
+              minRadiusPx: activeMinRadiusPx,
+              nearFadeEndNdc: activeNearFadeEnd,
+            }
+          )
         );
         scene.tileLocalState = tileLocalState;
         scene.tileLocalLastSkipReason = null;
         scene.tileLocalLastSkipSignature = null;
-        writeGpuTileCoverageFrameUniforms(
-          tileLocalState.frameUniformData,
-          viewProj,
-          tileLocalState.plan,
-          tileLocalState.debugMode,
-          {
-            splatScale: activeSplatScale,
-            minRadiusPx: activeMinRadiusPx,
-          }
-        );
-        gpu.device.queue.writeBuffer(tileLocalState.frameUniformBuffer, 0, tileLocalState.frameUniformData);
-        const tileLocalComputePass = encoder.beginComputePass();
-        const gpuDispatchEnqueueStartedAtMs = tileLocalState.arenaBackend === "gpu"
-          ? performance.now()
-          : undefined;
-        if (tileLocalState.gpuArenaRuntime) {
-          tileLocalState.gpuArenaRuntime.dispatch(tileLocalComputePass, tileLocalState.plan);
-        }
-        if (tileLocalState.gpuArenaRuntime || (scene.rendererMode === "tile-local-visible" && tileLocalState.arenaBackend !== "gpu")) {
-          tileLocalState.pipeline.dispatchComposite(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
-        } else {
-          tileLocalState.pipeline.dispatch(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
-        }
-        if (gpuDispatchEnqueueStartedAtMs !== undefined) {
-          tileLocalState.gpuDispatchEnqueueDurationMs = roundRuntimeMetric(
-            performance.now() - gpuDispatchEnqueueStartedAtMs
+        timeFrameStage(frameTiming, "tile-local-dispatch-encode", () => {
+          writeGpuTileCoverageFrameUniforms(
+            tileLocalState.frameUniformData,
+            viewProj,
+            tileLocalState.plan,
+            tileLocalState.debugMode,
+            {
+              splatScale: activeSplatScale,
+              minRadiusPx: activeMinRadiusPx,
+            }
           );
-        }
-        tileLocalComputePass.end();
-        enqueueTileLocalOutputTextureReadback(gpu.device, encoder, tileLocalState, frameSerial);
-        enqueueTileLocalCompositorInputReadback(gpu.device, encoder, tileLocalState, frameSerial, scene.attributes.colors);
+          gpu.device.queue.writeBuffer(tileLocalState.frameUniformBuffer, 0, tileLocalState.frameUniformData);
+          const tileLocalComputePass = encoder.beginComputePass();
+          const gpuDispatchEnqueueStartedAtMs = tileLocalState.arenaBackend === "gpu"
+            ? performance.now()
+            : undefined;
+          if (tileLocalState.gpuArenaRuntime) {
+            tileLocalState.gpuArenaRuntime.dispatch(tileLocalComputePass, tileLocalState.plan);
+          }
+          if (tileLocalState.gpuArenaRuntime || (scene.rendererMode === "tile-local-visible" && tileLocalState.arenaBackend !== "gpu")) {
+            tileLocalState.pipeline.dispatchComposite(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
+          } else {
+            tileLocalState.pipeline.dispatch(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
+          }
+          if (gpuDispatchEnqueueStartedAtMs !== undefined) {
+            tileLocalState.gpuDispatchEnqueueDurationMs = roundRuntimeMetric(
+              performance.now() - gpuDispatchEnqueueStartedAtMs
+            );
+          }
+          tileLocalComputePass.end();
+          enqueueTileLocalOutputTextureReadback(gpu.device, encoder, tileLocalState, frameSerial);
+          enqueueTileLocalCompositorInputReadback(gpu.device, encoder, tileLocalState, frameSerial, scene.attributes.colors);
+        });
         tileLocalState.bandDispatchCacheTrace = buildBandDispatchCacheTrace({
           tileColumns: tileLocalState.plan.tileColumns,
           tileRows: tileLocalState.plan.tileRows,
@@ -924,10 +986,14 @@ async function main() {
       resolveTimestamps(encoder, ts);
     }
 
-    gpu.device.queue.submit([encoder.finish()]);
+    timeFrameStage(frameTiming, "queue-submit", () => {
+      gpu.device.queue.submit([encoder.finish()]);
+    });
     if (scene.tileLocalState) {
-      resolveTileLocalOutputTextureReadback(scene.tileLocalState);
-      resolveTileLocalCompositorInputReadback(scene.tileLocalState);
+      timeFrameStage(frameTiming, "tile-local-readback-resolve", () => {
+        resolveTileLocalOutputTextureReadback(scene.tileLocalState!);
+        resolveTileLocalCompositorInputReadback(scene.tileLocalState!);
+      });
     }
 
     // Read GPU timings (async, one frame behind)
@@ -1016,23 +1082,25 @@ async function main() {
       }
     }
     statsEl.textContent = statsText;
-    exposeTileLocalRuntimeEvidence(
-      rendererLabel,
-      displayFps,
-      scene.tileLocalState,
-      scene.tileLocalDisabledReason,
-      scene.tileLocalLastSkipReason,
-      scene.tileLocalLastSkipSignature,
-      now,
-      width,
-      height,
-      scene.attributes.colors,
-      {
-        witnessView: operatorWitnessViewMode,
-        revision: operatorWitnessRevision,
-        frameSerial,
-      }
+    timeFrameStage(frameTiming, "evidence-exposure", () => exposeTileLocalRuntimeEvidence(
+        rendererLabel,
+        displayFps,
+        scene.tileLocalState,
+        scene.tileLocalDisabledReason,
+        scene.tileLocalLastSkipReason,
+        scene.tileLocalLastSkipSignature,
+        now,
+        width,
+        height,
+        scene.attributes.colors,
+        {
+          witnessView: operatorWitnessViewMode,
+          revision: operatorWitnessRevision,
+          frameSerial,
+        }
+      )
     );
+    exposeOperatorWitnessFrameTimings(finishFrameTiming(frameTiming));
 
     if (shouldContinueRendering({
       activeInput,

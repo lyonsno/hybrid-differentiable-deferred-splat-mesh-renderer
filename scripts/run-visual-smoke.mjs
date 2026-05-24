@@ -1332,6 +1332,7 @@ ${renderSmokeHandoffSection(result.smokeHandoff)}
 - Total capture ms: ${timing.totalCaptureMs ?? "not reported"}
 - Slowest capture: ${timing.slowestCapture ? `${timing.slowestCapture.id} (${timing.slowestCapture.totalMs}ms)` : "not reported"}
 - Slowest stage: ${timing.slowestStage ? `${timing.slowestStage.captureId}/${timing.slowestStage.name} (${timing.slowestStage.elapsedMs}ms)` : "not reported"}
+- Slowest app frame stage: ${timing.slowestAppFrameStage ? `${timing.slowestAppFrameStage.captureId}/${timing.slowestAppFrameStage.name} (${timing.slowestAppFrameStage.elapsedMs}ms, frame ${timing.slowestAppFrameStage.frameSerial})` : "not reported"}
 
 ${renderOperatorTimingTable(timing)}
 
