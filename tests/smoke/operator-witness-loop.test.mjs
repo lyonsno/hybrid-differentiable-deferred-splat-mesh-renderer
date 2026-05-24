@@ -291,6 +291,37 @@ test("compact stream retention caches capped-list worst records", () => {
   assert.match(retentionSource, /compareRecords\(record,\s*records\[recordList\.worstIndex\]\)\s*>=\s*0/);
 });
 
+test("compact finalize retention reuses bounded priority candidate lists", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const compactSourceStart = source.indexOf("function buildCompactRetainedSourceForRuntime");
+  const compactSourceEnd = source.indexOf("function estimateCompactProjectedTileRefCount", compactSourceStart);
+  const compactSource = source.slice(compactSourceStart, compactSourceEnd);
+  const candidatesStart = source.indexOf("function compactProjectionRetentionCandidates");
+  const candidatesEnd = source.indexOf("function compactProjectionRetentionReplacementIndex", candidatesStart);
+  const candidatesSource = source.slice(candidatesStart, candidatesEnd);
+
+  assert.match(compactSource, /selectCompactProjectionRetentionRecords\(\s*projectedTileRecords,\s*maxRefsPerTile,\s*\{/);
+  assert.match(compactSource, /retentionRecords:\s*bucket\.retentionRecords\.records/);
+  assert.match(compactSource, /occlusionRecords:\s*bucket\.occlusionRecords\.records/);
+  assert.doesNotMatch(candidatesSource, /records:\s*\[\.\.\.records\]\.sort\(compareCompactProjectionRetentionPriority\)/);
+  assert.doesNotMatch(candidatesSource, /records:\s*\[\.\.\.records\]\.sort\(compareCompactProjectionOcclusionPriority\)/);
+});
+
+test("compact finalize retention uses numeric per-tile identity keys", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const keyStart = source.indexOf("function compactProjectionRetentionRecordKey");
+  const keyEnd = source.indexOf("function compactMaxRetainedViewRank", keyStart);
+  const keySource = source.slice(keyStart, keyEnd);
+  const candidatesStart = source.indexOf("function compactProjectionRetentionCandidates");
+  const candidatesEnd = source.indexOf("function compactProjectionRetentionReplacementIndex", candidatesStart);
+  const candidatesSource = source.slice(candidatesStart, candidatesEnd);
+
+  assert.match(keySource, /function compactProjectionRetentionRecordKey\([^)]*\):\s*number/);
+  assert.match(keySource, /return\s+contributor\.splatIndex/);
+  assert.doesNotMatch(keySource, /`/);
+  assert.doesNotMatch(candidatesSource, /`\$\{poolIndex\}:/);
+});
+
 test("operator witness loop classifier rejects otherwise-valid captures on stale CPU or 6px routes", () => {
   const result = classifyOperatorWitnessLoop({
     captures: [

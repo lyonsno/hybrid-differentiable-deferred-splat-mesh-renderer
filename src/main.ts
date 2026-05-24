@@ -1679,7 +1679,10 @@ function buildStreamingCompactRetainedSourceForRuntime({
         retainedTileRecords = selectCompactProjectionRetentionRecords(
           projectedTileRecords,
           maxRefsPerTile,
-          projectedCount,
+          {
+            retentionRecords: bucket.retentionRecords.records,
+            occlusionRecords: bucket.occlusionRecords.records,
+          },
         ).sort(compareCompactProjectionRetentionCompositorOrder);
         retainedRecords.push(...retainedTileRecords);
       }
@@ -2697,6 +2700,7 @@ function compactSourceAnchorTileNeighborhoodIndexes({
 function selectCompactProjectionRetentionRecords(
   records: readonly GpuTileContributorArenaProjectedContributor[],
   maxRefsPerTile: number,
+  candidateSources?: CompactProjectionRetentionCandidateSources,
 ): GpuTileContributorArenaProjectedContributor[] {
   if (records.length <= maxRefsPerTile) {
     return [...records];
@@ -2704,7 +2708,7 @@ function selectCompactProjectionRetentionRecords(
   const selected = records.slice(0, maxRefsPerTile);
   const reserveCount = compactProjectionRetentionReserveCount(records.length, maxRefsPerTile);
   const selectedKeys = new Set(selected.map(compactProjectionRetentionRecordKey));
-  const candidates = compactProjectionRetentionCandidates(records, selectedKeys, reserveCount);
+  const candidates = compactProjectionRetentionCandidates(records, selectedKeys, reserveCount, candidateSources);
   const reservedKeys = new Set(candidates.map(({ record }) => compactProjectionRetentionRecordKey(record)));
 
   for (const { record: candidate, comparePriority } of candidates) {
@@ -2725,6 +2729,11 @@ function selectCompactProjectionRetentionRecords(
   return selected;
 }
 
+interface CompactProjectionRetentionCandidateSources {
+  readonly retentionRecords?: readonly GpuTileContributorArenaProjectedContributor[];
+  readonly occlusionRecords?: readonly GpuTileContributorArenaProjectedContributor[];
+}
+
 function compactProjectionRetentionReserveCount(projectedRefCount: number, maxRefsPerTile: number): number {
   const baseReserveCount = Math.min(maxRefsPerTile, Math.min(4, Math.max(2, Math.floor(maxRefsPerTile / 8))));
   if (projectedRefCount <= maxRefsPerTile) {
@@ -2739,19 +2748,22 @@ function compactProjectionRetentionCandidates(
   records: readonly GpuTileContributorArenaProjectedContributor[],
   selectedKeys: ReadonlySet<string>,
   reserveCount: number,
+  candidateSources?: CompactProjectionRetentionCandidateSources,
 ): readonly {
   readonly record: GpuTileContributorArenaProjectedContributor;
   readonly comparePriority: typeof compareCompactProjectionRetentionPriority;
 }[] {
+  const retentionRecords = candidateSources?.retentionRecords ?? records;
+  const occlusionRecords = candidateSources?.occlusionRecords ?? records;
   const pools = [
-    { records: [...records].sort(compareCompactProjectionRetentionPriority), comparePriority: compareCompactProjectionRetentionPriority },
-    { records: [...records].sort(compareCompactProjectionOcclusionPriority), comparePriority: compareCompactProjectionOcclusionPriority },
+    { records: [...retentionRecords].sort(compareCompactProjectionRetentionPriority), comparePriority: compareCompactProjectionRetentionPriority },
+    { records: [...occlusionRecords].sort(compareCompactProjectionOcclusionPriority), comparePriority: compareCompactProjectionOcclusionPriority },
   ];
   const candidates: {
     readonly record: GpuTileContributorArenaProjectedContributor;
     readonly comparePriority: typeof compareCompactProjectionRetentionPriority;
   }[] = [];
-  const candidatePriorityKeys = new Set<string>();
+  const candidatePriorityKeys = pools.map(() => new Set<number>());
   const cursors = new Array(pools.length).fill(0);
 
   while (candidates.length < reserveCount) {
@@ -2762,12 +2774,11 @@ function compactProjectionRetentionCandidates(
         const record = pool[cursors[poolIndex]];
         cursors[poolIndex] += 1;
         const key = compactProjectionRetentionRecordKey(record);
-        const priorityKey = `${poolIndex}:${key}`;
-        if (selectedKeys.has(key) || candidatePriorityKeys.has(priorityKey)) {
+        if (selectedKeys.has(key) || candidatePriorityKeys[poolIndex].has(key)) {
           continue;
         }
         candidates.push({ record, comparePriority: pools[poolIndex].comparePriority });
-        candidatePriorityKeys.add(priorityKey);
+        candidatePriorityKeys[poolIndex].add(key);
         added = true;
         break;
       }
@@ -2782,7 +2793,7 @@ function compactProjectionRetentionCandidates(
 
 function compactProjectionRetentionReplacementIndex(
   selected: readonly GpuTileContributorArenaProjectedContributor[],
-  reservedKeys: ReadonlySet<string>,
+  reservedKeys: ReadonlySet<number>,
   comparePriority: typeof compareCompactProjectionRetentionPriority,
 ): number {
   let replacementIndex = -1;
@@ -2852,8 +2863,8 @@ function compareCompactProjectionOcclusionPriority(
   );
 }
 
-function compactProjectionRetentionRecordKey(contributor: GpuTileContributorArenaProjectedContributor): string {
-  return `${contributor.tileIndex}:${contributor.splatIndex}:${contributor.originalId}`;
+function compactProjectionRetentionRecordKey(contributor: GpuTileContributorArenaProjectedContributor): number {
+  return contributor.splatIndex;
 }
 
 function compactMaxRetainedViewRank(records: readonly GpuTileContributorArenaProjectedContributor[]): number {
