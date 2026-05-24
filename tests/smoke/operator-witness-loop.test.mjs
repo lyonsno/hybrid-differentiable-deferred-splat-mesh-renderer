@@ -291,6 +291,17 @@ test("compact stream retention caches capped-list worst records", () => {
   assert.match(retentionSource, /compareRecords\(record,\s*records\[recordList\.worstIndex\]\)\s*>=\s*0/);
 });
 
+test("compact stream retention avoids dense tile-x range allocation", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const streamStart = source.indexOf("function streamCompactProjectedTileRefs");
+  const streamEnd = source.indexOf("function compactSourceBoundedTileRefCount", streamStart);
+  const streamSource = source.slice(streamStart, streamEnd);
+
+  assert.match(streamSource, /function compactStreamDenseTileXRange/);
+  assert.match(streamSource, /for\s*\(\s*let tileX = minTileX;\s*tileX <= maxTileX;\s*tileX \+= 1\s*\)/);
+  assert.doesNotMatch(streamSource, /compactSourceTileXRange\(minTileX,\s*maxTileX\)/);
+});
+
 test("compact finalize retention reuses bounded priority candidate lists", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const compactSourceStart = source.indexOf("function buildCompactRetainedSourceForRuntime");

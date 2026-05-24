@@ -1925,33 +1925,60 @@ function streamCompactProjectedTileRefs({
     const maxTileX = selectedTileRows ? Math.min(boundedTileBounds.maxTileX, selectedTileRows.maxTileX) : boundedTileBounds.maxTileX;
     const minTileY = selectedTileRows ? Math.max(boundedTileBounds.minTileY, selectedTileRows.minTileY) : boundedTileBounds.minTileY;
     const maxTileY = selectedTileRows ? Math.min(boundedTileBounds.maxTileY, selectedTileRows.maxTileY) : boundedTileBounds.maxTileY;
+    const emitTileEntry = (tileX: number, tileY: number): void => {
+      const tileIndex = tileY * tileColumns + tileX;
+      const tileMinX = tileX * tileSizePx;
+      const tileMinY = tileY * tileSizePx;
+      const tileMaxX = Math.min(viewportWidth, tileMinX + tileSizePx);
+      const tileMaxY = Math.min(viewportHeight, tileMinY + tileSizePx);
+      const coverageWeight = compactSourceTileCoverageWeight({
+        centerPx: splat.centerPx,
+        covariance,
+        tileMinX,
+        tileMinY,
+        tileMaxX,
+        tileMaxY,
+        samplesPerAxis,
+      });
+      if (coverageWeight <= 0) {
+        return;
+      }
+      onEntry({ splat, tileIndex, tileX, tileY, coverageWeight });
+    };
     for (let tileY = minTileY; tileY <= maxTileY; tileY += 1) {
       const rowTileXs = selectedTileRows?.tileXsByRow.get(tileY);
-      const tileXs = rowTileXs ?? compactSourceTileXRange(minTileX, maxTileX);
-      for (const tileX of tileXs) {
-        if (tileX < minTileX || tileX > maxTileX) {
-          continue;
-        }
-        const tileIndex = tileY * tileColumns + tileX;
-        const tileMinX = tileX * tileSizePx;
-        const tileMinY = tileY * tileSizePx;
-        const tileMaxX = Math.min(viewportWidth, tileMinX + tileSizePx);
-        const tileMaxY = Math.min(viewportHeight, tileMinY + tileSizePx);
-        const coverageWeight = compactSourceTileCoverageWeight({
-          centerPx: splat.centerPx,
-          covariance,
-          tileMinX,
-          tileMinY,
-          tileMaxX,
-          tileMaxY,
-          samplesPerAxis,
-        });
-        if (coverageWeight <= 0) {
-          continue;
-        }
-        onEntry({ splat, tileIndex, tileX, tileY, coverageWeight });
+      if (rowTileXs) {
+        compactStreamSparseTileXRow(rowTileXs, minTileX, maxTileX, tileY, emitTileEntry);
+      } else {
+        compactStreamDenseTileXRange(minTileX, maxTileX, tileY, emitTileEntry);
       }
     }
+  }
+}
+
+function compactStreamDenseTileXRange(
+  minTileX: number,
+  maxTileX: number,
+  tileY: number,
+  emitTileEntry: (tileX: number, tileY: number) => void,
+): void {
+  for (let tileX = minTileX; tileX <= maxTileX; tileX += 1) {
+    emitTileEntry(tileX, tileY);
+  }
+}
+
+function compactStreamSparseTileXRow(
+  tileXs: readonly number[],
+  minTileX: number,
+  maxTileX: number,
+  tileY: number,
+  emitTileEntry: (tileX: number, tileY: number) => void,
+): void {
+  for (const tileX of tileXs) {
+    if (tileX < minTileX || tileX > maxTileX) {
+      continue;
+    }
+    emitTileEntry(tileX, tileY);
   }
 }
 
@@ -2406,14 +2433,6 @@ function compactSourceSelectedTileRows(
     row.sort((left, right) => left - right);
   }
   return { ...bounds, tileXsByRow };
-}
-
-function compactSourceTileXRange(minTileX: number, maxTileX: number): number[] {
-  const tileXs = [];
-  for (let tileX = minTileX; tileX <= maxTileX; tileX += 1) {
-    tileXs.push(tileX);
-  }
-  return tileXs;
 }
 
 function projectRuntimeSplatsForCompactSource({
