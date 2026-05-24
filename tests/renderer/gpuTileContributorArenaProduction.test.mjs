@@ -163,37 +163,64 @@ test("GPU contributor arena runtime writes legacy compositor buffers for live co
   assert.match(mainSource, /adaptGpuArenaRetainedContributors/);
 });
 
-test("requested GPU arena live path does not build the CPU tile-local prepass first", () => {
+test("requested GPU arena live path uses direct GPU projection while retaining CPU reference builders", () => {
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
-  const gpuFactoryStart = mainSource.indexOf("function createGpuArenaTileLocalSceneState");
-  const cpuFactoryStart = mainSource.indexOf("function createCpuTileLocalSceneState");
+  const gpuFactorySource = extractFunctionSource(mainSource, "createGpuArenaTileLocalSceneState");
+  const cpuFactorySource = extractFunctionSource(mainSource, "createCpuTileLocalSceneState");
+  const compactSourceStart = mainSource.indexOf("function buildCompactRetainedSourceForRuntime");
+  const compactSourceEnd = mainSource.indexOf("interface RuntimeCompactTileCoverage", compactSourceStart);
+  assert.ok(compactSourceStart >= 0, "compact-source reference builder should exist");
+  assert.ok(compactSourceEnd > compactSourceStart, "compact-source reference builder slice should be bounded");
+  const compactSourceSource = mainSource.slice(compactSourceStart, compactSourceEnd);
 
-  assert.ok(gpuFactoryStart >= 0, "GPU arena path should have its own live scene-state factory");
-  assert.ok(cpuFactoryStart > gpuFactoryStart, "CPU bridge path should be a separate factory after the GPU path");
-
-  const gpuFactorySource = mainSource.slice(gpuFactoryStart, cpuFactoryStart);
   assert.doesNotMatch(gpuFactorySource, /buildTileLocalPrepassBridge/);
   assert.doesNotMatch(gpuFactorySource, /adaptGpuArenaRetainedContributors/);
-  assert.match(gpuFactorySource, /buildCompactRetainedSourceForRuntime/);
-  assert.match(gpuFactorySource, /buildDeterministicGpuTileProjectionRetentionArena/);
-  assert.match(gpuFactorySource, /createGpuTileContributorArenaRuntime\(device,\s*plan,\s*compactSource\.retainedRecords\)/);
+  assert.doesNotMatch(gpuFactorySource, /buildCompactRetainedSourceForRuntime/);
+  assert.doesNotMatch(gpuFactorySource, /buildDeterministicGpuTileProjectionRetentionArena/);
+  assert.match(gpuFactorySource, /createGpuTileCoveragePipelineSkeleton/);
+  assert.match(gpuFactorySource, /gpuLiveMaxTileRefs/);
+  assert.match(gpuFactorySource, /gpuArenaRuntime:\s*null/);
+  assert.match(cpuFactorySource, /buildTileLocalPrepassBridge/);
+  assert.match(cpuFactorySource, /adaptGpuArenaRetainedContributors/);
+  assert.match(compactSourceSource, /buildStreamingCompactRetainedSourceForRuntime/);
   assert.match(mainSource, /maxStorageBufferBindingSize/);
   assert.match(mainSource, /REQUESTED_ARENA_BACKEND === "gpu"[\s\S]*createGpuArenaTileLocalSceneState/);
 });
 
-test("requested GPU arena live path exposes compact-source contributor traces instead of empty smoke arrays", () => {
+test("requested GPU arena live path declares reduced CPU trace custody instead of fabricating compact-source traces", () => {
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
-  const gpuFactoryStart = mainSource.indexOf("function createGpuArenaTileLocalSceneState");
-  const cpuFactoryStart = mainSource.indexOf("function createCpuTileLocalSceneState");
-  const gpuFactorySource = mainSource.slice(gpuFactoryStart, cpuFactoryStart);
+  const gpuFactorySource = extractFunctionSource(mainSource, "createGpuArenaTileLocalSceneState");
+  const cpuFactorySource = extractFunctionSource(mainSource, "createCpuTileLocalSceneState");
 
   assert.doesNotMatch(gpuFactorySource, /buildGpuLiveAnchorContributorTraces/);
-  assert.match(gpuFactorySource, /compactSource\.perPixelProjectedContributors/);
-  assert.match(gpuFactorySource, /compactSource\.perPixelRetainedContributors/);
-  assert.doesNotMatch(gpuFactorySource, /gpuArenaProjectedContributors:\s*\[\]/);
-  assert.doesNotMatch(gpuFactorySource, /perPixelProjectedContributors:\s*\[\]/);
-  assert.doesNotMatch(gpuFactorySource, /perPixelRetainedContributors:\s*\[\]/);
+  assert.doesNotMatch(gpuFactorySource, /compactSource\.perPixelProjectedContributors/);
+  assert.doesNotMatch(gpuFactorySource, /compactSource\.perPixelRetainedContributors/);
+  assert.match(gpuFactorySource, /gpuArenaProjectedContributors:\s*\[\]/);
+  assert.match(gpuFactorySource, /perPixelProjectedContributors:\s*\[\]/);
+  assert.match(gpuFactorySource, /perPixelRetainedContributors:\s*\[\]/);
+  assert.match(cpuFactorySource, /perPixelProjectedContributors:\s*bridge\.perPixelProjectedContributors/);
+  assert.match(cpuFactorySource, /perPixelRetainedContributors:\s*bridge\.perPixelRetainedContributors/);
 });
+
+function extractFunctionSource(source, name) {
+  const start = source.indexOf(`function ${name}`);
+  assert.ok(start >= 0, `${name} should exist`);
+  const bodyStart = source.indexOf("{", start);
+  assert.ok(bodyStart > start, `${name} should have a function body`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === "{") {
+      depth += 1;
+    } else if (character === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return source.slice(start, index + 1);
+      }
+    }
+  }
+  assert.fail(`${name} function body was not closed`);
+}
 
 function contributor(overrides) {
   return {

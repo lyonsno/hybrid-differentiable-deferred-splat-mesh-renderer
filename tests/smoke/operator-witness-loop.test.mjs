@@ -239,18 +239,23 @@ test("operator witness report prints the slowest app-side frame stage", () => {
   assert.match(reportSource, /timing\.slowestAppFrameStage/);
 });
 
-test("operator witness app frame timing splits compact retained source construction", () => {
+test("operator witness app frame timing routes requested GPU presentation around compact source construction", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const ensureStart = source.indexOf("function ensureTileLocalSceneState");
   const ensureEnd = source.indexOf("function captureCurrentTileLocalSignature", ensureStart);
   const ensureSource = source.slice(ensureStart, ensureEnd);
-  const gpuStart = source.indexOf("function createGpuArenaTileLocalSceneState");
-  const gpuEnd = source.indexOf("function buildCompactRetainedSourceForRuntime", gpuStart);
-  const gpuSource = source.slice(gpuStart, gpuEnd);
+  const gpuSource = extractFunctionSource(source, "createGpuArenaTileLocalSceneState");
+  const dispatchStart = source.indexOf("const tileLocalComputePass = encoder.beginComputePass");
+  const dispatchEnd = source.indexOf("tileLocalComputePass.end()", dispatchStart);
+  const dispatchSource = source.slice(dispatchStart, dispatchEnd);
 
   assert.match(ensureSource, /footprintParams,\s*frameTiming/);
-  assert.match(gpuSource, /timeOptionalFrameStage\(frameTiming,\s*"compact-retained-source"/);
-  assert.match(gpuSource, /timeOptionalFrameStage\(frameTiming,\s*"gpu-arena-runtime"/);
+  assert.doesNotMatch(gpuSource, /timeOptionalFrameStage\(frameTiming,\s*"compact-retained-source"/);
+  assert.doesNotMatch(gpuSource, /timeOptionalFrameStage\(frameTiming,\s*"gpu-arena-runtime"/);
+  assert.match(gpuSource, /gpuLiveMaxTileRefs/);
+  assert.match(gpuSource, /estimatedGpuLiveBudgetDiagnostics/);
+  assert.match(dispatchSource, /gpuDispatchEnqueueStartedAtMs/);
+  assert.match(dispatchSource, /tileLocalState\.pipeline\.dispatch\(tileLocalComputePass/);
 });
 
 test("operator witness compact source timing exposes internal construction stages", () => {
@@ -515,6 +520,23 @@ test("operator witness session stops after a timeout capture to avoid racing the
   assert.match(sessionSource, /const captureResult = await .*captureOperatorWitnessFrame\(\{/s);
   assert.match(sessionSource, /if \(captureResult\.captureFailure\) \{\s*break;\s*\}/);
 });
+
+function extractFunctionSource(source, functionName) {
+  const start = source.indexOf(`function ${functionName}`);
+  assert.notEqual(start, -1, `missing function ${functionName}`);
+  const bodyStart = source.indexOf("{", start);
+  assert.notEqual(bodyStart, -1, `missing function body ${functionName}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  assert.fail(`unterminated function ${functionName}`);
+}
 
 function witnessCapture(
   id,

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-test("requested GPU arena runtime constructs compact retained source without the CPU bridge", () => {
+test("requested GPU arena runtime does not route presentation through the CPU compact-source bridge", () => {
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const gpuFactoryStart = mainSource.indexOf("function createGpuArenaTileLocalSceneState");
   const cpuFactoryStart = mainSource.indexOf("function createCpuTileLocalSceneState");
@@ -10,37 +10,39 @@ test("requested GPU arena runtime constructs compact retained source without the
   assert.ok(gpuFactoryStart >= 0, "GPU arena path should have its own scene-state factory");
   assert.ok(cpuFactoryStart > gpuFactoryStart, "CPU bridge factory should remain separate");
 
-  const gpuFactorySource = mainSource.slice(gpuFactoryStart, cpuFactoryStart);
+  const gpuFactorySource = extractFunctionSource(mainSource, "createGpuArenaTileLocalSceneState");
   assert.doesNotMatch(gpuFactorySource, /buildTileLocalPrepassBridge/);
   assert.doesNotMatch(gpuFactorySource, /buildGpuLiveAnchorContributorTraces/);
-  assert.match(gpuFactorySource, /buildCompactRetainedSourceForRuntime/);
-  assert.match(gpuFactorySource, /buildDeterministicGpuTileProjectionRetentionArena/);
-  assert.match(gpuFactorySource, /createGpuTileContributorArenaRuntime/);
-  assert.match(gpuFactorySource, /compactSource\.retainedRecords/);
-  assert.match(gpuFactorySource, /compactSource\.projectedContributorCount/);
-  assert.match(gpuFactorySource, /compactSource\.droppedContributorCount/);
+  assert.doesNotMatch(
+    gpuFactorySource,
+    /buildCompactRetainedSourceForRuntime/,
+    "the requested GPU arena path must not construct presentation records through the CPU compact-source builder",
+  );
+  assert.doesNotMatch(
+    gpuFactorySource,
+    /buildDeterministicGpuTileProjectionRetentionArena/,
+    "the requested GPU arena path must not use the CPU deterministic projection/retention builder as its live retained-list source",
+  );
+  assert.match(gpuFactorySource, /createGpuTileCoveragePipelineSkeleton/);
+  assert.match(gpuFactorySource, /gpuLiveMaxTileRefs/);
+  assert.match(gpuFactorySource, /estimatedGpuLiveTileRefCustody/);
+  assert.match(gpuFactorySource, /estimatedGpuLiveBudgetDiagnostics/);
+  assert.match(gpuFactorySource, /gpuArenaRuntime:\s*null/);
+  assert.doesNotMatch(gpuFactorySource, /compactSource\.retainedRecords/);
+  assert.doesNotMatch(gpuFactorySource, /compactSource\.projectedContributorCount/);
+  assert.doesNotMatch(gpuFactorySource, /compactSource\.droppedContributorCount/);
 });
 
-test("requested GPU arena compact source preserves projected overflow diagnostics for retained handoff", () => {
+test("CPU reference compact source preserves projected overflow diagnostics for retained handoff", () => {
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
-  const gpuFactoryStart = mainSource.indexOf("function createGpuArenaTileLocalSceneState");
-  const cpuFactoryStart = mainSource.indexOf("function createCpuTileLocalSceneState");
   const compactSourceStart = mainSource.indexOf("function buildCompactRetainedSourceForRuntime");
   const compactSourceEnd = mainSource.indexOf("interface RuntimeCompactTileCoverage");
 
-  assert.ok(gpuFactoryStart >= 0, "GPU arena path should have its own scene-state factory");
-  assert.ok(cpuFactoryStart > gpuFactoryStart, "CPU bridge factory should remain separate");
   assert.ok(compactSourceStart >= 0, "compact source builder should exist");
   assert.ok(compactSourceEnd > compactSourceStart, "compact source source slice should be bounded");
 
-  const gpuFactorySource = mainSource.slice(gpuFactoryStart, cpuFactoryStart);
   const compactSourceSource = mainSource.slice(compactSourceStart, compactSourceEnd);
 
-  assert.match(
-    gpuFactorySource,
-    /maxTileEntries:\s*TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES/,
-    "GPU compact source must receive the same projected-ref budget as the CPU bridge",
-  );
   assert.match(
     compactSourceSource,
     /buildStreamingCompactRetainedSourceForRuntime/,
@@ -120,3 +122,41 @@ test("full-scene compact source bounds construction before covariance projection
     "full-scene pressure should no longer force plate fallback before trying a bounded GPU source",
   );
 });
+
+test("requested GPU tile-local dispatch runs the direct GPU projection pipeline when no CPU contributor arena runtime exists", () => {
+  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const renderLoopStart = mainSource.indexOf("const tileLocalComputePass = encoder.beginComputePass");
+  const renderLoopEnd = mainSource.indexOf("tileLocalComputePass.end()", renderLoopStart);
+
+  assert.ok(renderLoopStart >= 0, "tile-local render loop should encode a compute pass");
+  assert.ok(renderLoopEnd > renderLoopStart, "tile-local render loop slice should be bounded");
+
+  const renderLoopSource = mainSource.slice(renderLoopStart, renderLoopEnd);
+  assert.match(renderLoopSource, /tileLocalState\.gpuArenaRuntime\.dispatch/);
+  assert.match(renderLoopSource, /tileLocalState\.pipeline\.dispatchComposite/);
+  assert.match(
+    renderLoopSource,
+    /else if \(scene\.rendererMode === "tile-local-visible"\) \{\s*tileLocalState\.pipeline\.dispatch/,
+    "tile-local-visible GPU live path must still run clear/build/composite when gpuArenaRuntime is null",
+  );
+});
+
+function extractFunctionSource(source, name) {
+  const start = source.indexOf(`function ${name}`);
+  assert.ok(start >= 0, `${name} should exist`);
+  const bodyStart = source.indexOf("{", start);
+  assert.ok(bodyStart > start, `${name} should have a function body`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === "{") {
+      depth += 1;
+    } else if (character === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return source.slice(start, index + 1);
+      }
+    }
+  }
+  assert.fail(`${name} function body was not closed`);
+}

@@ -12,13 +12,13 @@ test("trace anchors are passive diagnostics, not compact-source presentation sel
   );
   assert.match(
     source,
-    /traceAnchors:\s*TILE_LOCAL_TRACE_ANCHORS \?\? \[\]/,
-    "compact-source construction must receive trace anchors only for diagnostics/readback",
+    /readonly traceAnchors: readonly PixelTraceAnchor\[\];/,
+    "CPU compact-source reference construction must keep trace anchors typed for diagnostics/readback",
   );
   assert.match(
     source,
-    /presentationScope:\s*TILE_LOCAL_PRESENTATION_SCOPE/,
-    "compact-source construction must receive an explicit presentation scope",
+    /readonly presentationScope: TileLocalPresentationScope;/,
+    "CPU compact-source reference construction must keep an explicit presentation scope",
   );
   assert.doesNotMatch(
     source,
@@ -28,7 +28,7 @@ test("trace anchors are passive diagnostics, not compact-source presentation sel
   assert.match(
     source,
     /presentationScope === "anchor-neighborhood"/,
-    "anchor-scoped presentation must be opt-in diagnostic behavior",
+    "anchor-scoped CPU reference presentation must be opt-in diagnostic behavior",
   );
   assert.doesNotMatch(
     source,

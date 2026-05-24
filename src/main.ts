@@ -904,8 +904,10 @@ async function main() {
           if (tileLocalState.gpuArenaRuntime) {
             tileLocalState.gpuArenaRuntime.dispatch(tileLocalComputePass, tileLocalState.plan);
           }
-          if (tileLocalState.gpuArenaRuntime || (scene.rendererMode === "tile-local-visible" && tileLocalState.arenaBackend !== "gpu")) {
+          if (tileLocalState.gpuArenaRuntime) {
             tileLocalState.pipeline.dispatchComposite(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
+          } else if (scene.rendererMode === "tile-local-visible") {
+            tileLocalState.pipeline.dispatch(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
           } else {
             tileLocalState.pipeline.dispatch(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
           }
@@ -1217,31 +1219,7 @@ function createGpuArenaTileLocalSceneState(
   const tileColumns = tileColumnsForViewport(viewportWidth);
   const tileRows = tileRowsForViewport(viewportHeight);
   const tileCount = tileColumns * tileRows;
-  const compactSource = timeOptionalFrameStage(frameTiming, "compact-retained-source", () => buildCompactRetainedSourceForRuntime({
-    attributes,
-    effectiveOpacities,
-    viewMatrix,
-    viewProj,
-    viewportWidth,
-    viewportHeight,
-    tileSizePx: TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX,
-    tileColumns,
-    tileRows,
-    splatScale: footprintParams.splatScale,
-    minRadiusPx: footprintParams.minRadiusPx,
-    maxRefsPerTile: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
-    maxTileEntries: TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES,
-    nearFadeEndNdc: footprintParams.nearFadeEndNdc,
-    buildProjectionRetentionArena: buildDeterministicGpuTileProjectionRetentionArena,
-    traceAnchors: TILE_LOCAL_TRACE_ANCHORS ?? [],
-    presentationAnchors: TILE_LOCAL_PRESENTATION_ANCHORS ?? [],
-    presentationScope: TILE_LOCAL_PRESENTATION_SCOPE,
-    frameTiming,
-  }));
-  if (compactSource.retainedRecords.length === 0) {
-    throw new Error("compact retained source produced no retained contributors for gpu arena runtime");
-  }
-  const maxTileRefs = Math.max(compactSource.retainedRecords.length, attributes.count, 1);
+  const maxTileRefs = gpuLiveMaxTileRefs(device, tileCount, attributes.count);
   const plan = createGpuTileCoveragePlan({
     viewportWidth,
     viewportHeight,
@@ -1266,14 +1244,6 @@ function createGpuArenaTileLocalSceneState(
   if (bufferBlocker) {
     throw new Error(bufferBlocker);
   }
-  const gpuArenaRuntimeBlocker = gpuArenaRuntimeUnavailableReason(device, plan, compactSource.retainedRecords.length);
-  if (gpuArenaRuntimeBlocker) {
-    throw new Error(gpuArenaRuntimeBlocker);
-  }
-  const gpuArenaRuntime = timeOptionalFrameStage(frameTiming, "gpu-arena-runtime", () =>
-    createGpuTileContributorArenaRuntime(device, plan, compactSource.retainedRecords)
-  );
-  const legacyProjection = gpuArenaRuntime.legacyProjection;
   const pipeline = createGpuTileCoveragePipelineSkeleton(device, "rgba16float");
   const frameUniformBuffer = createUniformBuffer(
     device,
@@ -1300,6 +1270,14 @@ function createGpuArenaTileLocalSceneState(
     "tile_local_output"
   );
   const outputView = outputTexture.createView();
+  const tileHeaderBuffer = createEmptyStorageBuffer(device, plan.tileHeaderBytes, "gpu_live_tile_headers");
+  const tileRefBuffer = createEmptyStorageBuffer(device, plan.tileRefBytes, "gpu_live_tile_refs");
+  const tileCoverageWeightBuffer = createEmptyStorageBuffer(
+    device,
+    plan.tileCoverageWeightBytes,
+    "gpu_live_tile_coverage_weights"
+  );
+  const alphaParamBuffer = createEmptyStorageBuffer(device, plan.alphaParamBytes, "gpu_live_alpha_params");
   const bindGroup = pipeline.createBindGroup({
     frameUniformBuffer,
     positionBuffer: buffers.positionBuffer,
@@ -1307,29 +1285,29 @@ function createGpuArenaTileLocalSceneState(
     opacityBuffer: buffers.opacityBuffer,
     scaleBuffer: buffers.scaleBuffer,
     rotationBuffer: buffers.rotationBuffer,
-    tileHeaderBuffer: gpuArenaRuntime.buffers.legacyTileHeaderBuffer,
-    tileRefBuffer: gpuArenaRuntime.buffers.legacyTileRefBuffer,
-    tileCoverageWeightBuffer: gpuArenaRuntime.buffers.legacyTileCoverageWeightBuffer,
+    tileHeaderBuffer,
+    tileRefBuffer,
+    tileCoverageWeightBuffer,
     tileScatterCursorBuffer,
-    alphaParamBuffer: gpuArenaRuntime.buffers.legacyAlphaParamBuffer,
+    alphaParamBuffer,
     outputColorView: outputView,
   });
-  const tileRefCustody = compactSource.tileRefCustody;
-  const retentionAudit = emptyTileRetentionAudit();
-  const budgetDiagnostics = compactRetainedSourceBudgetDiagnostics(plan, compactSource);
+  const tileHeaderData = new Uint32Array(Math.max(0, plan.tileCount * 4));
+  const tileCoverageWeightData = new Float32Array(Math.max(0, plan.maxTileRefs));
   const alphaParamData = new Float32Array(Math.max(plan.alphaParamBytes / Float32Array.BYTES_PER_ELEMENT, 8));
-  alphaParamData.set(legacyProjection.alphaParamData.slice(0, alphaParamData.length));
+  const tileRefCustody = estimatedGpuLiveTileRefCustody(plan, attributes.count);
+  const retentionAudit = emptyTileRetentionAudit();
+  const budgetDiagnostics = estimatedGpuLiveBudgetDiagnostics(plan, attributes.count);
   const diagnostics = summarizeTileLocalDiagnostics({
     debugMode: TILE_LOCAL_DEBUG_MODE,
     plan,
-    tileEntryCount: compactSource.retainedRecords.length,
-    tileHeaders: legacyProjection.tileHeaders,
+    tileEntryCount: budgetDiagnostics.arenaRefs.retained,
+    tileHeaders: tileHeaderData,
     tileRefCustody,
     retentionAudit,
-    tileCoverageWeights: legacyProjection.tileCoverageWeights,
+    tileCoverageWeights: tileCoverageWeightData,
     alphaParamData,
     sourceOpacities: effectiveOpacities,
-    runtimeContributors: compactSource.retainedRecords,
   });
 
   return {
@@ -1341,35 +1319,35 @@ function createGpuArenaTileLocalSceneState(
     frameUniformBuffer,
     frameUniformData,
     projectedBoundsBuffer: null,
-    tileHeaderBuffer: gpuArenaRuntime.buffers.legacyTileHeaderBuffer,
-    tileHeaderData: legacyProjection.tileHeaders,
-    tileRefBuffer: gpuArenaRuntime.buffers.legacyTileRefBuffer,
-    tileCoverageWeightBuffer: gpuArenaRuntime.buffers.legacyTileCoverageWeightBuffer,
-    tileCoverageWeightData: legacyProjection.tileCoverageWeights,
+    tileHeaderBuffer,
+    tileHeaderData,
+    tileRefBuffer,
+    tileCoverageWeightBuffer,
+    tileCoverageWeightData,
     tileBuildCountBuffer,
     tileScatterCursorBuffer,
-    alphaParamBuffer: gpuArenaRuntime.buffers.legacyAlphaParamBuffer,
+    alphaParamBuffer,
     alphaParamData,
     sourceOpacities: effectiveOpacities,
-    tileRefShapeParams: legacyProjection.tileRefShapeParams,
+    tileRefShapeParams: new Float32Array(Math.max(0, plan.maxTileRefs * 8)),
     outputTexture,
     outputView,
-    tileEntryCount: compactSource.retainedRecords.length,
+    tileEntryCount: budgetDiagnostics.arenaRefs.retained,
     tileRefCustody,
     retentionAudit,
     budgetDiagnostics,
-    tileRefSplatIds: legacyProjection.tileRefSplatIds,
+    tileRefSplatIds: new Uint32Array(plan.maxTileRefs),
     prepassSignature,
     debugMode: TILE_LOCAL_DEBUG_MODE,
     diagnostics,
     arenaBackend: "gpu",
-    gpuArenaRuntime,
-    gpuArenaProjectedContributors: compactSource.retainedRecords,
+    gpuArenaRuntime: null,
+    gpuArenaProjectedContributors: [],
     presentationAnchors: TILE_LOCAL_PRESENTATION_ANCHORS,
     presentationScope: TILE_LOCAL_PRESENTATION_SCOPE,
     traceAnchors: TILE_LOCAL_TRACE_ANCHORS,
-    perPixelProjectedContributors: compactSource.perPixelProjectedContributors,
-    perPixelRetainedContributors: compactSource.perPixelRetainedContributors,
+    perPixelProjectedContributors: [],
+    perPixelRetainedContributors: [],
     arenaUnavailableReason: undefined,
     gpuDispatchEnqueueDurationMs: undefined,
     needsDispatch: true,
@@ -3626,6 +3604,7 @@ function createCpuTileLocalSceneState(
     arenaBackend: gpuArenaRuntime ? "gpu" : "cpu",
     gpuArenaRuntime,
     gpuArenaProjectedContributors,
+    presentationScope: TILE_LOCAL_PRESENTATION_SCOPE,
     perPixelProjectedContributors: bridge.perPixelProjectedContributors,
     perPixelRetainedContributors: bridge.perPixelRetainedContributors,
     arenaUnavailableReason: gpuArenaRuntime ? undefined : gpuArenaRuntimeBlocker,
