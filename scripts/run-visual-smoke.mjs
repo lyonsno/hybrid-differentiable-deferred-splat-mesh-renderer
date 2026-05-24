@@ -815,7 +815,7 @@ async function waitForVisualSmokeCaptureReady(page, expectedRendererLabel, timeo
   while (Date.now() - startedAt < timeoutMs) {
     let rawEvidence;
     try {
-      rawEvidence = await collectPageEvidenceWithTimeout(page);
+      rawEvidence = await collectPageEvidenceWithTimeout(page, timeoutMs);
     } catch (evidenceError) {
       lastEvidence = {
         ...lastEvidence,

@@ -242,11 +242,11 @@ test("visual smoke CLI routes both initial and post-interaction readiness timeou
 
 test("operator witness readiness polling uses the capture timeout instead of the 1s generic evidence cap", () => {
   const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
-  const frameStart = source.indexOf("async function captureOperatorWitnessFrame");
-  const frameEnd = source.indexOf("async function captureVisualSmoke", frameStart);
-  const frameSource = source.slice(frameStart, frameEnd);
+  const waitStart = source.indexOf("async function waitForVisualSmokeCaptureReady");
+  const waitEnd = source.indexOf("function operatorWitnessReadinessMatches", waitStart);
+  const waitSource = source.slice(waitStart, waitEnd);
 
-  assert.match(frameSource, /waitForVisualSmokeCaptureReady\(page, capture\.expectedRendererLabel, timeoutMs/);
+  assert.match(waitSource, /collectPageEvidenceWithTimeout\(page, timeoutMs\)/);
 });
 
 test("operator witness frame reuses readiness evidence instead of repeating a page bridge read", () => {
