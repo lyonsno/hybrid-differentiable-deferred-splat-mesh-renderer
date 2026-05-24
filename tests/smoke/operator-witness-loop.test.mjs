@@ -268,6 +268,16 @@ test("operator witness compact source timing exposes internal construction stage
   assert.match(compactSource, /timeOptionalFrameStage\(frameTiming,\s*"compact-source-pixel-traces"/);
 });
 
+test("compact stream retention hot path avoids duplicate key scans", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const retainStart = source.indexOf("function compactRetainTopRecord");
+  const retainEnd = source.indexOf("function compactMergedTileCandidateRecords", retainStart);
+  const retainSource = source.slice(retainStart, retainEnd);
+
+  assert.doesNotMatch(retainSource, /records\.some/);
+  assert.doesNotMatch(retainSource, /compactProjectionRetentionRecordKey/);
+});
+
 test("operator witness loop classifier rejects otherwise-valid captures on stale CPU or 6px routes", () => {
   const result = classifyOperatorWitnessLoop({
     captures: [

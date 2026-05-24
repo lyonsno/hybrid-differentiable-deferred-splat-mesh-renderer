@@ -1814,10 +1814,6 @@ function compactRetainTopRecord(
   limit: number,
   compareRecords: typeof compareCompactProjectionRetentionCoverageOrder,
 ): void {
-  const key = compactProjectionRetentionRecordKey(record);
-  if (records.some((candidate) => compactProjectionRetentionRecordKey(candidate) === key)) {
-    return;
-  }
   if (records.length < limit) {
     records.push(record);
     return;
