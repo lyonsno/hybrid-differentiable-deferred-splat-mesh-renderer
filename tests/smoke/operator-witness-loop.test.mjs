@@ -253,6 +253,21 @@ test("operator witness app frame timing splits compact retained source construct
   assert.match(gpuSource, /timeOptionalFrameStage\(frameTiming,\s*"gpu-arena-runtime"/);
 });
 
+test("operator witness compact source timing exposes internal construction stages", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const compactSourceStart = source.indexOf("function buildCompactRetainedSourceForRuntime");
+  const compactSourceEnd = source.indexOf("function estimateCompactProjectedTileRefCount", compactSourceStart);
+  const compactSource = source.slice(compactSourceStart, compactSourceEnd);
+
+  assert.match(compactSource, /presentationScope,\s*frameTiming,\s*}:/);
+  assert.match(compactSource, /rendererMetadata,\s*frameTiming,\s*}:/);
+  assert.match(compactSource, /timeOptionalFrameStage\(frameTiming,\s*"compact-source-project-splats"/);
+  assert.match(compactSource, /timeOptionalFrameStage\(frameTiming,\s*"compact-source-estimate-ref-budget"/);
+  assert.match(compactSource, /timeOptionalFrameStage\(frameTiming,\s*"compact-source-stream-retention"/);
+  assert.match(compactSource, /timeOptionalFrameStage\(frameTiming,\s*"compact-source-finalize-retained"/);
+  assert.match(compactSource, /timeOptionalFrameStage\(frameTiming,\s*"compact-source-pixel-traces"/);
+});
+
 test("operator witness loop classifier rejects otherwise-valid captures on stale CPU or 6px routes", () => {
   const result = classifyOperatorWitnessLoop({
     captures: [

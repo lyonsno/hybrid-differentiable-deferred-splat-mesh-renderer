@@ -1236,6 +1236,7 @@ function createGpuArenaTileLocalSceneState(
     traceAnchors: TILE_LOCAL_TRACE_ANCHORS ?? [],
     presentationAnchors: TILE_LOCAL_PRESENTATION_ANCHORS ?? [],
     presentationScope: TILE_LOCAL_PRESENTATION_SCOPE,
+    frameTiming,
   }));
   if (compactSource.retainedRecords.length === 0) {
     throw new Error("compact retained source produced no retained contributors for gpu arena runtime");
@@ -1404,6 +1405,7 @@ function buildCompactRetainedSourceForRuntime({
   traceAnchors,
   presentationAnchors,
   presentationScope,
+  frameTiming,
 }: {
   readonly attributes: SplatAttributes;
   readonly effectiveOpacities: Float32Array;
@@ -1423,6 +1425,7 @@ function buildCompactRetainedSourceForRuntime({
   readonly traceAnchors: readonly PixelTraceAnchor[];
   readonly presentationAnchors: readonly PixelTraceAnchor[];
   readonly presentationScope: TileLocalPresentationScope;
+  readonly frameTiming?: FrameTimingDraft;
 }): CompactRetainedSourceForRuntime {
   const tileCount = tileColumns * tileRows;
   const traceAnchorTileIndexes = compactSourceAnchorTileNeighborhoodIndexes({
@@ -1481,7 +1484,7 @@ function buildCompactRetainedSourceForRuntime({
   const fullSceneConstructionMaxTilesPerSplat = fullSceneConstructionBudget.shouldBoundSplatTileFootprints
     ? COMPACT_SOURCE_FULL_SCENE_MAX_TILES_PER_SPLAT
     : null;
-  const splats = projectRuntimeSplatsForCompactSource({
+  const splats = timeOptionalFrameStage(frameTiming, "compact-source-project-splats", () => projectRuntimeSplatsForCompactSource({
     attributes,
     viewProj,
     viewportWidth,
@@ -1494,7 +1497,7 @@ function buildCompactRetainedSourceForRuntime({
     tileColumns,
     tileRows,
     candidateSplatIndexes: anchorCandidateSplatIndexes,
-  });
+  }));
   const rendererMetadata = {
     requestedRenderer: "tile-local-visible",
     effectiveRenderer: "tile-local-visible-gaussian-compositor",
@@ -1528,6 +1531,7 @@ function buildCompactRetainedSourceForRuntime({
     allowAnchorOnlyBudgetFallback: presentationScope === "anchor-neighborhood",
     maxTilesPerSplat: fullSceneConstructionMaxTilesPerSplat,
     rendererMetadata,
+    frameTiming,
   });
 }
 
@@ -1551,6 +1555,7 @@ function buildStreamingCompactRetainedSourceForRuntime({
   allowAnchorOnlyBudgetFallback,
   maxTilesPerSplat,
   rendererMetadata,
+  frameTiming,
 }: {
   readonly splats: RuntimeCompactTileCoverage["splats"];
   readonly attributes: SplatAttributes;
@@ -1571,20 +1576,21 @@ function buildStreamingCompactRetainedSourceForRuntime({
   readonly allowAnchorOnlyBudgetFallback?: boolean;
   readonly maxTilesPerSplat?: number | null;
   readonly rendererMetadata: Record<string, unknown>;
+  readonly frameTiming?: FrameTimingDraft;
 }): CompactRetainedSourceForRuntime {
   const tileCount = tileColumns * tileRows;
   const projectedCounts = new Uint32Array(Math.max(0, tileCount));
   const sourceTileIndexes = anchorTileIndexes ?? compactSourceAnchorTileIndexes({ anchors, tileSizePx, tileColumns, tileRows });
   const traceTileIndexes = traceAnchorTileIndexes ?? sourceTileIndexes;
   const retainedCapacity = tileCount * maxRefsPerTile;
-  const projectedTileRefEstimate = estimateCompactProjectedTileRefCount({
+  const projectedTileRefEstimate = timeOptionalFrameStage(frameTiming, "compact-source-estimate-ref-budget", () => estimateCompactProjectedTileRefCount({
     splats,
     viewportWidth,
     viewportHeight,
     tileSizePx,
     maxTileEntries,
     maxTilesPerSplat,
-  });
+  }));
   const compactSourceBudget = classifyCompactSourceConstructionBudget({
     projectedRefs: projectedTileRefEstimate,
     maxProjectedRefs: maxTileEntries,
@@ -1612,79 +1618,83 @@ function buildStreamingCompactRetainedSourceForRuntime({
   const tileHeaderU32 = new Uint32Array(Math.max(0, tileCount * 8));
   let projectedIndex = 0;
 
-  streamCompactProjectedTileRefs({
-    splats,
-    viewportWidth,
-    viewportHeight,
-    tileSizePx,
-    tileColumns,
-    samplesPerAxis,
-    onlyTileIndexes: retainOnlyAnchorTiles ? sourceTileIndexes : null,
-    maxTilesPerSplat,
-    onEntry({ splat, tileIndex, tileX, tileY, coverageWeight }) {
-      const currentProjectedIndex = projectedIndex;
-      projectedIndex += 1;
-      projectedCounts[tileIndex] += 1;
-      const shouldRetainTile = !retainOnlyAnchorTiles || sourceTileIndexes.has(tileIndex);
-      const shouldTraceTile = traceTileIndexes.has(tileIndex);
-      if (!shouldRetainTile && !shouldTraceTile) {
-        return;
-      }
-      const record = compactCoverageEntryToRuntimeContributor({
-        entry: {
-          tileIndex,
-          tileX,
-          tileY,
-          splatIndex: splat.splatIndex,
-          originalId: splat.originalId,
-          coverageWeight,
-        },
-        projectedIndex: currentProjectedIndex,
-        splatsByIndex,
-        ranks,
-        depths,
-        attributes,
-        effectiveOpacities,
-      });
-      if (shouldTraceTile) {
-        anchorProjectedRecords.push(record);
-      }
-      if (shouldRetainTile) {
-        const bucket = compactStreamingTileBucket(buckets, tileIndex);
-        compactRetainTopRecord(bucket.coverageRecords, record, maxRefsPerTile, compareCompactProjectionRetentionCoverageOrder);
-        compactRetainTopRecord(bucket.retentionRecords, record, Math.max(1, Math.floor(maxRefsPerTile / 2)), compareCompactProjectionRetentionPriority);
-        compactRetainTopRecord(bucket.occlusionRecords, record, Math.max(1, Math.floor(maxRefsPerTile / 2)), compareCompactProjectionOcclusionPriority);
-      }
-    },
+  timeOptionalFrameStage(frameTiming, "compact-source-stream-retention", () => {
+    streamCompactProjectedTileRefs({
+      splats,
+      viewportWidth,
+      viewportHeight,
+      tileSizePx,
+      tileColumns,
+      samplesPerAxis,
+      onlyTileIndexes: retainOnlyAnchorTiles ? sourceTileIndexes : null,
+      maxTilesPerSplat,
+      onEntry({ splat, tileIndex, tileX, tileY, coverageWeight }) {
+        const currentProjectedIndex = projectedIndex;
+        projectedIndex += 1;
+        projectedCounts[tileIndex] += 1;
+        const shouldRetainTile = !retainOnlyAnchorTiles || sourceTileIndexes.has(tileIndex);
+        const shouldTraceTile = traceTileIndexes.has(tileIndex);
+        if (!shouldRetainTile && !shouldTraceTile) {
+          return;
+        }
+        const record = compactCoverageEntryToRuntimeContributor({
+          entry: {
+            tileIndex,
+            tileX,
+            tileY,
+            splatIndex: splat.splatIndex,
+            originalId: splat.originalId,
+            coverageWeight,
+          },
+          projectedIndex: currentProjectedIndex,
+          splatsByIndex,
+          ranks,
+          depths,
+          attributes,
+          effectiveOpacities,
+        });
+        if (shouldTraceTile) {
+          anchorProjectedRecords.push(record);
+        }
+        if (shouldRetainTile) {
+          const bucket = compactStreamingTileBucket(buckets, tileIndex);
+          compactRetainTopRecord(bucket.coverageRecords, record, maxRefsPerTile, compareCompactProjectionRetentionCoverageOrder);
+          compactRetainTopRecord(bucket.retentionRecords, record, Math.max(1, Math.floor(maxRefsPerTile / 2)), compareCompactProjectionRetentionPriority);
+          compactRetainTopRecord(bucket.occlusionRecords, record, Math.max(1, Math.floor(maxRefsPerTile / 2)), compareCompactProjectionOcclusionPriority);
+        }
+      },
+    });
   });
 
   const retainedRecords: GpuTileContributorArenaProjectedContributor[] = [];
-  for (let tileIndex = 0; tileIndex < tileCount; tileIndex += 1) {
-    const bucket = buckets.get(tileIndex);
-    const projectedCount = projectedCounts[tileIndex] ?? 0;
-    const retainedOffset = retainedRecords.length;
-    let retainedTileRecords: GpuTileContributorArenaProjectedContributor[] = [];
-    if (bucket) {
-      const projectedTileRecords = compactMergedTileCandidateRecords(bucket)
-        .sort(compareCompactProjectionRetentionCoverageOrder);
-      retainedTileRecords = selectCompactProjectionRetentionRecords(
-        projectedTileRecords,
-        maxRefsPerTile,
-        projectedCount,
-      ).sort(compareCompactProjectionRetentionCompositorOrder);
-      retainedRecords.push(...retainedTileRecords);
-    }
+  timeOptionalFrameStage(frameTiming, "compact-source-finalize-retained", () => {
+    for (let tileIndex = 0; tileIndex < tileCount; tileIndex += 1) {
+      const bucket = buckets.get(tileIndex);
+      const projectedCount = projectedCounts[tileIndex] ?? 0;
+      const retainedOffset = retainedRecords.length;
+      let retainedTileRecords: GpuTileContributorArenaProjectedContributor[] = [];
+      if (bucket) {
+        const projectedTileRecords = compactMergedTileCandidateRecords(bucket)
+          .sort(compareCompactProjectionRetentionCoverageOrder);
+        retainedTileRecords = selectCompactProjectionRetentionRecords(
+          projectedTileRecords,
+          maxRefsPerTile,
+          projectedCount,
+        ).sort(compareCompactProjectionRetentionCompositorOrder);
+        retainedRecords.push(...retainedTileRecords);
+      }
 
-    const retainedCount = retainedTileRecords.length;
-    const droppedCount = Math.max(0, projectedCount - retainedCount);
-    const headerBase = tileIndex * 8;
-    tileHeaderU32[headerBase] = retainedOffset;
-    tileHeaderU32[headerBase + 1] = retainedCount;
-    tileHeaderU32[headerBase + 2] = projectedCount;
-    tileHeaderU32[headerBase + 3] = droppedCount;
-    tileHeaderU32[headerBase + 4] = droppedCount > 0 ? 1 : 0;
-    tileHeaderU32[headerBase + 5] = retainedCount === 0 ? 0xffffffff : compactMaxRetainedViewRank(retainedTileRecords);
-  }
+      const retainedCount = retainedTileRecords.length;
+      const droppedCount = Math.max(0, projectedCount - retainedCount);
+      const headerBase = tileIndex * 8;
+      tileHeaderU32[headerBase] = retainedOffset;
+      tileHeaderU32[headerBase + 1] = retainedCount;
+      tileHeaderU32[headerBase + 2] = projectedCount;
+      tileHeaderU32[headerBase + 3] = droppedCount;
+      tileHeaderU32[headerBase + 4] = droppedCount > 0 ? 1 : 0;
+      tileHeaderU32[headerBase + 5] = retainedCount === 0 ? 0xffffffff : compactMaxRetainedViewRank(retainedTileRecords);
+    }
+  });
 
   const streamedProjectedContributorCount = projectedIndex;
   const projectedContributorCount = Math.max(projectedRefBudgetOverflow?.projectedRefs ?? 0, streamedProjectedContributorCount);
@@ -1698,16 +1708,8 @@ function buildStreamingCompactRetainedSourceForRuntime({
     maxRefsPerTile,
   });
 
-  return {
-    projectedRecords: anchorProjectedRecords,
-    retainedRecords,
-    droppedRecords: [],
-    projectedContributorCount,
-    retainedContributorCount: retainedRecords.length,
-    droppedContributorCount,
-    projectedRefBudgetOverflow,
-    tileRefCustody,
-    perPixelProjectedContributors: compactPerPixelContributorTraces({
+  const perPixelTraces = timeOptionalFrameStage(frameTiming, "compact-source-pixel-traces", () => ({
+    projected: compactPerPixelContributorTraces({
       contributors: anchorProjectedRecords,
       listName: "projectedContributors",
       viewportWidth,
@@ -1718,7 +1720,7 @@ function buildStreamingCompactRetainedSourceForRuntime({
       anchors,
       rendererMetadata,
     }) as unknown as TileLocalPrepassBridge["perPixelProjectedContributors"],
-    perPixelRetainedContributors: compactPerPixelContributorTraces({
+    retained: compactPerPixelContributorTraces({
       contributors: retainedRecords,
       projectedContributors: anchorProjectedRecords,
       listName: "retainedContributors",
@@ -1730,6 +1732,19 @@ function buildStreamingCompactRetainedSourceForRuntime({
       anchors,
       rendererMetadata,
     }) as unknown as TileLocalPrepassBridge["perPixelRetainedContributors"],
+  }));
+
+  return {
+    projectedRecords: anchorProjectedRecords,
+    retainedRecords,
+    droppedRecords: [],
+    projectedContributorCount,
+    retainedContributorCount: retainedRecords.length,
+    droppedContributorCount,
+    projectedRefBudgetOverflow,
+    tileRefCustody,
+    perPixelProjectedContributors: perPixelTraces.projected,
+    perPixelRetainedContributors: perPixelTraces.retained,
   };
 }
 
