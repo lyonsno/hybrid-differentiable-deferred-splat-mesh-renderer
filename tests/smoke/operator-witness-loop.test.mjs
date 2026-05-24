@@ -31,7 +31,7 @@ test("operator witness loop plan captures whole render before close crops and in
   );
   assert.ok(plan.every((capture) => capture.timeoutMs === 15000));
   assert.ok(plan.every((capture) => capture.timeoutCanvasClipMs === 1500));
-  assert.ok(plan.every((capture) => capture.timeoutScreenshotMs === 2500));
+  assert.ok(plan.every((capture) => capture.timeoutScreenshotMs === 15000));
   assert.deepEqual(plan[3].interactions, [{ type: "drag", button: "left", dx: -120, dy: 0 }]);
   assert.deepEqual(plan[4].interactions, [{ type: "drag", button: "left", dx: 120, dy: 0 }]);
 });
@@ -84,6 +84,7 @@ test("operator witness loop plan inherits caller timeout instead of enforcing a 
   const plan = buildOperatorWitnessLoopPlan(BASE_URL, { timeoutMs: 60000 });
 
   assert.ok(plan.every((capture) => capture.timeoutMs === 60000));
+  assert.ok(plan.every((capture) => capture.timeoutScreenshotMs === 60000));
 });
 
 test("operator witness loop classifier requires all visual captures to be real nonblank Scaniverse evidence", () => {
@@ -153,6 +154,49 @@ test("operator witness loop classifier preserves real Scaniverse evidence separa
   assert.deepEqual(result.findings.map((finding) => finding.kind), ["capture-smoke-failed"]);
 });
 
+test("operator witness loop classifier summarizes capture timing bottlenecks", () => {
+  const result = classifyOperatorWitnessLoop({
+    captures: [
+      witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.wholeRender, {
+        timing: {
+          totalMs: 1200,
+          stages: [
+            { name: "apply-view", elapsedMs: 40 },
+            { name: "readiness", elapsedMs: 900 },
+            { name: "screenshot", elapsedMs: 260 },
+          ],
+        },
+      }),
+      witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.dessertClose, {
+        witnessView: "dessert-close",
+        timing: {
+          totalMs: 1800,
+          stages: [
+            { name: "apply-view", elapsedMs: 60 },
+            { name: "readiness", elapsedMs: 1600 },
+            { name: "screenshot", elapsedMs: 140 },
+          ],
+        },
+      }),
+      witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.porousClose, { witnessView: "dessert-porous-close" }),
+      witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.porousOrbitLeft, { witnessView: "dessert-porous-close" }),
+      witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.porousOrbitRight, { witnessView: "dessert-porous-close" }),
+    ],
+    contactSheetPath: "smoke-reports/operator-witness/contact-sheet.png",
+  });
+
+  assert.equal(result.metrics.timing.totalCaptureMs, 3000);
+  assert.deepEqual(result.metrics.timing.slowestCapture, {
+    id: OPERATOR_WITNESS_CAPTURE_IDS.dessertClose,
+    totalMs: 1800,
+  });
+  assert.deepEqual(result.metrics.timing.slowestStage, {
+    captureId: OPERATOR_WITNESS_CAPTURE_IDS.dessertClose,
+    name: "readiness",
+    elapsedMs: 1600,
+  });
+});
+
 test("operator witness loop classifier rejects otherwise-valid captures on stale CPU or 6px routes", () => {
   const result = classifyOperatorWitnessLoop({
     captures: [
@@ -185,8 +229,8 @@ test("visual smoke CLI routes both initial and post-interaction readiness timeou
   const frameStart = source.indexOf("async function captureOperatorWitnessFrame");
   const frameEnd = source.indexOf("async function captureVisualSmoke", frameStart);
   const frameSource = source.slice(frameStart, frameEnd);
-  const initialWait = frameSource.indexOf("await waitForVisualSmokeCaptureReady(page, capture.expectedRendererLabel, timeoutMs, {");
-  const interactionWait = frameSource.indexOf("const interactionRevision = await applyCaptureInteractions", initialWait + 1);
+  const initialWait = frameSource.indexOf("waitForVisualSmokeCaptureReady(page, capture.expectedRendererLabel, timeoutMs, {");
+  const interactionWait = frameSource.indexOf("applyCaptureInteractions", initialWait + 1);
   const catchStart = frameSource.indexOf("} catch (error) {", initialWait);
   const routedFailure = frameSource.indexOf("captureTimeoutFailureWithRoute", catchStart);
 
@@ -196,13 +240,50 @@ test("visual smoke CLI routes both initial and post-interaction readiness timeou
   assert.ok(routedFailure > catchStart);
 });
 
-test("operator witness frame collection uses the capture timeout instead of the 1s generic evidence cap", () => {
+test("operator witness readiness polling uses the capture timeout instead of the 1s generic evidence cap", () => {
   const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
   const frameStart = source.indexOf("async function captureOperatorWitnessFrame");
   const frameEnd = source.indexOf("async function captureVisualSmoke", frameStart);
   const frameSource = source.slice(frameStart, frameEnd);
 
-  assert.match(frameSource, /collectPageEvidenceWithTimeout\(page, timeoutMs\)/);
+  assert.match(frameSource, /waitForVisualSmokeCaptureReady\(page, capture\.expectedRendererLabel, timeoutMs/);
+});
+
+test("operator witness frame reuses readiness evidence instead of repeating a page bridge read", () => {
+  const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
+  const frameStart = source.indexOf("async function captureOperatorWitnessFrame");
+  const frameEnd = source.indexOf("async function captureVisualSmoke", frameStart);
+  const frameSource = source.slice(frameStart, frameEnd);
+
+  assert.match(frameSource, /let readinessEvidence/);
+  assert.doesNotMatch(frameSource, /collectPageEvidenceWithTimeout\(page, timeoutMs\)/);
+});
+
+test("operator witness session caches the canvas clip before per-frame captures", () => {
+  const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
+  const sessionStart = source.indexOf("async function captureOperatorWitnessSession");
+  const sessionEnd = source.indexOf("async function captureOperatorWitnessFrame", sessionStart);
+  const sessionSource = source.slice(sessionStart, sessionEnd);
+  const frameStart = source.indexOf("async function captureOperatorWitnessFrame");
+  const frameEnd = source.indexOf("async function captureVisualSmoke", frameStart);
+  const frameSource = source.slice(frameStart, frameEnd);
+
+  assert.match(sessionSource, /clip = await .*canvasClip\(canvas,/s);
+  assert.match(sessionSource, /clip,/);
+  assert.doesNotMatch(frameSource, /canvasClip\(canvas,/);
+});
+
+test("operator witness session hides overlays once before per-frame captures", () => {
+  const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
+  const sessionStart = source.indexOf("async function captureOperatorWitnessSession");
+  const sessionEnd = source.indexOf("async function captureOperatorWitnessFrame", sessionStart);
+  const sessionSource = source.slice(sessionStart, sessionEnd);
+  const frameStart = source.indexOf("async function captureOperatorWitnessFrame");
+  const frameEnd = source.indexOf("async function captureVisualSmoke", frameStart);
+  const frameSource = source.slice(frameStart, frameEnd);
+
+  assert.match(sessionSource, /page\.addStyleTag\(\{/);
+  assert.doesNotMatch(frameSource, /page\.addStyleTag\(\{/);
 });
 
 test("operator witness frame screenshots are bounded by the capture screenshot timeout", () => {
@@ -233,7 +314,7 @@ test("operator witness initial page readiness timeouts produce a first-capture f
   const sessionEnd = source.indexOf("async function captureOperatorWitnessFrame", sessionStart);
   const sessionSource = source.slice(sessionStart, sessionEnd);
 
-  assert.match(sessionSource, /canvas = page\.locator\("canvas"\)\.first\(\);/);
+  assert.match(sessionSource, /page\.locator\("canvas"\)\.first\(\)/);
   assert.match(sessionSource, /captureTimeoutFailureWithRoute\(\{/);
   assert.match(sessionSource, /capture: plan\[0\],/);
   assert.match(sessionSource, /error: normalizeVisualSmokeTimeoutError\(error, timeoutMs\),/);
@@ -277,7 +358,7 @@ test("operator witness session stops after a timeout capture to avoid racing the
   const sessionEnd = source.indexOf("async function captureOperatorWitnessFrame", sessionStart);
   const sessionSource = source.slice(sessionStart, sessionEnd);
 
-  assert.match(sessionSource, /const captureResult = await captureOperatorWitnessFrame\(\{/);
+  assert.match(sessionSource, /const captureResult = await .*captureOperatorWitnessFrame\(\{/s);
   assert.match(sessionSource, /if \(captureResult\.captureFailure\) \{\s*break;\s*\}/);
 });
 
@@ -294,6 +375,7 @@ function witnessCapture(
     arenaBackend = "gpu",
     tileSizePx = "16",
     maxRefsPerTile = "256",
+    timing,
   } = {}
 ) {
   const realPageEvidence = pageEvidence ?? {
@@ -332,5 +414,6 @@ function witnessCapture(
       traceAnchors: null,
       presentationAnchors: null,
     },
+    timing,
   };
 }

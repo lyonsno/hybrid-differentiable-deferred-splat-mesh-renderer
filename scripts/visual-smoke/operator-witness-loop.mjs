@@ -34,7 +34,6 @@ const DEFAULT_OPERATOR_VISUAL_ROUTE = Object.freeze({
 });
 const OPERATOR_CAPTURE_TIMEOUT_MS = 15000;
 const OPERATOR_TIMEOUT_CANVAS_CLIP_MS = 1500;
-const OPERATOR_TIMEOUT_SCREENSHOT_MS = 2500;
 
 export function buildOperatorWitnessLoopPlan(baseUrl, { timeoutMs = OPERATOR_CAPTURE_TIMEOUT_MS } = {}) {
   return [
@@ -136,8 +135,47 @@ export function classifyOperatorWitnessLoop({ captures = [], contactSheetPath } 
           .filter(Boolean)
       ),
       contactSheetPath: contactSheetPath ?? "",
+      timing: summarizeOperatorWitnessTiming(captures),
     },
     findings,
+  };
+}
+
+export function summarizeOperatorWitnessTiming(captures = []) {
+  const timedCaptures = captures
+    .map((capture) => ({
+      id: capture.id,
+      totalMs: finiteNumber(capture.timing?.totalMs),
+      stages: Array.isArray(capture.timing?.stages) ? capture.timing.stages : [],
+    }))
+    .filter((capture) => capture.totalMs !== null || capture.stages.length > 0);
+  const totalCaptureMs = timedCaptures.reduce((sum, capture) => sum + (capture.totalMs ?? 0), 0);
+  const slowestCapture = timedCaptures.reduce((slowest, capture) => {
+    if (capture.totalMs === null) return slowest;
+    if (!slowest || capture.totalMs > slowest.totalMs) {
+      return { id: capture.id, totalMs: capture.totalMs };
+    }
+    return slowest;
+  }, null);
+  const slowestStage = timedCaptures.reduce((slowest, capture) => {
+    for (const stage of capture.stages) {
+      const elapsedMs = finiteNumber(stage.elapsedMs);
+      if (elapsedMs === null) continue;
+      if (!slowest || elapsedMs > slowest.elapsedMs) {
+        slowest = { captureId: capture.id, name: stage.name, elapsedMs };
+      }
+    }
+    return slowest;
+  }, null);
+  return {
+    totalCaptureMs,
+    slowestCapture,
+    slowestStage,
+    captures: timedCaptures.map((capture) => ({
+      id: capture.id,
+      totalMs: capture.totalMs ?? 0,
+      stages: capture.stages,
+    })),
   };
 }
 
@@ -175,7 +213,7 @@ function visualCapture(baseUrl, { id, title, evidenceRole, witnessView, timeoutM
     expectedRendererLabel: "tile-local-visible",
     timeoutMs,
     timeoutCanvasClipMs: OPERATOR_TIMEOUT_CANVAS_CLIP_MS,
-    timeoutScreenshotMs: OPERATOR_TIMEOUT_SCREENSHOT_MS,
+    timeoutScreenshotMs: timeoutMs,
     url: url.toString().replaceAll("%2F", "/"),
     interactions,
   };
@@ -339,4 +377,9 @@ function finding(kind, summary) {
 
 function unique(values) {
   return [...new Set(values)];
+}
+
+function finiteNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }

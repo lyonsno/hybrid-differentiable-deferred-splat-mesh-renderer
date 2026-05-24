@@ -374,7 +374,8 @@ async function runStaticDessertWitness({ browser, options, baseUrl, reportDir, a
 
 async function runOperatorWitnessLoop({ browser, options, baseUrl, reportDir, analysisPath, reportPath, generatedAt }) {
   const plan = buildOperatorWitnessLoopPlan(baseUrl, { timeoutMs: options.timeoutMs });
-  const captures = await captureOperatorWitnessSession({ browser, options, plan, reportDir });
+  const session = await captureOperatorWitnessSession({ browser, options, plan, reportDir });
+  const captures = session.captures;
   const contactSheetPath = await writeOperatorWitnessContactSheet({
     captures,
     appRoot: options.appRoot,
@@ -388,6 +389,7 @@ async function runOperatorWitnessLoop({ browser, options, baseUrl, reportDir, an
     analysisPath: path.relative(options.appRoot, analysisPath),
     reportPath: path.relative(options.appRoot, reportPath),
     contactSheetPath,
+    timing: session.timing,
     smokeHandoff: buildSmokeHandoff(options, {
       smokeKind: "visual",
       decisionRequested: "Inspect whole-render-first operator visual evidence before choosing the next renderer repair.",
@@ -402,49 +404,58 @@ async function runOperatorWitnessLoop({ browser, options, baseUrl, reportDir, an
 }
 
 async function captureOperatorWitnessSession({ browser, options, plan, reportDir }) {
+  const timing = startTiming();
   if (plan.length === 0) {
-    return [];
+    return { captures: [], timing: finishTiming(timing) };
   }
 
   const timeoutMs = Math.max(...plan.map((capture) => capture.timeoutMs ?? options.timeoutMs));
   const consoleMessages = [];
   const pageErrors = [];
-  const page = await browser.newPage({
-    viewport: options.viewport,
-    deviceScaleFactor: options.deviceScaleFactor,
-  });
+  const page = await timeStage(timing, "new-page", () =>
+    browser.newPage({
+      viewport: options.viewport,
+      deviceScaleFactor: options.deviceScaleFactor,
+    })
+  );
   page.on("console", (message) => consoleMessages.push({ type: message.type(), text: message.text() }));
   page.on("pageerror", (error) => pageErrors.push(error.stack || error.message));
   let canvas;
+  let clip;
 
   try {
-    await page.goto(plan[0].url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
-    canvas = page.locator("canvas").first();
-    await canvas.waitFor({ state: "attached", timeout: timeoutMs });
-    await waitForVisualSmokeCaptureReady(page, plan[0].expectedRendererLabel, timeoutMs);
+    await timeStage(timing, "page-goto", () => page.goto(plan[0].url, { waitUntil: "domcontentloaded", timeout: timeoutMs }));
+    canvas = await timeStage(timing, "canvas-locator", () => page.locator("canvas").first());
+    await timeStage(timing, "canvas-attached", () => canvas.waitFor({ state: "attached", timeout: timeoutMs }));
+    clip = await timeStage(timing, "canvas-clip", () => canvasClip(canvas, plan[0].timeoutCanvasClipMs));
+    await timeStage(timing, "hide-overlays", () => page.addStyleTag({
+      content: "#stats,[data-visual-smoke-ignore]{visibility:hidden!important}",
+    }));
+    await timeStage(timing, "initial-readiness", () => waitForVisualSmokeCaptureReady(page, plan[0].expectedRendererLabel, timeoutMs));
 
     const captures = [];
     for (const capture of plan) {
-      const captureResult = await captureOperatorWitnessFrame({
+      const captureResult = await timeStage(timing, `capture:${capture.id}`, () => captureOperatorWitnessFrame({
         page,
         canvas,
         options,
         capture,
+        clip,
         reportDir,
         consoleMessages,
         pageErrors,
-      });
+      }));
       captures.push(captureResult);
       if (captureResult.captureFailure) {
         break;
       }
     }
-    return captures;
+    return { captures, timing: finishTiming(timing) };
   } catch (error) {
     if (!isRecoverableVisualSmokeTimeout(error)) {
       throw error;
     }
-    return [await captureTimeoutFailureWithRoute({
+    const captures = [await captureTimeoutFailureWithRoute({
       page,
       canvas,
       options,
@@ -453,9 +464,12 @@ async function captureOperatorWitnessSession({ browser, options, plan, reportDir
       error: normalizeVisualSmokeTimeoutError(error, timeoutMs),
       consoleMessages,
       pageErrors,
+      timing: finishTiming(timing),
+      clip,
     })];
+    return { captures, timing: finishTiming(timing) };
   } finally {
-    await page.close();
+    await timeStage(timing, "page-close", () => page.close()).catch(() => undefined);
   }
 }
 
@@ -464,68 +478,71 @@ async function captureOperatorWitnessFrame({
   canvas,
   options,
   capture,
+  clip,
   reportDir,
   consoleMessages,
   pageErrors,
 }) {
   const timeoutMs = capture.timeoutMs ?? options.timeoutMs;
+  const timing = startTiming();
   try {
-    const viewRevision = await applyOperatorWitnessView(page, capture.witnessView ?? "default", timeoutMs);
-    await waitForVisualSmokeCaptureReady(page, capture.expectedRendererLabel, timeoutMs, {
+    let readinessEvidence;
+    const viewRevision = await timeStage(timing, "apply-view", () =>
+      applyOperatorWitnessView(page, capture.witnessView ?? "default", timeoutMs)
+    );
+    readinessEvidence = await timeStage(timing, "view-readiness", () => waitForVisualSmokeCaptureReady(page, capture.expectedRendererLabel, timeoutMs, {
       operatorWitness: {
         witnessView: capture.witnessView ?? "default",
         minRevision: viewRevision,
       },
-    });
-    await page.waitForTimeout(options.settleMs);
+    }));
+    await timeStage(timing, "settle-before-interaction", () => page.waitForTimeout(options.settleMs));
     if (Array.isArray(capture.interactions) && capture.interactions.length > 0) {
-      const interactionRevision = await applyCaptureInteractions({ page, canvas, interactions: capture.interactions, timeoutMs });
-      await waitForVisualSmokeCaptureReady(page, capture.expectedRendererLabel, timeoutMs, interactionRevision !== null
+      const interactionRevision = await timeStage(timing, "interactions", () =>
+        applyCaptureInteractions({ page, canvas, interactions: capture.interactions, timeoutMs })
+      );
+      readinessEvidence = await timeStage(timing, "interaction-readiness", () => waitForVisualSmokeCaptureReady(page, capture.expectedRendererLabel, timeoutMs, interactionRevision !== null
         ? {
             operatorWitness: {
               witnessView: capture.witnessView ?? "default",
               minRevision: interactionRevision,
             },
           }
-        : {});
-      await page.waitForTimeout(options.settleMs);
+        : {}));
+      await timeStage(timing, "settle-after-interaction", () => page.waitForTimeout(options.settleMs));
     }
 
-    const rawPageEvidence = await collectPageEvidenceWithTimeout(page, timeoutMs);
     let pageEvidence = {
-      ...rawPageEvidence,
-      ...extractTileLocalPageMetrics(rawPageEvidence),
+      ...readinessEvidence,
+      ...extractTileLocalPageMetrics(readinessEvidence),
     };
-    const clip = await canvasClip(canvas, capture.timeoutCanvasClipMs);
-    await page.addStyleTag({
-      content: "#stats,[data-visual-smoke-ignore]{visibility:hidden!important}",
-    });
     const screenshotPath = path.join(reportDir, `${capture.id}.png`);
-    const screenshot = await page.screenshot({
+    const screenshot = await timeStage(timing, "screenshot", () => page.screenshot({
       path: screenshotPath,
       clip,
       timeout: capture.timeoutScreenshotMs ?? TIMEOUT_SCREENSHOT_MS,
-    });
-    const imageAnalysis = analyzePngBuffer(screenshot, options.imageThresholds);
-    pageEvidence = attachTraceCanvasParityEvidence({
+    }));
+    const imageAnalysis = timeSyncStage(timing, "image-analysis", () => analyzePngBuffer(screenshot, options.imageThresholds));
+    pageEvidence = timeSyncStage(timing, "trace-canvas-parity", () => attachTraceCanvasParityEvidence({
       pageEvidence,
       screenshot,
       url: capture.url,
       viewport: options.viewport,
-    });
-    const classification = classifySmokeEvidence({
+    }));
+    const classification = timeSyncStage(timing, "classify-smoke", () => classifySmokeEvidence({
       pageEvidence,
       imageAnalysis,
       requireRealSplat: options.requireRealSplat,
-    });
-    const witnessDiagnostics = classifyWitnessCapture({
+    }));
+    const witnessDiagnostics = timeSyncStage(timing, "witness-diagnostics", () => classifyWitnessCapture({
       pageEvidence,
       imageAnalysis,
       smokeClassification: classification,
-    });
+    }));
 
     return {
       ...capture,
+      timing: finishTiming(timing),
       screenshotPath: path.relative(options.appRoot, screenshotPath),
       routeIdentity: routeIdentityFromCapture(capture, pageEvidence, options),
       pageEvidence,
@@ -548,6 +565,8 @@ async function captureOperatorWitnessFrame({
       error: normalizeVisualSmokeTimeoutError(error, timeoutMs),
       consoleMessages,
       pageErrors,
+      timing: finishTiming(timing),
+      clip,
     });
   }
 }
@@ -645,12 +664,15 @@ async function captureTimeoutFailureWithRoute({
   error,
   consoleMessages,
   pageErrors,
+  timing,
+  clip,
 }) {
   const failureCapture = await captureTimeoutFailure({
     page,
     canvas,
     options,
     capture,
+    clip,
     reportDir,
     error,
     consoleMessages,
@@ -658,6 +680,7 @@ async function captureTimeoutFailureWithRoute({
   });
   return {
     ...failureCapture,
+    timing: timing ?? failureCapture.timing,
     routeIdentity: routeIdentityFromCapture(capture, failureCapture.pageEvidence ?? {}, options),
   };
 }
@@ -742,7 +765,7 @@ async function runCaptureInteractions({ page, canvas, interactions, timeoutMs })
   }
 }
 
-async function captureTimeoutFailure({ page, canvas, options, capture, reportDir, error, consoleMessages, pageErrors }) {
+async function captureTimeoutFailure({ page, canvas, options, capture, clip, reportDir, error, consoleMessages, pageErrors }) {
   const rawPageEvidence = error.lastEvidence ?? await collectPageEvidence(page).catch(() => ({}));
   const pageEvidence = {
     ...rawPageEvidence,
@@ -753,7 +776,7 @@ async function captureTimeoutFailure({ page, canvas, options, capture, reportDir
   let imageAnalysis;
 
   try {
-    const clip = await canvasClip(canvas, capture.timeoutCanvasClipMs);
+    clip = clip ?? await canvasClip(canvas, capture.timeoutCanvasClipMs);
     await page.addStyleTag({
       content: "#stats,[data-visual-smoke-ignore]{visibility:hidden!important}",
     });
@@ -1282,6 +1305,7 @@ ${classification.summary.text}
 function renderOperatorWitnessLoopReport(result) {
   const classification = result.classification;
   const metrics = classification.metrics;
+  const timing = metrics.timing ?? {};
   return `# Operator Witness Loop Report
 
 - Status: ${classification.summary.status}
@@ -1302,6 +1326,15 @@ ${renderSmokeHandoffSection(result.smokeHandoff)}
 - Arena backends: ${metrics.arenaBackends.join(", ") || "none"}
 - Tile budgets: ${metrics.tileBudgets.join(", ") || "none"}
 
+## Timing
+
+- Total loop ms: ${result.timing?.totalMs ?? "not reported"}
+- Total capture ms: ${timing.totalCaptureMs ?? "not reported"}
+- Slowest capture: ${timing.slowestCapture ? `${timing.slowestCapture.id} (${timing.slowestCapture.totalMs}ms)` : "not reported"}
+- Slowest stage: ${timing.slowestStage ? `${timing.slowestStage.captureId}/${timing.slowestStage.name} (${timing.slowestStage.elapsedMs}ms)` : "not reported"}
+
+${renderOperatorTimingTable(timing)}
+
 ## Captures
 
 ${result.captures
@@ -1318,6 +1351,7 @@ ${result.captures
 - Nonblank: ${capture.classification.nonblank}
 - Real splat evidence: ${capture.classification.realSplatEvidence}
 - Changed pixels: ${capture.imageAnalysis.changedPixels} / ${capture.imageAnalysis.totalPixels} (${formatPercent(capture.imageAnalysis.changedPixelRatio)})
+- Total capture ms: ${capture.timing?.totalMs ?? "not reported"}
 `
   )
   .join("\n")}
@@ -1343,6 +1377,21 @@ ${JSON.stringify(result.captures.map((capture) => ({ id: capture.id, role: captu
 
 ${classification.summary.text}
 `;
+}
+
+function renderOperatorTimingTable(timing = {}) {
+  const captures = Array.isArray(timing.captures) ? timing.captures : [];
+  if (captures.length === 0) {
+    return "- Per-capture timings: not reported";
+  }
+  return captures
+    .map((capture) => {
+      const stages = Array.isArray(capture.stages)
+        ? capture.stages.map((stage) => `${stage.name}:${stage.elapsedMs}ms`).join(", ")
+        : "";
+      return `- ${capture.id}: ${capture.totalMs}ms${stages ? ` (${stages})` : ""}`;
+    })
+    .join("\n");
 }
 
 function printSummary(result) {
@@ -1587,6 +1636,38 @@ function routeIdentityFromCapture(capture, pageEvidence, options) {
       "full-scene",
     viewport: options.viewport,
     canvas: pageEvidence.canvas ?? null,
+  };
+}
+
+function startTiming() {
+  return {
+    startedAtMs: Date.now(),
+    stages: [],
+  };
+}
+
+async function timeStage(timing, name, fn) {
+  const startedAtMs = Date.now();
+  try {
+    return await fn();
+  } finally {
+    timing.stages.push({ name, elapsedMs: Date.now() - startedAtMs });
+  }
+}
+
+function timeSyncStage(timing, name, fn) {
+  const startedAtMs = Date.now();
+  try {
+    return fn();
+  } finally {
+    timing.stages.push({ name, elapsedMs: Date.now() - startedAtMs });
+  }
+}
+
+function finishTiming(timing) {
+  return {
+    totalMs: Date.now() - timing.startedAtMs,
+    stages: timing.stages,
   };
 }
 
