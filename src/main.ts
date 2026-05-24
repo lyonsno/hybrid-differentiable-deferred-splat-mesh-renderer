@@ -2746,7 +2746,7 @@ function compactProjectionRetentionReserveCount(projectedRefCount: number, maxRe
 
 function compactProjectionRetentionCandidates(
   records: readonly GpuTileContributorArenaProjectedContributor[],
-  selectedKeys: ReadonlySet<string>,
+  selectedKeys: ReadonlySet<bigint>,
   reserveCount: number,
   candidateSources?: CompactProjectionRetentionCandidateSources,
 ): readonly {
@@ -2763,7 +2763,7 @@ function compactProjectionRetentionCandidates(
     readonly record: GpuTileContributorArenaProjectedContributor;
     readonly comparePriority: typeof compareCompactProjectionRetentionPriority;
   }[] = [];
-  const candidatePriorityKeys = pools.map(() => new Set<number>());
+  const candidatePriorityKeys = pools.map(() => new Set<bigint>());
   const cursors = new Array(pools.length).fill(0);
 
   while (candidates.length < reserveCount) {
@@ -2793,7 +2793,7 @@ function compactProjectionRetentionCandidates(
 
 function compactProjectionRetentionReplacementIndex(
   selected: readonly GpuTileContributorArenaProjectedContributor[],
-  reservedKeys: ReadonlySet<number>,
+  reservedKeys: ReadonlySet<bigint>,
   comparePriority: typeof compareCompactProjectionRetentionPriority,
 ): number {
   let replacementIndex = -1;
@@ -2863,8 +2863,12 @@ function compareCompactProjectionOcclusionPriority(
   );
 }
 
-function compactProjectionRetentionRecordKey(contributor: GpuTileContributorArenaProjectedContributor): number {
-  return contributor.splatIndex;
+function compactProjectionRetentionRecordKey(contributor: GpuTileContributorArenaProjectedContributor): bigint {
+  return (
+    (BigInt(contributor.tileIndex) << 64n) |
+    (BigInt(contributor.splatIndex) << 32n) |
+    BigInt(contributor.originalId)
+  );
 }
 
 function compactMaxRetainedViewRank(records: readonly GpuTileContributorArenaProjectedContributor[]): number {

@@ -307,7 +307,7 @@ test("compact finalize retention reuses bounded priority candidate lists", () =>
   assert.doesNotMatch(candidatesSource, /records:\s*\[\.\.\.records\]\.sort\(compareCompactProjectionOcclusionPriority\)/);
 });
 
-test("compact finalize retention uses numeric per-tile identity keys", () => {
+test("compact finalize retention uses non-string full-identity keys", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const keyStart = source.indexOf("function compactProjectionRetentionRecordKey");
   const keyEnd = source.indexOf("function compactMaxRetainedViewRank", keyStart);
@@ -316,8 +316,10 @@ test("compact finalize retention uses numeric per-tile identity keys", () => {
   const candidatesEnd = source.indexOf("function compactProjectionRetentionReplacementIndex", candidatesStart);
   const candidatesSource = source.slice(candidatesStart, candidatesEnd);
 
-  assert.match(keySource, /function compactProjectionRetentionRecordKey\([^)]*\):\s*number/);
-  assert.match(keySource, /return\s+contributor\.splatIndex/);
+  assert.match(keySource, /function compactProjectionRetentionRecordKey\([^)]*\):\s*bigint/);
+  assert.match(keySource, /BigInt\(contributor\.tileIndex\)\s*<<\s*64n/);
+  assert.match(keySource, /BigInt\(contributor\.splatIndex\)\s*<<\s*32n/);
+  assert.match(keySource, /BigInt\(contributor\.originalId\)/);
   assert.doesNotMatch(keySource, /`/);
   assert.doesNotMatch(candidatesSource, /`\$\{poolIndex\}:/);
 });
