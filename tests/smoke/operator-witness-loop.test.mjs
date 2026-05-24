@@ -278,6 +278,19 @@ test("compact stream retention hot path avoids duplicate key scans", () => {
   assert.doesNotMatch(retainSource, /compactProjectionRetentionRecordKey/);
 });
 
+test("compact stream retention caches capped-list worst records", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const bucketStart = source.indexOf("interface CompactStreamingTileBucket");
+  const mergeEnd = source.indexOf("function streamCompactProjectedTileRefs", bucketStart);
+  const retentionSource = source.slice(bucketStart, mergeEnd);
+
+  assert.match(retentionSource, /interface CompactRetainedRecordList/);
+  assert.match(retentionSource, /worstIndex:\s*number/);
+  assert.match(retentionSource, /function compactRetainedRecordListWorstIndex/);
+  assert.match(retentionSource, /compactRetainTopRecord\(\s*recordList:\s*CompactRetainedRecordList/);
+  assert.match(retentionSource, /compareRecords\(record,\s*records\[recordList\.worstIndex\]\)\s*>=\s*0/);
+});
+
 test("operator witness loop classifier rejects otherwise-valid captures on stale CPU or 6px routes", () => {
   const result = classifyOperatorWitnessLoop({
     captures: [

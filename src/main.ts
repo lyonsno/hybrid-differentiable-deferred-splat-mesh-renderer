@@ -1787,9 +1787,21 @@ function estimateCompactProjectedTileRefCount({
 }
 
 interface CompactStreamingTileBucket {
-  readonly coverageRecords: GpuTileContributorArenaProjectedContributor[];
-  readonly retentionRecords: GpuTileContributorArenaProjectedContributor[];
-  readonly occlusionRecords: GpuTileContributorArenaProjectedContributor[];
+  readonly coverageRecords: CompactRetainedRecordList;
+  readonly retentionRecords: CompactRetainedRecordList;
+  readonly occlusionRecords: CompactRetainedRecordList;
+}
+
+interface CompactRetainedRecordList {
+  readonly records: GpuTileContributorArenaProjectedContributor[];
+  worstIndex: number;
+}
+
+function compactRetainedRecordList(): CompactRetainedRecordList {
+  return {
+    records: [],
+    worstIndex: 0,
+  };
 }
 
 function compactStreamingTileBucket(
@@ -1799,9 +1811,9 @@ function compactStreamingTileBucket(
   let bucket = buckets.get(tileIndex);
   if (!bucket) {
     bucket = {
-      coverageRecords: [],
-      retentionRecords: [],
-      occlusionRecords: [],
+      coverageRecords: compactRetainedRecordList(),
+      retentionRecords: compactRetainedRecordList(),
+      occlusionRecords: compactRetainedRecordList(),
     };
     buckets.set(tileIndex, bucket);
   }
@@ -1809,25 +1821,39 @@ function compactStreamingTileBucket(
 }
 
 function compactRetainTopRecord(
-  records: GpuTileContributorArenaProjectedContributor[],
+  recordList: CompactRetainedRecordList,
   record: GpuTileContributorArenaProjectedContributor,
   limit: number,
   compareRecords: typeof compareCompactProjectionRetentionCoverageOrder,
 ): void {
+  const records = recordList.records;
   if (records.length < limit) {
     records.push(record);
+    if (records.length === 1 || compareRecords(record, records[recordList.worstIndex]) > 0) {
+      recordList.worstIndex = records.length - 1;
+    }
     return;
   }
 
+  if (compareRecords(record, records[recordList.worstIndex]) >= 0) {
+    return;
+  }
+
+  records[recordList.worstIndex] = record;
+  recordList.worstIndex = compactRetainedRecordListWorstIndex(records, compareRecords);
+}
+
+function compactRetainedRecordListWorstIndex(
+  records: readonly GpuTileContributorArenaProjectedContributor[],
+  compareRecords: typeof compareCompactProjectionRetentionCoverageOrder,
+): number {
   let worstIndex = 0;
   for (let index = 1; index < records.length; index += 1) {
     if (compareRecords(records[index], records[worstIndex]) > 0) {
       worstIndex = index;
     }
   }
-  if (compareRecords(record, records[worstIndex]) < 0) {
-    records[worstIndex] = record;
-  }
+  return worstIndex;
 }
 
 function compactMergedTileCandidateRecords(
@@ -1835,7 +1861,7 @@ function compactMergedTileCandidateRecords(
 ): GpuTileContributorArenaProjectedContributor[] {
   const records = [];
   const seen = new Set<string>();
-  for (const record of [...bucket.coverageRecords, ...bucket.retentionRecords, ...bucket.occlusionRecords]) {
+  for (const record of [...bucket.coverageRecords.records, ...bucket.retentionRecords.records, ...bucket.occlusionRecords.records]) {
     const key = compactProjectionRetentionRecordKey(record);
     if (seen.has(key)) {
       continue;
