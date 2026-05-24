@@ -1908,6 +1908,7 @@ function streamCompactProjectedTileRefs({
   }
   for (const splat of splats) {
     const covariance = compactSourceCovariance(splat.covariancePx);
+    const densityParams = compactSourceCovarianceDensityParams(covariance);
     const tileBounds = compactSourceTileBoundsForSplat({
       centerPx: splat.centerPx,
       covariance,
@@ -1933,7 +1934,7 @@ function streamCompactProjectedTileRefs({
       const tileMaxY = Math.min(viewportHeight, tileMinY + tileSizePx);
       const coverageWeight = compactSourceTileCoverageWeight({
         centerPx: splat.centerPx,
-        covariance,
+        densityParams,
         tileMinX,
         tileMinY,
         tileMaxX,
@@ -2091,7 +2092,7 @@ function compactSourceTileBoundsForSplat({
 
 function compactSourceTileCoverageWeight({
   centerPx,
-  covariance,
+  densityParams,
   tileMinX,
   tileMinY,
   tileMaxX,
@@ -2099,7 +2100,7 @@ function compactSourceTileCoverageWeight({
   samplesPerAxis,
 }: {
   readonly centerPx: readonly [number, number];
-  readonly covariance: { readonly xx: number; readonly xy: number; readonly yy: number; readonly determinant: number };
+  readonly densityParams: CompactSourceCovarianceDensityParams;
   readonly tileMinX: number;
   readonly tileMinY: number;
   readonly tileMaxX: number;
@@ -2116,26 +2117,43 @@ function compactSourceTileCoverageWeight({
     const y = tileMinY + ((yIndex + 0.5) / samplesPerAxis) * height;
     for (let xIndex = 0; xIndex < samplesPerAxis; xIndex += 1) {
       const x = tileMinX + ((xIndex + 0.5) / samplesPerAxis) * width;
-      densitySum += compactSourceCovarianceDensity(x, y, centerPx, covariance);
+      densitySum += compactSourceCovarianceDensity(x, y, centerPx, densityParams);
     }
   }
   return (densitySum / (samplesPerAxis * samplesPerAxis)) * width * height;
+}
+
+interface CompactSourceCovarianceDensityParams {
+  readonly invXx: number;
+  readonly invXy: number;
+  readonly invYy: number;
+  readonly normalization: number;
+}
+
+function compactSourceCovarianceDensityParams(
+  covariance: { readonly xx: number; readonly xy: number; readonly yy: number; readonly determinant: number },
+): CompactSourceCovarianceDensityParams {
+  return {
+    invXx: covariance.yy / covariance.determinant,
+    invXy: -covariance.xy / covariance.determinant,
+    invYy: covariance.xx / covariance.determinant,
+    normalization: 1 / (2 * Math.PI * Math.sqrt(covariance.determinant)),
+  };
 }
 
 function compactSourceCovarianceDensity(
   x: number,
   y: number,
   centerPx: readonly [number, number],
-  covariance: { readonly xx: number; readonly xy: number; readonly yy: number; readonly determinant: number },
+  densityParams: CompactSourceCovarianceDensityParams,
 ): number {
   const dx = x - centerPx[0];
   const dy = y - centerPx[1];
-  const invXx = covariance.yy / covariance.determinant;
-  const invXy = -covariance.xy / covariance.determinant;
-  const invYy = covariance.xx / covariance.determinant;
-  const mahalanobis2 = invXx * dx * dx + 2 * invXy * dx * dy + invYy * dy * dy;
-  const normalization = 1 / (2 * Math.PI * Math.sqrt(covariance.determinant));
-  return normalization * Math.exp(-0.5 * mahalanobis2);
+  const mahalanobis2 =
+    densityParams.invXx * dx * dx +
+    2 * densityParams.invXy * dx * dy +
+    densityParams.invYy * dy * dy;
+  return densityParams.normalization * Math.exp(-0.5 * mahalanobis2);
 }
 
 function compactClamp(value: number, min: number, max: number): number {

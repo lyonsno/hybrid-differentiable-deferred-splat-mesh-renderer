@@ -302,6 +302,22 @@ test("compact stream retention avoids dense tile-x range allocation", () => {
   assert.doesNotMatch(streamSource, /compactSourceTileXRange\(minTileX,\s*maxTileX\)/);
 });
 
+test("compact stream retention precomputes covariance density parameters", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const streamStart = source.indexOf("function streamCompactProjectedTileRefs");
+  const streamEnd = source.indexOf("function compactSourceBoundedTileRefCount", streamStart);
+  const streamSource = source.slice(streamStart, streamEnd);
+  const densityStart = source.indexOf("\nfunction compactSourceCovarianceDensity(");
+  const clampStart = source.indexOf("function compactClamp", densityStart);
+  const densitySource = source.slice(densityStart, clampStart);
+
+  assert.match(streamSource, /const densityParams = compactSourceCovarianceDensityParams\(covariance\)/);
+  assert.match(streamSource, /densityParams,/);
+  assert.match(densitySource, /densityParams:\s*CompactSourceCovarianceDensityParams/);
+  assert.doesNotMatch(densitySource, /covariance\.yy\s*\/\s*covariance\.determinant/);
+  assert.doesNotMatch(densitySource, /Math\.sqrt\(covariance\.determinant\)/);
+});
+
 test("compact finalize retention reuses bounded priority candidate lists", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const compactSourceStart = source.indexOf("function buildCompactRetainedSourceForRuntime");
