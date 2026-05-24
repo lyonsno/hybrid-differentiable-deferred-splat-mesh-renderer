@@ -413,6 +413,10 @@ function timeFrameStage<T>(timing: FrameTimingDraft, name: string, fn: () => T):
   }
 }
 
+function timeOptionalFrameStage<T>(timing: FrameTimingDraft | undefined, name: string, fn: () => T): T {
+  return timing ? timeFrameStage(timing, name, fn) : fn();
+}
+
 function finishFrameTiming(timing: FrameTimingDraft): FrameTimingSummary {
   return {
     totalMs: roundRuntimeMetric(performance.now() - timing.startedAtMs),
@@ -862,22 +866,21 @@ async function main() {
       pendingAlphaDensity,
     })) {
       try {
-        const tileLocalState = timeFrameStage(frameTiming, "tile-local-scene-state", () =>
-          ensureTileLocalSceneState(
-            gpu.device,
-            scene,
-            scene.tileLocalState!,
-            view,
-            viewProj,
-            width,
-            height,
-            true,
-            {
-              splatScale: activeSplatScale,
-              minRadiusPx: activeMinRadiusPx,
-              nearFadeEndNdc: activeNearFadeEnd,
-            }
-          )
+        const tileLocalState = ensureTileLocalSceneState(
+          gpu.device,
+          scene,
+          scene.tileLocalState,
+          view,
+          viewProj,
+          width,
+          height,
+          true,
+          {
+            splatScale: activeSplatScale,
+            minRadiusPx: activeMinRadiusPx,
+            nearFadeEndNdc: activeNearFadeEnd,
+          },
+          frameTiming
         );
         scene.tileLocalState = tileLocalState;
         scene.tileLocalLastSkipReason = null;
@@ -1168,7 +1171,8 @@ function createTileLocalSceneState(
   viewProj: Float32Array,
   viewportWidth: number,
   viewportHeight: number,
-  footprintParams: RuntimeFootprintParams
+  footprintParams: RuntimeFootprintParams,
+  frameTiming?: FrameTimingDraft
 ): TileLocalSceneState {
   if (REQUESTED_ARENA_BACKEND === "gpu") {
     return createGpuArenaTileLocalSceneState(
@@ -1180,7 +1184,8 @@ function createTileLocalSceneState(
       viewProj,
       viewportWidth,
       viewportHeight,
-      footprintParams
+      footprintParams,
+      frameTiming
     );
   }
   return createCpuTileLocalSceneState(
@@ -1206,12 +1211,13 @@ function createGpuArenaTileLocalSceneState(
   viewProj: Float32Array,
   viewportWidth: number,
   viewportHeight: number,
-  footprintParams: RuntimeFootprintParams
+  footprintParams: RuntimeFootprintParams,
+  frameTiming?: FrameTimingDraft
 ): TileLocalSceneState {
   const tileColumns = tileColumnsForViewport(viewportWidth);
   const tileRows = tileRowsForViewport(viewportHeight);
   const tileCount = tileColumns * tileRows;
-  const compactSource = buildCompactRetainedSourceForRuntime({
+  const compactSource = timeOptionalFrameStage(frameTiming, "compact-retained-source", () => buildCompactRetainedSourceForRuntime({
     attributes,
     effectiveOpacities,
     viewMatrix,
@@ -1230,7 +1236,7 @@ function createGpuArenaTileLocalSceneState(
     traceAnchors: TILE_LOCAL_TRACE_ANCHORS ?? [],
     presentationAnchors: TILE_LOCAL_PRESENTATION_ANCHORS ?? [],
     presentationScope: TILE_LOCAL_PRESENTATION_SCOPE,
-  });
+  }));
   if (compactSource.retainedRecords.length === 0) {
     throw new Error("compact retained source produced no retained contributors for gpu arena runtime");
   }
@@ -1263,7 +1269,9 @@ function createGpuArenaTileLocalSceneState(
   if (gpuArenaRuntimeBlocker) {
     throw new Error(gpuArenaRuntimeBlocker);
   }
-  const gpuArenaRuntime = createGpuTileContributorArenaRuntime(device, plan, compactSource.retainedRecords);
+  const gpuArenaRuntime = timeOptionalFrameStage(frameTiming, "gpu-arena-runtime", () =>
+    createGpuTileContributorArenaRuntime(device, plan, compactSource.retainedRecords)
+  );
   const legacyProjection = gpuArenaRuntime.legacyProjection;
   const pipeline = createGpuTileCoveragePipelineSkeleton(device, "rgba16float");
   const frameUniformBuffer = createUniformBuffer(
@@ -4223,7 +4231,8 @@ function ensureTileLocalSceneState(
   viewportWidth: number,
   viewportHeight: number,
   allowViewRebuild: boolean,
-  footprintParams: RuntimeFootprintParams
+  footprintParams: RuntimeFootprintParams,
+  frameTiming?: FrameTimingDraft
 ): TileLocalSceneState {
   const bridgeInput = {
     viewMatrix,
@@ -4252,7 +4261,8 @@ function ensureTileLocalSceneState(
     viewProj,
     viewportWidth,
     viewportHeight,
-    footprintParams
+    footprintParams,
+    frameTiming
   );
   destroyTileLocalSceneState(state);
   return nextState;

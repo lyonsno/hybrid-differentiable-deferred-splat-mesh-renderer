@@ -239,6 +239,20 @@ test("operator witness report prints the slowest app-side frame stage", () => {
   assert.match(reportSource, /timing\.slowestAppFrameStage/);
 });
 
+test("operator witness app frame timing splits compact retained source construction", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const ensureStart = source.indexOf("function ensureTileLocalSceneState");
+  const ensureEnd = source.indexOf("function captureCurrentTileLocalSignature", ensureStart);
+  const ensureSource = source.slice(ensureStart, ensureEnd);
+  const gpuStart = source.indexOf("function createGpuArenaTileLocalSceneState");
+  const gpuEnd = source.indexOf("function buildCompactRetainedSourceForRuntime", gpuStart);
+  const gpuSource = source.slice(gpuStart, gpuEnd);
+
+  assert.match(ensureSource, /footprintParams,\s*frameTiming/);
+  assert.match(gpuSource, /timeOptionalFrameStage\(frameTiming,\s*"compact-retained-source"/);
+  assert.match(gpuSource, /timeOptionalFrameStage\(frameTiming,\s*"gpu-arena-runtime"/);
+});
+
 test("operator witness loop classifier rejects otherwise-valid captures on stale CPU or 6px routes", () => {
   const result = classifyOperatorWitnessLoop({
     captures: [
