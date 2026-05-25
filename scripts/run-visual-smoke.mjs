@@ -28,6 +28,12 @@ import {
   classifyOperatorWitnessLoop,
   writeOperatorWitnessContactSheet,
 } from "./visual-smoke/operator-witness-loop.mjs";
+import {
+  buildGpuLiveParityImageComparisons,
+  buildGpuLiveParityMugshotPlan,
+  classifyGpuLiveParityMugshot,
+  writeGpuLiveParityMugshotContactSheet,
+} from "./visual-smoke/gpu-live-parity-mugshot.mjs";
 import { classifyWitnessCapture } from "./visual-smoke/witness-diagnostics.mjs";
 import {
   buildSmokeHandoff,
@@ -138,6 +144,25 @@ async function main() {
       printOperatorWitnessLoopSummary(witness);
       if (!witness.classification.closeable) {
         process.exitCode = 6;
+      }
+      return;
+    }
+
+    if (options.gpuLiveParityMugshot) {
+      const witness = await runGpuLiveParityMugshot({
+        browser,
+        options,
+        baseUrl: url,
+        reportDir,
+        analysisPath,
+        reportPath,
+        generatedAt,
+      });
+      await writeFile(analysisPath, `${JSON.stringify(witness, null, 2)}\n`);
+      await writeFile(reportPath, renderGpuLiveParityMugshotReport(witness));
+      printGpuLiveParityMugshotSummary(witness);
+      if (!witness.classification.closeable) {
+        process.exitCode = 7;
       }
       return;
     }
@@ -399,6 +424,61 @@ async function runOperatorWitnessLoop({ browser, options, baseUrl, reportDir, an
     options: publicOptions(options),
     plan,
     captures,
+    classification,
+  };
+}
+
+async function runGpuLiveParityMugshot({ browser, options, baseUrl, reportDir, analysisPath, reportPath, generatedAt }) {
+  const plan = buildGpuLiveParityMugshotPlan(baseUrl, { timeoutMs: options.timeoutMs });
+  const cpuSession = await captureOperatorWitnessSession({
+    browser,
+    options,
+    plan: plan.filter((capture) => capture.routeRole === "cpu-reference"),
+    reportDir,
+  });
+  const gpuSession = await captureOperatorWitnessSession({
+    browser,
+    options,
+    plan: plan.filter((capture) => capture.routeRole === "direct-gpu-live"),
+    reportDir,
+  });
+  const capturesById = new Map([...cpuSession.captures, ...gpuSession.captures].map((capture) => [capture.id, capture]));
+  const captures = plan.map((capture) => capturesById.get(capture.id)).filter(Boolean);
+  const comparisons = await buildGpuLiveParityImageComparisons({
+    captures,
+    appRoot: options.appRoot,
+  });
+  const contactSheetPath = await writeGpuLiveParityMugshotContactSheet({
+    captures,
+    appRoot: options.appRoot,
+    reportDir,
+  });
+  const classification = classifyGpuLiveParityMugshot({
+    captures,
+    comparisons,
+    contactSheetPath,
+  });
+
+  return {
+    generatedAt,
+    baseUrl,
+    analysisPath: path.relative(options.appRoot, analysisPath),
+    reportPath: path.relative(options.appRoot, reportPath),
+    contactSheetPath,
+    smokeHandoff: buildSmokeHandoff(options, {
+      smokeKind: "visual",
+      decisionRequested: "Classify same-view CPU reference versus direct GPU live route divergence before visual repair.",
+      expectedVisualDelta: "none expected from this harness-only slice",
+      evidenceSurface: "GPU live parity mugshot report, contact sheet, screenshots, route identities, and pair image diffs",
+    }),
+    options: publicOptions(options),
+    plan,
+    captures,
+    comparisons,
+    timing: {
+      cpuSession: cpuSession.timing,
+      gpuSession: gpuSession.timing,
+    },
     classification,
   };
 }
@@ -1380,6 +1460,99 @@ ${classification.summary.text}
 `;
 }
 
+function renderGpuLiveParityMugshotReport(result) {
+  const classification = result.classification;
+  const metrics = classification.metrics;
+  const divergence = classification.divergence;
+  return `# GPU Live Parity Mugshot Report
+
+- Status: ${classification.summary.status}
+- Generated: ${result.generatedAt}
+- Base URL: ${result.baseUrl}
+- Contact sheet: ${result.contactSheetPath ? `\`${path.relative(path.dirname(result.reportPath), result.contactSheetPath)}\`` : "not captured"}
+- Analysis JSON: local-only, omitted from committed evidence artifacts
+
+${renderSmokeHandoffSection(result.smokeHandoff)}
+
+## Witness Set
+
+- Capture count: ${metrics.captureCount}
+- Pair count: ${metrics.pairCount}
+- Witness views: ${metrics.witnessViews.join(", ") || "none"}
+- Route roles: ${metrics.routeRoles.join(", ") || "none"}
+- Arena backends: ${metrics.arenaBackends.join(", ") || "none"}
+- Effective arena backends: ${metrics.effectiveArenaBackends.join(", ") || "none"}
+- Tile budgets: ${metrics.tileBudgets.join(", ") || "none"}
+- Primary divergence: ${divergence.primary}
+- Pairs needing investigation: ${divergence.pairsNeedingInvestigation}
+- Tile-ref divergence pairs: ${divergence.tileRefDivergencePairs.join(", ") || "none"}
+- Final-color divergence pairs: ${divergence.finalColorDivergencePairs.join(", ") || "none"}
+
+## Pairs
+
+${metrics.pairs
+  .map(
+    (pair) => `### ${pair.pairId}
+
+- Witness view: ${pair.witnessView}
+- CPU capture: ${pair.cpuCaptureId}
+- GPU capture: ${pair.gpuCaptureId}
+- CPU refs: ${pair.cpuRefs}
+- GPU refs: ${pair.gpuRefs}
+- Ref ratio: ${formatMetricRatio(pair.refRatio)}
+- CPU effective arena: ${pair.cpuEffectiveArenaBackend || "not reported"}
+- GPU effective arena: ${pair.gpuEffectiveArenaBackend || "not reported"}
+- Changed pixels: ${pair.changedPixels} / ${pair.totalPixels} (${formatPercent(pair.changedPixelRatio)})
+- Image comparable: ${pair.imageComparable}${pair.imageComparisonReason ? ` (${pair.imageComparisonReason})` : ""}
+`
+  )
+  .join("\n")}
+
+## Captures
+
+${result.captures
+  .map(
+    (capture) => `### ${capture.title}
+
+- Pair: ${capture.pairId || "not reported"}
+- Route role: ${capture.routeRole || "not reported"}
+- URL: ${capture.url}
+- Screenshot: ${renderCaptureScreenshotPath(result, capture)}
+- Renderer label: ${capture.pageEvidence.rendererLabel || "not reported"}
+- Tile refs: ${capture.pageEvidence.tileLocal?.refs || 0}
+- Arena requested/effective: ${capture.routeIdentity?.arenaBackend || "not reported"} / ${capture.routeIdentity?.effectiveArenaBackend || "not reported"}
+- Witness view: ${capture.routeIdentity?.witnessView || "default"}
+- Generic nonblank smoke: ${capture.classification.nonblank}
+- Generic real splat smoke: ${capture.classification.realSplatEvidence}
+- Page source: ${capture.pageEvidence.sourceKind || "not reported"} / ${capture.pageEvidence.splatCount || 0} splats
+- Changed pixels vs background: ${capture.imageAnalysis.changedPixels} / ${capture.imageAnalysis.totalPixels} (${formatPercent(capture.imageAnalysis.changedPixelRatio)})
+- Parity pixel evidence: ${Number(capture.imageAnalysis.changedPixels || 0) > 0}
+`
+  )
+  .join("\n")}
+
+## Findings
+
+${classification.findings.length === 0 ? "- None" : classification.findings.map((finding) => `- ${finding.kind}: ${finding.summary}`).join("\n")}
+
+## Route Identity
+
+\`\`\`json
+${JSON.stringify(result.captures.map((capture) => ({ id: capture.id, pairId: capture.pairId, routeRole: capture.routeRole, routeIdentity: capture.routeIdentity })), null, 2)}
+\`\`\`
+
+## Boundary
+
+- This witness compares final-color CPU/reference and direct GPU-live tile-local routes under the same camera/view.
+- It does not repair alpha, conic, ordering, source selection, camera, tile caps, or deferred semantics.
+- CPU/reference remains an observable oracle; direct GPU remains the live presentation route under test.
+
+## Summary
+
+${classification.summary.text}
+`;
+}
+
 function renderOperatorTimingTable(timing = {}) {
   const captures = Array.isArray(timing.captures) ? timing.captures : [];
   if (captures.length === 0) {
@@ -1446,6 +1619,16 @@ function printOperatorWitnessLoopSummary(result) {
   }
 }
 
+function printGpuLiveParityMugshotSummary(result) {
+  console.log(result.classification.summary.text);
+  console.log(`report: ${result.reportPath}`);
+  console.log(`contact sheet: ${result.contactSheetPath ?? "not captured"}`);
+  console.log(`primary divergence: ${result.classification.divergence.primary}`);
+  for (const capture of result.captures) {
+    console.log(`${capture.id}: ${capture.screenshotPath}`);
+  }
+}
+
 function parseArgs(args) {
   const options = {
     appRoot: process.cwd(),
@@ -1466,6 +1649,7 @@ function parseArgs(args) {
     tileLocalDiagnostics: false,
     staticDessertWitness: false,
     operatorWitnessLoop: false,
+    gpuLiveParityMugshot: false,
     smokeKind: undefined,
     decisionRequested: undefined,
     expectedVisualDelta: undefined,
@@ -1561,6 +1745,17 @@ function parseArgs(args) {
           options.settleMs = 5000;
         }
         break;
+      case "--gpu-live-parity-mugshot":
+      case "--cpu-gpu-live-parity":
+        options.gpuLiveParityMugshot = true;
+        options.requireRealSplat = true;
+        if (options.timeoutMs === 15000) {
+          options.timeoutMs = 60000;
+        }
+        if (options.settleMs === 1000) {
+          options.settleMs = 5000;
+        }
+        break;
       case "--smoke-kind":
         options.smokeKind = parseSmokeKind(next());
         break;
@@ -1606,6 +1801,7 @@ function publicOptions(options) {
     tileLocalDiagnostics: options.tileLocalDiagnostics,
     staticDessertWitness: options.staticDessertWitness,
     operatorWitnessLoop: options.operatorWitnessLoop,
+    gpuLiveParityMugshot: options.gpuLiveParityMugshot,
     smokeHandoff: buildSmokeHandoff(options),
   };
 }
@@ -1719,6 +1915,7 @@ Options:
   --tile-local-diagnostics        Capture tile-local-visible diagnostic heatmaps and compact evidence in one report.
   --static-dessert-witness        Capture fixed dessert final color plus tile-local debug evidence in one report.
   --operator-witness-loop         Capture whole-render-first operator visuals plus close crops and interaction filmstrip.
+  --gpu-live-parity-mugshot       Capture CPU reference vs direct GPU live final-color pairs under the same views.
 `);
 }
 
