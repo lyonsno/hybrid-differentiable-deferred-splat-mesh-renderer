@@ -97,7 +97,12 @@ test("GPU live tile-ref builder scatters a projected conic footprint across ever
   assert.match(shader, /fn gpu_live_footprint_policy_scale/);
   assert.match(shader, /frame\.viewport\.x \* frame\.viewport\.y \* 0\.01/);
   assert.match(shader, /min\(frame\.viewport\.x, frame\.viewport\.y\) \* 0\.65/);
-  assert.match(shader, /let support = gpu_live_support_radius_px\(conic\.majorRadiusPx, conic\.minorRadiusPx\)/);
+  assert.match(shader, /let support = gpu_live_support_radius_px\(conic\)/);
+  assert.match(shader, /let covarianceXX = inverseYY \/ determinant/);
+  assert.match(shader, /let covarianceYY = inverseXX \/ determinant/);
+  assert.match(shader, /let minCenterPx = clamp\(centerPx - support/);
+  assert.match(shader, /let maxCenterPx = clamp\(centerPx \+ support/);
+  assert.doesNotMatch(shader, /max\(max\(majorRadiusPx,\s*minorRadiusPx\) \* 3\.0/);
   assert.doesNotMatch(shader, /return 10\.0/);
   assert.match(shader, /let minTileX =/);
   assert.match(shader, /let maxTileX =/);

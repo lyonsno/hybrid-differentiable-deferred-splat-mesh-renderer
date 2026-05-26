@@ -163,8 +163,17 @@ fn gpu_live_projected_conic(splatId: u32, centerClip: vec4f, centerPx: vec2f) ->
   return GpuLiveConic(centerPx, vec3f(inverseXX, inverseXY, inverseYY), majorRadiusPx, minorRadiusPx);
 }
 
-fn gpu_live_support_radius_px(majorRadiusPx: f32, minorRadiusPx: f32) -> f32 {
-  return max(max(majorRadiusPx, minorRadiusPx) * 3.0, frame.tileSizePx * 0.5);
+fn gpu_live_support_radius_px(conic: GpuLiveConic) -> vec2f {
+  let inverseXX = conic.inverseConic.x;
+  let inverseXY = conic.inverseConic.y;
+  let inverseYY = conic.inverseConic.z;
+  let determinant = max(inverseXX * inverseYY - inverseXY * inverseXY, 0.000001);
+  let covarianceXX = inverseYY / determinant;
+  let covarianceYY = inverseXX / determinant;
+  return max(
+    sqrt(max(vec2f(covarianceXX, covarianceYY), vec2f(0.000001, 0.000001))) * 3.0,
+    vec2f(frame.minRadiusPx, frame.minRadiusPx),
+  );
 }
 
 fn gpu_live_tile_center_px(tileX: u32, tileY: u32, tileSizePx: u32) -> vec2f {
@@ -297,10 +306,10 @@ fn debug_heatmap_color(
   let conic = gpu_live_projected_conic(splatId, centerClip, centerPx);
   let tileSizePx = max(u32(frame.tileSizePx), 1u);
   let tileCapacity = tile_ref_capacity_per_tile();
-  let support = gpu_live_support_radius_px(conic.majorRadiusPx, conic.minorRadiusPx);
+  let support = gpu_live_support_radius_px(conic);
   let viewportMax = max(frame.viewport - vec2f(1.0, 1.0), vec2f(0.0, 0.0));
-  let minCenterPx = clamp(centerPx - vec2f(support, support), vec2f(0.0, 0.0), viewportMax);
-  let maxCenterPx = clamp(centerPx + vec2f(support, support), vec2f(0.0, 0.0), viewportMax);
+  let minCenterPx = clamp(centerPx - support, vec2f(0.0, 0.0), viewportMax);
+  let maxCenterPx = clamp(centerPx + support, vec2f(0.0, 0.0), viewportMax);
   let minTileX = min(u32(minCenterPx.x) / tileSizePx, maxTile.x);
   let maxTileX = min(u32(maxCenterPx.x) / tileSizePx, maxTile.x);
   let minTileY = min(u32(minCenterPx.y) / tileSizePx, maxTile.y);
