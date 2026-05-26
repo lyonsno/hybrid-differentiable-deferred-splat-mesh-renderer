@@ -1499,6 +1499,8 @@ ${metrics.pairs
 - GPU capture: ${pair.gpuCaptureId}
 - CPU refs: ${pair.cpuRefs}
 - GPU refs: ${pair.gpuRefs}
+- CPU ref source: ${pair.cpuRefSource || "not reported"}
+- GPU ref source: ${pair.gpuRefSource || "not reported"}
 - Ref ratio: ${formatMetricRatio(pair.refRatio)}
 - CPU effective arena: ${pair.cpuEffectiveArenaBackend || "not reported"}
 - GPU effective arena: ${pair.gpuEffectiveArenaBackend || "not reported"}
@@ -1520,6 +1522,7 @@ ${result.captures
 - Screenshot: ${renderCaptureScreenshotPath(result, capture)}
 - Renderer label: ${capture.pageEvidence.rendererLabel || "not reported"}
 - Tile refs: ${capture.pageEvidence.tileLocal?.refs || 0}
+- Tile ref source: ${capture.pageEvidence.tileLocal?.refAccounting?.source ?? capture.pageEvidence.tileLocal?.refStatsReadback?.source ?? "not reported"}
 - Arena requested/effective: ${capture.routeIdentity?.arenaBackend || "not reported"} / ${capture.routeIdentity?.effectiveArenaBackend || "not reported"}
 - Witness view: ${capture.routeIdentity?.witnessView || "default"}
 - Generic nonblank smoke: ${capture.classification.nonblank}

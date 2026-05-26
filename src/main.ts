@@ -230,6 +230,9 @@ interface TileLocalSceneState {
   pendingOutputTextureReadback?: PendingTileLocalOutputTextureReadback;
   compositorInputReadback?: TileLocalCompositorInputReadback;
   pendingCompositorInputReadback?: PendingTileLocalCompositorInputReadback;
+  refStatsReadback?: TileLocalRefStatsReadback;
+  pendingRefStatsReadback?: PendingTileLocalRefStatsReadback;
+  disposed: boolean;
 }
 
 interface ArenaRuntimeEvidence {
@@ -351,6 +354,32 @@ interface PendingTileLocalCompositorInputReadback {
   readonly tileCoverageWeightBuffer: GPUBuffer;
   readonly alphaParamBuffer: GPUBuffer;
   readonly tileScatterCursorBuffer: GPUBuffer;
+}
+
+interface TileLocalRefStatsReadback {
+  readonly status: "pending" | "present" | "blocked";
+  readonly source: "gpu-scatter-cursor-readback";
+  readonly frameId: number;
+  readonly tileCount: number;
+  readonly tileCapacity: number;
+  readonly allocatedRefs: number;
+  readonly projectedScatterRefs: number;
+  readonly retainedRefs: number;
+  readonly droppedRefs: number;
+  readonly nonEmptyTiles: number;
+  readonly saturatedTiles: number;
+  readonly maxRefsPerTile: number;
+  readonly blockedReason?: string;
+}
+
+interface PendingTileLocalRefStatsReadback {
+  readonly frameId: number;
+  readonly tileCount: number;
+  readonly tileCapacity: number;
+  readonly allocatedRefs: number;
+  readonly buffer: GPUBuffer;
+  mapStarted: boolean;
+  cancelled: boolean;
 }
 
 interface CompactRetainedSourceForRuntime {
@@ -919,6 +948,7 @@ async function main() {
           tileLocalComputePass.end();
           enqueueTileLocalOutputTextureReadback(gpu.device, encoder, tileLocalState, frameSerial);
           enqueueTileLocalCompositorInputReadback(gpu.device, encoder, tileLocalState, frameSerial, scene.attributes.colors);
+          enqueueTileLocalRefStatsReadback(gpu.device, encoder, tileLocalState, frameSerial);
         });
         tileLocalState.bandDispatchCacheTrace = buildBandDispatchCacheTrace({
           tileColumns: tileLocalState.plan.tileColumns,
@@ -944,6 +974,14 @@ async function main() {
         scene.tileLocalLastSkipSignature = tileLocalCurrentSignature;
         scene.tileLocalState.needsDispatch = false;
       }
+    }
+    if (scene.tileLocalState) {
+      enqueueTileLocalRefStatsReadback(
+        gpu.device,
+        encoder,
+        scene.tileLocalState,
+        scene.tileLocalState.lastCompositedFrame
+      );
     }
 
     const textureView = gpu.context.getCurrentTexture().createView();
@@ -998,6 +1036,7 @@ async function main() {
       timeFrameStage(frameTiming, "tile-local-readback-resolve", () => {
         resolveTileLocalOutputTextureReadback(scene.tileLocalState!);
         resolveTileLocalCompositorInputReadback(scene.tileLocalState!);
+        resolveTileLocalRefStatsReadback(scene.tileLocalState!);
       });
     }
 
@@ -1025,7 +1064,11 @@ async function main() {
       : "real Scaniverse splats";
     let statsText = `${width}×${height} | ${displayFps} fps | ${scene.count.toLocaleString()} ${splatKindLabel} | renderer: ${rendererLabel} | sort: ${SORT_BACKEND} | alpha: ${alphaSummary.accountingMode} density ${alphaSummary.compensatedSplatCount.toLocaleString()} splats/${alphaSummary.hotTileCount} tiles`;
     if (scene.tileLocalState) {
-      statsText += ` | tile-local: ${scene.tileLocalState.plan.tileColumns}x${scene.tileLocalState.plan.tileRows} tiles/${scene.tileLocalState.tileEntryCount} refs`;
+      const refAccounting = tileLocalRefAccounting(scene.tileLocalState, scene.tileLocalState.diagnostics);
+      statsText += ` | tile-local: ${scene.tileLocalState.plan.tileColumns}x${scene.tileLocalState.plan.tileRows} tiles/${refAccounting.retainedRefs} refs`;
+      if (refAccounting.source === "gpu-scatter-cursor-readback") {
+        statsText += ` | tile-local live refs: ${refAccounting.source}`;
+      }
       const budgetText = formatTileLocalBudgetLabel(tileLocalBudgetEvidence(scene.tileLocalLastSkipReason, width, height));
       if (budgetText) {
         statsText += ` | tile-local budget: ${budgetText}`;
@@ -1361,6 +1404,7 @@ function createGpuArenaTileLocalSceneState(
       viewportWidth,
       viewportHeight,
     }),
+    disposed: false,
   };
 }
 
@@ -3620,6 +3664,7 @@ function createCpuTileLocalSceneState(
       viewportWidth,
       viewportHeight,
     }),
+    disposed: false,
   };
 }
 
@@ -3735,16 +3780,6 @@ function enqueueTileLocalCompositorInputReadback(
   if (state.pendingCompositorInputReadback || state.compositorInputReadback?.frameId === frameId) {
     return;
   }
-  if (!state.gpuArenaRuntime) {
-    state.compositorInputReadback = {
-      status: "blocked",
-      frameId,
-      anchors: [],
-      blockedReason: "live compositor input readback requires the gpu arena runtime",
-    };
-    publishTileLocalCompositorInputReadback(state.compositorInputReadback);
-    return;
-  }
 
   const tileHeaderBuffer = createReadbackBuffer(device, state.plan.tileHeaderBytes, "tile_local_compositor_tile_headers_readback");
   const tileRefBuffer = createReadbackBuffer(device, state.plan.tileRefBytes, "tile_local_compositor_tile_refs_readback");
@@ -3838,6 +3873,180 @@ function publishTileLocalCompositorInputReadback(readback: TileLocalCompositorIn
   smoke.tileLocal = {
     ...tileLocal,
     compositorInputReadback: readback,
+  };
+}
+
+function enqueueTileLocalRefStatsReadback(
+  device: GPUDevice,
+  encoder: GPUCommandEncoder,
+  state: TileLocalSceneState,
+  frameId: number
+): void {
+  if (frameId < 0 || state.disposed) {
+    return;
+  }
+  if (state.debugMode !== "final-color") {
+    return;
+  }
+  if (state.arenaBackend !== "gpu" || state.gpuArenaRuntime) {
+    return;
+  }
+  if (state.pendingRefStatsReadback || state.refStatsReadback?.frameId === frameId) {
+    return;
+  }
+  const tileCapacity = gpuLiveEffectiveRefsPerTile(state.plan);
+  const scatterCursorBytes = Math.max(16, state.plan.tileCount * Uint32Array.BYTES_PER_ELEMENT);
+  const buffer = createReadbackBuffer(device, scatterCursorBytes, "tile_local_live_ref_stats_scatter_cursors_readback");
+  encoder.copyBufferToBuffer(state.tileScatterCursorBuffer, 0, buffer, 0, scatterCursorBytes);
+  state.pendingRefStatsReadback = {
+    frameId,
+    tileCount: state.plan.tileCount,
+    tileCapacity,
+    allocatedRefs: state.plan.maxTileRefs,
+    buffer,
+    mapStarted: false,
+    cancelled: false,
+  };
+  state.refStatsReadback = {
+    status: "pending",
+    source: "gpu-scatter-cursor-readback",
+    frameId,
+    tileCount: state.plan.tileCount,
+    tileCapacity,
+    allocatedRefs: state.plan.maxTileRefs,
+    projectedScatterRefs: 0,
+    retainedRefs: 0,
+    droppedRefs: 0,
+    nonEmptyTiles: 0,
+    saturatedTiles: 0,
+    maxRefsPerTile: 0,
+  };
+}
+
+function resolveTileLocalRefStatsReadback(state: TileLocalSceneState): void {
+  const pending = state.pendingRefStatsReadback;
+  if (!pending) {
+    return;
+  }
+  if (pending.mapStarted) {
+    return;
+  }
+  pending.mapStarted = true;
+  void pending.buffer.mapAsync(GPUMapMode.READ)
+    .then(() => {
+      const scatterCursors = new Uint32Array(pending.buffer.getMappedRange());
+      const readback = summarizeTileLocalRefStatsReadback(pending, scatterCursors);
+      if (tileLocalRefStatsReadbackCanPublish(state, pending)) {
+        state.refStatsReadback = readback;
+        publishTileLocalRefStatsReadback(state, readback);
+      }
+      if (state.pendingRefStatsReadback === pending) {
+        state.pendingRefStatsReadback = undefined;
+      }
+      pending.buffer.unmap();
+      pending.buffer.destroy();
+    })
+    .catch((error) => {
+      const readback: TileLocalRefStatsReadback = {
+        status: "blocked",
+        source: "gpu-scatter-cursor-readback",
+        frameId: pending.frameId,
+        tileCount: pending.tileCount,
+        tileCapacity: pending.tileCapacity,
+        allocatedRefs: pending.allocatedRefs,
+        projectedScatterRefs: 0,
+        retainedRefs: 0,
+        droppedRefs: 0,
+        nonEmptyTiles: 0,
+        saturatedTiles: 0,
+        maxRefsPerTile: 0,
+        blockedReason: errorMessage(error),
+      };
+      if (tileLocalRefStatsReadbackCanPublish(state, pending)) {
+        state.refStatsReadback = readback;
+        publishTileLocalRefStatsReadback(state, readback);
+      }
+      if (state.pendingRefStatsReadback === pending) {
+        state.pendingRefStatsReadback = undefined;
+      }
+      pending.buffer.destroy();
+    });
+}
+
+function tileLocalRefStatsReadbackCanPublish(
+  state: TileLocalSceneState,
+  pending: PendingTileLocalRefStatsReadback
+): boolean {
+  return (
+    !state.disposed &&
+    !pending.cancelled &&
+    state.pendingRefStatsReadback === pending &&
+    tileLocalRefStatsReadbackIsCurrent(state, pending.frameId)
+  );
+}
+
+function tileLocalRefStatsReadbackIsCurrent(state: TileLocalSceneState, frameId: number): boolean {
+  return !state.disposed && frameId >= state.lastCompositedFrame;
+}
+
+function summarizeTileLocalRefStatsReadback(
+  pending: PendingTileLocalRefStatsReadback,
+  scatterCursors: Uint32Array
+): TileLocalRefStatsReadback {
+  let projectedScatterRefs = 0;
+  let retainedRefs = 0;
+  let droppedRefs = 0;
+  let nonEmptyTiles = 0;
+  let saturatedTiles = 0;
+  let maxRefsPerTile = 0;
+  for (let tileIndex = 0; tileIndex < pending.tileCount; tileIndex += 1) {
+    const projectedRefs = scatterCursors[tileIndex] ?? 0;
+    const tileRetainedRefs = Math.min(projectedRefs, pending.tileCapacity);
+    projectedScatterRefs += projectedRefs;
+    retainedRefs += tileRetainedRefs;
+    droppedRefs += Math.max(0, projectedRefs - pending.tileCapacity);
+    maxRefsPerTile = Math.max(maxRefsPerTile, tileRetainedRefs);
+    if (projectedRefs > 0) {
+      nonEmptyTiles += 1;
+    }
+    if (projectedRefs >= pending.tileCapacity) {
+      saturatedTiles += 1;
+    }
+  }
+  return {
+    status: "present",
+    source: "gpu-scatter-cursor-readback",
+    frameId: pending.frameId,
+    tileCount: pending.tileCount,
+    tileCapacity: pending.tileCapacity,
+    allocatedRefs: pending.allocatedRefs,
+    projectedScatterRefs,
+    retainedRefs,
+    droppedRefs,
+    nonEmptyTiles,
+    saturatedTiles,
+    maxRefsPerTile,
+  };
+}
+
+function publishTileLocalRefStatsReadback(
+  state: TileLocalSceneState,
+  readback: TileLocalRefStatsReadback
+): void {
+  const runtimeWindow = window as unknown as { __MESH_SPLAT_SMOKE__?: Record<string, unknown> };
+  const smoke = runtimeWindow.__MESH_SPLAT_SMOKE__;
+  if (!smoke || typeof smoke !== "object") {
+    return;
+  }
+  const tileLocal = smoke.tileLocal && typeof smoke.tileLocal === "object"
+    ? smoke.tileLocal as Record<string, unknown>
+    : {};
+  const refAccounting = tileLocalRefAccounting(state, state.diagnostics);
+  smoke.tileLocal = {
+    ...tileLocal,
+    refs: refAccounting.retainedRefs,
+    refAccounting,
+    refStatsReadback: readback,
   };
 }
 
@@ -4384,6 +4593,22 @@ function syncTileLocalAlphaParams(
 }
 
 function destroyTileLocalSceneState(state: TileLocalSceneState): void {
+  state.disposed = true;
+  state.pendingOutputTextureReadback?.buffer.destroy();
+  if (state.pendingCompositorInputReadback) {
+    destroyReadbackBuffers([
+      state.pendingCompositorInputReadback.tileHeaderBuffer,
+      state.pendingCompositorInputReadback.tileRefBuffer,
+      state.pendingCompositorInputReadback.tileCoverageWeightBuffer,
+      state.pendingCompositorInputReadback.alphaParamBuffer,
+      state.pendingCompositorInputReadback.tileScatterCursorBuffer,
+    ]);
+  }
+  if (state.pendingRefStatsReadback) {
+    state.pendingRefStatsReadback.cancelled = true;
+    state.pendingRefStatsReadback.buffer.destroy();
+    state.pendingRefStatsReadback = undefined;
+  }
   state.frameUniformBuffer.destroy();
   state.projectedBoundsBuffer?.destroy();
   if (state.gpuArenaRuntime) {
@@ -4677,6 +4902,71 @@ function refreshTileLocalDiagnostics(
   return state.diagnostics;
 }
 
+function tileLocalRefAccounting(
+  state: TileLocalSceneState,
+  diagnostics: TileLocalDiagnosticSummary,
+): Record<string, unknown> & {
+  source: string;
+  retainedRefs: number;
+  allocatedRefs: number;
+  estimatedRetainedRefs: number;
+  projectedRefs: number;
+  droppedRefs: number;
+  tileCapacity: number;
+} {
+  const tileCapacity = gpuLiveEffectiveRefsPerTile(state.plan);
+  const liveRefStats = state.refStatsReadback?.status === "present" ? state.refStatsReadback : null;
+  if (liveRefStats) {
+    return {
+      status: "present",
+      source: liveRefStats.source,
+      retainedRefs: liveRefStats.retainedRefs,
+      allocatedRefs: liveRefStats.allocatedRefs,
+      estimatedRetainedRefs: state.tileRefCustody.retainedTileEntryCount,
+      projectedRefs: liveRefStats.projectedScatterRefs,
+      droppedRefs: liveRefStats.droppedRefs,
+      nonEmptyTiles: liveRefStats.nonEmptyTiles,
+      saturatedTiles: liveRefStats.saturatedTiles,
+      maxRefsPerTile: liveRefStats.maxRefsPerTile,
+      tileCount: liveRefStats.tileCount,
+      tileCapacity: liveRefStats.tileCapacity,
+      frameId: liveRefStats.frameId,
+    };
+  }
+  if (state.arenaBackend === "gpu" && !state.gpuArenaRuntime) {
+    return {
+      status: state.refStatsReadback?.status ?? "pending",
+      source: "gpu-scatter-cursor-readback-pending",
+      retainedRefs: 0,
+      allocatedRefs: state.plan.maxTileRefs,
+      estimatedRetainedRefs: state.tileRefCustody.retainedTileEntryCount,
+      projectedRefs: state.tileRefCustody.projectedTileEntryCount,
+      droppedRefs: state.tileRefCustody.evictedTileEntryCount,
+      nonEmptyTiles: 0,
+      saturatedTiles: 0,
+      maxRefsPerTile: 0,
+      tileCount: state.plan.tileCount,
+      tileCapacity,
+      frameId: state.refStatsReadback?.frameId ?? null,
+      blockedReason: state.refStatsReadback?.blockedReason,
+    };
+  }
+  return {
+    status: "diagnostic-summary",
+    source: "tile-header-diagnostics",
+    retainedRefs: diagnostics.tileRefs.total,
+    allocatedRefs: state.tileEntryCount,
+    estimatedRetainedRefs: state.tileRefCustody.retainedTileEntryCount,
+    projectedRefs: state.tileRefCustody.projectedTileEntryCount,
+    droppedRefs: state.tileRefCustody.evictedTileEntryCount,
+    nonEmptyTiles: diagnostics.tileRefs.nonEmptyTiles,
+    saturatedTiles: state.tileRefCustody.saturatedRetainedTileCount,
+    maxRefsPerTile: diagnostics.tileRefs.maxPerTile,
+    tileCount: state.plan.tileCount,
+    tileCapacity,
+  };
+}
+
 function traceCapacityEvidenceFromState(
   state: TileLocalSceneState,
   perPixelFinalColorAccumulation: readonly Record<string, unknown>[] = [],
@@ -4908,6 +5198,9 @@ function exposeTileLocalRuntimeEvidence(
   const diagnostics = tileLocalState
     ? refreshTileLocalDiagnostics(tileLocalState, perPixelFinalColorAccumulation)
     : undefined;
+  const refAccounting = tileLocalState && diagnostics
+    ? tileLocalRefAccounting(tileLocalState, diagnostics)
+    : undefined;
   runtimeWindow.__MESH_SPLAT_SMOKE__ = {
     ...(runtimeWindow.__MESH_SPLAT_SMOKE__ ?? {}),
     rendererLabel,
@@ -4920,8 +5213,10 @@ function exposeTileLocalRuntimeEvidence(
     tileLocal: tileLocalState && diagnostics
       ? {
           status: tileLocalStatus,
-          refs: diagnostics.tileRefs.total,
+          refs: refAccounting?.retainedRefs ?? diagnostics.tileRefs.total,
           allocatedRefs: tileLocalState.tileEntryCount,
+          refAccounting,
+          refStatsReadback: tileLocalState.refStatsReadback,
           tileColumns: tileLocalState.plan.tileColumns,
           tileRows: tileLocalState.plan.tileRows,
           perPixelProjectedContributors: tileLocalState.perPixelProjectedContributors,

@@ -153,7 +153,13 @@ export function extractTileLocalPageMetrics(pageEvidence = {}) {
     },
     tileLocal: {
       ...tileLocal,
-      refs: positiveRefCount(tileLocal.refs) ?? parsedGrid.refs ?? positiveRefCount(tileLocal.allocatedRefs) ?? 0,
+      refs:
+        positiveRefCount(tileLocal.refAccounting?.retainedRefs) ??
+        positiveRefCount(tileLocal.refStatsReadback?.retainedRefs) ??
+        positiveRefCount(tileLocal.refs) ??
+        parsedGrid.refs ??
+        positiveRefCount(tileLocal.allocatedRefs) ??
+        0,
       tileColumns: finiteNumber(tileLocal.tileColumns) ?? parsedGrid.tileColumns,
       tileRows: finiteNumber(tileLocal.tileRows) ?? parsedGrid.tileRows,
       freshness,

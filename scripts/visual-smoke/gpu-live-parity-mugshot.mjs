@@ -137,6 +137,10 @@ export function classifyGpuLiveParityMugshot({ captures = [], comparisons = [], 
     if (routeFinding) {
       findings.push(routeFinding);
     }
+    const gpuRefSourceFinding = validateDirectGpuRefSource(pair, gpu);
+    if (gpuRefSourceFinding) {
+      findings.push(gpuRefSourceFinding);
+    }
 
     const comparison = comparisonsByPair.get(pair.id);
     if (!comparison) {
@@ -315,9 +319,23 @@ function comparePairRoutes(pair, cpu, gpu) {
   return null;
 }
 
+function validateDirectGpuRefSource(pair, gpu) {
+  const refSource = tileRefSource(gpu);
+  const refStatus = tileRefStatus(gpu);
+  if (refSource !== "gpu-scatter-cursor-readback" || refStatus !== "present") {
+    return finding(
+      "gpu-live-ref-source-missing",
+      `${pair.id} direct GPU live capture reported refs from ${refSource || "missing"} (${refStatus || "missing"}) instead of present gpu-scatter-cursor-readback.`
+    );
+  }
+  return null;
+}
+
 function summarizePair(pair, cpu, gpu, comparison) {
   const cpuRefs = tileRefs(cpu);
   const gpuRefs = tileRefs(gpu);
+  const cpuRefSource = tileRefSource(cpu);
+  const gpuRefSource = tileRefSource(gpu);
   const lowerRefs = Math.max(1, Math.min(cpuRefs || 0, gpuRefs || 0));
   const upperRefs = Math.max(cpuRefs || 0, gpuRefs || 0);
   return {
@@ -327,6 +345,8 @@ function summarizePair(pair, cpu, gpu, comparison) {
     gpuCaptureId: gpu.id,
     cpuRefs,
     gpuRefs,
+    cpuRefSource,
+    gpuRefSource,
     refRatio: lowerRefs > 0 ? upperRefs / lowerRefs : 0,
     cpuEffectiveArenaBackend: routeField(cpu, "effectiveArenaBackend"),
     gpuEffectiveArenaBackend: routeField(gpu, "effectiveArenaBackend"),
@@ -429,7 +449,27 @@ function routeField(capture = {}, key) {
 }
 
 function tileRefs(capture = {}) {
-  return finiteNumber(capture.pageEvidence?.tileLocal?.refs) ?? finiteNumber(capture.pageEvidence?.tileLocal?.diagnostics?.tileRefs?.total) ?? 0;
+  return finiteNumber(capture.pageEvidence?.tileLocal?.refAccounting?.retainedRefs) ??
+    finiteNumber(capture.pageEvidence?.tileLocal?.refStatsReadback?.retainedRefs) ??
+    finiteNumber(capture.pageEvidence?.tileLocal?.refs) ??
+    finiteNumber(capture.pageEvidence?.tileLocal?.diagnostics?.tileRefs?.total) ??
+    0;
+}
+
+function tileRefSource(capture = {}) {
+  return String(
+    capture.pageEvidence?.tileLocal?.refAccounting?.source ??
+      capture.pageEvidence?.tileLocal?.refStatsReadback?.source ??
+      (capture.pageEvidence?.tileLocal?.refs !== undefined ? "legacy-tile-local-refs" : "")
+  );
+}
+
+function tileRefStatus(capture = {}) {
+  return String(
+    capture.pageEvidence?.tileLocal?.refAccounting?.status ??
+      capture.pageEvidence?.tileLocal?.refStatsReadback?.status ??
+      ""
+  );
 }
 
 function buildContactSheet(panels) {

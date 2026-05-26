@@ -63,6 +63,7 @@ test("GPU live parity classifier closes the witness while preserving route diver
       arenaBackend: "gpu",
       effectiveArenaBackend: "gpu",
       refs: 2360150,
+      refAccounting: liveRefAccounting(2360150, 2360150),
     }),
     witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.dessertCloseCpu, {
       pairId: "dessert-close",
@@ -79,6 +80,7 @@ test("GPU live parity classifier closes the witness while preserving route diver
       effectiveArenaBackend: "gpu",
       witnessView: "dessert-close",
       refs: 2360150,
+      refAccounting: liveRefAccounting(2360150, 2360150),
     }),
     witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.porousCloseCpu, {
       pairId: "porous-close",
@@ -95,6 +97,7 @@ test("GPU live parity classifier closes the witness while preserving route diver
       effectiveArenaBackend: "gpu",
       witnessView: "dessert-porous-close",
       refs: 2360150,
+      refAccounting: liveRefAccounting(2360150, 2360150),
     }),
   ];
 
@@ -243,6 +246,66 @@ test("GPU live parity classifier accepts tiny real captures below the generic sm
         arenaBackend: "gpu",
         changedPixels: 9340,
         refs: 921600,
+        refAccounting: liveRefAccounting(81942, 921600),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.dessertCloseCpu, {
+        pairId: "dessert-close",
+        routeRole: "cpu-reference",
+        arenaBackend: "cpu",
+        witnessView: "dessert-close",
+        refs: 61643,
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.dessertCloseGpu, {
+        pairId: "dessert-close",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        witnessView: "dessert-close",
+        refs: 921600,
+        refAccounting: liveRefAccounting(495371, 921600),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.porousCloseCpu, {
+        pairId: "porous-close",
+        routeRole: "cpu-reference",
+        arenaBackend: "cpu",
+        witnessView: "dessert-porous-close",
+        refs: 412939,
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.porousCloseGpu, {
+        pairId: "porous-close",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        witnessView: "dessert-porous-close",
+        refs: 921600,
+        refAccounting: liveRefAccounting(729200, 921600),
+      }),
+    ],
+    comparisons: [
+      { pairId: "whole-render", comparable: true, changedPixelRatio: 0.01132 },
+      { pairId: "dessert-close", comparable: true, changedPixelRatio: 0.08428 },
+      { pairId: "porous-close", comparable: true, changedPixelRatio: 0.17994 },
+    ],
+    contactSheetPath: "smoke-reports/gpu-live-parity/contact-sheet.png",
+  });
+
+  assert.equal(result.closeable, true);
+  assert.equal(result.findings.length, 0);
+  assert.equal(result.divergence.primary, "tile-ref-population-divergence");
+});
+
+test("GPU live parity classifier refuses direct GPU legacy refs without live readback source", () => {
+  const result = classifyGpuLiveParityMugshot({
+    captures: [
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeCpu, {
+        pairId: "whole-render",
+        routeRole: "cpu-reference",
+        arenaBackend: "cpu",
+        refs: 61643,
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeGpu, {
+        pairId: "whole-render",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        refs: 921600,
       }),
       witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.dessertCloseCpu, {
         pairId: "dessert-close",
@@ -281,9 +344,71 @@ test("GPU live parity classifier accepts tiny real captures below the generic sm
     contactSheetPath: "smoke-reports/gpu-live-parity/contact-sheet.png",
   });
 
+  assert.equal(result.closeable, false);
+  assert.equal(result.findings.filter((finding) => finding.kind === "gpu-live-ref-source-missing").length, 3);
+  assert.equal(result.metrics.pairs[0].gpuRefSource, "legacy-tile-local-refs");
+});
+
+test("GPU live parity classifier prefers live retained-ref accounting over canvas-sized allocations", () => {
+  const result = classifyGpuLiveParityMugshot({
+    captures: [
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeCpu, {
+        pairId: "whole-render",
+        routeRole: "cpu-reference",
+        arenaBackend: "cpu",
+        refs: 94406,
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeGpu, {
+        pairId: "whole-render",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        refs: 921600,
+        refAccounting: liveRefAccounting(94420, 921600),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.dessertCloseCpu, {
+        pairId: "dessert-close",
+        routeRole: "cpu-reference",
+        arenaBackend: "cpu",
+        witnessView: "dessert-close",
+        refs: 94406,
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.dessertCloseGpu, {
+        pairId: "dessert-close",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        witnessView: "dessert-close",
+        refs: 921600,
+        refAccounting: liveRefAccounting(94430, 921600),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.porousCloseCpu, {
+        pairId: "porous-close",
+        routeRole: "cpu-reference",
+        arenaBackend: "cpu",
+        witnessView: "dessert-porous-close",
+        refs: 94406,
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.porousCloseGpu, {
+        pairId: "porous-close",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        witnessView: "dessert-porous-close",
+        refs: 921600,
+        refAccounting: liveRefAccounting(94410, 921600),
+      }),
+    ],
+    comparisons: [
+      { pairId: "whole-render", comparable: true, changedPixelRatio: 0.01132 },
+      { pairId: "dessert-close", comparable: true, changedPixelRatio: 0.08428 },
+      { pairId: "porous-close", comparable: true, changedPixelRatio: 0.17994 },
+    ],
+    contactSheetPath: "smoke-reports/gpu-live-parity/contact-sheet.png",
+  });
+
   assert.equal(result.closeable, true);
-  assert.equal(result.findings.length, 0);
-  assert.equal(result.divergence.primary, "tile-ref-population-divergence");
+  assert.equal(result.metrics.pairs[0].gpuRefs, 94420);
+  assert.equal(result.metrics.pairs[0].gpuRefSource, "gpu-scatter-cursor-readback");
+  assert.equal(result.divergence.primary, "final-color-divergence");
+  assert.deepEqual(result.divergence.tileRefDivergencePairs, []);
 });
 
 test("visual smoke CLI exposes the GPU live parity mugshot batch mode", () => {
@@ -326,7 +451,12 @@ function witnessCapture(id, overrides = {}) {
       sourceKind: "real_scaniverse_ply",
       splatCount: 94406,
       assetPath: "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
-      tileLocal: { refs, tileColumns: 80, tileRows: 45 },
+      tileLocal: {
+        refs,
+        refAccounting: overrides.refAccounting,
+        tileColumns: 80,
+        tileRows: 45,
+      },
       arenaRuntime: {
         requestedArenaBackend: arenaBackend,
         effectiveArenaBackend,
@@ -342,5 +472,15 @@ function witnessCapture(id, overrides = {}) {
       maxRefsPerTile,
       viewport: { width: 1280, height: 720 },
     },
+  };
+}
+
+function liveRefAccounting(retainedRefs, allocatedRefs = retainedRefs) {
+  return {
+    status: "present",
+    source: "gpu-scatter-cursor-readback",
+    retainedRefs,
+    allocatedRefs,
+    estimatedRetainedRefs: allocatedRefs,
   };
 }

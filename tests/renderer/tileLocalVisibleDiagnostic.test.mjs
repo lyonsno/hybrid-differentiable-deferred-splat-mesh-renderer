@@ -141,5 +141,34 @@ test("tile-local visible smoke reconstructs anchor colors from live compositor i
   assert.match(source, /copyBufferToBuffer/);
   assert.match(source, /liveCompositorRgba8/);
   assert.match(source, /pixelCoverageWeight/);
+  assert.doesNotMatch(source, /live compositor input readback requires the gpu arena runtime/);
   assert.match(runtimeSource, /GPUBufferUsage\.COPY_SRC/);
+});
+
+test("direct GPU live route reports retained refs from scatter cursors instead of capacity estimates", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+
+  assert.match(source, /interface TileLocalRefStatsReadback/);
+  assert.match(source, /enqueueTileLocalRefStatsReadback/);
+  assert.match(source, /resolveTileLocalRefStatsReadback/);
+  assert.match(source, /tile_local_live_ref_stats_scatter_cursors_readback/);
+  assert.match(source, /encoder\.copyBufferToBuffer\(state\.tileScatterCursorBuffer/);
+  assert.match(source, /summarizeTileLocalRefStatsReadback/);
+  assert.match(source, /Math\.min\(projectedRefs,\s*pending\.tileCapacity\)/);
+  assert.match(source, /tileLocalRefAccounting/);
+  assert.match(source, /source:\s*"gpu-scatter-cursor-readback"/);
+  assert.match(source, /refAccounting/);
+  assert.match(source, /refs:\s*refAccounting\?\.retainedRefs/);
+  assert.match(source, /estimatedRetainedRefs/);
+  assert.match(source, /allocatedRefs:\s*state\.plan\.maxTileRefs/);
+  assert.match(source, /mapStarted:\s*false/);
+  assert.match(source, /if\s*\(pending\.mapStarted\)/);
+  assert.match(source, /pending\.mapStarted\s*=\s*true/);
+  assert.match(source, /cancelled:\s*false/);
+  assert.match(source, /state\.disposed\s*=\s*true/);
+  assert.match(source, /pendingRefStatsReadback\.cancelled\s*=\s*true/);
+  assert.match(source, /tileLocalRefStatsReadbackCanPublish/);
+  assert.match(source, /tileLocalRefStatsReadbackIsCurrent/);
+  assert.match(source, /!state\.disposed && frameId >= state\.lastCompositedFrame/);
+  assert.match(source, /scene\.tileLocalState\.lastCompositedFrame/);
 });
