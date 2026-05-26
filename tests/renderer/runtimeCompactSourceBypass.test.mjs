@@ -123,7 +123,7 @@ test("full-scene compact source bounds construction before covariance projection
   );
 });
 
-test("requested GPU tile-local dispatch runs the direct GPU projection pipeline when no CPU contributor arena runtime exists", () => {
+test("tile-local-visible dispatch preserves CPU-populated refs when no GPU contributor arena runtime exists", () => {
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const renderLoopStart = mainSource.indexOf("const tileLocalComputePass = encoder.beginComputePass");
   const renderLoopEnd = mainSource.indexOf("tileLocalComputePass.end()", renderLoopStart);
@@ -136,8 +136,13 @@ test("requested GPU tile-local dispatch runs the direct GPU projection pipeline 
   assert.match(renderLoopSource, /tileLocalState\.pipeline\.dispatchComposite/);
   assert.match(
     renderLoopSource,
-    /else if \(scene\.rendererMode === "tile-local-visible"\) \{\s*tileLocalState\.pipeline\.dispatch/,
-    "tile-local-visible GPU live path must still run clear/build/composite when gpuArenaRuntime is null",
+    /else if \(scene\.rendererMode === "tile-local-visible"\) \{\s*tileLocalState\.pipeline\.dispatchComposite/,
+    "CPU-backed tile-local-visible must composite prebuilt refs without rerunning clear/build over them",
+  );
+  assert.match(
+    renderLoopSource,
+    /else \{\s*tileLocalState\.pipeline\.dispatch\(tileLocalComputePass,\s*tileLocalState\.bindGroup,\s*tileLocalState\.plan\);/,
+    "non-visible tile-local fallback still owns the full clear/build/composite dispatch",
   );
 });
 
