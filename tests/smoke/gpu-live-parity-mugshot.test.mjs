@@ -172,6 +172,29 @@ test("GPU live parity classifier fails if final-color images cannot be compared"
   assert.equal(result.findings.some((finding) => finding.kind === "image-comparison-not-comparable"), true);
 });
 
+test("GPU live parity classifier fails timeout captures even if route pixels exist", () => {
+  const result = classifyGpuLiveParityMugshot({
+    captures: [
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeCpu, {
+        pairId: "whole-render",
+        routeRole: "cpu-reference",
+        arenaBackend: "cpu",
+        captureFailure: { kind: "visual-smoke-timeout" },
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeGpu, {
+        pairId: "whole-render",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+      }),
+    ],
+    comparisons: [{ pairId: "whole-render", comparable: true, changedPixelRatio: 0.1 }],
+    contactSheetPath: "smoke-reports/gpu-live-parity/contact-sheet.png",
+  });
+
+  assert.equal(result.closeable, false);
+  assert.equal(result.findings.some((finding) => finding.kind === "capture-failed"), true);
+});
+
 test("GPU live parity classifier fails if requested GPU route effectively falls back to CPU", () => {
   const result = classifyGpuLiveParityMugshot({
     captures: [
@@ -411,6 +434,72 @@ test("GPU live parity classifier prefers live retained-ref accounting over canva
   assert.deepEqual(result.divergence.tileRefDivergencePairs, []);
 });
 
+test("GPU live parity classifier exposes final-color divergence instrumentation gaps", () => {
+  const result = classifyGpuLiveParityMugshot({
+    captures: [
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeCpu, {
+        pairId: "whole-render",
+        routeRole: "cpu-reference",
+        arenaBackend: "cpu",
+        refs: 61643,
+        finalColorRows: blockedFinalColorRows(),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeGpu, {
+        pairId: "whole-render",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        refs: 81942,
+        refAccounting: liveRefAccounting(81942),
+        finalColorRows: blockedFinalColorRows(),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.dessertCloseCpu, {
+        pairId: "dessert-close",
+        routeRole: "cpu-reference",
+        arenaBackend: "cpu",
+        witnessView: "dessert-close",
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.dessertCloseGpu, {
+        pairId: "dessert-close",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        witnessView: "dessert-close",
+        refAccounting: liveRefAccounting(94406),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.porousCloseCpu, {
+        pairId: "porous-close",
+        routeRole: "cpu-reference",
+        arenaBackend: "cpu",
+        witnessView: "dessert-porous-close",
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.porousCloseGpu, {
+        pairId: "porous-close",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        witnessView: "dessert-porous-close",
+        refAccounting: liveRefAccounting(94406),
+      }),
+    ],
+    comparisons: [
+      { pairId: "whole-render", comparable: true, changedPixelRatio: 0.0464, changedPixels: 42763, totalPixels: 921600 },
+      { pairId: "dessert-close", comparable: true, changedPixelRatio: 0.001, changedPixels: 922, totalPixels: 921600 },
+      { pairId: "porous-close", comparable: true, changedPixelRatio: 0.001, changedPixels: 922, totalPixels: 921600 },
+    ],
+    contactSheetPath: "smoke-reports/gpu-live-parity/contact-sheet.png",
+  });
+
+  const ledger = result.metrics.pairs[0].finalColorLedger;
+  assert.equal(result.divergence.primary, "final-color-divergence");
+  assert.equal(ledger.status, "missing-final-color-contributors");
+  assert.equal(ledger.cpu.rowCount, 3);
+  assert.equal(ledger.gpu.rowCount, 3);
+  assert.equal(ledger.cpu.hasContributors, false);
+  assert.equal(ledger.gpu.hasContributors, false);
+  assert.equal(ledger.cpu.compositorInputStatus, "missing");
+  assert.equal(ledger.gpu.compositorInputStatus, "missing");
+  assert.deepEqual(ledger.mismatchedAnchorIds, []);
+  assert.ok(ledger.cpu.blockedAnchorIds.includes("lacunar-hole-dessert-1260-930"));
+});
+
 test("visual smoke CLI exposes the GPU live parity mugshot batch mode", () => {
   const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
 
@@ -445,6 +534,7 @@ function witnessCapture(id, overrides = {}) {
       totalPixels: 1280 * 720,
       changedPixelRatio: (overrides.changedPixels ?? 12000) / (1280 * 720),
     },
+    captureFailure: overrides.captureFailure,
     screenshotPath: `smoke-reports/gpu-live-parity/${id}.png`,
     pageEvidence: {
       rendererLabel: "tile-local-visible-gaussian-compositor",
@@ -454,6 +544,9 @@ function witnessCapture(id, overrides = {}) {
       tileLocal: {
         refs,
         refAccounting: overrides.refAccounting,
+        perPixelFinalColorAccumulation: overrides.finalColorRows,
+        compositorInputReadback: overrides.compositorInputReadback,
+        outputTextureReadback: overrides.outputTextureReadback,
         tileColumns: 80,
         tileRows: 45,
       },
@@ -483,4 +576,25 @@ function liveRefAccounting(retainedRefs, allocatedRefs = retainedRefs) {
     allocatedRefs,
     estimatedRetainedRefs: allocatedRefs,
   };
+}
+
+function blockedFinalColorRows() {
+  return [
+    "lacunar-hole-dessert-1260-930",
+    "dense-foreground-leak-1580-1260",
+    "black-band-dropout-2300-1055",
+  ].map((id) => ({
+    status: "blocked",
+    anchorPixel: { id, x: 12, y: 9 },
+    finalColorAccumulation: {
+      steps: [],
+      outputColor: [0.02, 0.02, 0.04, 0],
+    },
+    blockers: [
+      {
+        field: "finalColorAccumulation.steps",
+        reason: `tileLocal.perPixelFinalColorAccumulation missing contributors for ${id}`,
+      },
+    ],
+  }));
 }
