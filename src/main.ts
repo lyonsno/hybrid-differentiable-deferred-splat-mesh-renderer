@@ -933,9 +933,11 @@ async function main() {
           if (tileLocalState.gpuArenaRuntime) {
             tileLocalState.gpuArenaRuntime.dispatch(tileLocalComputePass, tileLocalState.plan);
           }
+          const compositePrebuiltCpuTileRefs = scene.rendererMode === "tile-local-visible" &&
+            tileLocalState.arenaBackend === "cpu";
           if (tileLocalState.gpuArenaRuntime) {
             tileLocalState.pipeline.dispatchComposite(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
-          } else if (scene.rendererMode === "tile-local-visible") {
+          } else if (compositePrebuiltCpuTileRefs) {
             tileLocalState.pipeline.dispatchComposite(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
           } else {
             tileLocalState.pipeline.dispatch(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);

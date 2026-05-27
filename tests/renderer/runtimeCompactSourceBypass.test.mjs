@@ -136,13 +136,39 @@ test("tile-local-visible dispatch preserves CPU-populated refs when no GPU contr
   assert.match(renderLoopSource, /tileLocalState\.pipeline\.dispatchComposite/);
   assert.match(
     renderLoopSource,
-    /else if \(scene\.rendererMode === "tile-local-visible"\) \{\s*tileLocalState\.pipeline\.dispatchComposite/,
+    /const\s+compositePrebuiltCpuTileRefs\s*=\s*scene\.rendererMode === "tile-local-visible" &&\s*tileLocalState\.arenaBackend === "cpu";/,
+    "CPU-backed visible composition must be keyed by effective arena ownership, not renderer mode alone",
+  );
+  assert.match(
+    renderLoopSource,
+    /else if \(compositePrebuiltCpuTileRefs\) \{\s*tileLocalState\.pipeline\.dispatchComposite/,
     "CPU-backed tile-local-visible must composite prebuilt refs without rerunning clear/build over them",
   );
   assert.match(
     renderLoopSource,
     /else \{\s*tileLocalState\.pipeline\.dispatch\(tileLocalComputePass,\s*tileLocalState\.bindGroup,\s*tileLocalState\.plan\);/,
     "non-visible tile-local fallback still owns the full clear/build/composite dispatch",
+  );
+});
+
+test("direct GPU live tile-local-visible without a runtime still runs the full build dispatch", () => {
+  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const renderLoopStart = mainSource.indexOf("const tileLocalComputePass = encoder.beginComputePass");
+  const renderLoopEnd = mainSource.indexOf("tileLocalComputePass.end()", renderLoopStart);
+
+  assert.ok(renderLoopStart >= 0, "tile-local render loop should encode a compute pass");
+  assert.ok(renderLoopEnd > renderLoopStart, "tile-local render loop slice should be bounded");
+
+  const renderLoopSource = mainSource.slice(renderLoopStart, renderLoopEnd);
+  assert.doesNotMatch(
+    renderLoopSource,
+    /else if \(scene\.rendererMode === "tile-local-visible"\) \{\s*tileLocalState\.pipeline\.dispatchComposite/,
+    "renderer mode alone must not send direct GPU live evidence through composite-only dispatch",
+  );
+  assert.match(
+    renderLoopSource,
+    /else \{\s*tileLocalState\.pipeline\.dispatch\(tileLocalComputePass,\s*tileLocalState\.bindGroup,\s*tileLocalState\.plan\);/,
+    "direct GPU live without a gpuArenaRuntime must fall through to clear/build/composite dispatch",
   );
 });
 
