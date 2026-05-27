@@ -222,7 +222,7 @@ async function main() {
     }
     await page.waitForTimeout(options.settleMs);
 
-    const rawPageEvidence = await collectPageEvidenceWithTimeout(page, timeoutMs);
+    const rawPageEvidence = await collectPageEvidenceWithTimeout(page, options.timeoutMs);
     let pageEvidence = {
       ...rawPageEvidence,
       ...extractTileLocalPageMetrics(rawPageEvidence),
