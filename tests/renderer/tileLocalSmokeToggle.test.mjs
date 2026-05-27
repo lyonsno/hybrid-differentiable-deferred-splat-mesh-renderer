@@ -26,6 +26,7 @@ test("main labels skipped tile-local rebuilds as stale cached presentations", ()
 
   assert.match(source, /tileLocalPresentationFreshness/);
   assert.match(source, /stale-cache/);
+  assert.match(source, /pending-dispatch/);
   assert.match(source, /cachedFrameAgeMs/);
   assert.match(source, /currentFrameSignature/);
   assert.match(source, /cachedFrameSignature/);
@@ -34,6 +35,10 @@ test("main labels skipped tile-local rebuilds as stale cached presentations", ()
   assert.match(
     source,
     /tileLocalCurrentSignature !== scene\.tileLocalState\.lastCompositedSignature[\s\S]*scene\.tileLocalState\.needsDispatch = true/
+  );
+  assert.match(
+    source,
+    /tileLocalPresentationFreshness\([\s\S]*tileLocalCurrentSignature[\s\S]*\)/
   );
 });
 

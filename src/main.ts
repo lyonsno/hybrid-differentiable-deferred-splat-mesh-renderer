@@ -1087,10 +1087,11 @@ async function main() {
         scene.tileLocalState,
         scene.tileLocalLastSkipReason,
         scene.tileLocalLastSkipSignature,
-        now
+        now,
+        tileLocalCurrentSignature
       );
-      if (freshness.status === "stale-cache") {
-        statsText += ` | tile-local stale-cache: ${Math.round(freshness.cachedFrameAgeMs ?? 0)}ms old`;
+      if (freshness.status === "stale-cache" || freshness.status === "pending-dispatch") {
+        statsText += ` | tile-local ${freshness.status}: ${Math.round(freshness.cachedFrameAgeMs ?? 0)}ms old`;
         statsText += ` | tile-local current-grid: ${tileColumnsForViewport(width)}x${tileRowsForViewport(height)} tiles`;
       }
       if (scene.tileLocalState.debugMode !== "final-color") {
@@ -1143,6 +1144,7 @@ async function main() {
         width,
         height,
         scene.attributes.colors,
+        tileLocalCurrentSignature,
         {
           witnessView: operatorWitnessViewMode,
           revision: operatorWitnessRevision,
@@ -5074,6 +5076,7 @@ function exposeTileLocalRuntimeEvidence(
   viewportWidth: number,
   viewportHeight: number,
   sourceColors: Float32Array,
+  tileLocalCurrentSignature: string | null,
   operatorWitness?: {
     readonly witnessView: RealScaniverseWitnessViewMode;
     readonly revision: number;
@@ -5086,7 +5089,13 @@ function exposeTileLocalRuntimeEvidence(
     __MESH_SPLAT_PIXEL_CONTRIBUTOR_TRACE__?: PixelFinalAccumulationTraceRecord | BandPixelOrderTraceRecord;
   };
   const freshness = tileLocalState
-    ? tileLocalPresentationFreshness(tileLocalState, tileLocalLastSkipReason, tileLocalLastSkipSignature, nowMs)
+    ? tileLocalPresentationFreshness(
+        tileLocalState,
+        tileLocalLastSkipReason,
+        tileLocalLastSkipSignature,
+        nowMs,
+        tileLocalCurrentSignature
+      )
     : undefined;
   const budget = tileLocalBudgetEvidence(tileLocalLastSkipReason, viewportWidth, viewportHeight);
   const tileLocalStatus = tileLocalRuntimeStatus({
@@ -5316,6 +5325,7 @@ function tileLocalRuntimeStatus({
 }): string {
   if (tileLocalDisabledReason) return "budget-disabled";
   if (tileLocalLastSkipReason) return "stale-cache";
+  if (freshness?.status === "pending-dispatch") return "pending-dispatch";
   if (tileLocalState) return freshness?.status === "current" ? "current" : "current";
   return "not-applicable";
 }
@@ -5324,13 +5334,25 @@ function tileLocalPresentationFreshness(
   state: TileLocalSceneState,
   tileLocalLastSkipReason: string | null,
   tileLocalLastSkipSignature: string | null,
-  nowMs: number
+  nowMs: number,
+  tileLocalCurrentSignature: string | null = null
 ) {
-  const currentFrameSignature = shortTileLocalSignature(tileLocalLastSkipSignature ?? state.lastCompositedSignature);
+  const currentFrameSignature = shortTileLocalSignature(
+    tileLocalCurrentSignature ?? tileLocalLastSkipSignature ?? state.lastCompositedSignature
+  );
   const cachedFrameSignature = shortTileLocalSignature(state.lastCompositedSignature);
   if (tileLocalLastSkipReason) {
     return {
       status: "stale-cache",
+      cachedFrameAgeMs: Math.max(0, Math.round(nowMs - state.lastCompositedAtMs)),
+      cachedFrame: state.lastCompositedFrame,
+      currentFrameSignature,
+      cachedFrameSignature,
+    };
+  }
+  if (tileLocalCurrentSignature && tileLocalCurrentSignature !== state.lastCompositedSignature) {
+    return {
+      status: "pending-dispatch",
       cachedFrameAgeMs: Math.max(0, Math.round(nowMs - state.lastCompositedAtMs)),
       cachedFrame: state.lastCompositedFrame,
       currentFrameSignature,
