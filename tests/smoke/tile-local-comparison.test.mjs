@@ -167,6 +167,26 @@ test("tile-local comparison refuses pending-dispatch tile-local output after a v
   );
 });
 
+test("tile-local comparison refuses stats-only pending-dispatch output", () => {
+  const pageEvidence = {
+    ready: true,
+    sourceKind: "real_scaniverse_ply",
+    splatCount: 94406,
+    rendererLabel: "tile-local-visible-gaussian-compositor",
+    statsText:
+      "3456x1916 | 60 fps | renderer: tile-local-visible-gaussian-compositor | tile-local: 216x113 tiles/61643 refs | tile-local pending-dispatch: 162ms old",
+    canvas: { width: 3456, height: 1916, clientWidth: 3456, clientHeight: 1916 },
+  };
+
+  const metrics = extractTileLocalPageMetrics(pageEvidence);
+  assert.equal(metrics.tileLocal.freshness.status, "pending-dispatch");
+  assert.equal(metrics.tileLocal.refs, 61643);
+  assert.equal(
+    isVisualSmokeCaptureReady(pageEvidence, { expectedRendererLabel: "tile-local-visible" }),
+    false
+  );
+});
+
 test("tile-local visual readiness does not require optional trace readbacks for current visual frames", () => {
   const pageEvidence = {
     ready: true,

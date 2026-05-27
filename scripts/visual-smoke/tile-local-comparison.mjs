@@ -137,7 +137,8 @@ export function extractTileLocalPageMetrics(pageEvidence = {}) {
   const tileLocal = pageEvidence.tileLocal && typeof pageEvidence.tileLocal === "object" ? pageEvidence.tileLocal : {};
   const arenaRuntime = pageEvidence.arenaRuntime && typeof pageEvidence.arenaRuntime === "object" ? pageEvidence.arenaRuntime : {};
   const freshness = tileLocal.freshness
-    ?? (/stale-cache/i.test(statsText) ? { status: "stale-cache" } : undefined);
+    ?? (/stale-cache/i.test(statsText) ? { status: "stale-cache" } : undefined)
+    ?? (/pending-dispatch/i.test(statsText) ? { status: "pending-dispatch" } : undefined);
   return {
     rendererLabel: pageEvidence.rendererLabel ?? parseRendererLabel(statsText),
     fps: finiteNumber(pageEvidence.fps) ?? parseFps(statsText),
@@ -533,7 +534,7 @@ function tileLocalPresentationIsStale(metrics) {
   const status = String(metrics.tileLocal?.freshness?.status ?? "").trim();
   if (status && status !== "current") return true;
   if (metrics.tileLocalLastSkipReason) return true;
-  return /stale-cache/i.test(metrics.rendererLabel ?? "");
+  return /(stale-cache|pending-dispatch)/i.test(metrics.rendererLabel ?? "");
 }
 
 function finiteNumber(value) {
