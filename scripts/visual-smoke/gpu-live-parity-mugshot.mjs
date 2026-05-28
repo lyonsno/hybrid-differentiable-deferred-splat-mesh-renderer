@@ -43,6 +43,20 @@ const DEFAULT_ROUTE = Object.freeze({
   tileSizePx: "16",
   maxRefsPerTile: "256",
 });
+export const GPU_LIVE_PARITY_MUGSHOT_TRACE_ANCHORS = Object.freeze([
+  "whole-a@528,400:visible-splat",
+  "whole-b@752,416:visible-splat",
+  "whole-c@784,400:visible-splat",
+  "close-a@976,512:visible-splat",
+  "close-b@768,496:visible-splat",
+  "close-c@496,496:visible-splat",
+  "close-d@432,512:visible-splat",
+  "porous-a@672,576:visible-splat",
+  "porous-b@544,576:visible-splat",
+  "porous-c@336,640:visible-splat",
+  "porous-d@272,672:visible-splat",
+  "porous-e@800,576:visible-splat",
+].join(";"));
 const TRACE_PRESENTATION_PARAMS = Object.freeze([
   "traceAnchors",
   "traceAnchor",
@@ -227,6 +241,7 @@ function captureForPair(baseUrl, pair, { id, title, routeRole, arenaBackend, tim
   for (const [key, value] of Object.entries(DEFAULT_ROUTE)) {
     url.searchParams.set(key, value);
   }
+  url.searchParams.set("traceAnchors", GPU_LIVE_PARITY_MUGSHOT_TRACE_ANCHORS);
   url.searchParams.set("arenaBackend", arenaBackend);
   url.searchParams.delete("witnessView");
   url.searchParams.delete("view");
@@ -301,7 +316,17 @@ async function compareCaptureImages({ pairId, cpu, gpu, appRoot }) {
 }
 
 function comparePairRoutes(pair, cpu, gpu) {
-  const fields = ["assetPath", "witnessView", "renderer", "tileSizePx", "maxRefsPerTile", "viewport"];
+  const fields = [
+    "assetPath",
+    "witnessView",
+    "renderer",
+    "tileSizePx",
+    "maxRefsPerTile",
+    "traceAnchors",
+    "presentationAnchors",
+    "presentationScope",
+    "viewport",
+  ];
   for (const field of fields) {
     const left = routeComparableValue(cpu, field);
     const right = routeComparableValue(gpu, field);
@@ -309,6 +334,29 @@ function comparePairRoutes(pair, cpu, gpu) {
       return finding(
         "pair-route-mismatch",
         `${pair.id} CPU/GPU captures differ on ${field}: ${left || "missing"} vs ${right || "missing"}.`
+      );
+    }
+  }
+  for (const [role, capture] of [["CPU", cpu], ["GPU", gpu]]) {
+    const traceAnchors = routeField(capture, "traceAnchors");
+    if (traceAnchors !== GPU_LIVE_PARITY_MUGSHOT_TRACE_ANCHORS) {
+      return finding(
+        "pair-route-contract-mismatch",
+        `${pair.id} ${role} capture carried ${traceAnchors || "missing"} trace anchors instead of the canonical GPU live parity mugshot anchors.`
+      );
+    }
+    const presentationAnchors = routeField(capture, "presentationAnchors");
+    if (presentationAnchors) {
+      return finding(
+        "pair-route-contract-mismatch",
+        `${pair.id} ${role} capture carried presentation anchors (${presentationAnchors}) in a full-scene mugshot route.`
+      );
+    }
+    const presentationScope = routeField(capture, "presentationScope");
+    if (presentationScope && presentationScope !== "full-scene") {
+      return finding(
+        "pair-route-contract-mismatch",
+        `${pair.id} ${role} capture carried presentation scope ${presentationScope} instead of full-scene.`
       );
     }
   }
@@ -446,13 +494,23 @@ function summarizeFinalColorCapture(capture = {}) {
   const outputTextureReadback = tileLocal.outputTextureReadback && typeof tileLocal.outputTextureReadback === "object"
     ? tileLocal.outputTextureReadback
     : {};
+  const anchorsWithReadback = mergeLiveCompositorInputAnchors(
+    anchors,
+    Array.isArray(compositorInputReadback.anchors) ? compositorInputReadback.anchors : []
+  );
+  const perPixelBlockedAnchorIds = anchors.filter((anchor) => anchor.status === "blocked").map((anchor) => anchor.id);
   return {
     rowCount: rows.length,
     hasRows: rows.length > 0,
-    hasContributors: anchors.some((anchor) => anchor.stepCount > 0),
-    blockedAnchorIds: anchors.filter((anchor) => anchor.status === "blocked").map((anchor) => anchor.id),
-    anchors,
-    anchorsById: new Map(anchors.map((anchor) => [anchor.id, anchor])),
+    perPixelHasContributors: anchors.some((anchor) => anchor.stepCount > 0),
+    perPixelBlockedAnchorIds,
+    hasContributors: anchorsWithReadback.some((anchor) => anchor.stepCount > 0),
+    blockedAnchorIds: unique([
+      ...anchorsWithReadback.filter((anchor) => anchor.status === "blocked").map((anchor) => anchor.id),
+      ...perPixelBlockedAnchorIds,
+    ]),
+    anchors: anchorsWithReadback,
+    anchorsById: new Map(anchorsWithReadback.map((anchor) => [anchor.id, anchor])),
     compositorInputStatus: stringValue(compositorInputReadback.status) || "missing",
     compositorInputAnchorCount: Array.isArray(compositorInputReadback.anchors) ? compositorInputReadback.anchors.length : 0,
     outputTextureStatus: stringValue(outputTextureReadback.status) || "missing",
@@ -477,6 +535,32 @@ function summarizeFinalColorAnchor(row = {}) {
     stepCount: steps.length,
     outputRgba8: rgbaFloatTo8(accumulation.outputColor),
     blockers: normalizeBlockers(row.blockers ?? record.blockers),
+  };
+}
+
+function mergeLiveCompositorInputAnchors(rowAnchors, compositorAnchors) {
+  const byId = new Map(rowAnchors.map((anchor) => [anchor.id, anchor]));
+  for (const compositorAnchor of compositorAnchors) {
+    const id = stringValue(compositorAnchor?.id);
+    if (!id) continue;
+    const existing = byId.get(id);
+    if (existing?.stepCount > 0) {
+      continue;
+    }
+    byId.set(id, summarizeLiveCompositorInputAnchor(compositorAnchor, existing));
+  }
+  return [...byId.values()];
+}
+
+function summarizeLiveCompositorInputAnchor(anchor = {}, fallback = {}) {
+  const contributors = Array.isArray(anchor.contributors) ? anchor.contributors : [];
+  const outputRgba8 = rgba8Value(anchor.liveCompositorRgba8) || rgbaFloatTo8(anchor.liveCompositorRgba);
+  return {
+    id: stringValue(anchor.id) || stringValue(fallback.id),
+    status: contributors.length > 0 ? "present" : stringValue(fallback.status) || "missing",
+    stepCount: contributors.length || finiteNumber(fallback.stepCount) || 0,
+    outputRgba8: outputRgba8.length > 0 ? outputRgba8 : Array.isArray(fallback.outputRgba8) ? fallback.outputRgba8 : [],
+    blockers: Array.isArray(fallback.blockers) ? fallback.blockers : [],
   };
 }
 
@@ -519,6 +603,15 @@ function rgbaFloatTo8(value) {
   }
   return value.map((channel) =>
     Math.max(0, Math.min(255, Math.round(Math.max(0, Math.min(1, finiteNumber(channel) ?? 0)) * 255)))
+  );
+}
+
+function rgba8Value(value) {
+  if (!Array.isArray(value) || value.length !== 4) {
+    return null;
+  }
+  return value.map((channel) =>
+    Math.max(0, Math.min(255, Math.round(finiteNumber(channel) ?? 0)))
   );
 }
 

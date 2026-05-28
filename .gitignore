@@ -15,4 +15,11 @@ dist/
 
 # OS
 .DS_Store
+
+# Generated smoke payloads for the final-color contributor anchor witness.
+# Keep the compact probole/summary addable while leaving PNG/JSON/report payloads local.
+smoke-reports/final-color-contributor-anchor-witness-0527/*.json
+smoke-reports/final-color-contributor-anchor-witness-0527/*.png
+smoke-reports/final-color-contributor-anchor-witness-0527/report.md
+smoke-reports/final-color-contributor-anchor-witness-0527-*/
 uv.lock

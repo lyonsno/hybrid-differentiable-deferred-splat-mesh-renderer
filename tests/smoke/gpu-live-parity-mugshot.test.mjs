@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS,
+  GPU_LIVE_PARITY_MUGSHOT_TRACE_ANCHORS,
   buildGpuLiveParityMugshotPlan,
   classifyGpuLiveParityMugshot,
 } from "../../scripts/visual-smoke/gpu-live-parity-mugshot.mjs";
@@ -36,8 +37,9 @@ test("GPU live parity mugshot plan captures CPU reference and direct GPU under t
     assert.equal(params.get("renderer"), "tile-local-visible");
     assert.equal(params.get("tileSizePx"), "16");
     assert.equal(params.get("maxRefsPerTile"), "256");
-    assert.equal(params.has("traceAnchors"), false);
+    assert.equal(params.get("traceAnchors"), GPU_LIVE_PARITY_MUGSHOT_TRACE_ANCHORS);
     assert.equal(params.has("presentationAnchors"), false);
+    assert.equal(params.has("presentationScope"), false);
     assert.equal(params.has("tileDebug"), false);
   }
 
@@ -46,6 +48,20 @@ test("GPU live parity mugshot plan captures CPU reference and direct GPU under t
   assert.equal(plan[0].url.replace("arenaBackend=cpu", "arenaBackend=gpu"), plan[1].url);
   assert.ok(plan.every((capture) => capture.timeoutMs === 60000));
   assert.ok(plan.every((capture) => capture.timeoutScreenshotMs === 60000));
+});
+
+test("GPU live parity mugshot replaces incoming trace routes with canonical diagnostic anchors", () => {
+  const plan = buildGpuLiveParityMugshotPlan(
+    `${BASE_URL}&traceAnchors=operator@1,2:stale&presentationAnchors=operator@3,4:stale&presentationScope=anchor-neighborhood&tileDebug=refs`
+  );
+
+  for (const capture of plan) {
+    const params = new URL(capture.url).searchParams;
+    assert.equal(params.get("traceAnchors"), GPU_LIVE_PARITY_MUGSHOT_TRACE_ANCHORS);
+    assert.equal(params.has("presentationAnchors"), false);
+    assert.equal(params.has("presentationScope"), false);
+    assert.equal(params.has("tileDebug"), false);
+  }
 });
 
 test("GPU live parity classifier closes the witness while preserving route divergence", () => {
@@ -494,10 +510,107 @@ test("GPU live parity classifier exposes final-color divergence instrumentation 
   assert.equal(ledger.gpu.rowCount, 3);
   assert.equal(ledger.cpu.hasContributors, false);
   assert.equal(ledger.gpu.hasContributors, false);
+  assert.equal(ledger.cpu.perPixelHasContributors, false);
+  assert.equal(ledger.gpu.perPixelHasContributors, false);
   assert.equal(ledger.cpu.compositorInputStatus, "missing");
   assert.equal(ledger.gpu.compositorInputStatus, "missing");
   assert.deepEqual(ledger.mismatchedAnchorIds, []);
   assert.ok(ledger.cpu.blockedAnchorIds.includes("lacunar-hole-dessert-1260-930"));
+});
+
+test("GPU live parity classifier uses live compositor input readback as contributor-bearing final-color evidence", () => {
+  const result = classifyGpuLiveParityMugshot({
+    captures: [
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeCpu, {
+        pairId: "whole-render",
+        routeRole: "cpu-reference",
+        arenaBackend: "cpu",
+        refs: 61643,
+        finalColorRows: blockedFinalColorRows(["whole-a"]),
+        compositorInputReadback: liveCompositorInputReadback("whole-a", [120, 80, 60, 255], 3),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeGpu, {
+        pairId: "whole-render",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        refs: 81942,
+        refAccounting: liveRefAccounting(81942),
+        finalColorRows: blockedFinalColorRows(["whole-a"]),
+        compositorInputReadback: liveCompositorInputReadback("whole-a", [151, 88, 53, 255], 256),
+      }),
+    ],
+    comparisons: [
+      { pairId: "whole-render", comparable: true, changedPixelRatio: 0.0464, changedPixels: 42763, totalPixels: 921600 },
+    ],
+    contactSheetPath: "smoke-reports/gpu-live-parity/contact-sheet.png",
+  });
+
+  const ledger = result.metrics.pairs[0].finalColorLedger;
+  assert.equal(result.divergence.primary, "final-color-divergence");
+  assert.equal(ledger.status, "final-color-row-divergence");
+  assert.equal(ledger.cpu.hasContributors, true);
+  assert.equal(ledger.gpu.hasContributors, true);
+  assert.equal(ledger.cpu.perPixelHasContributors, false);
+  assert.equal(ledger.gpu.perPixelHasContributors, false);
+  assert.deepEqual(ledger.cpu.perPixelBlockedAnchorIds, ["whole-a"]);
+  assert.deepEqual(ledger.gpu.perPixelBlockedAnchorIds, ["whole-a"]);
+  assert.deepEqual(ledger.cpu.blockedAnchorIds, ["whole-a"]);
+  assert.deepEqual(ledger.gpu.blockedAnchorIds, ["whole-a"]);
+  assert.equal(ledger.cpu.compositorInputStatus, "present");
+  assert.equal(ledger.gpu.compositorInputStatus, "present");
+  assert.deepEqual(ledger.anchorDiffs[0].cpuOutputRgba8, [120, 80, 60, 255]);
+  assert.deepEqual(ledger.anchorDiffs[0].gpuOutputRgba8, [151, 88, 53, 255]);
+  assert.deepEqual(ledger.mismatchedAnchorIds, ["whole-a"]);
+});
+
+test("GPU live parity classifier treats trace-anchor mismatches as route mismatches", () => {
+  const result = classifyGpuLiveParityMugshot({
+    captures: [
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeCpu, {
+        pairId: "whole-render",
+        routeRole: "cpu-reference",
+        arenaBackend: "cpu",
+        traceAnchors: "cpu-a@1,2:test",
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeGpu, {
+        pairId: "whole-render",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        traceAnchors: "gpu-a@1,2:test",
+      }),
+    ],
+    contactSheetPath: "smoke-reports/gpu-live-parity/contact-sheet.png",
+  });
+
+  assert.equal(result.closeable, false);
+  assert.equal(result.findings.some((finding) => finding.kind === "pair-route-mismatch"), true);
+});
+
+test("GPU live parity classifier rejects equal but non-canonical diagnostic routes", () => {
+  const result = classifyGpuLiveParityMugshot({
+    captures: [
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeCpu, {
+        pairId: "whole-render",
+        routeRole: "cpu-reference",
+        arenaBackend: "cpu",
+        traceAnchors: "operator@1,2:stale",
+        presentationAnchors: "operator@3,4:stale",
+        presentationScope: "anchor-neighborhood",
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeGpu, {
+        pairId: "whole-render",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        traceAnchors: "operator@1,2:stale",
+        presentationAnchors: "operator@3,4:stale",
+        presentationScope: "anchor-neighborhood",
+      }),
+    ],
+    contactSheetPath: "smoke-reports/gpu-live-parity/contact-sheet.png",
+  });
+
+  assert.equal(result.closeable, false);
+  assert.equal(result.findings.some((finding) => finding.kind === "pair-route-contract-mismatch"), true);
 });
 
 test("visual smoke CLI exposes the GPU live parity mugshot batch mode", () => {
@@ -563,6 +676,9 @@ function witnessCapture(id, overrides = {}) {
       effectiveArenaBackend,
       tileSizePx,
       maxRefsPerTile,
+      traceAnchors: overrides.traceAnchors ?? GPU_LIVE_PARITY_MUGSHOT_TRACE_ANCHORS,
+      presentationAnchors: overrides.presentationAnchors ?? null,
+      presentationScope: overrides.presentationScope ?? "full-scene",
       viewport: { width: 1280, height: 720 },
     },
   };
@@ -578,12 +694,12 @@ function liveRefAccounting(retainedRefs, allocatedRefs = retainedRefs) {
   };
 }
 
-function blockedFinalColorRows() {
-  return [
+function blockedFinalColorRows(ids = [
     "lacunar-hole-dessert-1260-930",
     "dense-foreground-leak-1580-1260",
     "black-band-dropout-2300-1055",
-  ].map((id) => ({
+  ]) {
+  return ids.map((id) => ({
     status: "blocked",
     anchorPixel: { id, x: 12, y: 9 },
     finalColorAccumulation: {
@@ -597,4 +713,21 @@ function blockedFinalColorRows() {
       },
     ],
   }));
+}
+
+function liveCompositorInputReadback(id, rgba8, contributorCount) {
+  return {
+    status: "present",
+    anchors: [
+      {
+        id,
+        liveCompositorRgba8: rgba8,
+        contributors: Array.from({ length: contributorCount }, (_, index) => ({
+          layer: index,
+          splatIndex: index + 1,
+          originalId: index + 1,
+        })),
+      },
+    ],
+  };
 }
