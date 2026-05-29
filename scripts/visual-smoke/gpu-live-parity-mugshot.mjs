@@ -616,10 +616,14 @@ function summarizeCompositorRowDeltaLedger({ cpuTrace, gpuTrace }) {
     return compareCompositorRowAnchor(id, cpuAnchor, gpuAnchor);
   });
   const mismatchedAnchors = anchorDiffs.filter((anchor) => anchor.status !== "match");
+  const layoutMismatchedAnchors = anchorDiffs.filter((anchor) => anchor.layoutStatus && anchor.layoutStatus !== "match");
+  const budgetMismatchedAnchors = anchorDiffs.filter((anchor) => anchor.budgetStatus && anchor.budgetStatus !== "match");
   return {
     status: mismatchedAnchors.length > 0 ? "compositor-row-divergence" : "compositor-row-match",
     anchorDiffs,
     mismatchedAnchorIds: mismatchedAnchors.map((anchor) => anchor.id),
+    layoutMismatchedAnchorIds: layoutMismatchedAnchors.map((anchor) => anchor.id),
+    budgetMismatchedAnchorIds: budgetMismatchedAnchors.map((anchor) => anchor.id),
   };
 }
 
@@ -635,10 +639,10 @@ function compareCompositorRowAnchor(id, cpuAnchor, gpuAnchor) {
   const cpuContributors = cpuAnchor.contributors ?? [];
   const gpuContributors = gpuAnchor.contributors ?? [];
   const contributorDelta = compareCompositorContributors(cpuContributors, gpuContributors);
+  const layoutDelta = compareCompositorLayout(cpuAnchor, gpuAnchor);
+  const budgetDelta = compareCompositorBudget(cpuAnchor, gpuAnchor);
   const status =
     !objectShallowEqual(cpuAnchor.tileAddress, gpuAnchor.tileAddress) ? "tile-address-mismatch" :
-    !objectShallowEqual(cpuAnchor.header, gpuAnchor.header) ? "header-mismatch" :
-    cpuAnchor.gpuScatterCount !== gpuAnchor.gpuScatterCount ? "scatter-count-mismatch" :
     cpuAnchor.refLimit !== gpuAnchor.refLimit ? "ref-limit-mismatch" :
     contributorDelta.status !== "match" ? contributorDelta.status :
     !arrayShallowEqual(cpuAnchor.outputRgba8, gpuAnchor.outputRgba8) ? "live-output-color-mismatch" :
@@ -646,6 +650,10 @@ function compareCompositorRowAnchor(id, cpuAnchor, gpuAnchor) {
   return removeUndefinedProperties({
     id,
     status,
+    layoutStatus: layoutDelta.status,
+    layoutFields: layoutDelta.fields,
+    budgetStatus: budgetDelta.status,
+    budgetFields: budgetDelta.fields,
     cpuTileAddress: cpuAnchor.tileAddress,
     gpuTileAddress: gpuAnchor.tileAddress,
     cpuHeader: cpuAnchor.header,
@@ -664,6 +672,46 @@ function compareCompositorRowAnchor(id, cpuAnchor, gpuAnchor) {
   });
 }
 
+function compareCompositorLayout(cpuAnchor, gpuAnchor) {
+  const fields = [];
+  if (!objectShallowEqual(cpuAnchor.tileAddress, gpuAnchor.tileAddress)) {
+    fields.push("tileAddress");
+  }
+  if (cpuAnchor.header?.firstRefIndex !== gpuAnchor.header?.firstRefIndex) {
+    fields.push("header.firstRefIndex");
+  }
+  for (const field of compareCompositorContributorAddressFields(cpuAnchor.contributors ?? [], gpuAnchor.contributors ?? [])) {
+    fields.push(field);
+  }
+  return {
+    status: fields.length > 0 ? "layout-mismatch" : "match",
+    fields,
+  };
+}
+
+function compareCompositorBudget(cpuAnchor, gpuAnchor) {
+  const fields = [];
+  if (cpuAnchor.header?.refCount !== gpuAnchor.header?.refCount) {
+    fields.push("header.refCount");
+  }
+  if (cpuAnchor.header?.projectedCount !== gpuAnchor.header?.projectedCount) {
+    fields.push("header.projectedCount");
+  }
+  if (cpuAnchor.header?.droppedCount !== gpuAnchor.header?.droppedCount) {
+    fields.push("header.droppedCount");
+  }
+  if (cpuAnchor.gpuScatterCount !== gpuAnchor.gpuScatterCount) {
+    fields.push("scatterCount");
+  }
+  if (cpuAnchor.refLimit !== gpuAnchor.refLimit) {
+    fields.push("refLimit");
+  }
+  return {
+    status: fields.length > 0 ? "budget-mismatch" : "match",
+    fields,
+  };
+}
+
 function compareCompositorContributors(cpuContributors, gpuContributors) {
   if (cpuContributors.length !== gpuContributors.length) {
     return { status: "contributor-count-mismatch" };
@@ -677,7 +725,7 @@ function compareCompositorContributors(cpuContributors, gpuContributors) {
         firstMismatch: { index, cpu, gpu },
       };
     }
-    if (JSON.stringify(cpu) !== JSON.stringify(gpu)) {
+    if (JSON.stringify(semanticCompositorContributor(cpu)) !== JSON.stringify(semanticCompositorContributor(gpu))) {
       return {
         status: "contributor-field-mismatch",
         firstMismatch: { index, cpu, gpu },
@@ -685,6 +733,30 @@ function compareCompositorContributors(cpuContributors, gpuContributors) {
     }
   }
   return { status: "match" };
+}
+
+function compareCompositorContributorAddressFields(cpuContributors, gpuContributors) {
+  const fields = new Set();
+  const count = Math.min(cpuContributors.length, gpuContributors.length);
+  for (let index = 0; index < count; index += 1) {
+    const cpu = cpuContributors[index];
+    const gpu = gpuContributors[index];
+    if (cpu?.originalId !== gpu?.originalId || cpu?.splatIndex !== gpu?.splatIndex) {
+      continue;
+    }
+    if (cpu?.refIndex !== gpu?.refIndex) {
+      fields.add("contributors.refIndex");
+    }
+    if (cpu?.alphaParamIndex !== gpu?.alphaParamIndex) {
+      fields.add("contributors.alphaParamIndex");
+    }
+  }
+  return [...fields];
+}
+
+function semanticCompositorContributor(contributor = {}) {
+  const { refIndex, alphaParamIndex, ...semanticFields } = contributor;
+  return semanticFields;
 }
 
 function summarizeTileAddress(address = {}) {

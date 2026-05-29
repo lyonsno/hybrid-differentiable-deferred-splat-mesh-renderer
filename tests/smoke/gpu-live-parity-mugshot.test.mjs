@@ -634,6 +634,89 @@ test("GPU live parity classifier separates compositor row matches from final col
   assert.deepEqual(ledger.compositorRowDelta.anchorDiffs[0].gpuContributorIds, [70]);
 });
 
+test("GPU live parity classifier separates compositor row layout mismatch from semantic row divergence", () => {
+  const cpuContributors = [
+    compositorContributor({
+      layer: 0,
+      refIndex: 10,
+      splatIndex: 7,
+      originalId: 70,
+      alphaParamIndex: 10,
+      sourceColor: [0.8, 0.5, 0.3],
+    }),
+  ];
+  const gpuContributors = [
+    compositorContributor({
+      layer: 0,
+      refIndex: 520448,
+      splatIndex: 7,
+      originalId: 70,
+      alphaParamIndex: 520448,
+      sourceColor: [0.8, 0.5, 0.3],
+    }),
+  ];
+  const result = classifyGpuLiveParityMugshot({
+    captures: [
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeCpu, {
+        pairId: "whole-render",
+        routeRole: "cpu-reference",
+        arenaBackend: "cpu",
+        refs: 61643,
+        finalColorRows: blockedFinalColorRows(["whole-a"]),
+        compositorInputReadback: liveCompositorInputReadback(
+          "whole-a",
+          [120, 80, 60, 255],
+          cpuContributors,
+          "cpu-reference-diagnostic-state",
+          {
+            header: { firstRefIndex: 10, refCount: 1, projectedCount: 9, droppedCount: 8 },
+            gpuScatterCount: 9,
+            refLimit: 1,
+          }
+        ),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeGpu, {
+        pairId: "whole-render",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        refs: 81942,
+        refAccounting: liveRefAccounting(81942),
+        finalColorRows: blockedFinalColorRows(["whole-a"]),
+        compositorInputReadback: liveCompositorInputReadback(
+          "whole-a",
+          [120, 80, 60, 255],
+          gpuContributors,
+          "gpu-buffer-readback",
+          {
+            header: { firstRefIndex: 520448, refCount: 0, projectedCount: 0, droppedCount: 0 },
+            gpuScatterCount: 9,
+            refLimit: 1,
+          }
+        ),
+      }),
+    ],
+    comparisons: [
+      { pairId: "whole-render", comparable: true, changedPixelRatio: 0.0464, changedPixels: 42763, totalPixels: 921600 },
+    ],
+    contactSheetPath: "smoke-reports/gpu-live-parity/contact-sheet.png",
+  });
+
+  const delta = result.metrics.pairs[0].finalColorLedger.compositorRowDelta;
+  assert.equal(delta.status, "compositor-row-match");
+  assert.deepEqual(delta.mismatchedAnchorIds, []);
+  assert.deepEqual(delta.layoutMismatchedAnchorIds, ["whole-a"]);
+  assert.deepEqual(delta.budgetMismatchedAnchorIds, ["whole-a"]);
+  assert.equal(delta.anchorDiffs[0].status, "match");
+  assert.equal(delta.anchorDiffs[0].layoutStatus, "layout-mismatch");
+  assert.deepEqual(delta.anchorDiffs[0].layoutFields, [
+    "header.firstRefIndex",
+    "contributors.refIndex",
+    "contributors.alphaParamIndex",
+  ]);
+  assert.equal(delta.anchorDiffs[0].budgetStatus, "budget-mismatch");
+  assert.deepEqual(delta.anchorDiffs[0].budgetFields, ["header.refCount", "header.projectedCount", "header.droppedCount"]);
+});
+
 test("GPU live parity classifier rejects compositor row matches with the wrong readback source pair", () => {
   const sharedContributors = [compositorContributor()];
   const result = classifyGpuLiveParityMugshot({
@@ -878,7 +961,7 @@ function blockedFinalColorRows(ids = [
   }));
 }
 
-function liveCompositorInputReadback(id, rgba8, contributorsOrCount, source) {
+function liveCompositorInputReadback(id, rgba8, contributorsOrCount, source, anchorOverrides = {}) {
   const contributors = Array.isArray(contributorsOrCount)
     ? contributorsOrCount
     : Array.from({ length: contributorsOrCount }, (_, index) => ({
@@ -899,6 +982,7 @@ function liveCompositorInputReadback(id, rgba8, contributorsOrCount, source) {
         refLimit: contributors.length,
         liveCompositorRgba8: rgba8,
         contributors,
+        ...anchorOverrides,
       },
     ],
   };
