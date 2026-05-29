@@ -239,7 +239,7 @@ test("operator witness report prints the slowest app-side frame stage", () => {
   assert.match(reportSource, /timing\.slowestAppFrameStage/);
 });
 
-test("operator witness app frame timing routes requested GPU presentation around compact source construction", () => {
+test("operator witness app frame timing routes requested GPU presentation through compact retained source runtime", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const ensureStart = source.indexOf("function ensureTileLocalSceneState");
   const ensureEnd = source.indexOf("function captureCurrentTileLocalSignature", ensureStart);
@@ -250,12 +250,14 @@ test("operator witness app frame timing routes requested GPU presentation around
   const dispatchSource = source.slice(dispatchStart, dispatchEnd);
 
   assert.match(ensureSource, /footprintParams,\s*frameTiming/);
-  assert.doesNotMatch(gpuSource, /timeOptionalFrameStage\(frameTiming,\s*"compact-retained-source"/);
-  assert.doesNotMatch(gpuSource, /timeOptionalFrameStage\(frameTiming,\s*"gpu-arena-runtime"/);
-  assert.match(gpuSource, /gpuLiveMaxTileRefs/);
-  assert.match(gpuSource, /estimatedGpuLiveBudgetDiagnostics/);
+  assert.match(gpuSource, /buildCompactRetainedSourceForRuntime/);
+  assert.match(gpuSource, /createGpuTileContributorArenaRuntime/);
+  assert.match(gpuSource, /compactRetainedSourceBudgetDiagnostics/);
+  assert.doesNotMatch(gpuSource, /gpuLiveMaxTileRefs/);
+  assert.doesNotMatch(gpuSource, /estimatedGpuLiveBudgetDiagnostics/);
   assert.match(dispatchSource, /gpuDispatchEnqueueStartedAtMs/);
-  assert.match(dispatchSource, /tileLocalState\.pipeline\.dispatch\(tileLocalComputePass/);
+  assert.match(dispatchSource, /tileLocalState\.gpuArenaRuntime\.dispatch\(tileLocalComputePass/);
+  assert.match(dispatchSource, /tileLocalState\.pipeline\.dispatchComposite\(tileLocalComputePass/);
 });
 
 test("operator witness compact source timing exposes internal construction stages", () => {
@@ -408,14 +410,17 @@ test("operator witness readiness polling uses the capture timeout instead of the
   assert.match(waitSource, /collectPageEvidenceWithTimeout\(page, timeoutMs\)/);
 });
 
-test("operator witness frame reuses readiness evidence instead of repeating a page bridge read", () => {
+test("operator witness frame refreshes settled evidence after readiness and settle wait", () => {
   const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
   const frameStart = source.indexOf("async function captureOperatorWitnessFrame");
   const frameEnd = source.indexOf("async function captureVisualSmoke", frameStart);
   const frameSource = source.slice(frameStart, frameEnd);
+  const settleWait = frameSource.indexOf("settle-before-interaction");
+  const settledRead = frameSource.indexOf("collect-settled-evidence");
 
   assert.match(frameSource, /let readinessEvidence/);
-  assert.doesNotMatch(frameSource, /collectPageEvidenceWithTimeout\(page, timeoutMs\)/);
+  assert.ok(settledRead > settleWait, "settled evidence must be collected after the settle wait");
+  assert.match(frameSource, /collectPageEvidenceWithTimeout\(page, timeoutMs\)/);
 });
 
 test("operator witness session caches the canvas clip before per-frame captures", () => {

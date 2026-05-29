@@ -592,9 +592,13 @@ async function captureOperatorWitnessFrame({
       await timeStage(timing, "settle-after-interaction", () => page.waitForTimeout(options.settleMs));
     }
 
+    const settledEvidence = await timeStage(timing, "collect-settled-evidence", () =>
+      collectPageEvidenceWithTimeout(page, timeoutMs)
+    );
     let pageEvidence = {
       ...readinessEvidence,
-      ...extractTileLocalPageMetrics(readinessEvidence),
+      ...settledEvidence,
+      ...extractTileLocalPageMetrics(settledEvidence),
     };
     const screenshotPath = path.join(reportDir, `${capture.id}.png`);
     const screenshot = await timeStage(timing, "screenshot", () => page.screenshot({

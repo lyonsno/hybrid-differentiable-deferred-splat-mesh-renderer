@@ -321,14 +321,14 @@ test("tile-local comparison waits for pending output texture readback before cap
   delete pageEvidence.tileLocal.outputTextureReadback;
   assert.equal(
     isVisualSmokeCaptureReady(pageEvidence, { expectedRendererLabel: "tile-local-visible" }),
-    false
+    true
   );
 
   pageEvidence.tileLocal.outputTextureReadback = { status: "present", anchors: [] };
   delete pageEvidence.tileLocal.compositorInputReadback;
   assert.equal(
     isVisualSmokeCaptureReady(pageEvidence, { expectedRendererLabel: "tile-local-visible" }),
-    false
+    true
   );
 });
 

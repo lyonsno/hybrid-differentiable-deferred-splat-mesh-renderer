@@ -163,7 +163,7 @@ test("GPU contributor arena runtime writes legacy compositor buffers for live co
   assert.match(mainSource, /adaptGpuArenaRetainedContributors/);
 });
 
-test("requested GPU arena live path uses direct GPU projection while retaining CPU reference builders", () => {
+test("requested GPU arena live path consumes compact retained source while retaining CPU reference builders", () => {
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const gpuFactorySource = extractFunctionSource(mainSource, "createGpuArenaTileLocalSceneState");
   const cpuFactorySource = extractFunctionSource(mainSource, "createCpuTileLocalSceneState");
@@ -175,11 +175,13 @@ test("requested GPU arena live path uses direct GPU projection while retaining C
 
   assert.doesNotMatch(gpuFactorySource, /buildTileLocalPrepassBridge/);
   assert.doesNotMatch(gpuFactorySource, /adaptGpuArenaRetainedContributors/);
-  assert.doesNotMatch(gpuFactorySource, /buildCompactRetainedSourceForRuntime/);
-  assert.doesNotMatch(gpuFactorySource, /buildDeterministicGpuTileProjectionRetentionArena/);
+  assert.match(gpuFactorySource, /buildCompactRetainedSourceForRuntime/);
+  assert.match(gpuFactorySource, /const\s+gpuArenaProjectedContributors\s*=\s*compactSource\.retainedRecords/);
   assert.match(gpuFactorySource, /createGpuTileCoveragePipelineSkeleton/);
-  assert.match(gpuFactorySource, /gpuLiveMaxTileRefs/);
-  assert.match(gpuFactorySource, /gpuArenaRuntime:\s*null/);
+  assert.match(gpuFactorySource, /createGpuTileContributorArenaRuntime/);
+  assert.match(gpuFactorySource, /compactRetainedSourceBudgetDiagnostics/);
+  assert.doesNotMatch(gpuFactorySource, /gpuLiveMaxTileRefs/);
+  assert.doesNotMatch(gpuFactorySource, /gpuArenaRuntime:\s*null/);
   assert.match(cpuFactorySource, /buildTileLocalPrepassBridge/);
   assert.match(cpuFactorySource, /adaptGpuArenaRetainedContributors/);
   assert.match(compactSourceSource, /buildStreamingCompactRetainedSourceForRuntime/);
@@ -187,17 +189,18 @@ test("requested GPU arena live path uses direct GPU projection while retaining C
   assert.match(mainSource, /REQUESTED_ARENA_BACKEND === "gpu"[\s\S]*createGpuArenaTileLocalSceneState/);
 });
 
-test("requested GPU arena live path declares reduced CPU trace custody instead of fabricating compact-source traces", () => {
+test("requested GPU arena live path declares compact source trace custody instead of fabricating CPU bridge traces", () => {
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const gpuFactorySource = extractFunctionSource(mainSource, "createGpuArenaTileLocalSceneState");
   const cpuFactorySource = extractFunctionSource(mainSource, "createCpuTileLocalSceneState");
 
   assert.doesNotMatch(gpuFactorySource, /buildGpuLiveAnchorContributorTraces/);
-  assert.doesNotMatch(gpuFactorySource, /compactSource\.perPixelProjectedContributors/);
-  assert.doesNotMatch(gpuFactorySource, /compactSource\.perPixelRetainedContributors/);
-  assert.match(gpuFactorySource, /gpuArenaProjectedContributors:\s*\[\]/);
-  assert.match(gpuFactorySource, /perPixelProjectedContributors:\s*\[\]/);
-  assert.match(gpuFactorySource, /perPixelRetainedContributors:\s*\[\]/);
+  assert.doesNotMatch(gpuFactorySource, /buildTileLocalPrepassBridge/);
+  assert.match(gpuFactorySource, /compactSource\.perPixelProjectedContributors/);
+  assert.match(gpuFactorySource, /compactSource\.perPixelRetainedContributors/);
+  assert.match(gpuFactorySource, /gpuArenaProjectedContributors,/);
+  assert.match(gpuFactorySource, /perPixelProjectedContributors:\s*compactSource\.perPixelProjectedContributors/);
+  assert.match(gpuFactorySource, /perPixelRetainedContributors:\s*compactSource\.perPixelRetainedContributors/);
   assert.match(cpuFactorySource, /perPixelProjectedContributors:\s*bridge\.perPixelProjectedContributors/);
   assert.match(cpuFactorySource, /perPixelRetainedContributors:\s*bridge\.perPixelRetainedContributors/);
 });

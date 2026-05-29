@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-test("requested GPU arena runtime does not route presentation through the CPU compact-source bridge", () => {
+test("requested GPU arena runtime routes presentation through compact retained source without CPU prepass bridge", () => {
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const gpuFactoryStart = mainSource.indexOf("function createGpuArenaTileLocalSceneState");
   const cpuFactoryStart = mainSource.indexOf("function createCpuTileLocalSceneState");
@@ -13,24 +13,17 @@ test("requested GPU arena runtime does not route presentation through the CPU co
   const gpuFactorySource = extractFunctionSource(mainSource, "createGpuArenaTileLocalSceneState");
   assert.doesNotMatch(gpuFactorySource, /buildTileLocalPrepassBridge/);
   assert.doesNotMatch(gpuFactorySource, /buildGpuLiveAnchorContributorTraces/);
-  assert.doesNotMatch(
-    gpuFactorySource,
-    /buildCompactRetainedSourceForRuntime/,
-    "the requested GPU arena path must not construct presentation records through the CPU compact-source builder",
-  );
-  assert.doesNotMatch(
-    gpuFactorySource,
-    /buildDeterministicGpuTileProjectionRetentionArena/,
-    "the requested GPU arena path must not use the CPU deterministic projection/retention builder as its live retained-list source",
-  );
+  assert.doesNotMatch(gpuFactorySource, /adaptGpuArenaRetainedContributors/);
+  assert.match(gpuFactorySource, /buildCompactRetainedSourceForRuntime/);
+  assert.match(gpuFactorySource, /const\s+gpuArenaProjectedContributors\s*=\s*compactSource\.retainedRecords/);
   assert.match(gpuFactorySource, /createGpuTileCoveragePipelineSkeleton/);
-  assert.match(gpuFactorySource, /gpuLiveMaxTileRefs/);
-  assert.match(gpuFactorySource, /estimatedGpuLiveTileRefCustody/);
-  assert.match(gpuFactorySource, /estimatedGpuLiveBudgetDiagnostics/);
-  assert.match(gpuFactorySource, /gpuArenaRuntime:\s*null/);
-  assert.doesNotMatch(gpuFactorySource, /compactSource\.retainedRecords/);
-  assert.doesNotMatch(gpuFactorySource, /compactSource\.projectedContributorCount/);
-  assert.doesNotMatch(gpuFactorySource, /compactSource\.droppedContributorCount/);
+  assert.match(gpuFactorySource, /createGpuTileContributorArenaRuntime/);
+  assert.match(gpuFactorySource, /compactRetainedSourceBudgetDiagnostics/);
+  assert.match(gpuFactorySource, /tileRefCustody:\s*compactSource\.tileRefCustody/);
+  assert.match(gpuFactorySource, /gpuArenaRuntime,/);
+  assert.doesNotMatch(gpuFactorySource, /gpuArenaRuntime:\s*null/);
+  assert.doesNotMatch(gpuFactorySource, /estimatedGpuLiveTileRefCustody/);
+  assert.doesNotMatch(gpuFactorySource, /estimatedGpuLiveBudgetDiagnostics/);
 });
 
 test("CPU reference compact source preserves projected overflow diagnostics for retained handoff", () => {

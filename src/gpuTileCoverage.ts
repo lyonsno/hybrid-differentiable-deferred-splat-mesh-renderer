@@ -139,6 +139,9 @@ export interface GpuTileContributorArenaProjectedContributor {
   readonly splatIndex: number;
   readonly originalId: number;
   readonly tileIndex: number;
+  readonly tileX?: number;
+  readonly tileY?: number;
+  readonly projectedIndex?: number;
   readonly viewRank: number;
   readonly viewDepth: number;
   readonly depthBand: number;
