@@ -1514,6 +1514,7 @@ ${metrics.pairs
 - Compositor row delta: ${pair.finalColorLedger?.compositorRowDelta?.status || "not reported"} (${pair.finalColorLedger?.compositorRowDelta?.mismatchedAnchorIds?.join(", ") || "none"})
 - Compositor row layout deltas: ${pair.finalColorLedger?.compositorRowDelta?.layoutMismatchedAnchorIds?.join(", ") || "none"}
 - Compositor row budget deltas: ${pair.finalColorLedger?.compositorRowDelta?.budgetMismatchedAnchorIds?.join(", ") || "none"}
+- Compositor row retained identity deltas: ${formatRetainedIdentityDelta(pair.finalColorLedger?.compositorRowDelta)}
 - Trace/canvas parity CPU/GPU: ${pair.finalColorLedger?.cpu?.traceCanvasParityStatus || "not reported"} / ${pair.finalColorLedger?.gpu?.traceCanvasParityStatus || "not reported"}
 - Final-color mismatched anchors: ${pair.finalColorLedger?.mismatchedAnchorIds?.join(", ") || "none"}
 `
@@ -1595,6 +1596,12 @@ function renderCaptureScreenshotPath(result, capture) {
 
 function formatMetricRatio(value) {
   return Number.isFinite(value) ? String(value) : "n/a";
+}
+
+function formatRetainedIdentityDelta(delta) {
+  if (!delta) return "not reported";
+  if (delta.retainedIdentityStatus === "not-evaluated") return "not evaluated";
+  return delta.retainedIdentityMismatchedAnchorIds?.join(", ") || "none";
 }
 
 function printTileLocalComparisonSummary(result) {

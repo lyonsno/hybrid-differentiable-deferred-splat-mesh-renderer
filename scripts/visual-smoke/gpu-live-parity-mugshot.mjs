@@ -585,6 +585,8 @@ function summarizeCompositorRowDeltaLedger({ cpuTrace, gpuTrace }) {
       status: "missing-compositor-input-readback",
       anchorDiffs: [],
       mismatchedAnchorIds: [],
+      retainedIdentityStatus: "not-evaluated",
+      retainedIdentityMismatchedAnchorIds: [],
     };
   }
   if (
@@ -597,6 +599,8 @@ function summarizeCompositorRowDeltaLedger({ cpuTrace, gpuTrace }) {
       gpuSource: gpuTrace.compositorInputSource,
       anchorDiffs: [],
       mismatchedAnchorIds: [],
+      retainedIdentityStatus: "not-evaluated",
+      retainedIdentityMismatchedAnchorIds: [],
     };
   }
   const anchorIds = unique([
@@ -608,6 +612,8 @@ function summarizeCompositorRowDeltaLedger({ cpuTrace, gpuTrace }) {
       status: "missing-compositor-input-anchors",
       anchorDiffs: [],
       mismatchedAnchorIds: [],
+      retainedIdentityStatus: "not-evaluated",
+      retainedIdentityMismatchedAnchorIds: [],
     };
   }
   const anchorDiffs = anchorIds.map((id) => {
@@ -618,27 +624,39 @@ function summarizeCompositorRowDeltaLedger({ cpuTrace, gpuTrace }) {
   const mismatchedAnchors = anchorDiffs.filter((anchor) => anchor.status !== "match");
   const layoutMismatchedAnchors = anchorDiffs.filter((anchor) => anchor.layoutStatus && anchor.layoutStatus !== "match");
   const budgetMismatchedAnchors = anchorDiffs.filter((anchor) => anchor.budgetStatus && anchor.budgetStatus !== "match");
+  const retainedIdentityMismatchedAnchors = anchorDiffs.filter((anchor) =>
+    anchor.retainedIdentityDelta?.status && anchor.retainedIdentityDelta.status !== "match"
+  );
   return {
     status: mismatchedAnchors.length > 0 ? "compositor-row-divergence" : "compositor-row-match",
     anchorDiffs,
     mismatchedAnchorIds: mismatchedAnchors.map((anchor) => anchor.id),
     layoutMismatchedAnchorIds: layoutMismatchedAnchors.map((anchor) => anchor.id),
     budgetMismatchedAnchorIds: budgetMismatchedAnchors.map((anchor) => anchor.id),
+    retainedIdentityStatus: "evaluated",
+    retainedIdentityMismatchedAnchorIds: retainedIdentityMismatchedAnchors.map((anchor) => anchor.id),
   };
 }
 
 function compareCompositorRowAnchor(id, cpuAnchor, gpuAnchor) {
   if (!cpuAnchor || !gpuAnchor) {
+    const retainedIdentityDelta = summarizeMissingAnchorRetainedIdentityDelta(cpuAnchor, gpuAnchor);
     return removeUndefinedProperties({
       id,
       status: "missing-anchor",
       cpuStatus: cpuAnchor?.status,
       gpuStatus: gpuAnchor?.status,
+      cpuContributorCount: cpuAnchor?.contributors?.length ?? 0,
+      gpuContributorCount: gpuAnchor?.contributors?.length ?? 0,
+      cpuContributorIds: cpuAnchor?.contributors?.map((contributor) => contributor.originalId) ?? [],
+      gpuContributorIds: gpuAnchor?.contributors?.map((contributor) => contributor.originalId) ?? [],
+      retainedIdentityDelta,
     });
   }
   const cpuContributors = cpuAnchor.contributors ?? [];
   const gpuContributors = gpuAnchor.contributors ?? [];
   const contributorDelta = compareCompositorContributors(cpuContributors, gpuContributors);
+  const retainedIdentityDelta = summarizeRetainedIdentityDelta(cpuContributors, gpuContributors);
   const layoutDelta = compareCompositorLayout(cpuAnchor, gpuAnchor);
   const budgetDelta = compareCompositorBudget(cpuAnchor, gpuAnchor);
   const status =
@@ -666,6 +684,7 @@ function compareCompositorRowAnchor(id, cpuAnchor, gpuAnchor) {
     gpuContributorCount: gpuContributors.length,
     cpuContributorIds: cpuContributors.map((contributor) => contributor.originalId),
     gpuContributorIds: gpuContributors.map((contributor) => contributor.originalId),
+    retainedIdentityDelta,
     firstMismatch: contributorDelta.firstMismatch,
     cpuOutputRgba8: cpuAnchor.outputRgba8,
     gpuOutputRgba8: gpuAnchor.outputRgba8,
@@ -733,6 +752,144 @@ function compareCompositorContributors(cpuContributors, gpuContributors) {
     }
   }
   return { status: "match" };
+}
+
+function summarizeRetainedIdentityDelta(cpuContributors, gpuContributors) {
+  const cpuKeys = cpuContributors.map(compositorContributorIdentityKey);
+  const gpuKeys = gpuContributors.map(compositorContributorIdentityKey);
+  const sameOrderPrefixCount = countSamePrefix(cpuKeys, gpuKeys);
+  const cpuCounts = countIdentityKeys(cpuKeys);
+  const gpuCounts = countIdentityKeys(gpuKeys);
+  const cpuOnlyKeys = subtractIdentityKeys(cpuCounts, gpuCounts);
+  const gpuOnlyKeys = subtractIdentityKeys(gpuCounts, cpuCounts);
+  const sharedContributorCount = countSharedIdentityKeys(cpuCounts, gpuCounts);
+  const sharedKeys = intersectIdentityKeys(cpuCounts, gpuCounts);
+  const sameOrderedKeys = arrayShallowEqual(cpuKeys, gpuKeys);
+  const sameKeyMultiset = cpuOnlyKeys.length === 0 && gpuOnlyKeys.length === 0 && cpuKeys.length === gpuKeys.length;
+  const status =
+    sameOrderedKeys ? "match" :
+    sameKeyMultiset ? "order-mismatch" :
+    "set-mismatch";
+  return {
+    status,
+    cpuContributorCount: cpuKeys.length,
+    gpuContributorCount: gpuKeys.length,
+    cpuOnlyContributorCount: cpuOnlyKeys.length,
+    gpuOnlyContributorCount: gpuOnlyKeys.length,
+    sharedContributorCount,
+    sameOrderPrefixCount,
+    cpuOnlyContributorIds: sampleContributorOriginalIds(cpuContributors, cpuOnlyKeys),
+    gpuOnlyContributorIds: sampleContributorOriginalIds(gpuContributors, gpuOnlyKeys),
+    cpuOnlyContributorIdentitySample: sampleContributorIdentityKeys(cpuContributors, cpuOnlyKeys),
+    gpuOnlyContributorIdentitySample: sampleContributorIdentityKeys(gpuContributors, gpuOnlyKeys),
+    sharedContributorIdentitySample: sampleContributorIdentityKeys(cpuContributors, sharedKeys),
+    sameOrderPrefixContributorIdentitySample: cpuKeys.slice(0, Math.min(8, sameOrderPrefixCount)),
+    cpuContributorIdSample: cpuContributors.slice(0, 8).map((contributor) => contributor.originalId),
+    gpuContributorIdSample: gpuContributors.slice(0, 8).map((contributor) => contributor.originalId),
+    cpuContributorIdentitySample: cpuKeys.slice(0, 8),
+    gpuContributorIdentitySample: gpuKeys.slice(0, 8),
+  };
+}
+
+function summarizeMissingAnchorRetainedIdentityDelta(cpuAnchor, gpuAnchor) {
+  return {
+    ...summarizeRetainedIdentityDelta(cpuAnchor?.contributors ?? [], gpuAnchor?.contributors ?? []),
+    status: "missing-anchor",
+    cpuAnchorPresent: Boolean(cpuAnchor),
+    gpuAnchorPresent: Boolean(gpuAnchor),
+  };
+}
+
+function countIdentityKeys(keys) {
+  const counts = new Map();
+  for (const key of keys) {
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function subtractIdentityKeys(leftCounts, rightCounts) {
+  const keys = [];
+  for (const [key, leftCount] of leftCounts) {
+    const count = Math.max(0, leftCount - (rightCounts.get(key) ?? 0));
+    for (let index = 0; index < count; index += 1) {
+      keys.push(key);
+    }
+  }
+  return keys;
+}
+
+function countSharedIdentityKeys(leftCounts, rightCounts) {
+  let count = 0;
+  for (const [key, leftCount] of leftCounts) {
+    count += Math.min(leftCount, rightCounts.get(key) ?? 0);
+  }
+  return count;
+}
+
+function intersectIdentityKeys(leftCounts, rightCounts) {
+  const keys = [];
+  for (const [key, leftCount] of leftCounts) {
+    const count = Math.min(leftCount, rightCounts.get(key) ?? 0);
+    for (let index = 0; index < count; index += 1) {
+      keys.push(key);
+    }
+  }
+  return keys;
+}
+
+function countSamePrefix(left, right) {
+  const count = Math.min(left.length, right.length);
+  for (let index = 0; index < count; index += 1) {
+    if (left[index] !== right[index]) {
+      return index;
+    }
+  }
+  return count;
+}
+
+function sampleContributorOriginalIds(contributors, keys) {
+  const remaining = countIdentityKeys(keys.slice(0, 8));
+  const sample = [];
+  for (const contributor of contributors) {
+    const key = compositorContributorIdentityKey(contributor);
+    const count = remaining.get(key) ?? 0;
+    if (count <= 0) continue;
+    sample.push(contributor.originalId);
+    if (count === 1) {
+      remaining.delete(key);
+    } else {
+      remaining.set(key, count - 1);
+    }
+    if (sample.length >= 8) break;
+  }
+  return sample;
+}
+
+function sampleContributorIdentityKeys(contributors, keys) {
+  const remaining = countIdentityKeys(keys.slice(0, 8));
+  const sample = [];
+  for (const contributor of contributors) {
+    const key = compositorContributorIdentityKey(contributor);
+    const count = remaining.get(key) ?? 0;
+    if (count <= 0) continue;
+    sample.push(key);
+    if (count === 1) {
+      remaining.delete(key);
+    } else {
+      remaining.set(key, count - 1);
+    }
+    if (sample.length >= 8) break;
+  }
+  return sample;
+}
+
+function compositorContributorIdentityKey(contributor = {}) {
+  return `${strictIdentityNumber(contributor.splatIndex)}:${strictIdentityNumber(contributor.originalId)}`;
+}
+
+function strictIdentityNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) ? String(value) : "missing";
 }
 
 function compareCompositorContributorAddressFields(cpuContributors, gpuContributors) {
