@@ -553,7 +553,7 @@ test("GPU live parity classifier uses live compositor input readback as contribu
 
   const ledger = result.metrics.pairs[0].finalColorLedger;
   assert.equal(result.divergence.primary, "final-color-divergence");
-  assert.equal(ledger.status, "final-color-row-divergence");
+  assert.equal(ledger.status, "compositor-source-mismatch");
   assert.equal(ledger.cpu.hasContributors, true);
   assert.equal(ledger.gpu.hasContributors, true);
   assert.equal(ledger.cpu.perPixelHasContributors, false);
@@ -566,11 +566,10 @@ test("GPU live parity classifier uses live compositor input readback as contribu
   assert.equal(ledger.gpu.compositorInputStatus, "present");
   assert.equal(ledger.cpu.compositorInputSource, "cpu-reference-diagnostic-state");
   assert.equal(ledger.gpu.compositorInputSource, "missing");
-  assert.equal(ledger.compositorRowDelta.status, "compositor-row-divergence");
-  assert.deepEqual(ledger.compositorRowDelta.mismatchedAnchorIds, ["whole-a"]);
-  assert.equal(ledger.compositorRowDelta.anchorDiffs[0].status, "header-mismatch");
-  assert.equal(ledger.compositorRowDelta.anchorDiffs[0].cpuContributorCount, 3);
-  assert.equal(ledger.compositorRowDelta.anchorDiffs[0].gpuContributorCount, 256);
+  assert.equal(ledger.compositorRowDelta.status, "compositor-source-mismatch");
+  assert.equal(ledger.compositorRowDelta.cpuSource, "cpu-reference-diagnostic-state");
+  assert.equal(ledger.compositorRowDelta.gpuSource, "missing");
+  assert.deepEqual(ledger.compositorRowDelta.mismatchedAnchorIds, []);
   assert.deepEqual(ledger.anchorDiffs[0].cpuOutputRgba8, [120, 80, 60, 255]);
   assert.deepEqual(ledger.anchorDiffs[0].gpuOutputRgba8, [151, 88, 53, 255]);
   assert.deepEqual(ledger.mismatchedAnchorIds, ["whole-a"]);
@@ -633,6 +632,53 @@ test("GPU live parity classifier separates compositor row matches from final col
   assert.equal(ledger.compositorRowDelta.anchorDiffs[0].status, "match");
   assert.deepEqual(ledger.compositorRowDelta.anchorDiffs[0].cpuContributorIds, [70]);
   assert.deepEqual(ledger.compositorRowDelta.anchorDiffs[0].gpuContributorIds, [70]);
+});
+
+test("GPU live parity classifier rejects compositor row matches with the wrong readback source pair", () => {
+  const sharedContributors = [compositorContributor()];
+  const result = classifyGpuLiveParityMugshot({
+    captures: [
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeCpu, {
+        pairId: "whole-render",
+        routeRole: "cpu-reference",
+        arenaBackend: "cpu",
+        refs: 61643,
+        finalColorRows: blockedFinalColorRows(["whole-a"]),
+        compositorInputReadback: liveCompositorInputReadback(
+          "whole-a",
+          [120, 80, 60, 255],
+          sharedContributors,
+          "gpu-buffer-readback"
+        ),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeGpu, {
+        pairId: "whole-render",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        refs: 81942,
+        refAccounting: liveRefAccounting(81942),
+        finalColorRows: blockedFinalColorRows(["whole-a"]),
+        compositorInputReadback: liveCompositorInputReadback(
+          "whole-a",
+          [120, 80, 60, 255],
+          sharedContributors,
+          "gpu-buffer-readback"
+        ),
+      }),
+    ],
+    comparisons: [
+      { pairId: "whole-render", comparable: true, changedPixelRatio: 0.0464, changedPixels: 42763, totalPixels: 921600 },
+    ],
+    contactSheetPath: "smoke-reports/gpu-live-parity/contact-sheet.png",
+  });
+
+  const ledger = result.metrics.pairs[0].finalColorLedger;
+  const delta = ledger.compositorRowDelta;
+  assert.equal(ledger.status, "compositor-source-mismatch");
+  assert.equal(delta.status, "compositor-source-mismatch");
+  assert.equal(delta.cpuSource, "gpu-buffer-readback");
+  assert.equal(delta.gpuSource, "gpu-buffer-readback");
+  assert.deepEqual(delta.mismatchedAnchorIds, []);
 });
 
 test("GPU live parity classifier reports the first compositor contributor identity mismatch", () => {

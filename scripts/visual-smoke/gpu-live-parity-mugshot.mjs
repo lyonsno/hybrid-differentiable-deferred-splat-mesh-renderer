@@ -460,7 +460,7 @@ function summarizeFinalColorDivergenceLedger({ cpu, gpu }) {
   });
   const mismatchedAnchors = anchorDiffs.filter((anchor) => anchor.status !== "match");
   return {
-    status: classifyFinalColorLedgerStatus({ cpuTrace, gpuTrace, mismatchedAnchors }),
+    status: classifyFinalColorLedgerStatus({ cpuTrace, gpuTrace, mismatchedAnchors, compositorRowDelta }),
     cpu: omitAnchorMap(cpuTrace),
     gpu: omitAnchorMap(gpuTrace),
     compositorRowDelta,
@@ -469,7 +469,7 @@ function summarizeFinalColorDivergenceLedger({ cpu, gpu }) {
   };
 }
 
-function classifyFinalColorLedgerStatus({ cpuTrace, gpuTrace, mismatchedAnchors }) {
+function classifyFinalColorLedgerStatus({ cpuTrace, gpuTrace, mismatchedAnchors, compositorRowDelta }) {
   if (!cpuTrace.hasRows || !gpuTrace.hasRows) {
     return "missing-final-color-rows";
   }
@@ -478,6 +478,9 @@ function classifyFinalColorLedgerStatus({ cpuTrace, gpuTrace, mismatchedAnchors 
   }
   if (cpuTrace.compositorInputStatus !== "present" || gpuTrace.compositorInputStatus !== "present") {
     return "missing-live-compositor-input-readback";
+  }
+  if (compositorRowDelta?.status === "compositor-source-mismatch") {
+    return "compositor-source-mismatch";
   }
   return mismatchedAnchors.length > 0 ? "final-color-row-divergence" : "final-color-row-match";
 }
@@ -580,6 +583,18 @@ function summarizeCompositorRowDeltaLedger({ cpuTrace, gpuTrace }) {
   if (cpuTrace.compositorInputStatus !== "present" || gpuTrace.compositorInputStatus !== "present") {
     return {
       status: "missing-compositor-input-readback",
+      anchorDiffs: [],
+      mismatchedAnchorIds: [],
+    };
+  }
+  if (
+    cpuTrace.compositorInputSource !== "cpu-reference-diagnostic-state" ||
+    gpuTrace.compositorInputSource !== "gpu-buffer-readback"
+  ) {
+    return {
+      status: "compositor-source-mismatch",
+      cpuSource: cpuTrace.compositorInputSource,
+      gpuSource: gpuTrace.compositorInputSource,
       anchorDiffs: [],
       mismatchedAnchorIds: [],
     };
