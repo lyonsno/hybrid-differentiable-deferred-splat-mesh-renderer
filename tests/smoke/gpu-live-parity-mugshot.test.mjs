@@ -514,6 +514,7 @@ test("GPU live parity classifier exposes final-color divergence instrumentation 
   assert.equal(ledger.gpu.perPixelHasContributors, false);
   assert.equal(ledger.cpu.compositorInputStatus, "missing");
   assert.equal(ledger.gpu.compositorInputStatus, "missing");
+  assert.equal(ledger.compositorRowDelta.status, "missing-compositor-input-readback");
   assert.deepEqual(ledger.mismatchedAnchorIds, []);
   assert.ok(ledger.cpu.blockedAnchorIds.includes("lacunar-hole-dessert-1260-930"));
 });
@@ -565,9 +566,118 @@ test("GPU live parity classifier uses live compositor input readback as contribu
   assert.equal(ledger.gpu.compositorInputStatus, "present");
   assert.equal(ledger.cpu.compositorInputSource, "cpu-reference-diagnostic-state");
   assert.equal(ledger.gpu.compositorInputSource, "missing");
+  assert.equal(ledger.compositorRowDelta.status, "compositor-row-divergence");
+  assert.deepEqual(ledger.compositorRowDelta.mismatchedAnchorIds, ["whole-a"]);
+  assert.equal(ledger.compositorRowDelta.anchorDiffs[0].status, "header-mismatch");
+  assert.equal(ledger.compositorRowDelta.anchorDiffs[0].cpuContributorCount, 3);
+  assert.equal(ledger.compositorRowDelta.anchorDiffs[0].gpuContributorCount, 256);
   assert.deepEqual(ledger.anchorDiffs[0].cpuOutputRgba8, [120, 80, 60, 255]);
   assert.deepEqual(ledger.anchorDiffs[0].gpuOutputRgba8, [151, 88, 53, 255]);
   assert.deepEqual(ledger.mismatchedAnchorIds, ["whole-a"]);
+});
+
+test("GPU live parity classifier separates compositor row matches from final color row divergence", () => {
+  const sharedContributors = [
+    compositorContributor({
+      layer: 0,
+      refIndex: 10,
+      splatIndex: 7,
+      originalId: 70,
+      alphaParamIndex: 10,
+      pixelCoverageWeight: 0.42,
+      sourceOpacity: 0.8,
+      coverageAlpha: 0.35,
+      sourceColor: [0.8, 0.5, 0.3],
+    }),
+  ];
+  const result = classifyGpuLiveParityMugshot({
+    captures: [
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeCpu, {
+        pairId: "whole-render",
+        routeRole: "cpu-reference",
+        arenaBackend: "cpu",
+        refs: 61643,
+        finalColorRows: blockedFinalColorRows(["whole-a"]),
+        compositorInputReadback: liveCompositorInputReadback(
+          "whole-a",
+          [120, 80, 60, 255],
+          sharedContributors,
+          "cpu-reference-diagnostic-state"
+        ),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeGpu, {
+        pairId: "whole-render",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        refs: 81942,
+        refAccounting: liveRefAccounting(81942),
+        finalColorRows: blockedFinalColorRows(["whole-a"]),
+        compositorInputReadback: liveCompositorInputReadback(
+          "whole-a",
+          [120, 80, 60, 255],
+          sharedContributors,
+          "gpu-buffer-readback"
+        ),
+      }),
+    ],
+    comparisons: [
+      { pairId: "whole-render", comparable: true, changedPixelRatio: 0.0464, changedPixels: 42763, totalPixels: 921600 },
+    ],
+    contactSheetPath: "smoke-reports/gpu-live-parity/contact-sheet.png",
+  });
+
+  const ledger = result.metrics.pairs[0].finalColorLedger;
+  assert.equal(ledger.status, "final-color-row-match");
+  assert.equal(ledger.compositorRowDelta.status, "compositor-row-match");
+  assert.deepEqual(ledger.compositorRowDelta.mismatchedAnchorIds, []);
+  assert.equal(ledger.compositorRowDelta.anchorDiffs[0].status, "match");
+  assert.deepEqual(ledger.compositorRowDelta.anchorDiffs[0].cpuContributorIds, [70]);
+  assert.deepEqual(ledger.compositorRowDelta.anchorDiffs[0].gpuContributorIds, [70]);
+});
+
+test("GPU live parity classifier reports the first compositor contributor identity mismatch", () => {
+  const result = classifyGpuLiveParityMugshot({
+    captures: [
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeCpu, {
+        pairId: "whole-render",
+        routeRole: "cpu-reference",
+        arenaBackend: "cpu",
+        refs: 61643,
+        finalColorRows: blockedFinalColorRows(["whole-a"]),
+        compositorInputReadback: liveCompositorInputReadback(
+          "whole-a",
+          [120, 80, 60, 255],
+          [compositorContributor({ splatIndex: 7, originalId: 70 })],
+          "cpu-reference-diagnostic-state"
+        ),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeGpu, {
+        pairId: "whole-render",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        refs: 81942,
+        refAccounting: liveRefAccounting(81942),
+        finalColorRows: blockedFinalColorRows(["whole-a"]),
+        compositorInputReadback: liveCompositorInputReadback(
+          "whole-a",
+          [151, 88, 53, 255],
+          [compositorContributor({ splatIndex: 8, originalId: 80 })],
+          "gpu-buffer-readback"
+        ),
+      }),
+    ],
+    comparisons: [
+      { pairId: "whole-render", comparable: true, changedPixelRatio: 0.0464, changedPixels: 42763, totalPixels: 921600 },
+    ],
+    contactSheetPath: "smoke-reports/gpu-live-parity/contact-sheet.png",
+  });
+
+  const delta = result.metrics.pairs[0].finalColorLedger.compositorRowDelta;
+  assert.equal(delta.status, "compositor-row-divergence");
+  assert.equal(delta.anchorDiffs[0].status, "contributor-identity-mismatch");
+  assert.equal(delta.anchorDiffs[0].firstMismatch.index, 0);
+  assert.equal(delta.anchorDiffs[0].firstMismatch.cpu.originalId, 70);
+  assert.equal(delta.anchorDiffs[0].firstMismatch.gpu.originalId, 80);
 });
 
 test("GPU live parity classifier treats trace-anchor mismatches as route mismatches", () => {
@@ -722,20 +832,51 @@ function blockedFinalColorRows(ids = [
   }));
 }
 
-function liveCompositorInputReadback(id, rgba8, contributorCount, source) {
+function liveCompositorInputReadback(id, rgba8, contributorsOrCount, source) {
+  const contributors = Array.isArray(contributorsOrCount)
+    ? contributorsOrCount
+    : Array.from({ length: contributorsOrCount }, (_, index) => ({
+      layer: index,
+      splatIndex: index + 1,
+      originalId: index + 1,
+    }));
   return {
     status: "present",
     source,
     anchors: [
       {
         id,
+        tileAddress: { tileX: 2, tileY: 3, tileIndex: 302, localX: 8, localY: 4 },
+        header: { firstRefIndex: 10, refCount: contributors.length, projectedCount: contributors.length, droppedCount: 0 },
+        gpuScatterCount: contributors.length,
+        tileCapacity: 256,
+        refLimit: contributors.length,
         liveCompositorRgba8: rgba8,
-        contributors: Array.from({ length: contributorCount }, (_, index) => ({
-          layer: index,
-          splatIndex: index + 1,
-          originalId: index + 1,
-        })),
+        contributors,
       },
     ],
+  };
+}
+
+function compositorContributor(overrides = {}) {
+  return {
+    layer: overrides.layer ?? 0,
+    refIndex: overrides.refIndex ?? 10,
+    splatIndex: overrides.splatIndex ?? 7,
+    originalId: overrides.originalId ?? 70,
+    alphaParamIndex: overrides.alphaParamIndex ?? 10,
+    centerPx: overrides.centerPx ?? [640.5, 360.5],
+    inverseConic: overrides.inverseConic ?? [0.2, 0, 0.2],
+    coverageWeight: overrides.coverageWeight ?? 0.5,
+    tileCoverageWeight: overrides.tileCoverageWeight ?? overrides.coverageWeight ?? 0.5,
+    pixelCoverageWeight: overrides.pixelCoverageWeight ?? 0.42,
+    sourceOpacity: overrides.sourceOpacity ?? 0.8,
+    coverageAlpha: overrides.coverageAlpha ?? 0.35,
+    transmittanceBefore: overrides.transmittanceBefore ?? 1,
+    transmittanceAfter: overrides.transmittanceAfter ?? 0.65,
+    sourceColor: overrides.sourceColor ?? [0.8, 0.5, 0.3],
+    runningColor: overrides.runningColor ?? [0.29, 0.19, 0.13],
+    remainingTransmission: overrides.remainingTransmission ?? 0.65,
+    status: overrides.status ?? "accumulated",
   };
 }

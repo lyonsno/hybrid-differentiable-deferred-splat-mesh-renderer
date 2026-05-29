@@ -440,6 +440,7 @@ function classifyDivergence(pairs) {
 function summarizeFinalColorDivergenceLedger({ cpu, gpu }) {
   const cpuTrace = summarizeFinalColorCapture(cpu);
   const gpuTrace = summarizeFinalColorCapture(gpu);
+  const compositorRowDelta = summarizeCompositorRowDeltaLedger({ cpuTrace, gpuTrace });
   const anchorIds = unique([...cpuTrace.anchors.map((anchor) => anchor.id), ...gpuTrace.anchors.map((anchor) => anchor.id)]);
   const anchorDiffs = anchorIds.map((id) => {
     const left = cpuTrace.anchorsById.get(id);
@@ -462,6 +463,7 @@ function summarizeFinalColorDivergenceLedger({ cpu, gpu }) {
     status: classifyFinalColorLedgerStatus({ cpuTrace, gpuTrace, mismatchedAnchors }),
     cpu: omitAnchorMap(cpuTrace),
     gpu: omitAnchorMap(gpuTrace),
+    compositorRowDelta,
     anchorDiffs,
     mismatchedAnchorIds: mismatchedAnchors.map((anchor) => anchor.id),
   };
@@ -491,13 +493,13 @@ function summarizeFinalColorCapture(capture = {}) {
   const compositorInputReadback = tileLocal.compositorInputReadback && typeof tileLocal.compositorInputReadback === "object"
     ? tileLocal.compositorInputReadback
     : {};
+  const compositorAnchors = Array.isArray(compositorInputReadback.anchors)
+    ? compositorInputReadback.anchors.map((anchor) => summarizeLiveCompositorInputAnchor(anchor)).filter((anchor) => anchor.id)
+    : [];
   const outputTextureReadback = tileLocal.outputTextureReadback && typeof tileLocal.outputTextureReadback === "object"
     ? tileLocal.outputTextureReadback
     : {};
-  const anchorsWithReadback = mergeLiveCompositorInputAnchors(
-    anchors,
-    Array.isArray(compositorInputReadback.anchors) ? compositorInputReadback.anchors : []
-  );
+  const anchorsWithReadback = mergeLiveCompositorInputAnchors(anchors, compositorAnchors);
   const perPixelBlockedAnchorIds = anchors.filter((anchor) => anchor.status === "blocked").map((anchor) => anchor.id);
   return {
     rowCount: rows.length,
@@ -509,6 +511,8 @@ function summarizeFinalColorCapture(capture = {}) {
       ...anchorsWithReadback.filter((anchor) => anchor.status === "blocked").map((anchor) => anchor.id),
       ...perPixelBlockedAnchorIds,
     ]),
+    compositorAnchors,
+    compositorAnchorsById: new Map(compositorAnchors.map((anchor) => [anchor.id, anchor])),
     anchors: anchorsWithReadback,
     anchorsById: new Map(anchorsWithReadback.map((anchor) => [anchor.id, anchor])),
     compositorInputStatus: stringValue(compositorInputReadback.status) || "missing",
@@ -542,27 +546,172 @@ function summarizeFinalColorAnchor(row = {}) {
 function mergeLiveCompositorInputAnchors(rowAnchors, compositorAnchors) {
   const byId = new Map(rowAnchors.map((anchor) => [anchor.id, anchor]));
   for (const compositorAnchor of compositorAnchors) {
-    const id = stringValue(compositorAnchor?.id);
+    const id = stringValue(compositorAnchor.id);
     if (!id) continue;
     const existing = byId.get(id);
     if (existing?.stepCount > 0) {
       continue;
     }
-    byId.set(id, summarizeLiveCompositorInputAnchor(compositorAnchor, existing));
+    byId.set(id, { ...compositorAnchor, blockers: Array.isArray(existing?.blockers) ? existing.blockers : [] });
   }
   return [...byId.values()];
 }
 
-function summarizeLiveCompositorInputAnchor(anchor = {}, fallback = {}) {
+function summarizeLiveCompositorInputAnchor(anchor = {}) {
   const contributors = Array.isArray(anchor.contributors) ? anchor.contributors : [];
   const outputRgba8 = rgba8Value(anchor.liveCompositorRgba8) || rgbaFloatTo8(anchor.liveCompositorRgba);
   return {
-    id: stringValue(anchor.id) || stringValue(fallback.id),
-    status: contributors.length > 0 ? "present" : stringValue(fallback.status) || "missing",
-    stepCount: contributors.length || finiteNumber(fallback.stepCount) || 0,
-    outputRgba8: outputRgba8.length > 0 ? outputRgba8 : Array.isArray(fallback.outputRgba8) ? fallback.outputRgba8 : [],
-    blockers: Array.isArray(fallback.blockers) ? fallback.blockers : [],
+    id: stringValue(anchor.id),
+    status: contributors.length > 0 ? "present" : "missing",
+    stepCount: contributors.length,
+    outputRgba8,
+    tileAddress: summarizeTileAddress(anchor.tileAddress),
+    header: summarizeCompositorHeader(anchor.header),
+    gpuScatterCount: finiteNumber(anchor.gpuScatterCount),
+    tileCapacity: finiteNumber(anchor.tileCapacity),
+    refLimit: finiteNumber(anchor.refLimit),
+    remainingTransmission: finiteNumber(anchor.remainingTransmission),
+    contributors: contributors.map(summarizeCompositorContributor),
+    blockers: [],
   };
+}
+
+function summarizeCompositorRowDeltaLedger({ cpuTrace, gpuTrace }) {
+  if (cpuTrace.compositorInputStatus !== "present" || gpuTrace.compositorInputStatus !== "present") {
+    return {
+      status: "missing-compositor-input-readback",
+      anchorDiffs: [],
+      mismatchedAnchorIds: [],
+    };
+  }
+  const anchorIds = unique([
+    ...cpuTrace.compositorAnchors.map((anchor) => anchor.id),
+    ...gpuTrace.compositorAnchors.map((anchor) => anchor.id),
+  ]);
+  if (anchorIds.length === 0) {
+    return {
+      status: "missing-compositor-input-anchors",
+      anchorDiffs: [],
+      mismatchedAnchorIds: [],
+    };
+  }
+  const anchorDiffs = anchorIds.map((id) => {
+    const cpuAnchor = cpuTrace.compositorAnchorsById.get(id);
+    const gpuAnchor = gpuTrace.compositorAnchorsById.get(id);
+    return compareCompositorRowAnchor(id, cpuAnchor, gpuAnchor);
+  });
+  const mismatchedAnchors = anchorDiffs.filter((anchor) => anchor.status !== "match");
+  return {
+    status: mismatchedAnchors.length > 0 ? "compositor-row-divergence" : "compositor-row-match",
+    anchorDiffs,
+    mismatchedAnchorIds: mismatchedAnchors.map((anchor) => anchor.id),
+  };
+}
+
+function compareCompositorRowAnchor(id, cpuAnchor, gpuAnchor) {
+  if (!cpuAnchor || !gpuAnchor) {
+    return removeUndefinedProperties({
+      id,
+      status: "missing-anchor",
+      cpuStatus: cpuAnchor?.status,
+      gpuStatus: gpuAnchor?.status,
+    });
+  }
+  const cpuContributors = cpuAnchor.contributors ?? [];
+  const gpuContributors = gpuAnchor.contributors ?? [];
+  const contributorDelta = compareCompositorContributors(cpuContributors, gpuContributors);
+  const status =
+    !objectShallowEqual(cpuAnchor.tileAddress, gpuAnchor.tileAddress) ? "tile-address-mismatch" :
+    !objectShallowEqual(cpuAnchor.header, gpuAnchor.header) ? "header-mismatch" :
+    cpuAnchor.gpuScatterCount !== gpuAnchor.gpuScatterCount ? "scatter-count-mismatch" :
+    cpuAnchor.refLimit !== gpuAnchor.refLimit ? "ref-limit-mismatch" :
+    contributorDelta.status !== "match" ? contributorDelta.status :
+    !arrayShallowEqual(cpuAnchor.outputRgba8, gpuAnchor.outputRgba8) ? "live-output-color-mismatch" :
+    "match";
+  return removeUndefinedProperties({
+    id,
+    status,
+    cpuTileAddress: cpuAnchor.tileAddress,
+    gpuTileAddress: gpuAnchor.tileAddress,
+    cpuHeader: cpuAnchor.header,
+    gpuHeader: gpuAnchor.header,
+    cpuScatterCount: cpuAnchor.gpuScatterCount,
+    gpuScatterCount: gpuAnchor.gpuScatterCount,
+    cpuRefLimit: cpuAnchor.refLimit,
+    gpuRefLimit: gpuAnchor.refLimit,
+    cpuContributorCount: cpuContributors.length,
+    gpuContributorCount: gpuContributors.length,
+    cpuContributorIds: cpuContributors.map((contributor) => contributor.originalId),
+    gpuContributorIds: gpuContributors.map((contributor) => contributor.originalId),
+    firstMismatch: contributorDelta.firstMismatch,
+    cpuOutputRgba8: cpuAnchor.outputRgba8,
+    gpuOutputRgba8: gpuAnchor.outputRgba8,
+  });
+}
+
+function compareCompositorContributors(cpuContributors, gpuContributors) {
+  if (cpuContributors.length !== gpuContributors.length) {
+    return { status: "contributor-count-mismatch" };
+  }
+  for (let index = 0; index < cpuContributors.length; index += 1) {
+    const cpu = cpuContributors[index];
+    const gpu = gpuContributors[index];
+    if (cpu.originalId !== gpu.originalId || cpu.splatIndex !== gpu.splatIndex) {
+      return {
+        status: "contributor-identity-mismatch",
+        firstMismatch: { index, cpu, gpu },
+      };
+    }
+    if (JSON.stringify(cpu) !== JSON.stringify(gpu)) {
+      return {
+        status: "contributor-field-mismatch",
+        firstMismatch: { index, cpu, gpu },
+      };
+    }
+  }
+  return { status: "match" };
+}
+
+function summarizeTileAddress(address = {}) {
+  return removeUndefinedProperties({
+    tileX: finiteNumber(address.tileX),
+    tileY: finiteNumber(address.tileY),
+    tileIndex: finiteNumber(address.tileIndex),
+    localX: finiteNumber(address.localX),
+    localY: finiteNumber(address.localY),
+  });
+}
+
+function summarizeCompositorHeader(header = {}) {
+  return removeUndefinedProperties({
+    firstRefIndex: finiteNumber(header.firstRefIndex),
+    refCount: finiteNumber(header.refCount),
+    projectedCount: finiteNumber(header.projectedCount),
+    droppedCount: finiteNumber(header.droppedCount),
+  });
+}
+
+function summarizeCompositorContributor(contributor = {}) {
+  return removeUndefinedProperties({
+    layer: finiteNumber(contributor.layer),
+    refIndex: finiteNumber(contributor.refIndex),
+    splatIndex: finiteNumber(contributor.splatIndex),
+    originalId: finiteNumber(contributor.originalId),
+    alphaParamIndex: finiteNumber(contributor.alphaParamIndex),
+    centerPx: numericArray(contributor.centerPx),
+    inverseConic: numericArray(contributor.inverseConic),
+    coverageWeight: finiteNumber(contributor.coverageWeight),
+    tileCoverageWeight: finiteNumber(contributor.tileCoverageWeight),
+    pixelCoverageWeight: finiteNumber(contributor.pixelCoverageWeight),
+    sourceOpacity: finiteNumber(contributor.sourceOpacity),
+    coverageAlpha: finiteNumber(contributor.coverageAlpha),
+    transmittanceBefore: finiteNumber(contributor.transmittanceBefore),
+    transmittanceAfter: finiteNumber(contributor.transmittanceAfter),
+    sourceColor: numericArray(contributor.sourceColor),
+    runningColor: numericArray(contributor.runningColor),
+    remainingTransmission: finiteNumber(contributor.remainingTransmission),
+    status: stringValue(contributor.status),
+  });
 }
 
 function compareAnchorStatus(cpuAnchor, gpuAnchor) {
@@ -579,7 +728,7 @@ function compareAnchorStatus(cpuAnchor, gpuAnchor) {
 }
 
 function omitAnchorMap(trace) {
-  const { anchorsById, ...rest } = trace;
+  const { anchors, anchorsById, compositorAnchors, compositorAnchorsById, ...rest } = trace;
   return rest;
 }
 
@@ -621,6 +770,20 @@ function arrayShallowEqual(left, right) {
     return false;
   }
   return left.every((value, index) => value === right[index]);
+}
+
+function objectShallowEqual(left, right) {
+  const leftObject = left && typeof left === "object" ? left : {};
+  const rightObject = right && typeof right === "object" ? right : {};
+  const keys = unique([...Object.keys(leftObject), ...Object.keys(rightObject)]);
+  return keys.every((key) => leftObject[key] === rightObject[key]);
+}
+
+function numericArray(value) {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return value.map(finiteNumber);
 }
 
 function stringValue(value) {
