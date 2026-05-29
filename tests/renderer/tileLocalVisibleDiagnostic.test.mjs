@@ -145,6 +145,29 @@ test("tile-local visible smoke reconstructs anchor colors from live compositor i
   assert.match(runtimeSource, /GPUBufferUsage\.COPY_SRC/);
 });
 
+test("CPU reference route exposes compositor input diagnostics from CPU-owned state without GPU readback", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+
+  assert.match(source, /ensureCpuReferenceCompositorInputReadback/);
+  assert.match(source, /source:\s*"cpu-reference-diagnostic-state"/);
+  assert.match(source, /tileRefData:\s*legacyProjection\?\.tileRefs \?\? bridge\.tileRefs/);
+  assert.match(source, /state\.arenaBackend !== "cpu"/);
+  assert.match(source, /if\s*\(\s*state\.arenaBackend !== "gpu"\s*\)\s*\{\s*state\.pendingCompositorInputReadback = undefined;\s*return;\s*\}/);
+  assert.match(source, /tileRefs:\s*state\.tileRefData!/);
+  assert.match(
+    source,
+    /const evidenceFrameId = tileLocalState\?\.lastCompositedFrame \?\? operatorWitness\?\.frameSerial \?\? -1/
+  );
+  assert.doesNotMatch(
+    source,
+    /const evidenceFrameId = operatorWitness\?\.frameSerial \?\? tileLocalState\?\.lastCompositedFrame \?\? -1/
+  );
+  assert.match(
+    source,
+    /const traceAnchors: readonly PixelTraceAnchor\[\] = tileLocalState\s*\?\s*tileLocalState\.traceAnchors \?\? TILE_LOCAL_TRACE_ANCHORS \?\? \[\]\s*:\s*\[\]/
+  );
+});
+
 test("direct GPU live route reports retained refs from scatter cursors instead of capacity estimates", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
 

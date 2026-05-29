@@ -1510,6 +1510,7 @@ ${metrics.pairs
 - Final-color CPU/GPU rows: ${pair.finalColorLedger?.cpu?.rowCount ?? "not reported"} / ${pair.finalColorLedger?.gpu?.rowCount ?? "not reported"}
 - Final-color CPU/GPU contributor state: ${pair.finalColorLedger?.cpu?.hasContributors ? "contributors" : "no contributors"} / ${pair.finalColorLedger?.gpu?.hasContributors ? "contributors" : "no contributors"}
 - Compositor input CPU/GPU: ${pair.finalColorLedger?.cpu?.compositorInputStatus || "not reported"} (${pair.finalColorLedger?.cpu?.compositorInputAnchorCount ?? 0} anchors) / ${pair.finalColorLedger?.gpu?.compositorInputStatus || "not reported"} (${pair.finalColorLedger?.gpu?.compositorInputAnchorCount ?? 0} anchors)
+- Compositor input source CPU/GPU: ${pair.finalColorLedger?.cpu?.compositorInputSource || "not reported"} / ${pair.finalColorLedger?.gpu?.compositorInputSource || "not reported"}
 - Trace/canvas parity CPU/GPU: ${pair.finalColorLedger?.cpu?.traceCanvasParityStatus || "not reported"} / ${pair.finalColorLedger?.gpu?.traceCanvasParityStatus || "not reported"}
 - Final-color mismatched anchors: ${pair.finalColorLedger?.mismatchedAnchorIds?.join(", ") || "none"}
 `

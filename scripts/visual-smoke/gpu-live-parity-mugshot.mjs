@@ -512,6 +512,7 @@ function summarizeFinalColorCapture(capture = {}) {
     anchors: anchorsWithReadback,
     anchorsById: new Map(anchorsWithReadback.map((anchor) => [anchor.id, anchor])),
     compositorInputStatus: stringValue(compositorInputReadback.status) || "missing",
+    compositorInputSource: stringValue(compositorInputReadback.source) || "missing",
     compositorInputAnchorCount: Array.isArray(compositorInputReadback.anchors) ? compositorInputReadback.anchors.length : 0,
     outputTextureStatus: stringValue(outputTextureReadback.status) || "missing",
     outputTextureAnchorCount: Array.isArray(outputTextureReadback.anchors) ? outputTextureReadback.anchors.length : 0,

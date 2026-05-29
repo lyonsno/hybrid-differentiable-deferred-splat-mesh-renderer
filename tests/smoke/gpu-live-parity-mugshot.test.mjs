@@ -527,7 +527,12 @@ test("GPU live parity classifier uses live compositor input readback as contribu
         arenaBackend: "cpu",
         refs: 61643,
         finalColorRows: blockedFinalColorRows(["whole-a"]),
-        compositorInputReadback: liveCompositorInputReadback("whole-a", [120, 80, 60, 255], 3),
+        compositorInputReadback: liveCompositorInputReadback(
+          "whole-a",
+          [120, 80, 60, 255],
+          3,
+          "cpu-reference-diagnostic-state"
+        ),
       }),
       witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeGpu, {
         pairId: "whole-render",
@@ -558,6 +563,8 @@ test("GPU live parity classifier uses live compositor input readback as contribu
   assert.deepEqual(ledger.gpu.blockedAnchorIds, ["whole-a"]);
   assert.equal(ledger.cpu.compositorInputStatus, "present");
   assert.equal(ledger.gpu.compositorInputStatus, "present");
+  assert.equal(ledger.cpu.compositorInputSource, "cpu-reference-diagnostic-state");
+  assert.equal(ledger.gpu.compositorInputSource, "missing");
   assert.deepEqual(ledger.anchorDiffs[0].cpuOutputRgba8, [120, 80, 60, 255]);
   assert.deepEqual(ledger.anchorDiffs[0].gpuOutputRgba8, [151, 88, 53, 255]);
   assert.deepEqual(ledger.mismatchedAnchorIds, ["whole-a"]);
@@ -715,9 +722,10 @@ function blockedFinalColorRows(ids = [
   }));
 }
 
-function liveCompositorInputReadback(id, rgba8, contributorCount) {
+function liveCompositorInputReadback(id, rgba8, contributorCount, source) {
   return {
     status: "present",
+    source,
     anchors: [
       {
         id,

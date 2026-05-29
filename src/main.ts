@@ -193,6 +193,7 @@ interface TileLocalSceneState {
   tileHeaderBuffer: GPUBuffer;
   tileHeaderData: Uint32Array;
   tileRefBuffer: GPUBuffer;
+  tileRefData?: Uint32Array;
   tileCoverageWeightBuffer: GPUBuffer;
   tileCoverageWeightData: Float32Array;
   tileBuildCountBuffer: GPUBuffer;
@@ -297,6 +298,7 @@ interface PendingTileLocalOutputTextureReadback {
 
 interface TileLocalCompositorInputReadback {
   readonly status: "pending" | "present" | "blocked";
+  readonly source?: "gpu-buffer-readback" | "cpu-reference-diagnostic-state";
   readonly frameId: number;
   readonly anchors: readonly {
     readonly id: string;
@@ -3621,6 +3623,7 @@ function createCpuTileLocalSceneState(
     tileHeaderBuffer: bridgeBuffers.tileHeaderBuffer,
     tileHeaderData: legacyProjection?.tileHeaders ?? bridge.tileHeaders,
     tileRefBuffer: bridgeBuffers.tileRefBuffer,
+    tileRefData: legacyProjection?.tileRefs ?? bridge.tileRefs,
     tileCoverageWeightBuffer: bridgeBuffers.tileCoverageWeightBuffer,
     tileCoverageWeightData: legacyProjection?.tileCoverageWeights ?? bridge.tileCoverageWeights,
     tileBuildCountBuffer,
@@ -3777,6 +3780,10 @@ function enqueueTileLocalCompositorInputReadback(
   frameId: number,
   sourceColors: Float32Array
 ): void {
+  if (state.arenaBackend !== "gpu") {
+    state.pendingCompositorInputReadback = undefined;
+    return;
+  }
   const anchors = state.traceAnchors ?? [];
   if (state.debugMode !== "final-color" || anchors.length === 0) {
     return;
@@ -3811,6 +3818,7 @@ function enqueueTileLocalCompositorInputReadback(
   };
   state.compositorInputReadback = {
     status: "pending",
+    source: "gpu-buffer-readback",
     frameId,
     anchors: [],
   };
@@ -3829,6 +3837,10 @@ function resolveTileLocalCompositorInputReadback(state: TileLocalSceneState): vo
     pending.alphaParamBuffer,
     pending.tileScatterCursorBuffer,
   ];
+  if (state.arenaBackend !== "gpu") {
+    destroyReadbackBuffers(buffers);
+    return;
+  }
   void Promise.all(buffers.map((buffer) => buffer.mapAsync(GPUMapMode.READ)))
     .then(() => {
       const tileHeaders = new Uint32Array(pending.tileHeaderBuffer.getMappedRange());
@@ -3838,6 +3850,7 @@ function resolveTileLocalCompositorInputReadback(state: TileLocalSceneState): vo
       const tileScatterCursors = new Uint32Array(pending.tileScatterCursorBuffer.getMappedRange());
       state.compositorInputReadback = {
         status: "present",
+        source: "gpu-buffer-readback",
         frameId: pending.frameId,
         anchors: pending.anchors.map((anchor) => readCompositorInputAnchor({
           anchor,
@@ -3856,6 +3869,7 @@ function resolveTileLocalCompositorInputReadback(state: TileLocalSceneState): vo
     .catch((error) => {
       state.compositorInputReadback = {
         status: "blocked",
+        source: "gpu-buffer-readback",
         frameId: pending.frameId,
         anchors: [],
         blockedReason: errorMessage(error),
@@ -3878,6 +3892,54 @@ function publishTileLocalCompositorInputReadback(readback: TileLocalCompositorIn
     ...tileLocal,
     compositorInputReadback: readback,
   };
+}
+
+function ensureCpuReferenceCompositorInputReadback(
+  state: TileLocalSceneState,
+  sourceColors: Float32Array,
+  frameId: number,
+  anchors: readonly PixelTraceAnchor[],
+): TileLocalCompositorInputReadback | undefined {
+  if (
+    state.debugMode !== "final-color" ||
+    state.arenaBackend !== "cpu" ||
+    anchors.length === 0 ||
+    !state.tileRefData
+  ) {
+    return state.compositorInputReadback;
+  }
+  if (
+    state.compositorInputReadback?.source === "cpu-reference-diagnostic-state" &&
+    state.compositorInputReadback.frameId === frameId
+  ) {
+    return state.compositorInputReadback;
+  }
+
+  const tileScatterCursors = new Uint32Array(Math.max(0, state.plan.tileCount));
+  const headerStride = GPU_TILE_COVERAGE_TILE_HEADER_BYTES / Uint32Array.BYTES_PER_ELEMENT;
+  for (let tileIndex = 0; tileIndex < state.plan.tileCount; tileIndex += 1) {
+    const headerBase = tileIndex * headerStride;
+    tileScatterCursors[tileIndex] = state.tileHeaderData[headerBase + 2] ??
+      state.tileHeaderData[headerBase + 1] ??
+      0;
+  }
+
+  state.compositorInputReadback = {
+    status: "present",
+    source: "cpu-reference-diagnostic-state",
+    frameId,
+    anchors: anchors.map((anchor) => readCompositorInputAnchor({
+      anchor,
+      plan: state.plan,
+      sourceColors,
+      tileHeaders: state.tileHeaderData,
+      tileRefs: state.tileRefData!,
+      tileCoverageWeights: state.tileCoverageWeightData,
+      alphaParams: state.alphaParamData,
+      tileScatterCursors,
+    })),
+  };
+  return state.compositorInputReadback;
 }
 
 function enqueueTileLocalRefStatsReadback(
@@ -5126,6 +5188,14 @@ function exposeTileLocalRuntimeEvidence(
         })
       : tileLocalState.bandDispatchCacheTrace
     : undefined;
+  const traceAnchors: readonly PixelTraceAnchor[] = tileLocalState
+    ? tileLocalState.traceAnchors ?? TILE_LOCAL_TRACE_ANCHORS ?? []
+    : [];
+  const evidenceFrameId = tileLocalState?.lastCompositedFrame ?? operatorWitness?.frameSerial ?? -1;
+  const compositorInputReadback = tileLocalState
+    ? ensureCpuReferenceCompositorInputReadback(tileLocalState, sourceColors, evidenceFrameId, traceAnchors) ??
+      tileLocalState.compositorInputReadback
+    : undefined;
   const pixelOrderTrace = tileLocalState && bandDispatchCache
     ? buildBandPixelOrderTraceRecord({
         contributors: tileLocalState.gpuArenaProjectedContributors,
@@ -5193,7 +5263,7 @@ function exposeTileLocalRuntimeEvidence(
         deferredFields: pixelOrderTrace?.deferredFields,
         tileSizePx: tileLocalState.plan.tileSizePx,
         tileColumns: tileLocalState.plan.tileColumns,
-        anchors: tileLocalState.traceAnchors,
+        anchors: traceAnchors,
       })
     : buildPerPixelFinalColorAccumulationTrace(pixelContributorTrace);
   const perPixelDeadSplatElectorLedger = tileLocalState
@@ -5235,9 +5305,9 @@ function exposeTileLocalRuntimeEvidence(
           perPixelFinalColorAccumulation,
           presentationAnchors: tileLocalState.presentationAnchors,
           presentationScope: tileLocalState.presentationScope,
-          traceAnchors: tileLocalState.traceAnchors,
+          traceAnchors,
           outputTextureReadback: tileLocalState.outputTextureReadback,
-          compositorInputReadback: tileLocalState.compositorInputReadback,
+          compositorInputReadback,
           perPixelDeadSplatElectorLedger,
           perPixelRetainedToOrderedSurvivalLedger,
           orderingBackend: TILE_LOCAL_ORDERING_BACKEND,
