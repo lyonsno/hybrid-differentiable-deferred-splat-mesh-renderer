@@ -74,6 +74,35 @@ test("GPU-live anchor traces default to the canonical packet anchors", () => {
   );
 });
 
+test("GPU-live anchor traces mirror the shader footprint cap before classifying support", () => {
+  const centerAnchor = { id: "center", x: 50, y: 50 };
+  const outsideCappedFootprintAnchor = { id: "outside-capped-footprint", x: 70, y: 50 };
+  const traces = buildGpuLiveAnchorContributorTraces({
+    attributes: largeFootprintAttributes(),
+    viewMatrix: identityMatrix(),
+    viewProj: identityMatrix(),
+    effectiveOpacities: new Float32Array([0.8]),
+    viewportWidth: 100,
+    viewportHeight: 100,
+    tileSizePx: 10,
+    tileColumns: 10,
+    tileRows: 10,
+    splatScale: 600,
+    minRadiusPx: 1.5,
+    maxRefsPerTile: 256,
+    anchors: [centerAnchor, outsideCappedFootprintAnchor],
+  });
+
+  const projectedById = new Map(traces.perPixelProjectedContributors.map((record) => [record.anchorPixel.id, record]));
+
+  assert.equal(projectedById.get(centerAnchor.id)?.status, "present");
+  assert.equal(
+    projectedById.get(outsideCappedFootprintAnchor.id)?.status,
+    "absent",
+    "uncapped trace projection would treat this anchor as supported; the live shader footprint cap must remove it",
+  );
+});
+
 function syntheticAttributes() {
   const positions = new Float32Array([
     ndcX(LACUNAR_ANCHOR.x, 3456), ndcY(LACUNAR_ANCHOR.y, 1804), 0,
@@ -101,6 +130,18 @@ function syntheticAttributes() {
       0.9, 0.8, 0.7,
     ]),
     originalIds: new Uint32Array([100, 101, 200]),
+  };
+}
+
+function largeFootprintAttributes() {
+  return {
+    count: 1,
+    positions: new Float32Array([ndcX(50, 100), ndcY(50, 100), 0]),
+    scales: new Float32Array([0, 0, 0]),
+    rotations: new Float32Array([1, 0, 0, 0]),
+    opacities: new Float32Array([0.8]),
+    colors: new Float32Array([1, 1, 1]),
+    originalIds: new Uint32Array([1000]),
   };
 }
 

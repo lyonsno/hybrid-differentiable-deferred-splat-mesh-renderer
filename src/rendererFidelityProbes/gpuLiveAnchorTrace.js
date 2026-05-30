@@ -262,7 +262,12 @@ function projectedSplatCovariancePx({
     xy += ax * ay;
     yy += ay * ay;
   }
-  return floorCovariancePrincipalRadii({ xx, xy, yy }, finiteNonNegativeOrDefault(minRadiusPx, 1.5));
+  return resolveGpuLiveFootprintCovariancePx({
+    covariance: { xx, xy, yy },
+    viewportWidth,
+    viewportHeight,
+    minRadiusPx: finiteNonNegativeOrDefault(minRadiusPx, 1.5),
+  });
 }
 
 function tileAddressForAnchor(anchor, { tileSizePx, tileColumns, tileRows }) {
@@ -306,31 +311,69 @@ function invertCovariancePx(covariance) {
   };
 }
 
-function floorCovariancePrincipalRadii(covariance, minRadiusPx) {
-  const minVariance = minRadiusPx * minRadiusPx;
+function resolveGpuLiveFootprintCovariancePx({ covariance, viewportWidth, viewportHeight, minRadiusPx }) {
   const determinant = covariance.xx * covariance.yy - covariance.xy * covariance.xy;
   if (covariance.xx <= 0 || covariance.yy <= 0 || determinant <= 0) {
+    const minVariance = minRadiusPx * minRadiusPx;
     return { xx: minVariance, xy: 0, yy: minVariance };
   }
-  const trace = covariance.xx + covariance.yy;
-  const discriminant = Math.sqrt(Math.max((covariance.xx - covariance.yy) ** 2 + 4 * covariance.xy * covariance.xy, 0));
-  const majorVariance = 0.5 * (trace + discriminant);
-  const minorVariance = 0.5 * (trace - discriminant);
-  const flooredMajorVariance = Math.max(majorVariance, minVariance);
-  const flooredMinorVariance = Math.max(minorVariance, minVariance);
-  if (flooredMajorVariance === majorVariance && flooredMinorVariance === minorVariance) {
-    return covariance;
-  }
-  const theta = 0.5 * Math.atan2(2 * covariance.xy, covariance.xx - covariance.yy);
-  const cosTheta = Math.cos(theta);
-  const sinTheta = Math.sin(theta);
-  const cos2 = cosTheta * cosTheta;
-  const sin2 = sinTheta * sinTheta;
+
+  const trace = 0.5 * (covariance.xx + covariance.yy);
+  const diff = 0.5 * (covariance.xx - covariance.yy);
+  const root = Math.sqrt(Math.max(diff * diff + covariance.xy * covariance.xy, 0));
+  const lambda0 = Math.max(trace + root, 0);
+  const lambda1 = Math.max(trace - root, 0);
+  const majorDir = resolveMajorDirection(covariance, lambda0);
+  const minorDir = [-majorDir[1], majorDir[0]];
+  const rawMajorRadiusPx = Math.sqrt(lambda0);
+  const rawMinorRadiusPx = Math.sqrt(lambda1);
+  const safeMinRadiusPx = Math.max(minRadiusPx, 0);
+  const uncappedMajorRadiusPx = Math.max(rawMajorRadiusPx, safeMinRadiusPx);
+  const uncappedMinorRadiusPx = boundedMinorRadiusPx(rawMajorRadiusPx, rawMinorRadiusPx, safeMinRadiusPx);
+  const footprintScale = gpuLiveFootprintPolicyScale({
+    majorRadiusPx: uncappedMajorRadiusPx,
+    minorRadiusPx: uncappedMinorRadiusPx,
+    viewportWidth,
+    viewportHeight,
+    minRadiusPx: safeMinRadiusPx,
+  });
+  const scaledMinorRadiusPx = Math.max(uncappedMinorRadiusPx * footprintScale, safeMinRadiusPx);
+  const majorRadiusPx = Math.max(uncappedMajorRadiusPx * footprintScale, scaledMinorRadiusPx);
+  const minorRadiusPx = scaledMinorRadiusPx;
+  const majorVariance = majorRadiusPx * majorRadiusPx;
+  const minorVariance = minorRadiusPx * minorRadiusPx;
+
   return {
-    xx: flooredMajorVariance * cos2 + flooredMinorVariance * sin2,
-    xy: (flooredMajorVariance - flooredMinorVariance) * cosTheta * sinTheta,
-    yy: flooredMajorVariance * sin2 + flooredMinorVariance * cos2,
+    xx: majorDir[0] * majorDir[0] * majorVariance + minorDir[0] * minorDir[0] * minorVariance,
+    xy: majorDir[0] * majorDir[1] * majorVariance + minorDir[0] * minorDir[1] * minorVariance,
+    yy: majorDir[1] * majorDir[1] * majorVariance + minorDir[1] * minorDir[1] * minorVariance,
   };
+}
+
+function resolveMajorDirection(covariance, lambda0) {
+  if (Math.abs(covariance.xy) + Math.abs(lambda0 - covariance.xx) > 0.00000001) {
+    const length = Math.hypot(covariance.xy, lambda0 - covariance.xx);
+    if (length > 0.00000001) {
+      return [covariance.xy / length, (lambda0 - covariance.xx) / length];
+    }
+  }
+  return covariance.yy > covariance.xx ? [0, 1] : [1, 0];
+}
+
+function boundedMinorRadiusPx(rawMajorRadiusPx, rawMinorRadiusPx, minRadiusPx) {
+  if (rawMinorRadiusPx >= minRadiusPx) return rawMinorRadiusPx;
+  if (rawMajorRadiusPx < minRadiusPx) return minRadiusPx;
+  const inflatedMinor = Math.max(rawMinorRadiusPx * 4, minRadiusPx * 0.015625);
+  return Math.min(minRadiusPx, inflatedMinor);
+}
+
+function gpuLiveFootprintPolicyScale({ majorRadiusPx, minorRadiusPx, viewportWidth, viewportHeight, minRadiusPx }) {
+  const areaCapPx = viewportWidth * viewportHeight * 0.01;
+  const majorRadiusCapPx = Math.max(Math.min(viewportWidth, viewportHeight) * 0.65, minRadiusPx);
+  const footprintAreaPx = Math.PI * majorRadiusPx * minorRadiusPx;
+  const areaScale = Math.sqrt(areaCapPx / Math.max(footprintAreaPx, areaCapPx));
+  const majorScale = majorRadiusCapPx / Math.max(majorRadiusPx, majorRadiusCapPx);
+  return Math.min(areaScale, majorScale, 1);
 }
 
 function buildBackToFrontDepthEvidence(attributes, viewMatrix) {
