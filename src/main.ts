@@ -1403,7 +1403,7 @@ function createGpuArenaTileLocalSceneState(
     alphaParamBuffer: gpuArenaRuntime.buffers.legacyAlphaParamBuffer,
     outputColorView: outputView,
   });
-  const retentionAudit = emptyTileRetentionAudit();
+  const retentionAudit = estimatedGpuLiveRetentionAudit(compactSource.tileRefCustody, plan.tileCount);
   const budgetDiagnostics = compactRetainedSourceBudgetDiagnostics(plan, compactSource);
   const diagnostics = summarizeTileLocalDiagnostics({
     debugMode: TILE_LOCAL_DEBUG_MODE,
@@ -4804,20 +4804,45 @@ function emptyTileLocalBudgetBandCounter() {
   };
 }
 
-function emptyTileRetentionAudit(): TileRetentionAudit {
-  const summary = emptyTileRetentionAuditSummary();
+function estimatedGpuLiveRetentionAudit(
+  tileRefCustody: TileRefCustodySummary,
+  tileCount: number
+): TileRetentionAudit {
   return {
-    fullFrame: summary,
+    fullFrame: estimatedGpuLiveRetentionAuditSummary("gpu-live-custody-estimate", tileRefCustody, tileCount),
     regions: {
-      porousBody: summary,
-      centerLeakBand: summary,
+      porousBody: unavailableGpuLiveRetentionAuditSummary("gpu-live-region-unavailable:porous-body"),
+      centerLeakBand: unavailableGpuLiveRetentionAuditSummary("gpu-live-region-unavailable:center-leak-band"),
     },
   };
 }
 
-function emptyTileRetentionAuditSummary() {
+function estimatedGpuLiveRetentionAuditSummary(
+  region: string,
+  tileRefCustody: TileRefCustodySummary,
+  tileCount: number
+) {
   return {
-    region: "gpu-live-estimate",
+    region,
+    tileCount: Math.max(0, Math.trunc(tileCount)),
+    cappedTileCount: tileRefCustody.cappedTileCount,
+    projectedTileEntryCount: tileRefCustody.projectedTileEntryCount,
+    currentRetainedEntryCount: tileRefCustody.retainedTileEntryCount,
+    legacyRetainedEntryCount: tileRefCustody.retainedTileEntryCount,
+    addedByPolicyCount: 0,
+    droppedByPolicyCount: 0,
+    addedRetentionWeightSum: 0,
+    droppedRetentionWeightSum: 0,
+    addedOcclusionWeightSum: 0,
+    droppedOcclusionWeightSum: 0,
+    addedByPolicySamples: [],
+    droppedByPolicySamples: [],
+  };
+}
+
+function unavailableGpuLiveRetentionAuditSummary(region: string) {
+  return {
+    region,
     tileCount: 0,
     cappedTileCount: 0,
     projectedTileEntryCount: 0,

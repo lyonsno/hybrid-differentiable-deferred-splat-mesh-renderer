@@ -139,6 +139,7 @@ test("static dessert witness classifier requires one asset, one viewport, final 
           },
           retentionAudit: {
             fullFrame: {
+              region: "fixture-full-frame",
               projectedTileEntryCount: 64000,
               currentRetainedEntryCount: 24000,
               legacyRetainedEntryCount: 24000,
@@ -147,6 +148,7 @@ test("static dessert witness classifier requires one asset, one viewport, final 
             },
             regions: {
               porousBody: {
+                region: "fixture-porous-body",
                 projectedTileEntryCount: 7200,
                 currentRetainedEntryCount: 512,
                 legacyRetainedEntryCount: 512,
@@ -155,6 +157,7 @@ test("static dessert witness classifier requires one asset, one viewport, final 
                 droppedByPolicyCount: 19,
               },
               centerLeakBand: {
+                region: "fixture-center-leak-band",
                 projectedTileEntryCount: 9000,
                 currentRetainedEntryCount: 1024,
                 legacyRetainedEntryCount: 1024,
@@ -180,10 +183,13 @@ test("static dessert witness classifier requires one asset, one viewport, final 
   assert.equal(result.metrics.tileRefCustody.projectedTileEntryCount, 64000);
   assert.equal(result.metrics.tileRefCustody.evictedTileEntryCount, 40000);
   assert.equal(result.metrics.tileRefCustody.headerAccountingMatches, true);
+  assert.equal(result.metrics.retentionAudit.fullFrame.region, "fixture-full-frame");
   assert.equal(result.metrics.retentionAudit.fullFrame.addedByPolicyCount, 120);
+  assert.equal(result.metrics.retentionAudit.regions.porousBody.region, "fixture-porous-body");
   assert.equal(result.metrics.retentionAudit.regions.porousBody.projectedTileEntryCount, 7200);
   assert.equal(result.metrics.retentionAudit.regions.porousBody.currentRetainedEntryCount, 512);
   assert.equal(result.metrics.retentionAudit.regions.porousBody.cappedTileCount, 16);
+  assert.equal(result.metrics.retentionAudit.regions.centerLeakBand.region, "fixture-center-leak-band");
   assert.equal(result.metrics.retentionAudit.regions.centerLeakBand.addedByPolicyCount, 17);
   assert.equal(result.metrics.conicShape.maxAnisotropy, 5);
   assert.equal(result.metrics.rendererBridge.plateRendererLabel, "plate");
@@ -246,8 +252,10 @@ test("visual smoke CLI exposes a static dessert witness batch mode", () => {
   assert.match(source, /Tile-local\/plate changed-pixel ratio/);
   assert.match(source, /Retention audit full frame/);
   assert.match(source, /Porous body retention audit/);
+  assert.match(source, /metrics\.retentionAudit\.regions\.porousBody\.region/);
   assert.match(source, /Porous body projected support splats/);
   assert.match(source, /Center leak band retention audit/);
+  assert.match(source, /metrics\.retentionAudit\.regions\.centerLeakBand\.region/);
 });
 
 function witnessCapture(id, overrides = {}) {

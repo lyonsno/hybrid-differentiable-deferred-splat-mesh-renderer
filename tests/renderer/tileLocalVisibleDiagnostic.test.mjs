@@ -110,6 +110,21 @@ test("GPU live tile-ref builder scatters a projected conic footprint across ever
   assert.match(source, /projectedTileEntryCount: projectedRefs/);
 });
 
+test("GPU live diagnostics estimate full-frame retention audit from tile custody without fake region audits", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+
+  assert.match(source, /estimatedGpuLiveRetentionAudit\(compactSource\.tileRefCustody,\s*plan\.tileCount\)/);
+  assert.match(source, /function estimatedGpuLiveRetentionAudit\(/);
+  assert.match(source, /gpu-live-custody-estimate/);
+  assert.match(source, /cappedTileCount:\s*tileRefCustody\.cappedTileCount/);
+  assert.match(source, /projectedTileEntryCount:\s*tileRefCustody\.projectedTileEntryCount/);
+  assert.match(source, /currentRetainedEntryCount:\s*tileRefCustody\.retainedTileEntryCount/);
+  assert.match(source, /legacyRetainedEntryCount:\s*tileRefCustody\.retainedTileEntryCount/);
+  assert.match(source, /gpu-live-region-unavailable:porous-body/);
+  assert.match(source, /gpu-live-region-unavailable:center-leak-band/);
+  assert.doesNotMatch(source, /const retentionAudit = emptyTileRetentionAudit\(\)/);
+});
+
 test("tile-local texture presenter samples the offscreen tile-local output", () => {
   const source = readFileSync(new URL("../../src/tileLocalTexturePresenter.ts", import.meta.url), "utf8");
   const shader = readFileSync(new URL("../../src/shaders/tile_local_present.wgsl", import.meta.url), "utf8");
