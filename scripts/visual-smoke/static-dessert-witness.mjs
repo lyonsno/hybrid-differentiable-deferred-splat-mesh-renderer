@@ -16,6 +16,12 @@ const DEBUG_CAPTURE_IDS = new Set([
   STATIC_DESSERT_WITNESS_CAPTURE_IDS.tileRefCount,
   STATIC_DESSERT_WITNESS_CAPTURE_IDS.conicShape,
 ]);
+const DEFAULT_STATIC_TILE_LOCAL_ROUTE = Object.freeze({
+  arenaBackend: "gpu",
+  tileSizePx: "16",
+  maxRefsPerTile: "256",
+});
+const STATIC_TILE_LOCAL_ROUTE_PARAMS = Object.freeze(Object.keys(DEFAULT_STATIC_TILE_LOCAL_ROUTE));
 const MAX_TILE_LOCAL_TO_PLATE_CHANGED_PIXEL_RATIO = 2.0;
 
 export function buildStaticDessertWitnessPlan(baseUrl) {
@@ -217,6 +223,7 @@ function plateFinalColorCapture(baseUrl) {
   url.searchParams.delete("renderer");
   url.searchParams.delete("tileDebug");
   url.searchParams.delete("debug");
+  clearStaticTileLocalRoute(url);
   return {
     id: STATIC_DESSERT_WITNESS_CAPTURE_IDS.plateFinalColor,
     title: "Plate baseline final color",
@@ -228,6 +235,7 @@ function plateFinalColorCapture(baseUrl) {
 function finalColorCapture(baseUrl) {
   const url = new URL(baseUrl);
   url.searchParams.set("renderer", "tile-local-visible");
+  applyStaticTileLocalRoute(url);
   url.searchParams.delete("tileDebug");
   url.searchParams.delete("debug");
   return {
@@ -241,6 +249,7 @@ function finalColorCapture(baseUrl) {
 function debugCapture(baseUrl, id, title) {
   const url = new URL(baseUrl);
   url.searchParams.set("renderer", "tile-local-visible");
+  applyStaticTileLocalRoute(url);
   url.searchParams.set("tileDebug", id);
   return {
     id,
@@ -248,6 +257,18 @@ function debugCapture(baseUrl, id, title) {
     expectedRendererLabel: `tile-local-visible-debug-${id}`,
     url: url.toString().replaceAll("%2F", "/"),
   };
+}
+
+function applyStaticTileLocalRoute(url) {
+  for (const [key, value] of Object.entries(DEFAULT_STATIC_TILE_LOCAL_ROUTE)) {
+    url.searchParams.set(key, value);
+  }
+}
+
+function clearStaticTileLocalRoute(url) {
+  for (const key of STATIC_TILE_LOCAL_ROUTE_PARAMS) {
+    url.searchParams.delete(key);
+  }
 }
 
 function staticDessertObservations() {

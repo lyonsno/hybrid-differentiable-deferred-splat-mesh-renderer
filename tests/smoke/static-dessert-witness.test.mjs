@@ -21,32 +21,32 @@ test("static dessert witness plan captures final color and all debug modes for o
       [
         "final-color",
         "tile-local-visible",
-        "http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&renderer=tile-local-visible",
+        "http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&renderer=tile-local-visible&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256",
       ],
       [
         "coverage-weight",
         "tile-local-visible-debug-coverage-weight",
-        "http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&renderer=tile-local-visible&tileDebug=coverage-weight",
+        "http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&renderer=tile-local-visible&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256&tileDebug=coverage-weight",
       ],
       [
         "accumulated-alpha",
         "tile-local-visible-debug-accumulated-alpha",
-        "http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&renderer=tile-local-visible&tileDebug=accumulated-alpha",
+        "http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&renderer=tile-local-visible&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256&tileDebug=accumulated-alpha",
       ],
       [
         "transmittance",
         "tile-local-visible-debug-transmittance",
-        "http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&renderer=tile-local-visible&tileDebug=transmittance",
+        "http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&renderer=tile-local-visible&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256&tileDebug=transmittance",
       ],
       [
         "tile-ref-count",
         "tile-local-visible-debug-tile-ref-count",
-        "http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&renderer=tile-local-visible&tileDebug=tile-ref-count",
+        "http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&renderer=tile-local-visible&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256&tileDebug=tile-ref-count",
       ],
       [
         "conic-shape",
         "tile-local-visible-debug-conic-shape",
-        "http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&renderer=tile-local-visible&tileDebug=conic-shape",
+        "http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&renderer=tile-local-visible&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256&tileDebug=conic-shape",
       ],
     ]
   );
@@ -60,11 +60,11 @@ test("static dessert witness plan preserves the close-up witness view across fin
   assert.ok(plan.every((capture) => capture.url.includes("witnessView=dessert-close")));
   assert.equal(
     plan.find((capture) => capture.id === "final-color")?.url,
-    "http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-close&renderer=tile-local-visible"
+    "http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-close&renderer=tile-local-visible&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256"
   );
   assert.equal(
     plan.find((capture) => capture.id === "conic-shape")?.url,
-    "http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-close&renderer=tile-local-visible&tileDebug=conic-shape"
+    "http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-close&renderer=tile-local-visible&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256&tileDebug=conic-shape"
   );
 });
 
@@ -76,12 +76,35 @@ test("static dessert witness plan preserves the porous underfill witness view ac
   assert.ok(plan.every((capture) => capture.url.includes("witnessView=dessert-porous-close")));
   assert.equal(
     plan.find((capture) => capture.id === "final-color")?.url,
-    "http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&renderer=tile-local-visible"
+    "http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&renderer=tile-local-visible&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256"
   );
   assert.equal(
     plan.find((capture) => capture.id === "tile-ref-count")?.url,
-    "http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&renderer=tile-local-visible&tileDebug=tile-ref-count"
+    "http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-porous-close&renderer=tile-local-visible&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256&tileDebug=tile-ref-count"
   );
+});
+
+test("static dessert witness plan overrides stale CPU or old tile budget query params", () => {
+  const plan = buildStaticDessertWitnessPlan(
+    "http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&arenaBackend=cpu&tileSizePx=6&maxRefsPerTile=32&renderer=plate"
+  );
+
+  const finalColorUrl = new URL(plan.find((capture) => capture.id === "final-color")?.url);
+  assert.equal(finalColorUrl.searchParams.get("arenaBackend"), "gpu");
+  assert.equal(finalColorUrl.searchParams.get("tileSizePx"), "16");
+  assert.equal(finalColorUrl.searchParams.get("maxRefsPerTile"), "256");
+
+  const plateUrl = new URL(plan.find((capture) => capture.id === "plate-final-color")?.url);
+  assert.equal(plateUrl.searchParams.has("arenaBackend"), false);
+  assert.equal(plateUrl.searchParams.has("tileSizePx"), false);
+  assert.equal(plateUrl.searchParams.has("maxRefsPerTile"), false);
+
+  const debugUrls = plan
+    .filter((capture) => capture.id !== "plate-final-color" && capture.id !== "final-color")
+    .map((capture) => new URL(capture.url));
+  assert.equal(debugUrls.every((url) => url.searchParams.get("arenaBackend") === "gpu"), true);
+  assert.equal(debugUrls.every((url) => url.searchParams.get("tileSizePx") === "16"), true);
+  assert.equal(debugUrls.every((url) => url.searchParams.get("maxRefsPerTile") === "256"), true);
 });
 
 test("static dessert witness classifier requires one asset, one viewport, final color, and compact debug evidence", () => {
@@ -261,8 +284,8 @@ function witnessCapture(id, overrides = {}) {
       canvas: { width: 1280, height: 720, clientWidth: 1280, clientHeight: 720 },
       tileLocal: {
         refs: 24000,
-        tileColumns: 214,
-        tileRows: 120,
+        tileColumns: 80,
+        tileRows: 45,
         diagnostics: {
           debugMode: id,
           tileRefs: { total: 24000, maxPerTile: 32, nonEmptyTiles: 400 },
