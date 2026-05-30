@@ -16,12 +16,14 @@ test("contract keeps retained-to-ordered survival evidence out of visual repair 
     ],
     categories: [
       "ordered-present",
+      "projected-foreground-dropped-before-retention",
       "retained-missing-from-order",
       "ordered-present-final-alpha-weak",
       "trace-blocked",
       "narrower-role-source-blocker",
     ],
     owns: [
+      "projected foreground support lost before retained tile rows",
       "retained foreground contributor identity surviving into ordered output",
       "ordered rank/depth/tie-break custody for retained foreground contributors",
       "final accumulation alpha/RGB participation for retained foreground contributors",
@@ -139,6 +141,68 @@ test("separates weak final alpha from ordering survival", () => {
   assert.equal(verdict.metrics.finalForegroundAlpha, 0.06);
 });
 
+test("keeps weak final alpha when dropped projected foreground is weaker than retained foreground", () => {
+  const verdict = classifyRetainedToOrderedSurvival({
+    anchorPixel: { id: "visual-gap-low-projected", kind: "plate-covered-tile-local-missing", x: 608, y: 312 },
+    projectedContributors: [
+      retainedContributor({ originalId: 9403, splatIndex: 503, viewRank: 1, viewDepth: 0.12, coverageWeight: 0.08, opacity: 0.3 }),
+    ],
+    retainedContributors: [
+      retainedContributor({ originalId: 9301, splatIndex: 401, viewRank: 7, viewDepth: 0.31, coverageWeight: 0.5, opacity: 0.85 }),
+    ],
+    orderedContributors: [
+      orderedContributor({ originalId: 9301, splatIndex: 401, orderIndex: 0, viewRank: 7, viewDepth: 0.31, coverageWeight: 0.5, opacity: 0.85 }),
+    ],
+    finalColorAccumulation: {
+      steps: [
+        accumulationStep({ originalId: 9301, splatIndex: 401, orderIndex: 0, coverageAlpha: 0.06 }),
+      ],
+      outputColor: [0.05, 0.04, 0.03, 0.06],
+    },
+  });
+
+  assert.equal(verdict.category, "ordered-present-final-alpha-weak");
+  assert.equal(verdict.mechanism, "retained-foreground-ordered-but-final-alpha-below-sealing-threshold");
+  assert.deepEqual(verdict.ids.projectedForegroundDroppedBeforeRetention, ["9403"]);
+  assert.ok(
+    verdict.metrics.projectedForegroundDroppedBeforeRetentionOcclusionWeight <
+      verdict.metrics.retainedForegroundOcclusionWeight,
+  );
+});
+
+test("classifies pixel-strong projected foreground dropped before retained rows ahead of weak alpha", () => {
+  const verdict = classifyRetainedToOrderedSurvival({
+    anchorPixel: { id: "visual-gap-2", kind: "plate-covered-tile-local-missing", x: 644, y: 304 },
+    projectedContributors: [
+      retainedContributor({ originalId: 9401, splatIndex: 501, viewRank: 1, viewDepth: 0.12, coverageWeight: 0.64, opacity: 0.9 }),
+      retainedContributor({ originalId: 9402, splatIndex: 502, viewRank: 2, viewDepth: 0.14, coverageWeight: 0.48, opacity: 0.85 }),
+      retainedContributor({ originalId: 5401, splatIndex: 601, role: "behind-surface", viewRank: 20, viewDepth: 0.74, coverageWeight: 0.8, opacity: 0.5 }),
+    ],
+    retainedContributors: [
+      retainedContributor({ originalId: 9501, splatIndex: 701, viewRank: 8, viewDepth: 0.25, coverageWeight: 0.03, opacity: 0.5 }),
+    ],
+    orderedContributors: [
+      orderedContributor({ originalId: 9501, splatIndex: 701, orderIndex: 0, viewRank: 8, viewDepth: 0.25, coverageWeight: 0.03, opacity: 0.5 }),
+    ],
+    finalColorAccumulation: {
+      steps: [
+        accumulationStep({ originalId: 9501, splatIndex: 701, orderIndex: 0, coverageAlpha: 0.03 }),
+      ],
+      outputColor: [0.03, 0.02, 0.02, 0.03],
+    },
+  });
+
+  assert.equal(verdict.category, "projected-foreground-dropped-before-retention");
+  assert.equal(verdict.mechanism, "pixel-strong-projected-foreground-support-lost-before-retained-slate");
+  assert.deepEqual(verdict.ids.projectedForeground, ["9401", "9402"]);
+  assert.deepEqual(verdict.ids.projectedForegroundDroppedBeforeRetention, ["9401", "9402"]);
+  assert.equal(verdict.counts.projectedForegroundDroppedBeforeRetention, 2);
+  assert.ok(
+    verdict.metrics.projectedForegroundDroppedBeforeRetentionOcclusionWeight >
+      verdict.metrics.retainedForegroundOcclusionWeight,
+  );
+});
+
 test("infers foreground role from projected depth context and final steps when explicit ordered trace is absent", () => {
   const verdict = classifyRetainedToOrderedSurvival({
     anchorPixel: { id: "fresh-real", kind: "lacunar-hole", x: 1514, y: 1324 },
@@ -164,6 +228,44 @@ test("infers foreground role from projected depth context and final steps when e
   assert.deepEqual(verdict.ids.retainedForeground, ["1"]);
   assert.deepEqual(verdict.ids.orderedForeground, ["1"]);
   assert.deepEqual(verdict.ids.accumulatedForeground, ["1"]);
+});
+
+test("treats malformed optional projected evidence as absent", () => {
+  const withoutProjected = classifyRetainedToOrderedSurvival({
+    anchorPixel: { id: "fresh-null-projected", kind: "lacunar-hole", x: 1514, y: 1324 },
+    retainedContributors: [
+      retainedContributor({ originalId: 9201, splatIndex: 301, viewRank: 2, viewDepth: 0.14, coverageWeight: 0.48, opacity: 0.88 }),
+    ],
+    orderedContributors: [
+      orderedContributor({ originalId: 9201, splatIndex: 301, orderIndex: 0, viewRank: 2, viewDepth: 0.14, coverageWeight: 0.48, opacity: 0.88 }),
+    ],
+    finalColorAccumulation: {
+      steps: [
+        accumulationStep({ originalId: 9201, splatIndex: 301, orderIndex: 0, coverageAlpha: 0.52 }),
+      ],
+      outputColor: [0.39, 0.33, 0.24, 0.52],
+    },
+  });
+  const withNullProjected = classifyRetainedToOrderedSurvival({
+    anchorPixel: { id: "fresh-null-projected", kind: "lacunar-hole", x: 1514, y: 1324 },
+    projectedContributors: null,
+    retainedContributors: [
+      retainedContributor({ originalId: 9201, splatIndex: 301, viewRank: 2, viewDepth: 0.14, coverageWeight: 0.48, opacity: 0.88 }),
+    ],
+    orderedContributors: [
+      orderedContributor({ originalId: 9201, splatIndex: 301, orderIndex: 0, viewRank: 2, viewDepth: 0.14, coverageWeight: 0.48, opacity: 0.88 }),
+    ],
+    finalColorAccumulation: {
+      steps: [
+        accumulationStep({ originalId: 9201, splatIndex: 301, orderIndex: 0, coverageAlpha: 0.52 }),
+      ],
+      outputColor: [0.39, 0.33, 0.24, 0.52],
+    },
+  });
+
+  assert.equal(withNullProjected.category, withoutProjected.category);
+  assert.deepEqual(withNullProjected.ids.projectedForeground, []);
+  assert.deepEqual(withNullProjected.ids.projectedForegroundDroppedBeforeRetention, []);
 });
 
 test("builds a ledger over anchors and summarizes stage verdicts", () => {
@@ -226,6 +328,8 @@ test("reports trace-blocked when the required evidence surfaces are absent", () 
       reason: "final accumulation trace is missing or malformed",
     },
   ]);
+  assert.deepEqual(verdict.projectedForeground, []);
+  assert.deepEqual(verdict.projectedForegroundDroppedBeforeRetention, []);
 });
 
 function retainedContributor({

@@ -1,5 +1,6 @@
 export type RetainedToOrderedSurvivalLedgerCategory =
   | "ordered-present"
+  | "projected-foreground-dropped-before-retention"
   | "retained-missing-from-order"
   | "ordered-present-final-alpha-weak"
   | "trace-blocked"
@@ -37,6 +38,8 @@ export interface RetainedToOrderedSurvivalAnchorLedger {
   readonly tileAddress: Record<string, number | null> | null;
   readonly ids: {
     readonly retainedForeground: readonly string[];
+    readonly projectedForeground: readonly string[];
+    readonly projectedForegroundDroppedBeforeRetention: readonly string[];
     readonly orderedForeground: readonly string[];
     readonly accumulatedForeground: readonly string[];
     readonly missingFromOrder: readonly string[];
@@ -45,6 +48,8 @@ export interface RetainedToOrderedSurvivalAnchorLedger {
   };
   readonly counts: {
     readonly retainedForeground: number;
+    readonly projectedForeground: number;
+    readonly projectedForegroundDroppedBeforeRetention: number;
     readonly orderedForeground: number;
     readonly accumulatedForeground: number;
     readonly missingFromOrder: number;
@@ -53,11 +58,15 @@ export interface RetainedToOrderedSurvivalAnchorLedger {
   };
   readonly metrics: {
     readonly missingForegroundOcclusionWeight: number;
+    readonly projectedForegroundOcclusionWeight: number;
+    readonly projectedForegroundDroppedBeforeRetentionOcclusionWeight: number;
     readonly retainedForegroundOcclusionWeight: number;
     readonly orderedForegroundOcclusionWeight: number;
     readonly finalForegroundAlpha: number;
   };
   readonly retainedForeground: readonly RetainedToOrderedContributorEvidence[];
+  readonly projectedForeground: readonly RetainedToOrderedContributorEvidence[];
+  readonly projectedForegroundDroppedBeforeRetention: readonly RetainedToOrderedContributorEvidence[];
   readonly orderedForeground: readonly RetainedToOrderedContributorEvidence[];
   readonly finalForeground: readonly RetainedToOrderedContributorEvidence[];
   readonly missingForeground: readonly RetainedToOrderedContributorEvidence[];

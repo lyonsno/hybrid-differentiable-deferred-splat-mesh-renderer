@@ -15,6 +15,7 @@ const REQUIRED_TRACE_FIELDS = Object.freeze([
 
 export const RETAINED_TO_ORDERED_SURVIVAL_CATEGORIES = Object.freeze([
   "ordered-present",
+  "projected-foreground-dropped-before-retention",
   "retained-missing-from-order",
   "ordered-present-final-alpha-weak",
   "trace-blocked",
@@ -36,6 +37,7 @@ export function describeRetainedToOrderedSurvivalLedgerContract() {
     ],
     categories: [...RETAINED_TO_ORDERED_SURVIVAL_CATEGORIES],
     owns: [
+      "projected foreground support lost before retained tile rows",
       "retained foreground contributor identity surviving into ordered output",
       "ordered rank/depth/tie-break custody for retained foreground contributors",
       "final accumulation alpha/RGB participation for retained foreground contributors",
@@ -91,6 +93,9 @@ export function classifyRetainedToOrderedSurvival({
   validateRoleList(foregroundRoles);
   validateNonNegativeFinite(minFinalForegroundAlpha, "minFinalForegroundAlpha");
 
+  const projectedContributorList = Array.isArray(projectedContributors)
+    ? projectedContributors
+    : [];
   const blockers = traceBlockers({ retainedContributors, orderedContributors, finalColorAccumulation });
   const anchor = normalizeAnchor(anchorPixel);
   if (blockers.length > 0) {
@@ -106,6 +111,8 @@ export function classifyRetainedToOrderedSurvival({
       counts: emptyCounts(),
       metrics: emptyMetrics(),
       retainedForeground: [],
+      projectedForeground: [],
+      projectedForegroundDroppedBeforeRetention: [],
       orderedForeground: [],
       finalForeground: [],
       missingForeground: [],
@@ -113,13 +120,16 @@ export function classifyRetainedToOrderedSurvival({
   }
 
   const foregroundRoleSet = new Set(foregroundRoles.map(String));
-  const depthContext = Array.isArray(projectedContributors) && projectedContributors.length > 0
-    ? projectedContributors
+  const depthContext = projectedContributorList.length > 0
+    ? projectedContributorList
     : retainedContributors;
   const depthBands = buildDepthBands(depthContext);
-  const roleLookup = buildRoleLookup(depthBands, projectedContributors, retainedContributors, orderedContributors, finalColorAccumulation.steps);
+  const roleLookup = buildRoleLookup(depthBands, projectedContributorList, retainedContributors, orderedContributors, finalColorAccumulation.steps);
   const retained = retainedContributors.map((entry, index) =>
     normalizeContributor(entry, index, "retainedContributors", roleLookup, depthBands)
+  );
+  const projected = projectedContributorList.map((entry, index) =>
+    normalizeContributor(entry, index, "projectedContributors", roleLookup, depthBands)
   );
   const finalSteps = finalColorAccumulation.steps.map((entry, index) =>
     normalizeFinalStep(entry, index, roleLookup)
@@ -134,6 +144,10 @@ export function classifyRetainedToOrderedSurvival({
         occlusionWeight: round((entry.coverageWeight ?? entry.coverageAlpha ?? 0) * (entry.opacity ?? 0)),
       }));
 
+  const retainedIds = new Set(retained.map((entry) => entry.originalId));
+  const projectedForeground = projected.filter((entry) => isForeground(entry, foregroundRoleSet));
+  const projectedForegroundDroppedBeforeRetention = projectedForeground
+    .filter((entry) => !retainedIds.has(entry.originalId));
   const retainedForeground = retained.filter((entry) => isForeground(entry, foregroundRoleSet));
   const orderedForeground = ordered.filter((entry) => isForeground(entry, foregroundRoleSet));
   const finalForeground = finalSteps.filter((entry) => isForeground(entry, foregroundRoleSet));
@@ -143,14 +157,18 @@ export function classifyRetainedToOrderedSurvival({
   const ids = {
     retainedForeground: idsFor(retainedForeground),
     missingFromOrder: idsFor(missingForeground),
+    projectedForegroundDroppedBeforeRetention: idsFor(projectedForegroundDroppedBeforeRetention),
     orderedForeground: idsFor(orderedForeground),
     accumulatedForeground: idsFor(finalForeground),
+    projectedForeground: idsFor(projectedForeground),
     retainedAll: idsFor(retained),
     orderedAll: idsFor(ordered),
   };
   const counts = {
     retainedForeground: retainedForeground.length,
     missingFromOrder: missingForeground.length,
+    projectedForeground: projectedForeground.length,
+    projectedForegroundDroppedBeforeRetention: projectedForegroundDroppedBeforeRetention.length,
     orderedForeground: orderedForeground.length,
     accumulatedForeground: finalForeground.length,
     retainedAll: retained.length,
@@ -158,10 +176,33 @@ export function classifyRetainedToOrderedSurvival({
   };
   const metrics = {
     missingForegroundOcclusionWeight: round(sum(missingForeground, (entry) => entry.occlusionWeight)),
+    projectedForegroundOcclusionWeight: round(sum(projectedForeground, (entry) => entry.occlusionWeight)),
+    projectedForegroundDroppedBeforeRetentionOcclusionWeight: round(sum(projectedForegroundDroppedBeforeRetention, (entry) => entry.occlusionWeight)),
     retainedForegroundOcclusionWeight: round(sum(retainedForeground, (entry) => entry.occlusionWeight)),
     orderedForegroundOcclusionWeight: round(sum(orderedForeground, (entry) => entry.occlusionWeight)),
     finalForegroundAlpha,
   };
+
+  if (
+    projectedForegroundDroppedBeforeRetention.length > 0 &&
+    metrics.projectedForegroundDroppedBeforeRetentionOcclusionWeight > metrics.retainedForegroundOcclusionWeight
+  ) {
+    return classified({
+      category: "projected-foreground-dropped-before-retention",
+      mechanism: "pixel-strong-projected-foreground-support-lost-before-retained-slate",
+      anchor,
+      tileAddress,
+      ids,
+      counts,
+      metrics,
+      projectedForeground,
+      projectedForegroundDroppedBeforeRetention,
+      retainedForeground,
+      orderedForeground,
+      finalForeground,
+      missingForeground,
+    });
+  }
 
   if (retainedForeground.length === 0) {
     return classified({
@@ -172,6 +213,8 @@ export function classifyRetainedToOrderedSurvival({
       ids,
       counts,
       metrics,
+      projectedForeground,
+      projectedForegroundDroppedBeforeRetention,
       retainedForeground,
       orderedForeground,
       finalForeground,
@@ -188,6 +231,8 @@ export function classifyRetainedToOrderedSurvival({
       ids,
       counts,
       metrics,
+      projectedForeground,
+      projectedForegroundDroppedBeforeRetention,
       retainedForeground,
       orderedForeground,
       finalForeground,
@@ -204,6 +249,8 @@ export function classifyRetainedToOrderedSurvival({
       ids,
       counts,
       metrics,
+      projectedForeground,
+      projectedForegroundDroppedBeforeRetention,
       retainedForeground,
       orderedForeground,
       finalForeground,
@@ -219,6 +266,8 @@ export function classifyRetainedToOrderedSurvival({
     ids,
     counts,
     metrics,
+    projectedForeground,
+    projectedForegroundDroppedBeforeRetention,
     retainedForeground,
     orderedForeground,
     finalForeground,
@@ -234,6 +283,8 @@ function classified({
   ids,
   counts,
   metrics,
+  projectedForeground = [],
+  projectedForegroundDroppedBeforeRetention = [],
   retainedForeground,
   orderedForeground,
   finalForeground,
@@ -249,6 +300,8 @@ function classified({
     ids,
     counts,
     metrics,
+    projectedForeground,
+    projectedForegroundDroppedBeforeRetention,
     retainedForeground,
     orderedForeground,
     finalForeground,
@@ -430,8 +483,10 @@ function emptyIds() {
   return {
     retainedForeground: [],
     missingFromOrder: [],
+    projectedForegroundDroppedBeforeRetention: [],
     orderedForeground: [],
     accumulatedForeground: [],
+    projectedForeground: [],
     retainedAll: [],
     orderedAll: [],
   };
@@ -441,6 +496,8 @@ function emptyCounts() {
   return {
     retainedForeground: 0,
     missingFromOrder: 0,
+    projectedForeground: 0,
+    projectedForegroundDroppedBeforeRetention: 0,
     orderedForeground: 0,
     accumulatedForeground: 0,
     retainedAll: 0,
@@ -451,6 +508,8 @@ function emptyCounts() {
 function emptyMetrics() {
   return {
     missingForegroundOcclusionWeight: 0,
+    projectedForegroundOcclusionWeight: 0,
+    projectedForegroundDroppedBeforeRetentionOcclusionWeight: 0,
     retainedForegroundOcclusionWeight: 0,
     orderedForegroundOcclusionWeight: 0,
     finalForegroundAlpha: 0,
