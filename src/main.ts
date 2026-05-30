@@ -208,6 +208,7 @@ interface TileLocalSceneState {
   tileRefCustody: TileRefCustodySummary;
   retentionAudit: TileRetentionAudit;
   budgetDiagnostics: TileLocalPrepassBudgetDiagnostics;
+  compactSourceConstruction?: CompactSourceConstructionEvidence;
   tileRefSplatIds: Uint32Array;
   prepassSignature: string;
   debugMode: GpuTileCoverageDebugMode;
@@ -397,9 +398,40 @@ interface CompactRetainedSourceForRuntime {
     readonly maxProjectedRefs: number;
     readonly mode: string;
   } | null;
+  readonly compactSourceConstruction?: CompactSourceConstructionEvidence;
   readonly tileRefCustody: TileRefCustodySummary;
   readonly perPixelProjectedContributors: TileLocalPrepassBridge["perPixelProjectedContributors"];
   readonly perPixelRetainedContributors: TileLocalPrepassBridge["perPixelRetainedContributors"];
+}
+
+interface CompactSourceConstructionEvidence {
+  readonly classification: string;
+  readonly prestreamClassification: string;
+  readonly guardedQuantity: string;
+  readonly presentationScope: TileLocalPresentationScope;
+  readonly forceAnchorOnly: boolean;
+  readonly allowAnchorOnlyBudgetFallback: boolean;
+  readonly shouldRestrictToAnchorTiles: boolean;
+  readonly shouldBoundSplatTileFootprints: boolean;
+  readonly projectedOverflow: boolean | null;
+  readonly retainedBudgetWithinProjectedLimit: boolean | null;
+  readonly tileCount: number;
+  readonly sourceTileCount: number;
+  readonly traceTileCount: number;
+  readonly candidateSplatCount: number;
+  readonly projectedSplatCount: number;
+  readonly fullSceneConstructionRefUpperBound: number;
+  readonly projectedRefEstimate: number;
+  readonly streamedProjectedRefs: number;
+  readonly projectedRefs: number;
+  readonly retainedRefs: number;
+  readonly droppedRefs: number;
+  readonly maxProjectedRefs: number;
+  readonly retainedBudgetRefs: number;
+  readonly maxRefsPerTile: number;
+  readonly maxTilesPerSplat: number | null;
+  readonly effectiveMaxTilesPerSplat: number | null;
+  readonly footprintComparisonClass: string;
 }
 
 interface SortSettleState {
@@ -1406,6 +1438,7 @@ function createGpuArenaTileLocalSceneState(
     tileRefCustody: compactSource.tileRefCustody,
     retentionAudit,
     budgetDiagnostics,
+    compactSourceConstruction: compactSource.compactSourceConstruction,
     tileRefSplatIds: legacyProjection.tileRefSplatIds,
     prepassSignature,
     debugMode: TILE_LOCAL_DEBUG_MODE,
@@ -1579,6 +1612,8 @@ function buildCompactRetainedSourceForRuntime({
     forceAnchorOnly: useAnchorPrefilter,
     allowAnchorOnlyBudgetFallback: presentationScope === "anchor-neighborhood",
     maxTilesPerSplat: fullSceneConstructionMaxTilesPerSplat,
+    fullSceneConstructionRefUpperBound,
+    prestreamConstructionBudget: fullSceneConstructionBudget,
     rendererMetadata,
     frameTiming,
   });
@@ -1603,6 +1638,8 @@ function buildStreamingCompactRetainedSourceForRuntime({
   forceAnchorOnly,
   allowAnchorOnlyBudgetFallback,
   maxTilesPerSplat,
+  fullSceneConstructionRefUpperBound,
+  prestreamConstructionBudget,
   rendererMetadata,
   frameTiming,
 }: {
@@ -1624,6 +1661,8 @@ function buildStreamingCompactRetainedSourceForRuntime({
   readonly forceAnchorOnly?: boolean;
   readonly allowAnchorOnlyBudgetFallback?: boolean;
   readonly maxTilesPerSplat?: number | null;
+  readonly fullSceneConstructionRefUpperBound?: number;
+  readonly prestreamConstructionBudget?: ReturnType<typeof classifyCompactSourceConstructionBudget>;
   readonly rendererMetadata: Record<string, unknown>;
   readonly frameTiming?: FrameTimingDraft;
 }): CompactRetainedSourceForRuntime {
@@ -1749,8 +1788,31 @@ function buildStreamingCompactRetainedSourceForRuntime({
   });
 
   const streamedProjectedContributorCount = projectedIndex;
-  const projectedContributorCount = Math.max(projectedRefBudgetOverflow?.projectedRefs ?? 0, streamedProjectedContributorCount);
+  const projectedContributorCount = streamedProjectedContributorCount;
   const droppedContributorCount = Math.max(0, projectedContributorCount - retainedRecords.length);
+  const sourceTileCount = retainOnlyAnchorTiles ? sourceTileIndexes.size : tileCount;
+  const compactSourceConstruction = buildCompactSourceConstructionEvidence({
+    compactSourceBudget,
+    prestreamConstructionBudget,
+    presentationScope: allowAnchorOnlyBudgetFallback ? "anchor-neighborhood" : "full-scene",
+    forceAnchorOnly: Boolean(forceAnchorOnly),
+    allowAnchorOnlyBudgetFallback: Boolean(allowAnchorOnlyBudgetFallback),
+    tileCount,
+    sourceTileCount,
+    traceTileCount: traceTileIndexes.size,
+    candidateSplatCount: splats.length,
+    projectedSplatCount: splats.length,
+    fullSceneConstructionRefUpperBound: fullSceneConstructionRefUpperBound ?? 0,
+    projectedRefEstimate: projectedTileRefEstimate,
+    streamedProjectedRefs: streamedProjectedContributorCount,
+    projectedRefs: projectedContributorCount,
+    retainedRefs: retainedRecords.length,
+    droppedRefs: droppedContributorCount,
+    maxProjectedRefs: maxTileEntries,
+    retainedBudgetRefs: retainedCapacity,
+    maxRefsPerTile,
+    maxTilesPerSplat: maxTilesPerSplat ?? null,
+  });
   const tileRefCustody = compactTileRefCustody({
     tileCount,
     tileHeaders: tileHeaderU32,
@@ -1794,10 +1856,118 @@ function buildStreamingCompactRetainedSourceForRuntime({
     retainedContributorCount: retainedRecords.length,
     droppedContributorCount,
     projectedRefBudgetOverflow,
+    compactSourceConstruction,
     tileRefCustody,
     perPixelProjectedContributors: perPixelTraces.projected,
     perPixelRetainedContributors: perPixelTraces.retained,
   };
+}
+
+function buildCompactSourceConstructionEvidence({
+  compactSourceBudget,
+  prestreamConstructionBudget,
+  presentationScope,
+  forceAnchorOnly,
+  allowAnchorOnlyBudgetFallback,
+  tileCount,
+  sourceTileCount,
+  traceTileCount,
+  candidateSplatCount,
+  projectedSplatCount,
+  fullSceneConstructionRefUpperBound,
+  projectedRefEstimate,
+  streamedProjectedRefs,
+  projectedRefs,
+  retainedRefs,
+  droppedRefs,
+  maxProjectedRefs,
+  retainedBudgetRefs,
+  maxRefsPerTile,
+  maxTilesPerSplat,
+}: {
+  readonly compactSourceBudget: ReturnType<typeof classifyCompactSourceConstructionBudget>;
+  readonly prestreamConstructionBudget?: ReturnType<typeof classifyCompactSourceConstructionBudget>;
+  readonly presentationScope: TileLocalPresentationScope;
+  readonly forceAnchorOnly: boolean;
+  readonly allowAnchorOnlyBudgetFallback: boolean;
+  readonly tileCount: number;
+  readonly sourceTileCount: number;
+  readonly traceTileCount: number;
+  readonly candidateSplatCount: number;
+  readonly projectedSplatCount: number;
+  readonly fullSceneConstructionRefUpperBound: number;
+  readonly projectedRefEstimate: number;
+  readonly streamedProjectedRefs: number;
+  readonly projectedRefs: number;
+  readonly retainedRefs: number;
+  readonly droppedRefs: number;
+  readonly maxProjectedRefs: number;
+  readonly retainedBudgetRefs: number;
+  readonly maxRefsPerTile: number;
+  readonly maxTilesPerSplat: number | null;
+}): CompactSourceConstructionEvidence {
+  const classification = String(compactSourceBudget.classification ?? "compact-source-underinstrumented");
+  const prestreamClassification = String(
+    prestreamConstructionBudget?.classification ?? classification
+  );
+  const shouldRestrictToAnchorTiles = Boolean(compactSourceBudget.shouldRestrictToAnchorTiles);
+  const shouldBoundSplatTileFootprints =
+    Boolean(compactSourceBudget.shouldBoundSplatTileFootprints) ||
+    Boolean(prestreamConstructionBudget?.shouldBoundSplatTileFootprints);
+  const effectiveMaxTilesPerSplat = shouldBoundSplatTileFootprints ? maxTilesPerSplat : null;
+  return {
+    classification,
+    prestreamClassification,
+    guardedQuantity: String(compactSourceBudget.guardedQuantity ?? "compact-source-dense-projected-tile-refs"),
+    presentationScope,
+    forceAnchorOnly,
+    allowAnchorOnlyBudgetFallback,
+    shouldRestrictToAnchorTiles,
+    shouldBoundSplatTileFootprints,
+    projectedOverflow: compactSourceBudget.projectedOverflow,
+    retainedBudgetWithinProjectedLimit: compactSourceBudget.retainedBudgetWithinProjectedLimit,
+    tileCount,
+    sourceTileCount,
+    traceTileCount,
+    candidateSplatCount,
+    projectedSplatCount,
+    fullSceneConstructionRefUpperBound,
+    projectedRefEstimate,
+    streamedProjectedRefs,
+    projectedRefs,
+    retainedRefs,
+    droppedRefs,
+    maxProjectedRefs,
+    retainedBudgetRefs,
+    maxRefsPerTile,
+    maxTilesPerSplat,
+    effectiveMaxTilesPerSplat,
+    footprintComparisonClass: classifyCompactSourceFootprintComparison({
+      presentationScope,
+      shouldRestrictToAnchorTiles,
+      shouldBoundSplatTileFootprints,
+      effectiveMaxTilesPerSplat,
+    }),
+  };
+}
+
+function classifyCompactSourceFootprintComparison({
+  presentationScope,
+  shouldRestrictToAnchorTiles,
+  shouldBoundSplatTileFootprints,
+  effectiveMaxTilesPerSplat,
+}: {
+  readonly presentationScope: TileLocalPresentationScope;
+  readonly shouldRestrictToAnchorTiles: boolean;
+  readonly shouldBoundSplatTileFootprints: boolean;
+  readonly effectiveMaxTilesPerSplat: number | null;
+}): string {
+  if (shouldRestrictToAnchorTiles) return "anchor-neighborhood-source";
+  if (presentationScope === "full-scene" && shouldBoundSplatTileFootprints && effectiveMaxTilesPerSplat) {
+    return "bounded-full-scene-source";
+  }
+  if (presentationScope === "full-scene") return "unbounded-full-scene-source";
+  return "anchor-neighborhood-source";
 }
 
 function estimateCompactProjectedTileRefCount({
@@ -5402,6 +5572,7 @@ function exposeTileLocalRuntimeEvidence(
             ...budget,
             status: tileLocalStatus,
           },
+          compactSourceConstruction: tileLocalState.compactSourceConstruction,
           budgetDiagnostics: tileLocalState.budgetDiagnostics,
           diagnostics,
           pixelContributorTrace,

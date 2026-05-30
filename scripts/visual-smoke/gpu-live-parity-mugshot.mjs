@@ -163,6 +163,15 @@ export function classifyGpuLiveParityMugshot({ captures = [], comparisons = [], 
     if (gpuRefSourceFinding) {
       findings.push(gpuRefSourceFinding);
     }
+    const gpuCompactSourceConstruction = summarizeCompactSourceConstruction(gpu);
+    if (gpuCompactSourceConstruction.status !== "present") {
+      findings.push(
+        finding(
+          `gpu-compact-source-construction-${gpuCompactSourceConstruction.status}`,
+          `${pair.id} direct GPU capture did not expose present compact-source construction evidence.`
+        )
+      );
+    }
 
     const comparison = comparisonsByPair.get(pair.id);
     if (!comparison) {
@@ -393,6 +402,8 @@ function summarizePair(pair, cpu, gpu, comparison) {
   const cpuRefSource = tileRefSource(cpu);
   const gpuRefSource = tileRefSource(gpu);
   const finalColorLedger = summarizeFinalColorDivergenceLedger({ cpu, gpu });
+  const cpuCompactSourceConstruction = summarizeCompactSourceConstruction(cpu);
+  const gpuCompactSourceConstruction = summarizeCompactSourceConstruction(gpu);
   const lowerRefs = Math.max(1, Math.min(cpuRefs || 0, gpuRefs || 0));
   const upperRefs = Math.max(cpuRefs || 0, gpuRefs || 0);
   return {
@@ -404,6 +415,8 @@ function summarizePair(pair, cpu, gpu, comparison) {
     gpuRefs,
     cpuRefSource,
     gpuRefSource,
+    cpuCompactSourceConstruction,
+    gpuCompactSourceConstruction,
     refRatio: lowerRefs > 0 ? upperRefs / lowerRefs : 0,
     cpuEffectiveArenaBackend: routeField(cpu, "effectiveArenaBackend"),
     gpuEffectiveArenaBackend: routeField(gpu, "effectiveArenaBackend"),
@@ -414,6 +427,106 @@ function summarizePair(pair, cpu, gpu, comparison) {
     imageComparisonReason: comparison?.reason ?? "",
     finalColorLedger,
   };
+}
+
+function summarizeCompactSourceConstruction(capture = {}) {
+  const evidence = capture.pageEvidence?.tileLocal?.compactSourceConstruction;
+  if (!evidence || typeof evidence !== "object") {
+    return {
+      status: "missing",
+    };
+  }
+  const requiredStringFields = [
+    "classification",
+    "prestreamClassification",
+    "guardedQuantity",
+    "footprintComparisonClass",
+    "presentationScope",
+  ];
+  const requiredBooleanFields = [
+    "forceAnchorOnly",
+    "allowAnchorOnlyBudgetFallback",
+    "shouldRestrictToAnchorTiles",
+    "shouldBoundSplatTileFootprints",
+    "projectedOverflow",
+    "retainedBudgetWithinProjectedLimit",
+  ];
+  const requiredNumberFields = [
+    "tileCount",
+    "sourceTileCount",
+    "traceTileCount",
+    "candidateSplatCount",
+    "projectedSplatCount",
+    "fullSceneConstructionRefUpperBound",
+    "projectedRefEstimate",
+    "streamedProjectedRefs",
+    "projectedRefs",
+    "retainedRefs",
+    "droppedRefs",
+    "maxProjectedRefs",
+    "retainedBudgetRefs",
+    "maxRefsPerTile",
+  ];
+  const footprintComparisonClass = stringValue(evidence.footprintComparisonClass);
+  const shouldRestrictToAnchorTiles = booleanValue(evidence.shouldRestrictToAnchorTiles);
+  const shouldBoundSplatTileFootprints = booleanValue(evidence.shouldBoundSplatTileFootprints);
+  const hasBoundedFootprintFields =
+    footprintComparisonClass !== "bounded-full-scene-source" ||
+    (
+      shouldRestrictToAnchorTiles === false &&
+      shouldBoundSplatTileFootprints === true &&
+      finiteNumber(evidence.maxTilesPerSplat) !== null &&
+      finiteNumber(evidence.effectiveMaxTilesPerSplat) !== null
+    );
+  const hasUnboundedFootprintFields =
+    footprintComparisonClass !== "unbounded-full-scene-source" ||
+    (
+      shouldRestrictToAnchorTiles === false &&
+      shouldBoundSplatTileFootprints === false &&
+      evidence.maxTilesPerSplat == null &&
+      evidence.effectiveMaxTilesPerSplat == null
+    );
+  const hasRequiredEvidence =
+    requiredStringFields.every((field) => stringValue(evidence[field])) &&
+    requiredBooleanFields.every((field) => booleanValue(evidence[field]) !== undefined) &&
+    requiredNumberFields.every((field) => finiteNumber(evidence[field]) !== null) &&
+    hasBoundedFootprintFields &&
+    hasUnboundedFootprintFields;
+  if (!hasRequiredEvidence) {
+    return {
+      status: "underinstrumented",
+    };
+  }
+  return removeUndefinedProperties({
+    status: "present",
+    classification: stringValue(evidence.classification),
+    prestreamClassification: stringValue(evidence.prestreamClassification),
+    guardedQuantity: stringValue(evidence.guardedQuantity),
+    footprintComparisonClass: stringValue(evidence.footprintComparisonClass),
+    presentationScope: stringValue(evidence.presentationScope),
+    forceAnchorOnly: booleanValue(evidence.forceAnchorOnly),
+    allowAnchorOnlyBudgetFallback: booleanValue(evidence.allowAnchorOnlyBudgetFallback),
+    shouldRestrictToAnchorTiles: booleanValue(evidence.shouldRestrictToAnchorTiles),
+    shouldBoundSplatTileFootprints: booleanValue(evidence.shouldBoundSplatTileFootprints),
+    projectedOverflow: booleanValue(evidence.projectedOverflow),
+    retainedBudgetWithinProjectedLimit: booleanValue(evidence.retainedBudgetWithinProjectedLimit),
+    maxTilesPerSplat: finiteNumber(evidence.maxTilesPerSplat),
+    effectiveMaxTilesPerSplat: finiteNumber(evidence.effectiveMaxTilesPerSplat),
+    tileCount: finiteNumber(evidence.tileCount),
+    sourceTileCount: finiteNumber(evidence.sourceTileCount),
+    traceTileCount: finiteNumber(evidence.traceTileCount),
+    candidateSplatCount: finiteNumber(evidence.candidateSplatCount),
+    projectedSplatCount: finiteNumber(evidence.projectedSplatCount),
+    fullSceneConstructionRefUpperBound: finiteNumber(evidence.fullSceneConstructionRefUpperBound),
+    projectedRefEstimate: finiteNumber(evidence.projectedRefEstimate),
+    streamedProjectedRefs: finiteNumber(evidence.streamedProjectedRefs),
+    projectedRefs: finiteNumber(evidence.projectedRefs),
+    retainedRefs: finiteNumber(evidence.retainedRefs),
+    droppedRefs: finiteNumber(evidence.droppedRefs),
+    maxProjectedRefs: finiteNumber(evidence.maxProjectedRefs),
+    retainedBudgetRefs: finiteNumber(evidence.retainedBudgetRefs),
+    maxRefsPerTile: finiteNumber(evidence.maxRefsPerTile),
+  });
 }
 
 function classifyDivergence(pairs) {
@@ -1034,6 +1147,10 @@ function stringValue(value) {
   return typeof value === "string" && value.length > 0 ? value : "";
 }
 
+function booleanValue(value) {
+  return typeof value === "boolean" ? value : undefined;
+}
+
 function removeUndefinedProperties(value) {
   return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined));
 }
@@ -1210,6 +1327,7 @@ function unique(values) {
 }
 
 function finiteNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }

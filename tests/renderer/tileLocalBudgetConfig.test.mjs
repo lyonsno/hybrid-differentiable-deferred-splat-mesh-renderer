@@ -119,14 +119,14 @@ test("compact source construction keeps already-bounded full-scene overflow as a
 test("main classifies the post-bound compact source estimate as hard budget evidence", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const streamingStart = source.indexOf("function buildStreamingCompactRetainedSourceForRuntime");
-  const streamingEnd = source.indexOf("function estimateCompactProjectedTileRefCount");
+  const streamingEnd = source.indexOf("function buildCompactSourceConstructionEvidence");
 
   assert.ok(streamingStart >= 0, "streaming compact source builder should exist");
   assert.ok(streamingEnd > streamingStart, "streaming compact source builder slice should be bounded");
 
   const streamingSource = source.slice(streamingStart, streamingEnd);
   const estimateStart = streamingSource.indexOf("estimateCompactProjectedTileRefCount");
-  const classifyStart = streamingSource.indexOf("classifyCompactSourceConstructionBudget");
+  const classifyStart = streamingSource.indexOf("classifyCompactSourceConstructionBudget", estimateStart);
 
   assert.ok(estimateStart >= 0, "streaming builder should estimate compact projected tile refs");
   assert.ok(classifyStart > estimateStart, "streaming builder should classify the already-bounded estimate");

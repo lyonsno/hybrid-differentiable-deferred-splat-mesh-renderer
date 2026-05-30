@@ -450,6 +450,285 @@ test("GPU live parity classifier prefers live retained-ref accounting over canva
   assert.deepEqual(result.divergence.tileRefDivergencePairs, []);
 });
 
+test("GPU live parity classifier carries compact-source footprint evidence with retained refs", () => {
+  const result = classifyGpuLiveParityMugshot({
+    captures: [
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeCpu, {
+        pairId: "whole-render",
+        routeRole: "cpu-reference",
+        arenaBackend: "cpu",
+        refs: 61643,
+        refAccounting: liveRefAccounting(61643),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeGpu, {
+        pairId: "whole-render",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        refs: 37590,
+        refAccounting: liveRefAccounting(37590),
+        compactSourceConstruction: boundedFullSceneConstruction({
+          projectedRefEstimate: 37590,
+          projectedRefs: 37590,
+          retainedRefs: 37590,
+        }),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.dessertCloseCpu, {
+        pairId: "dessert-close",
+        routeRole: "cpu-reference",
+        arenaBackend: "cpu",
+        witnessView: "dessert-close",
+        refAccounting: liveRefAccounting(412939),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.dessertCloseGpu, {
+        pairId: "dessert-close",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        witnessView: "dessert-close",
+        refAccounting: liveRefAccounting(157547),
+        compactSourceConstruction: boundedFullSceneConstruction({
+          projectedRefEstimate: 157547,
+          projectedRefs: 157547,
+          retainedRefs: 157547,
+        }),
+      }),
+    ],
+    comparisons: [
+      { pairId: "whole-render", comparable: true, changedPixelRatio: 0.0464, changedPixels: 42763, totalPixels: 921600 },
+      { pairId: "dessert-close", comparable: true, changedPixelRatio: 0.08428, changedPixels: 77672, totalPixels: 921600 },
+    ],
+    contactSheetPath: "smoke-reports/gpu-live-parity/contact-sheet.png",
+  });
+
+  const whole = result.metrics.pairs.find((pair) => pair.pairId === "whole-render");
+  assert.equal(whole.gpuCompactSourceConstruction.status, "present");
+  assert.equal(whole.gpuCompactSourceConstruction.footprintComparisonClass, "bounded-full-scene-source");
+  assert.equal(whole.gpuCompactSourceConstruction.prestreamClassification, "compact-source-full-scene-bounded-overflow");
+  assert.equal(whole.gpuCompactSourceConstruction.effectiveMaxTilesPerSplat, 9);
+  assert.equal(whole.gpuCompactSourceConstruction.retainedRefs, 37590);
+  assert.equal(whole.cpuCompactSourceConstruction.status, "missing");
+});
+
+test("GPU live parity classifier preserves unbounded compact-source footprint evidence", () => {
+  const result = classifyGpuLiveParityMugshot({
+    captures: [
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeCpu, {
+        pairId: "whole-render",
+        routeRole: "cpu-reference",
+        arenaBackend: "cpu",
+        refs: 61643,
+        refAccounting: liveRefAccounting(61643),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeGpu, {
+        pairId: "whole-render",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        refs: 61643,
+        refAccounting: liveRefAccounting(61643),
+        compactSourceConstruction: boundedFullSceneConstruction({
+          prestreamClassification: "compact-source-valid",
+          footprintComparisonClass: "unbounded-full-scene-source",
+          shouldBoundSplatTileFootprints: false,
+          maxTilesPerSplat: null,
+          effectiveMaxTilesPerSplat: null,
+          projectedRefEstimate: 61643,
+          projectedRefs: 61643,
+          retainedRefs: 61643,
+        }),
+      }),
+    ],
+    comparisons: [
+      { pairId: "whole-render", comparable: true, changedPixelRatio: 0.0464, changedPixels: 42763, totalPixels: 921600 },
+    ],
+    contactSheetPath: "smoke-reports/gpu-live-parity/contact-sheet.png",
+  });
+
+  const whole = result.metrics.pairs.find((pair) => pair.pairId === "whole-render");
+  assert.equal(whole.gpuCompactSourceConstruction.status, "present");
+  assert.equal(whole.gpuCompactSourceConstruction.footprintComparisonClass, "unbounded-full-scene-source");
+  assert.equal(whole.gpuCompactSourceConstruction.maxTilesPerSplat, null);
+  assert.equal(whole.gpuCompactSourceConstruction.effectiveMaxTilesPerSplat, null);
+});
+
+test("GPU live parity classifier refuses malformed compact-source evidence", () => {
+  const result = classifyGpuLiveParityMugshot({
+    captures: [
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeCpu, {
+        pairId: "whole-render",
+        routeRole: "cpu-reference",
+        arenaBackend: "cpu",
+        refs: 61643,
+        refAccounting: liveRefAccounting(61643),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeGpu, {
+        pairId: "whole-render",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        refs: 61643,
+        refAccounting: liveRefAccounting(61643),
+        compactSourceConstruction: {},
+      }),
+    ],
+    comparisons: [
+      { pairId: "whole-render", comparable: true, changedPixelRatio: 0.0464, changedPixels: 42763, totalPixels: 921600 },
+    ],
+    contactSheetPath: "smoke-reports/gpu-live-parity/contact-sheet.png",
+  });
+
+  const whole = result.metrics.pairs.find((pair) => pair.pairId === "whole-render");
+  assert.equal(result.closeable, false);
+  assert.equal(whole.gpuCompactSourceConstruction.status, "underinstrumented");
+  assert.equal(whole.gpuCompactSourceConstruction.classification, undefined);
+});
+
+test("GPU live parity classifier refuses partial compact-source ledgers", () => {
+  const result = classifyGpuLiveParityMugshot({
+    captures: [
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeCpu, {
+        pairId: "whole-render",
+        routeRole: "cpu-reference",
+        arenaBackend: "cpu",
+        refs: 61643,
+        refAccounting: liveRefAccounting(61643),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeGpu, {
+        pairId: "whole-render",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        refs: 61643,
+        refAccounting: liveRefAccounting(61643),
+        compactSourceConstruction: boundedFullSceneConstruction({
+          streamedProjectedRefs: undefined,
+          droppedRefs: undefined,
+        }),
+      }),
+    ],
+    comparisons: [
+      { pairId: "whole-render", comparable: true, changedPixelRatio: 0.0464, changedPixels: 42763, totalPixels: 921600 },
+    ],
+    contactSheetPath: "smoke-reports/gpu-live-parity/contact-sheet.png",
+  });
+
+  const whole = result.metrics.pairs.find((pair) => pair.pairId === "whole-render");
+  assert.equal(result.closeable, false);
+  assert.equal(whole.gpuCompactSourceConstruction.status, "underinstrumented");
+  assert.ok(
+    result.findings.some((entry) => entry.kind === "gpu-compact-source-construction-underinstrumented"),
+    "partial direct GPU compact-source construction evidence must block closeout",
+  );
+});
+
+test("GPU live parity classifier refuses bounded compact-source evidence without bounded footprint fields", () => {
+  const result = classifyGpuLiveParityMugshot({
+    captures: [
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeCpu, {
+        pairId: "whole-render",
+        routeRole: "cpu-reference",
+        arenaBackend: "cpu",
+        refs: 61643,
+        refAccounting: liveRefAccounting(61643),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeGpu, {
+        pairId: "whole-render",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        refs: 61643,
+        refAccounting: liveRefAccounting(61643),
+        compactSourceConstruction: boundedFullSceneConstruction({
+          footprintComparisonClass: "bounded-full-scene-source",
+          shouldBoundSplatTileFootprints: true,
+          maxTilesPerSplat: null,
+          effectiveMaxTilesPerSplat: null,
+        }),
+      }),
+    ],
+    comparisons: [
+      { pairId: "whole-render", comparable: true, changedPixelRatio: 0.0464, changedPixels: 42763, totalPixels: 921600 },
+    ],
+    contactSheetPath: "smoke-reports/gpu-live-parity/contact-sheet.png",
+  });
+
+  const whole = result.metrics.pairs.find((pair) => pair.pairId === "whole-render");
+  assert.equal(result.closeable, false);
+  assert.equal(whole.gpuCompactSourceConstruction.status, "underinstrumented");
+});
+
+test("GPU live parity classifier refuses compact-source ledgers without policy fields", () => {
+  const {
+    guardedQuantity,
+    forceAnchorOnly,
+    allowAnchorOnlyBudgetFallback,
+    shouldRestrictToAnchorTiles,
+    shouldBoundSplatTileFootprints,
+    projectedOverflow,
+    retainedBudgetWithinProjectedLimit,
+    tileCount,
+    ...partialConstruction
+  } = boundedFullSceneConstruction();
+  const result = classifyGpuLiveParityMugshot({
+    captures: [
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeCpu, {
+        pairId: "whole-render",
+        routeRole: "cpu-reference",
+        arenaBackend: "cpu",
+        refs: 61643,
+        refAccounting: liveRefAccounting(61643),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeGpu, {
+        pairId: "whole-render",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        refs: 61643,
+        refAccounting: liveRefAccounting(61643),
+        compactSourceConstruction: partialConstruction,
+      }),
+    ],
+    comparisons: [
+      { pairId: "whole-render", comparable: true, changedPixelRatio: 0.0464, changedPixels: 42763, totalPixels: 921600 },
+    ],
+    contactSheetPath: "smoke-reports/gpu-live-parity/contact-sheet.png",
+  });
+
+  const whole = result.metrics.pairs.find((pair) => pair.pairId === "whole-render");
+  assert.equal(result.closeable, false);
+  assert.equal(whole.gpuCompactSourceConstruction.status, "underinstrumented");
+  assert.ok(
+    result.findings.some((entry) => entry.kind === "gpu-compact-source-construction-underinstrumented"),
+    "missing direct GPU compact-source policy fields must block closeout",
+  );
+});
+
+test("GPU live parity classifier fails direct GPU captures without compact-source evidence", () => {
+  const result = classifyGpuLiveParityMugshot({
+    captures: [
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeCpu, {
+        pairId: "whole-render",
+        routeRole: "cpu-reference",
+        arenaBackend: "cpu",
+        refs: 61643,
+        refAccounting: liveRefAccounting(61643),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeGpu, {
+        pairId: "whole-render",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        refs: 61643,
+        refAccounting: liveRefAccounting(61643),
+        compactSourceConstruction: undefined,
+      }),
+    ],
+    comparisons: [
+      { pairId: "whole-render", comparable: true, changedPixelRatio: 0.0464, changedPixels: 42763, totalPixels: 921600 },
+    ],
+    contactSheetPath: "smoke-reports/gpu-live-parity/contact-sheet.png",
+  });
+
+  assert.equal(result.closeable, false);
+  assert.ok(
+    result.findings.some((entry) => entry.kind === "gpu-compact-source-construction-missing"),
+    "missing direct GPU compact-source construction evidence must block closeout",
+  );
+});
+
 test("GPU live parity classifier exposes final-color divergence instrumentation gaps", () => {
   const result = classifyGpuLiveParityMugshot({
     captures: [
@@ -1187,6 +1466,17 @@ function witnessCapture(id, overrides = {}) {
   const tileSizePx = overrides.tileSizePx ?? "16";
   const maxRefsPerTile = overrides.maxRefsPerTile ?? "256";
   const refs = overrides.refs ?? 94406;
+  const compactSourceConstruction = Object.hasOwn(overrides, "compactSourceConstruction")
+    ? overrides.compactSourceConstruction
+    : routeRole === "direct-gpu-live"
+      ? boundedFullSceneConstruction({
+          projectedRefEstimate: refs,
+          streamedProjectedRefs: refs,
+          projectedRefs: refs,
+          retainedRefs: refs,
+          droppedRefs: 0,
+        })
+      : undefined;
   return {
     id,
     pairId,
@@ -1214,6 +1504,7 @@ function witnessCapture(id, overrides = {}) {
       tileLocal: {
         refs,
         refAccounting: overrides.refAccounting,
+        compactSourceConstruction,
         perPixelFinalColorAccumulation: overrides.finalColorRows,
         compositorInputReadback: overrides.compositorInputReadback,
         outputTextureReadback: overrides.outputTextureReadback,
@@ -1238,6 +1529,40 @@ function witnessCapture(id, overrides = {}) {
       presentationScope: overrides.presentationScope ?? "full-scene",
       viewport: { width: 1280, height: 720 },
     },
+  };
+}
+
+function boundedFullSceneConstruction(overrides = {}) {
+  return {
+    status: "present",
+    classification: "compact-source-valid",
+    prestreamClassification: "compact-source-full-scene-bounded-overflow",
+    guardedQuantity: "compact-source-dense-projected-tile-refs",
+    footprintComparisonClass: "bounded-full-scene-source",
+    presentationScope: "full-scene",
+    forceAnchorOnly: false,
+    allowAnchorOnlyBudgetFallback: false,
+    shouldRestrictToAnchorTiles: false,
+    shouldBoundSplatTileFootprints: true,
+    projectedOverflow: true,
+    retainedBudgetWithinProjectedLimit: true,
+    tileCount: 7200,
+    maxTilesPerSplat: 9,
+    effectiveMaxTilesPerSplat: 9,
+    sourceTileCount: 7200,
+    traceTileCount: 72,
+    candidateSplatCount: 94406,
+    projectedSplatCount: 94406,
+    fullSceneConstructionRefUpperBound: 679723200,
+    projectedRefEstimate: 37590,
+    streamedProjectedRefs: 37590,
+    projectedRefs: 37590,
+    retainedRefs: 37590,
+    droppedRefs: 0,
+    maxProjectedRefs: 20000000,
+    retainedBudgetRefs: 1843200,
+    maxRefsPerTile: 256,
+    ...overrides,
   };
 }
 

@@ -86,6 +86,21 @@ test("CPU reference compact source preserves projected overflow diagnostics for 
     /onlyTileIndexes:\s*retainOnlyAnchorTiles\s*\?\s*sourceTileIndexes\s*:\s*null/,
     "overflowed compact routes must restrict the streaming pass to anchor tiles instead of scanning every dense tile ref",
   );
+  assert.match(
+    compactSourceSource,
+    /const\s+sourceTileCount\s*=\s*retainOnlyAnchorTiles\s*\?\s*sourceTileIndexes\.size\s*:\s*tileCount/,
+    "full-scene compact source evidence must report the full constructed footprint while anchor routes report anchor tiles",
+  );
+  assert.match(
+    compactSourceSource,
+    /const\s+projectedContributorCount\s*=\s*streamedProjectedContributorCount/,
+    "compact-source projected refs must describe the source actually streamed, not an earlier overflow estimate",
+  );
+  assert.doesNotMatch(
+    compactSourceSource,
+    /Math\.max\(projectedRefBudgetOverflow\?\.projectedRefs/,
+    "anchor-neighborhood compact-source evidence must not promote pre-restriction overflow into built-source projected refs",
+  );
 });
 
 test("full-scene compact source bounds construction before covariance projection", () => {
@@ -108,6 +123,26 @@ test("full-scene compact source bounds construction before covariance projection
     compactSourceSource,
     /maxTilesPerSplat:\s*fullSceneConstructionMaxTilesPerSplat/,
     "bounded full-scene construction must pass the per-splat tile bound into compact source row construction",
+  );
+  assert.match(
+    compactSourceSource,
+    /fullSceneConstructionRefUpperBound,/,
+    "bounded full-scene construction must keep the dense upper bound visible as diagnostic evidence",
+  );
+  assert.match(
+    compactSourceSource,
+    /prestreamConstructionBudget:\s*fullSceneConstructionBudget/,
+    "bounded full-scene construction must preserve the prestream budget classification for witness reports",
+  );
+  assert.match(
+    mainSource,
+    /compactSourceConstruction:\s*compactSource\.compactSourceConstruction/,
+    "GPU scene evidence must carry compact-source construction decisions into tile-local runtime evidence",
+  );
+  assert.match(
+    mainSource,
+    /compactSourceConstruction:\s*tileLocalState\.compactSourceConstruction/,
+    "smoke page evidence must expose compact-source footprint class beside retained refs",
   );
   assert.doesNotMatch(
     compactSourceSource,

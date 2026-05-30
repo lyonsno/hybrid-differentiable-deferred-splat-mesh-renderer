@@ -1505,6 +1505,9 @@ ${metrics.pairs
 - GPU refs: ${pair.gpuRefs}
 - CPU ref source: ${pair.cpuRefSource || "not reported"}
 - GPU ref source: ${pair.gpuRefSource || "not reported"}
+- Compact source CPU/GPU: ${formatCompactSourceConstruction(pair.cpuCompactSourceConstruction)} / ${formatCompactSourceConstruction(pair.gpuCompactSourceConstruction)}
+- Compact footprint CPU/GPU: ${pair.cpuCompactSourceConstruction?.footprintComparisonClass || "not reported"} / ${pair.gpuCompactSourceConstruction?.footprintComparisonClass || "not reported"}
+- Compact refs CPU/GPU retained/projected: ${formatCompactSourceRefs(pair.cpuCompactSourceConstruction)} / ${formatCompactSourceRefs(pair.gpuCompactSourceConstruction)}
 - Ref ratio: ${formatMetricRatio(pair.refRatio)}
 - CPU effective arena: ${pair.cpuEffectiveArenaBackend || "not reported"}
 - GPU effective arena: ${pair.gpuEffectiveArenaBackend || "not reported"}
@@ -1606,6 +1609,19 @@ function formatRetainedIdentityDelta(delta) {
   if (!delta) return "not reported";
   if (delta.retainedIdentityStatus === "not-evaluated") return "not evaluated";
   return delta.retainedIdentityMismatchedAnchorIds?.join(", ") || "none";
+}
+
+function formatCompactSourceConstruction(construction) {
+  if (!construction || construction.status !== "present") return "not reported";
+  const maxTiles = construction.effectiveMaxTilesPerSplat ?? construction.maxTilesPerSplat ?? "unbounded";
+  const sourceTiles = construction.sourceTileCount ?? "?";
+  const traceTiles = construction.traceTileCount ?? "?";
+  return `${construction.classification || "unknown"} (${construction.prestreamClassification || "unknown"}, maxTiles=${maxTiles}, sourceTiles=${sourceTiles}, traceTiles=${traceTiles})`;
+}
+
+function formatCompactSourceRefs(construction) {
+  if (!construction || construction.status !== "present") return "not reported";
+  return `${construction.retainedRefs ?? "?"}/${construction.projectedRefs ?? "?"}`;
 }
 
 function printTileLocalComparisonSummary(result) {
