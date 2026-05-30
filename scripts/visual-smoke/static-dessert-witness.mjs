@@ -1,6 +1,7 @@
 export const STATIC_DESSERT_WITNESS_CAPTURE_IDS = {
   plateFinalColor: "plate-final-color",
   finalColor: "final-color",
+  visualGapTrace: "visual-gap-trace",
   coverageWeight: "coverage-weight",
   accumulatedAlpha: "accumulated-alpha",
   transmittance: "transmittance",
@@ -8,7 +9,10 @@ export const STATIC_DESSERT_WITNESS_CAPTURE_IDS = {
   conicShape: "conic-shape",
 };
 
-const REQUIRED_CAPTURE_IDS = new Set(Object.values(STATIC_DESSERT_WITNESS_CAPTURE_IDS));
+const REQUIRED_CAPTURE_IDS = new Set(
+  Object.values(STATIC_DESSERT_WITNESS_CAPTURE_IDS)
+    .filter((id) => id !== STATIC_DESSERT_WITNESS_CAPTURE_IDS.visualGapTrace)
+);
 const DEBUG_CAPTURE_IDS = new Set([
   STATIC_DESSERT_WITNESS_CAPTURE_IDS.coverageWeight,
   STATIC_DESSERT_WITNESS_CAPTURE_IDS.accumulatedAlpha,
@@ -22,6 +26,20 @@ const DEFAULT_STATIC_TILE_LOCAL_ROUTE = Object.freeze({
   maxRefsPerTile: "256",
 });
 const STATIC_TILE_LOCAL_ROUTE_PARAMS = Object.freeze(Object.keys(DEFAULT_STATIC_TILE_LOCAL_ROUTE));
+const PRESENTATION_ROUTE_PARAMS = Object.freeze([
+  "presentationAnchors",
+  "presentationAnchor",
+  "tileLocalPresentationAnchors",
+  "tileLocalPresentationAnchor",
+  "presentationScope",
+  "presentationMode",
+  "tileLocalPresentationScope",
+  "tileLocalPresentationMode",
+]);
+const TRACE_ROUTE_PARAMS = Object.freeze([
+  "traceAnchors",
+  "traceAnchor",
+]);
 const MAX_TILE_LOCAL_TO_PLATE_CHANGED_PIXEL_RATIO = 2.0;
 
 export function buildStaticDessertWitnessPlan(baseUrl) {
@@ -34,6 +52,24 @@ export function buildStaticDessertWitnessPlan(baseUrl) {
     debugCapture(baseUrl, STATIC_DESSERT_WITNESS_CAPTURE_IDS.tileRefCount, "Tile-ref density heatmap"),
     debugCapture(baseUrl, STATIC_DESSERT_WITNESS_CAPTURE_IDS.conicShape, "Conic major/minor shape heatmap"),
   ];
+}
+
+export function buildStaticDessertVisualGapTraceCapture(baseUrl, anchors) {
+  const url = new URL(baseUrl);
+  url.searchParams.set("renderer", "tile-local-visible");
+  applyStaticTileLocalRoute(url);
+  url.searchParams.delete("tileDebug");
+  url.searchParams.delete("debug");
+  clearTraceRoute(url);
+  clearPresentationRoute(url);
+  url.searchParams.set("traceAnchors", encodeStaticDessertTraceAnchors(anchors));
+  return {
+    id: STATIC_DESSERT_WITNESS_CAPTURE_IDS.visualGapTrace,
+    title: "Visual gap final-color trace anchors",
+    expectedRendererLabel: "tile-local-visible",
+    visualGapAnchors: normalizeStaticDessertVisualGapAnchors(anchors),
+    url: url.toString().replaceAll("%2F", "/"),
+  };
 }
 
 export function classifyStaticDessertWitness({ captures = [] } = {}) {
@@ -56,6 +92,10 @@ export function classifyStaticDessertWitness({ captures = [] } = {}) {
 
   const finalColor = byId.get(STATIC_DESSERT_WITNESS_CAPTURE_IDS.finalColor);
   const plateFinalColor = byId.get(STATIC_DESSERT_WITNESS_CAPTURE_IDS.plateFinalColor);
+  const visualGapTrace = summarizeVisualGapTrace(
+    byId.get(STATIC_DESSERT_WITNESS_CAPTURE_IDS.visualGapTrace),
+    staticTileLocalRouteExpectation(finalColor)
+  );
   if (plateFinalColor && rendererLabel(plateFinalColor) !== "plate") {
     findings.push(
       finding(
@@ -64,11 +104,12 @@ export function classifyStaticDessertWitness({ captures = [] } = {}) {
       )
     );
   }
-  if (finalColor && !rendererLabel(finalColor).includes("tile-local-visible")) {
+  const finalColorRouteStatus = staticFinalColorRouteStatus(finalColor);
+  if (finalColor && finalColorRouteStatus !== "ok") {
     findings.push(
       finding(
         "final-color-label-mismatch",
-        `Final-color capture reported renderer label ${rendererLabel(finalColor) || "missing"}.`
+        finalColorRouteStatus
       )
     );
   }
@@ -157,6 +198,39 @@ export function classifyStaticDessertWitness({ captures = [] } = {}) {
       )
     );
   }
+  if (visualGapTrace.status === "not-captured") {
+    findings.push(
+      finding(
+        "visual-gap-trace-not-captured",
+        "Static dessert witness did not capture derived visual-gap trace anchors."
+      )
+    );
+  } else if (visualGapTrace.status === "empty") {
+    findings.push(
+      finding(
+        "visual-gap-anchors-missing",
+        "Static dessert witness captured a visual-gap trace route without derived visual-gap anchors."
+      )
+    );
+  } else if (visualGapTrace.status === "malformed") {
+    findings.push(
+      finding(
+        "visual-gap-trace-malformed",
+        visualGapTrace.routeStatus || "Visual gap trace capture did not preserve the expected tile-local trace route."
+      )
+    );
+  } else if (visualGapTrace.status === "partial") {
+    const incomplete = visualGapTrace.anchors
+      .filter((anchor) => !anchor.traceComplete)
+      .map((anchor) => `${anchor.id}:${anchor.traceStatus}`)
+      .join(", ");
+    findings.push(
+      finding(
+        "visual-gap-trace-incomplete",
+        `Visual gap trace anchors were captured but missing required trace diagnostics: ${incomplete || "unknown"}.`
+      )
+    );
+  }
 
   const closeable = findings.length === 0;
   return {
@@ -212,6 +286,7 @@ export function classifyStaticDessertWitness({ captures = [] } = {}) {
           finiteNumber(conicDiagnostics?.conicShape?.maxAnisotropy) ??
           0,
       },
+      visualGapTrace,
     },
     observations: staticDessertObservations(),
     findings,
@@ -221,8 +296,7 @@ export function classifyStaticDessertWitness({ captures = [] } = {}) {
 function plateFinalColorCapture(baseUrl) {
   const url = new URL(baseUrl);
   url.searchParams.delete("renderer");
-  url.searchParams.delete("tileDebug");
-  url.searchParams.delete("debug");
+  clearStaticDessertTransientRoute(url);
   clearStaticTileLocalRoute(url);
   return {
     id: STATIC_DESSERT_WITNESS_CAPTURE_IDS.plateFinalColor,
@@ -236,8 +310,7 @@ function finalColorCapture(baseUrl) {
   const url = new URL(baseUrl);
   url.searchParams.set("renderer", "tile-local-visible");
   applyStaticTileLocalRoute(url);
-  url.searchParams.delete("tileDebug");
-  url.searchParams.delete("debug");
+  clearStaticDessertTransientRoute(url);
   return {
     id: STATIC_DESSERT_WITNESS_CAPTURE_IDS.finalColor,
     title: "Final color tile-local visible compositor",
@@ -250,6 +323,7 @@ function debugCapture(baseUrl, id, title) {
   const url = new URL(baseUrl);
   url.searchParams.set("renderer", "tile-local-visible");
   applyStaticTileLocalRoute(url);
+  clearStaticDessertTransientRoute(url);
   url.searchParams.set("tileDebug", id);
   return {
     id,
@@ -269,6 +343,370 @@ function clearStaticTileLocalRoute(url) {
   for (const key of STATIC_TILE_LOCAL_ROUTE_PARAMS) {
     url.searchParams.delete(key);
   }
+}
+
+function clearPresentationRoute(url) {
+  for (const key of PRESENTATION_ROUTE_PARAMS) {
+    url.searchParams.delete(key);
+  }
+}
+
+function clearTraceRoute(url) {
+  for (const key of TRACE_ROUTE_PARAMS) {
+    url.searchParams.delete(key);
+  }
+}
+
+function clearStaticDessertTransientRoute(url) {
+  url.searchParams.delete("tileDebug");
+  url.searchParams.delete("debug");
+  clearTraceRoute(url);
+  clearPresentationRoute(url);
+}
+
+export function deriveStaticDessertVisualGapAnchorsFromImages({
+  plateImage,
+  finalImage,
+  plateBackground = [0, 0, 0, 255],
+  finalBackground = plateBackground,
+  maxAnchors = 3,
+  stridePx = 4,
+  minSpacingPx = 72,
+} = {}) {
+  if (
+    !validImage(plateImage) ||
+    !validImage(finalImage) ||
+    plateImage.width !== finalImage.width ||
+    plateImage.height !== finalImage.height
+  ) {
+    return [];
+  }
+
+  const candidates = [];
+  for (let y = 0; y < plateImage.height; y += stridePx) {
+    for (let x = 0; x < plateImage.width; x += stridePx) {
+      const platePixel = readImagePixel(plateImage, x, y);
+      const finalPixel = readImagePixel(finalImage, x, y);
+      const plateDelta = rgbDelta(platePixel, plateBackground);
+      const finalDelta = rgbDelta(finalPixel, finalBackground);
+      const plateVsFinal = rgbDelta(platePixel, finalPixel);
+      const missingScore = plateDelta - finalDelta;
+      if (plateDelta < 30 || missingScore < 24 || finalDelta > plateDelta * 0.55 || plateVsFinal < 28) {
+        continue;
+      }
+      candidates.push({
+        id: `visual-gap-${candidates.length + 1}`,
+        kind: "plate-covered-tile-local-missing",
+        x,
+        y,
+        score: roundMetric(missingScore + plateVsFinal * 0.5),
+        plateDelta: roundMetric(plateDelta),
+        tileLocalDelta: roundMetric(finalDelta),
+      });
+    }
+  }
+
+  candidates.sort((left, right) => (
+    right.score - left.score ||
+    left.y - right.y ||
+    left.x - right.x
+  ));
+  const selected = [];
+  const minSpacingSquared = minSpacingPx * minSpacingPx;
+  for (const candidate of candidates) {
+    if (selected.every((anchor) => squaredDistance(anchor, candidate) >= minSpacingSquared)) {
+      selected.push({
+        ...candidate,
+        id: `visual-gap-${selected.length + 1}`,
+      });
+    }
+    if (selected.length >= maxAnchors) {
+      break;
+    }
+  }
+  return selected;
+}
+
+function validImage(image) {
+  return Boolean(
+    image &&
+    Number.isInteger(image.width) &&
+    Number.isInteger(image.height) &&
+    image.width > 0 &&
+    image.height > 0 &&
+    image.rgba &&
+    image.rgba.length === image.width * image.height * 4
+  );
+}
+
+function readImagePixel(image, x, y) {
+  const offset = (y * image.width + x) * 4;
+  return [
+    image.rgba[offset],
+    image.rgba[offset + 1],
+    image.rgba[offset + 2],
+    image.rgba[offset + 3],
+  ];
+}
+
+function rgbDelta(left, right) {
+  return (
+    Math.abs(left[0] - right[0]) +
+    Math.abs(left[1] - right[1]) +
+    Math.abs(left[2] - right[2])
+  ) / 3;
+}
+
+function squaredDistance(left, right) {
+  const dx = left.x - right.x;
+  const dy = left.y - right.y;
+  return dx * dx + dy * dy;
+}
+
+function roundMetric(value) {
+  return Number.isFinite(value) ? Math.round(value * 1000) / 1000 : 0;
+}
+
+function encodeStaticDessertTraceAnchors(anchors) {
+  return normalizeStaticDessertVisualGapAnchors(anchors)
+    .map((anchor) => `${anchor.id}@${anchor.x},${anchor.y}:${anchor.kind}`)
+    .join(";");
+}
+
+function normalizeStaticDessertVisualGapAnchors(anchors) {
+  return (Array.isArray(anchors) ? anchors : [])
+    .map((anchor, index) => ({
+      id: sanitizeAnchorToken(anchor?.id || `visual-gap-${index + 1}`, index),
+      kind: sanitizeAnchorToken(anchor?.kind || "plate-covered-tile-local-missing", index),
+      x: Math.max(0, Math.floor(finiteNumber(anchor?.x) ?? 0)),
+      y: Math.max(0, Math.floor(finiteNumber(anchor?.y) ?? 0)),
+      score: finiteNumber(anchor?.score) ?? 0,
+      plateDelta: finiteNumber(anchor?.plateDelta) ?? 0,
+      tileLocalDelta: finiteNumber(anchor?.tileLocalDelta) ?? 0,
+    }));
+}
+
+function sanitizeAnchorToken(value, index) {
+  const sanitized = String(value).trim().replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+  return sanitized || `visual-gap-${index + 1}`;
+}
+
+function summarizeVisualGapTrace(capture, expectedRoute = {}) {
+  const anchors = normalizeStaticDessertVisualGapAnchors(capture?.visualGapAnchors);
+  const routeStatus = visualGapTraceRouteStatus(capture, anchors, expectedRoute);
+  const tileLocal = capture?.pageEvidence?.tileLocal;
+  const accumulationById = new Map(
+    (Array.isArray(tileLocal?.perPixelFinalColorAccumulation) ? tileLocal.perPixelFinalColorAccumulation : [])
+      .map((trace) => [trace?.anchorPixel?.id, trace])
+      .filter(([id]) => typeof id === "string")
+  );
+  const ledgersById = new Map(
+    (Array.isArray(tileLocal?.perPixelRetainedToOrderedSurvivalLedger?.anchorLedgers)
+      ? tileLocal.perPixelRetainedToOrderedSurvivalLedger.anchorLedgers
+      : [])
+      .map((ledger) => [ledger?.anchorPixel?.id, ledger])
+      .filter(([id]) => typeof id === "string")
+  );
+  const anchorSummaries = anchors.map((anchor) => {
+    const accumulation = accumulationById.get(anchor.id);
+    const ledger = ledgersById.get(anchor.id);
+    const hasFinalAccumulation = Boolean(accumulation?.finalColorAccumulation);
+    const hasSurvivalLedger = Boolean(ledger);
+    const accumulationAnchorMatches = anchorPixelMatches(anchor, accumulation?.anchorPixel);
+    const ledgerAnchorMatches = anchorPixelMatches(anchor, ledger?.anchorPixel);
+    const traceStatus = !accumulation
+      ? "missing-final-accumulation"
+      : !hasFinalAccumulation
+        ? "missing-final-accumulation-record"
+        : !hasSurvivalLedger
+          ? "missing-survival-ledger"
+          : !accumulationAnchorMatches
+            ? "final-accumulation-anchor-mismatch"
+            : !ledgerAnchorMatches
+              ? "survival-ledger-anchor-mismatch"
+              : accumulation.status || "present";
+    return {
+      ...anchor,
+      traceStatus,
+      traceComplete: hasFinalAccumulation && hasSurvivalLedger && accumulationAnchorMatches && ledgerAnchorMatches,
+      finalStepCount: Array.isArray(accumulation?.finalColorAccumulation?.steps)
+        ? accumulation.finalColorAccumulation.steps.length
+        : 0,
+      outputAlpha: finiteNumber(accumulation?.finalColorAccumulation?.outputColor?.[3]) ?? 0,
+      remainingTransmittance: finiteNumber(accumulation?.finalColorAccumulation?.remainingTransmittance) ?? 1,
+      category: ledger?.category || "unclassified",
+      mechanism: ledger?.mechanism || "unclassified",
+      retainedForegroundCount: finiteNumber(ledger?.counts?.retainedForeground) ?? 0,
+      orderedForegroundCount: finiteNumber(ledger?.counts?.orderedForeground) ?? 0,
+      finalForegroundAlpha: finiteNumber(ledger?.metrics?.finalForegroundAlpha) ?? 0,
+    };
+  });
+  return {
+    status: !capture
+      ? "not-captured"
+      : anchorSummaries.length === 0
+        ? "empty"
+        : routeStatus !== "ok"
+          ? "malformed"
+          : anchorSummaries.some((anchor) => !anchor.traceComplete)
+            ? "partial"
+            : "present",
+    captureId: capture?.id || "",
+    screenshotPath: capture?.screenshotPath || "",
+    anchorCount: anchorSummaries.length,
+    anchors: anchorSummaries,
+    changedPixelRatio: finiteNumber(capture?.imageAnalysis?.changedPixelRatio) ?? 0,
+    routeStatus,
+  };
+}
+
+function visualGapTraceRouteStatus(capture, anchors, expectedRoute = {}) {
+  if (!capture) {
+    return "not-captured";
+  }
+  if (!capture.classification?.harnessPassed) {
+    return "visual-gap trace capture did not pass visual smoke classification";
+  }
+  if (!capture.classification?.realSplatEvidence) {
+    return "visual-gap trace capture did not report real Scaniverse splat evidence";
+  }
+  const label = rendererLabel(capture);
+  if (!label.includes("tile-local-visible") || label.includes("-debug-")) {
+    return `visual-gap trace capture reported renderer label ${rendererLabel(capture) || "missing"}`;
+  }
+  const routeIdentity = capture.routeIdentity && typeof capture.routeIdentity === "object"
+    ? capture.routeIdentity
+    : {};
+  const routeChecks = [
+    ["assetPath", expectedRoute.assetPath],
+    ["witnessView", expectedRoute.witnessView],
+    ["renderer", "tile-local-visible"],
+    ["arenaBackend", DEFAULT_STATIC_TILE_LOCAL_ROUTE.arenaBackend],
+    ["tileSizePx", DEFAULT_STATIC_TILE_LOCAL_ROUTE.tileSizePx],
+    ["maxRefsPerTile", DEFAULT_STATIC_TILE_LOCAL_ROUTE.maxRefsPerTile],
+  ];
+  for (const [field, expected] of routeChecks) {
+    const actual = routeValue(capture, routeIdentity, field);
+    if (stringValue(expected) !== "" && actual !== stringValue(expected)) {
+      return `visual-gap trace route carried ${actual || "missing"} ${field} instead of ${expected}`;
+    }
+  }
+  const traceAnchors = routeValue(capture, routeIdentity, "traceAnchors");
+  const expectedTraceAnchors = encodeStaticDessertTraceAnchors(anchors);
+  if (traceAnchors !== expectedTraceAnchors) {
+    return `visual-gap trace route carried ${traceAnchors || "missing"} trace anchors instead of ${expectedTraceAnchors || "none"}`;
+  }
+  if (routeValue(capture, routeIdentity, "traceAnchor") !== "") {
+    return "visual-gap trace route carried stale singular traceAnchor";
+  }
+  const presentationAnchorFields = [
+    "presentationAnchors",
+    "presentationAnchor",
+    "tileLocalPresentationAnchors",
+    "tileLocalPresentationAnchor",
+  ];
+  if (presentationAnchorFields.some((field) => routeValue(capture, routeIdentity, field) !== "")) {
+    return "visual-gap trace route carried presentation anchors";
+  }
+  if (routeValue(capture, routeIdentity, "tileDebug") !== "" || routeValue(capture, routeIdentity, "debug") !== "") {
+    return "visual-gap trace route carried debug mode params";
+  }
+  const presentationScope = routeValue(capture, routeIdentity, "presentationScope");
+  if (presentationScope !== "" && presentationScope !== "full-scene") {
+    return `visual-gap trace route carried presentation scope ${presentationScope}`;
+  }
+  const stalePresentationScopeFields = [
+    "presentationMode",
+    "tileLocalPresentationScope",
+    "tileLocalPresentationMode",
+  ];
+  const stalePresentationScope = stalePresentationScopeFields.find((field) => routeValue(capture, routeIdentity, field) !== "");
+  if (stalePresentationScope) {
+    return `visual-gap trace route carried stale ${stalePresentationScope}`;
+  }
+  return "ok";
+}
+
+function staticFinalColorRouteStatus(capture) {
+  if (!capture) {
+    return "ok";
+  }
+  const label = rendererLabel(capture);
+  if (!label.includes("tile-local-visible") || label.includes("-debug-")) {
+    return `Final-color capture reported renderer label ${label || "missing"}.`;
+  }
+  const routeIdentity = capture.routeIdentity && typeof capture.routeIdentity === "object"
+    ? capture.routeIdentity
+    : {};
+  const debugParam = ["tileDebug", "debug"].find((field) => routeValue(capture, routeIdentity, field) !== "");
+  if (debugParam) {
+    return `Final-color capture carried debug route param ${debugParam}.`;
+  }
+  const traceParam = TRACE_ROUTE_PARAMS.find((field) => routeValue(capture, routeIdentity, field) !== "");
+  if (traceParam) {
+    return `Final-color capture carried trace route param ${traceParam}.`;
+  }
+  const presentationAnchorFields = [
+    "presentationAnchors",
+    "presentationAnchor",
+    "tileLocalPresentationAnchors",
+    "tileLocalPresentationAnchor",
+  ];
+  const presentationParam = presentationAnchorFields.find((field) => routeValue(capture, routeIdentity, field) !== "");
+  if (presentationParam) {
+    return `Final-color capture carried presentation route param ${presentationParam}.`;
+  }
+  const presentationScope = routeValue(capture, routeIdentity, "presentationScope");
+  if (presentationScope !== "" && presentationScope !== "full-scene") {
+    return `Final-color capture carried presentation scope ${presentationScope}.`;
+  }
+  const stalePresentationScope = [
+    "presentationMode",
+    "tileLocalPresentationScope",
+    "tileLocalPresentationMode",
+  ].find((field) => routeValue(capture, routeIdentity, field) !== "");
+  if (stalePresentationScope) {
+    return `Final-color capture carried presentation route param ${stalePresentationScope}.`;
+  }
+  return "ok";
+}
+
+function staticTileLocalRouteExpectation(finalColorCapture = {}) {
+  const identity = finalColorCapture?.routeIdentity && typeof finalColorCapture.routeIdentity === "object"
+    ? finalColorCapture.routeIdentity
+    : {};
+  return {
+    assetPath: stringValue(identity.assetPath) || assetPath(finalColorCapture),
+    witnessView: stringValue(identity.witnessView) || "default",
+  };
+}
+
+function routeValue(capture, routeIdentity, field) {
+  const searchParams = searchParamsFromCapture(capture);
+  if (searchParams?.has(field)) {
+    return stringValue(searchParams.get(field));
+  }
+  return stringValue(routeIdentity?.[field]);
+}
+
+function searchParamsFromCapture(capture) {
+  if (!capture?.url) {
+    return null;
+  }
+  try {
+    return new URL(capture.url).searchParams;
+  } catch {
+    return null;
+  }
+}
+
+function anchorPixelMatches(anchor, anchorPixel) {
+  return (
+    anchorPixel &&
+    stringValue(anchorPixel.id) === anchor.id &&
+    Math.floor(finiteNumber(anchorPixel.x) ?? -1) === anchor.x &&
+    Math.floor(finiteNumber(anchorPixel.y) ?? -1) === anchor.y
+  );
 }
 
 function staticDessertObservations() {

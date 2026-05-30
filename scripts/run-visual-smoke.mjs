@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import net from "node:net";
 import path from "node:path";
@@ -20,8 +20,11 @@ import {
   classifyTileLocalDiagnostics,
 } from "./visual-smoke/tile-local-diagnostics.mjs";
 import {
+  buildStaticDessertVisualGapTraceCapture,
   buildStaticDessertWitnessPlan,
   classifyStaticDessertWitness,
+  deriveStaticDessertVisualGapAnchorsFromImages,
+  STATIC_DESSERT_WITNESS_CAPTURE_IDS,
 } from "./visual-smoke/static-dessert-witness.mjs";
 import {
   buildOperatorWitnessLoopPlan,
@@ -377,6 +380,11 @@ async function runStaticDessertWitness({ browser, options, baseUrl, reportDir, a
   for (const capture of plan) {
     captures.push(await captureVisualSmoke({ browser, options, capture, reportDir }));
   }
+  const visualGapAnchors = await deriveStaticDessertVisualGapAnchors({ captures, options });
+  if (visualGapAnchors.length > 0) {
+    const traceCapture = buildStaticDessertVisualGapTraceCapture(baseUrl, visualGapAnchors);
+    captures.push(await captureVisualSmoke({ browser, options, capture: traceCapture, reportDir }));
+  }
   const classification = classifyStaticDessertWitness({ captures });
 
   return {
@@ -391,10 +399,44 @@ async function runStaticDessertWitness({ browser, options, baseUrl, reportDir, a
       evidenceSurface: "static dessert witness report, analysis.json, final-color capture, and debug captures",
     }),
     options: publicOptions(options),
-    plan,
+    plan: visualGapAnchors.length > 0
+      ? [...plan, buildStaticDessertVisualGapTraceCapture(baseUrl, visualGapAnchors)]
+      : plan,
     captures,
     classification,
   };
+}
+
+async function deriveStaticDessertVisualGapAnchors({ captures, options }) {
+  const byId = new Map(captures.map((capture) => [capture.id, capture]));
+  const plate = byId.get(STATIC_DESSERT_WITNESS_CAPTURE_IDS.plateFinalColor);
+  const finalColor = byId.get(STATIC_DESSERT_WITNESS_CAPTURE_IDS.finalColor);
+  if (!plate?.screenshotPath || !finalColor?.screenshotPath) {
+    return [];
+  }
+
+  const plateImage = decodePng(await readFile(path.resolve(options.appRoot, plate.screenshotPath)));
+  const finalImage = decodePng(await readFile(path.resolve(options.appRoot, finalColor.screenshotPath)));
+  if (plateImage.width !== finalImage.width || plateImage.height !== finalImage.height) {
+    return [];
+  }
+
+  const plateBackground = imageAnalysisBackground(plate.imageAnalysis) ?? [0, 0, 0, 255];
+  const finalBackground = imageAnalysisBackground(finalColor.imageAnalysis) ?? plateBackground;
+  return deriveStaticDessertVisualGapAnchorsFromImages({
+    plateImage,
+    finalImage,
+    plateBackground,
+    finalBackground,
+  });
+}
+
+function imageAnalysisBackground(imageAnalysis) {
+  const background = imageAnalysis?.backgroundColor;
+  if (!background || ![background.r, background.g, background.b].every(Number.isFinite)) {
+    return null;
+  }
+  return [background.r, background.g, background.b, Number.isFinite(background.a) ? background.a : 255];
 }
 
 async function runOperatorWitnessLoop({ browser, options, baseUrl, reportDir, analysisPath, reportPath, generatedAt }) {
@@ -1343,6 +1385,16 @@ ${renderSmokeHandoffSection(result.smokeHandoff)}
 - Min conic minor radius px: ${metrics.conicShape.minMinorRadiusPx}
 - Max conic anisotropy: ${metrics.conicShape.maxAnisotropy}
 
+## Visual Gap Trace
+
+- Status: ${metrics.visualGapTrace.status}
+- Capture: ${metrics.visualGapTrace.captureId || "not captured"}
+- Screenshot: ${metrics.visualGapTrace.screenshotPath ? `\`${path.relative(path.dirname(result.reportPath), metrics.visualGapTrace.screenshotPath)}\`` : "not captured"}
+- Derived anchor count: ${metrics.visualGapTrace.anchorCount}
+- Trace changed pixels: ${formatPercent(metrics.visualGapTrace.changedPixelRatio)}
+
+${metrics.visualGapTrace.anchors.length === 0 ? "- None" : metrics.visualGapTrace.anchors.map((anchor) => `- ${anchor.id}@${anchor.x},${anchor.y}: ${anchor.traceStatus}; score ${anchor.score}; plate delta ${anchor.plateDelta}; tile-local delta ${anchor.tileLocalDelta}; ${anchor.category}/${anchor.mechanism}; steps ${anchor.finalStepCount}; alpha ${anchor.outputAlpha}; foreground ${anchor.orderedForegroundCount}`).join("\n")}
+
 ## Captures
 
 ${result.captures
@@ -1908,19 +1960,18 @@ function routeIdentityFromCapture(capture, pageEvidence, options) {
     effectiveArenaBackend: pageEvidence.arenaRuntime?.effectiveArenaBackend || null,
     tileSizePx: url.searchParams.get("tileSizePx") || pageEvidence.tileLocal?.diagnostics?.config?.tileSizePx || null,
     maxRefsPerTile: url.searchParams.get("maxRefsPerTile") || pageEvidence.tileLocal?.diagnostics?.config?.maxRefsPerTile || null,
-    traceAnchors: url.searchParams.get("traceAnchors") || url.searchParams.get("traceAnchor") || null,
-    presentationAnchors:
-      url.searchParams.get("presentationAnchors") ||
-      url.searchParams.get("presentationAnchor") ||
-      url.searchParams.get("tileLocalPresentationAnchors") ||
-      url.searchParams.get("tileLocalPresentationAnchor") ||
-      null,
-    presentationScope:
-      url.searchParams.get("presentationScope") ||
-      url.searchParams.get("presentationMode") ||
-      url.searchParams.get("tileLocalPresentationScope") ||
-      url.searchParams.get("tileLocalPresentationMode") ||
-      "full-scene",
+    tileDebug: url.searchParams.get("tileDebug") || null,
+    debug: url.searchParams.get("debug") || null,
+    traceAnchors: url.searchParams.get("traceAnchors") || null,
+    traceAnchor: url.searchParams.get("traceAnchor") || null,
+    presentationAnchors: url.searchParams.get("presentationAnchors") || null,
+    presentationAnchor: url.searchParams.get("presentationAnchor") || null,
+    tileLocalPresentationAnchors: url.searchParams.get("tileLocalPresentationAnchors") || null,
+    tileLocalPresentationAnchor: url.searchParams.get("tileLocalPresentationAnchor") || null,
+    presentationScope: url.searchParams.get("presentationScope") || "full-scene",
+    presentationMode: url.searchParams.get("presentationMode") || null,
+    tileLocalPresentationScope: url.searchParams.get("tileLocalPresentationScope") || null,
+    tileLocalPresentationMode: url.searchParams.get("tileLocalPresentationMode") || null,
     viewport: options.viewport,
     canvas: pageEvidence.canvas ?? null,
   };

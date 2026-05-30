@@ -3,8 +3,10 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
+  buildStaticDessertVisualGapTraceCapture,
   buildStaticDessertWitnessPlan,
   classifyStaticDessertWitness,
+  deriveStaticDessertVisualGapAnchorsFromImages,
 } from "../../scripts/visual-smoke/static-dessert-witness.mjs";
 
 test("static dessert witness plan captures final color and all debug modes for one fixed view", () => {
@@ -86,7 +88,7 @@ test("static dessert witness plan preserves the porous underfill witness view ac
 
 test("static dessert witness plan overrides stale CPU or old tile budget query params", () => {
   const plan = buildStaticDessertWitnessPlan(
-    "http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&arenaBackend=cpu&tileSizePx=6&maxRefsPerTile=32&renderer=plate"
+    "http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&arenaBackend=cpu&tileSizePx=6&maxRefsPerTile=32&renderer=plate&traceAnchors=stale@1,2:old&traceAnchor=legacy@3,4:old&debug=legacy"
   );
 
   const finalColorUrl = new URL(plan.find((capture) => capture.id === "final-color")?.url);
@@ -105,6 +107,85 @@ test("static dessert witness plan overrides stale CPU or old tile budget query p
   assert.equal(debugUrls.every((url) => url.searchParams.get("arenaBackend") === "gpu"), true);
   assert.equal(debugUrls.every((url) => url.searchParams.get("tileSizePx") === "16"), true);
   assert.equal(debugUrls.every((url) => url.searchParams.get("maxRefsPerTile") === "256"), true);
+  for (const url of [plateUrl, finalColorUrl, ...debugUrls]) {
+    assert.equal(url.searchParams.has("traceAnchors"), false);
+    assert.equal(url.searchParams.has("traceAnchor"), false);
+    assert.equal(url.searchParams.has("debug"), false);
+  }
+});
+
+test("static dessert visual gap trace capture preserves route while adding in-frame trace anchors", () => {
+  const capture = buildStaticDessertVisualGapTraceCapture(
+    "http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-close&traceAnchors=stale@1,2:old&presentationAnchors=stale@3,4:old&presentationAnchor=stale@5,6:old&tileLocalPresentationAnchors=stale@7,8:old&tileLocalPresentationAnchor=stale@9,10:old&presentationScope=anchor-neighborhood&presentationMode=anchor-neighborhood&tileLocalPresentationScope=anchor-neighborhood&tileLocalPresentationMode=anchor-neighborhood",
+    [
+      { id: "gap one", kind: "plate-covered", x: 644.9, y: 351.1, score: 42.25, plateDelta: 80, tileLocalDelta: 12 },
+      { id: "gap-two", kind: "tile-local-missing", x: 512, y: 390, score: 39 },
+    ],
+  );
+  const url = new URL(capture.url);
+
+  assert.equal(capture.id, "visual-gap-trace");
+  assert.equal(capture.expectedRendererLabel, "tile-local-visible");
+  assert.equal(url.searchParams.get("renderer"), "tile-local-visible");
+  assert.equal(url.searchParams.get("arenaBackend"), "gpu");
+  assert.equal(url.searchParams.get("tileSizePx"), "16");
+  assert.equal(url.searchParams.get("maxRefsPerTile"), "256");
+  assert.equal(url.searchParams.get("witnessView"), "dessert-close");
+  assert.equal(url.searchParams.has("traceAnchor"), false);
+  assert.equal(url.searchParams.has("presentationAnchors"), false);
+  assert.equal(url.searchParams.has("presentationAnchor"), false);
+  assert.equal(url.searchParams.has("tileLocalPresentationAnchors"), false);
+  assert.equal(url.searchParams.has("tileLocalPresentationAnchor"), false);
+  assert.equal(url.searchParams.has("presentationScope"), false);
+  assert.equal(url.searchParams.has("presentationMode"), false);
+  assert.equal(url.searchParams.has("tileLocalPresentationScope"), false);
+  assert.equal(url.searchParams.has("tileLocalPresentationMode"), false);
+  assert.equal(
+    url.searchParams.get("traceAnchors"),
+    "gap-one@644,351:plate-covered;gap-two@512,390:tile-local-missing",
+  );
+  assert.deepEqual(capture.visualGapAnchors[0], {
+    id: "gap-one",
+    kind: "plate-covered",
+    x: 644,
+    y: 351,
+    score: 42.25,
+    plateDelta: 80,
+    tileLocalDelta: 12,
+  });
+});
+
+test("static dessert visual gap derivation selects plate-covered pixels missing from tile-local output", () => {
+  const plateImage = imageFromPixels(12, 12, (x, y) => {
+    if (x === 8 && y === 8) return [220, 170, 120, 255];
+    if (x === 4 && y === 4) return [160, 110, 80, 255];
+    return [0, 0, 0, 255];
+  });
+  const finalImage = imageFromPixels(12, 12, (x, y) => {
+    if (x === 4 && y === 4) return [155, 105, 78, 255];
+    return [0, 0, 0, 255];
+  });
+
+  const anchors = deriveStaticDessertVisualGapAnchorsFromImages({
+    plateImage,
+    finalImage,
+    stridePx: 4,
+    minSpacingPx: 1,
+  });
+
+  assert.equal(anchors.length, 1);
+  assert.equal(anchors[0].x, 8);
+  assert.equal(anchors[0].y, 8);
+  assert.equal(anchors[0].kind, "plate-covered-tile-local-missing");
+  assert.ok(anchors[0].plateDelta > anchors[0].tileLocalDelta);
+});
+
+test("static dessert visual gap derivation returns no anchors for equal or mismatched images", () => {
+  const image = imageFromPixels(8, 8, () => [10, 20, 30, 255]);
+  const differentSize = imageFromPixels(12, 8, () => [10, 20, 30, 255]);
+
+  assert.deepEqual(deriveStaticDessertVisualGapAnchorsFromImages({ plateImage: image, finalImage: image }), []);
+  assert.deepEqual(deriveStaticDessertVisualGapAnchorsFromImages({ plateImage: image, finalImage: differentSize }), []);
 });
 
 test("static dessert witness classifier requires one asset, one viewport, final color, and compact debug evidence", () => {
@@ -173,6 +254,30 @@ test("static dessert witness classifier requires one asset, one viewport, final 
           conicShape: { maxMajorRadiusPx: 8, minMinorRadiusPx: 1, maxAnisotropy: 5 },
         },
       }),
+      witnessCapture("visual-gap-trace", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        visualGapAnchors: [
+          { id: "visual-gap-1", kind: "plate-covered-tile-local-missing", x: 640, y: 342, score: 71, plateDelta: 88, tileLocalDelta: 9 },
+        ],
+        perPixelFinalColorAccumulation: [
+          {
+            status: "present",
+            anchorPixel: { id: "visual-gap-1", x: 640, y: 342 },
+            finalColorAccumulation: { steps: [{ splatIndex: 1 }], outputColor: [0.1, 0.2, 0.3, 0.44], remainingTransmittance: 0.56 },
+          },
+        ],
+        perPixelRetainedToOrderedSurvivalLedger: {
+          anchorLedgers: [
+            {
+              anchorPixel: { id: "visual-gap-1", x: 640, y: 342 },
+              category: "ordered-present",
+              mechanism: "retained-foreground-identity-survives-to-final-accumulation",
+              counts: { retainedForeground: 2, orderedForeground: 3 },
+              metrics: { finalForegroundAlpha: 0.44 },
+            },
+          ],
+        },
+      }),
     ],
   });
 
@@ -200,9 +305,273 @@ test("static dessert witness classifier requires one asset, one viewport, final 
   assert.equal(result.metrics.sourceSupport.porousBody.projectedCenterCount, 63);
   assert.equal(result.metrics.sourceSupport.porousBody.projectedSupportCount, 144);
   assert.deepEqual(result.metrics.sourceSupport.porousBody.sampleOriginalIds, [200, 201, 202]);
+  assert.equal(result.metrics.visualGapTrace.status, "present");
+  assert.equal(result.metrics.visualGapTrace.anchorCount, 1);
+  assert.equal(result.metrics.visualGapTrace.anchors[0].traceStatus, "present");
+  assert.equal(result.metrics.visualGapTrace.anchors[0].traceComplete, true);
+  assert.equal(result.metrics.visualGapTrace.anchors[0].category, "ordered-present");
+  assert.equal(result.metrics.visualGapTrace.anchors[0].finalStepCount, 1);
+  assert.equal(result.metrics.visualGapTrace.anchors[0].outputAlpha, 0.44);
   assert.equal(result.observations.visibleHoles.evidenceIds.includes("coverage-weight"), true);
   assert.equal(result.observations.plateSeepage.evidenceIds.includes("transmittance"), true);
   assert.equal(result.observations.budgetSkip.status, "separate-high-viewport-observation");
+});
+
+test("static dessert witness classifier refuses incomplete visual gap trace evidence", () => {
+  const result = classifyStaticDessertWitness({
+    captures: [
+      ...staticDessertRequiredCaptures(),
+      witnessCapture("visual-gap-trace", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        visualGapAnchors: [
+          { id: "visual-gap-1", kind: "plate-covered-tile-local-missing", x: 640, y: 342, score: 71, plateDelta: 88, tileLocalDelta: 9 },
+        ],
+        perPixelFinalColorAccumulation: [],
+        perPixelRetainedToOrderedSurvivalLedger: { anchorLedgers: [] },
+      }),
+    ],
+  });
+
+  assert.equal(result.closeable, false);
+  assert.equal(result.metrics.visualGapTrace.status, "partial");
+  assert.equal(result.metrics.visualGapTrace.anchors[0].traceStatus, "missing-final-accumulation");
+  assert.equal(result.findings.some((finding) => finding.kind === "visual-gap-trace-incomplete"), true);
+});
+
+test("static dessert witness classifier refuses absent or empty visual gap trace evidence", () => {
+  const absent = classifyStaticDessertWitness({
+    captures: staticDessertRequiredCaptures(),
+  });
+  const empty = classifyStaticDessertWitness({
+    captures: [
+      ...staticDessertRequiredCaptures(),
+      witnessCapture("visual-gap-trace", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        visualGapAnchors: [],
+      }),
+    ],
+  });
+
+  assert.equal(absent.closeable, false);
+  assert.equal(absent.metrics.visualGapTrace.status, "not-captured");
+  assert.equal(absent.findings.some((finding) => finding.kind === "visual-gap-trace-not-captured"), true);
+  assert.equal(empty.closeable, false);
+  assert.equal(empty.metrics.visualGapTrace.status, "empty");
+  assert.equal(empty.findings.some((finding) => finding.kind === "visual-gap-anchors-missing"), true);
+});
+
+test("static dessert witness classifier refuses debug final-color routes", () => {
+  const result = classifyStaticDessertWitness({
+    captures: [
+      witnessCapture("final-color", {
+        rendererLabel: "tile-local-visible-debug-coverage-weight",
+        routeIdentity: {
+          renderer: "tile-local-visible",
+          tileDebug: "coverage-weight",
+          presentationScope: "full-scene",
+        },
+      }),
+      ...staticDessertRequiredCaptures().filter((capture) => capture.id !== "final-color"),
+    ],
+  });
+
+  assert.equal(result.closeable, false);
+  assert.equal(result.findings.some((finding) => (
+    finding.kind === "final-color-label-mismatch" &&
+    finding.summary.includes("tile-local-visible-debug-coverage-weight")
+  )), true);
+});
+
+test("static dessert witness classifier refuses malformed visual gap trace routes", () => {
+  const anchors = [
+    { id: "visual-gap-1", kind: "plate-covered-tile-local-missing", x: 640, y: 342, score: 71, plateDelta: 88, tileLocalDelta: 9 },
+  ];
+  const result = classifyStaticDessertWitness({
+    captures: [
+      ...staticDessertRequiredCaptures(),
+      witnessCapture("visual-gap-trace", {
+        rendererLabel: "plate",
+        classification: {
+          harnessPassed: false,
+          realSplatEvidence: false,
+          nonblank: false,
+        },
+        routeIdentity: {
+          traceAnchors: "stale@1,2:old",
+          presentationScope: "full-scene",
+        },
+        visualGapAnchors: anchors,
+        perPixelFinalColorAccumulation: finalAccumulationRowsFor(anchors),
+        perPixelRetainedToOrderedSurvivalLedger: survivalLedgerFor(anchors),
+      }),
+    ],
+  });
+
+  assert.equal(result.closeable, false);
+  assert.equal(result.metrics.visualGapTrace.status, "malformed");
+  assert.equal(result.metrics.visualGapTrace.routeStatus, "visual-gap trace capture did not pass visual smoke classification");
+  assert.equal(result.findings.some((finding) => finding.kind === "visual-gap-trace-malformed"), true);
+});
+
+test("static dessert witness classifier refuses stale singular visual gap trace aliases", () => {
+  const anchors = [
+    { id: "visual-gap-1", kind: "plate-covered-tile-local-missing", x: 640, y: 342, score: 71, plateDelta: 88, tileLocalDelta: 9 },
+  ];
+  const result = classifyStaticDessertWitness({
+    captures: [
+      ...staticDessertRequiredCaptures(),
+      witnessCapture("visual-gap-trace", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        routeIdentity: visualGapTraceRoute(anchors),
+        url: `http://127.0.0.1:5173/?traceAnchors=${encodeURIComponent(encodeTraceAnchorsForTest(anchors))}&traceAnchor=stale@1,2:old`,
+        visualGapAnchors: anchors,
+        perPixelFinalColorAccumulation: finalAccumulationRowsFor(anchors),
+        perPixelRetainedToOrderedSurvivalLedger: survivalLedgerFor(anchors),
+      }),
+    ],
+  });
+
+  assert.equal(result.closeable, false);
+  assert.equal(result.metrics.visualGapTrace.status, "malformed");
+  assert.equal(result.metrics.visualGapTrace.routeStatus, "visual-gap trace route carried stale singular traceAnchor");
+  assert.equal(result.findings.some((finding) => finding.kind === "visual-gap-trace-malformed"), true);
+});
+
+test("static dessert witness classifier refuses stale presentation aliases on visual gap traces", () => {
+  const anchors = [
+    { id: "visual-gap-1", kind: "plate-covered-tile-local-missing", x: 640, y: 342, score: 71, plateDelta: 88, tileLocalDelta: 9 },
+  ];
+  const result = classifyStaticDessertWitness({
+    captures: [
+      ...staticDessertRequiredCaptures(),
+      witnessCapture("visual-gap-trace", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        routeIdentity: {
+          ...visualGapTraceRoute(anchors),
+          presentationAnchor: "stale@5,6:old",
+        },
+        visualGapAnchors: anchors,
+        perPixelFinalColorAccumulation: finalAccumulationRowsFor(anchors),
+        perPixelRetainedToOrderedSurvivalLedger: survivalLedgerFor(anchors),
+      }),
+    ],
+  });
+
+  assert.equal(result.closeable, false);
+  assert.equal(result.metrics.visualGapTrace.status, "malformed");
+  assert.equal(result.metrics.visualGapTrace.routeStatus, "visual-gap trace route carried presentation anchors");
+});
+
+test("static dessert witness classifier refuses visual gap traces on non-static routes", () => {
+  const anchors = [
+    { id: "visual-gap-1", kind: "plate-covered-tile-local-missing", x: 640, y: 342, score: 71, plateDelta: 88, tileLocalDelta: 9 },
+  ];
+  const result = classifyStaticDessertWitness({
+    captures: [
+      ...staticDessertRequiredCaptures(),
+      witnessCapture("visual-gap-trace", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        routeIdentity: {
+          ...visualGapTraceRoute(anchors),
+          renderer: "plate",
+          arenaBackend: "cpu",
+          tileSizePx: "4",
+          maxRefsPerTile: "1",
+        },
+        visualGapAnchors: anchors,
+        perPixelFinalColorAccumulation: finalAccumulationRowsFor(anchors),
+        perPixelRetainedToOrderedSurvivalLedger: survivalLedgerFor(anchors),
+      }),
+    ],
+  });
+
+  assert.equal(result.closeable, false);
+  assert.equal(result.metrics.visualGapTrace.status, "malformed");
+  assert.match(result.metrics.visualGapTrace.routeStatus, /renderer instead of tile-local-visible/);
+  assert.equal(result.findings.some((finding) => finding.kind === "visual-gap-trace-malformed"), true);
+});
+
+test("static dessert witness classifier refuses debug-mode visual gap trace routes", () => {
+  const anchors = [
+    { id: "visual-gap-1", kind: "plate-covered-tile-local-missing", x: 640, y: 342, score: 71, plateDelta: 88, tileLocalDelta: 9 },
+  ];
+  const result = classifyStaticDessertWitness({
+    captures: [
+      ...staticDessertRequiredCaptures(),
+      witnessCapture("visual-gap-trace", {
+        rendererLabel: "tile-local-visible-debug-coverage-weight",
+        routeIdentity: {
+          ...visualGapTraceRoute(anchors),
+          tileDebug: "coverage-weight",
+        },
+        visualGapAnchors: anchors,
+        perPixelFinalColorAccumulation: finalAccumulationRowsFor(anchors),
+        perPixelRetainedToOrderedSurvivalLedger: survivalLedgerFor(anchors),
+      }),
+    ],
+  });
+
+  assert.equal(result.closeable, false);
+  assert.equal(result.metrics.visualGapTrace.status, "malformed");
+  assert.match(result.metrics.visualGapTrace.routeStatus, /renderer label tile-local-visible-debug-coverage-weight/);
+  assert.equal(result.findings.some((finding) => finding.kind === "visual-gap-trace-malformed"), true);
+});
+
+test("static dessert witness classifier refuses hidden debug params on visual gap trace routes", () => {
+  const anchors = [
+    { id: "visual-gap-1", kind: "plate-covered-tile-local-missing", x: 640, y: 342, score: 71, plateDelta: 88, tileLocalDelta: 9 },
+  ];
+  const result = classifyStaticDessertWitness({
+    captures: [
+      ...staticDessertRequiredCaptures(),
+      witnessCapture("visual-gap-trace", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        routeIdentity: {
+          ...visualGapTraceRoute(anchors),
+          tileDebug: "coverage-weight",
+        },
+        visualGapAnchors: anchors,
+        perPixelFinalColorAccumulation: finalAccumulationRowsFor(anchors),
+        perPixelRetainedToOrderedSurvivalLedger: survivalLedgerFor(anchors),
+      }),
+    ],
+  });
+
+  assert.equal(result.closeable, false);
+  assert.equal(result.metrics.visualGapTrace.status, "malformed");
+  assert.equal(result.metrics.visualGapTrace.routeStatus, "visual-gap trace route carried debug mode params");
+});
+
+test("static dessert witness classifier refuses stale visual gap trace row coordinates", () => {
+  const anchors = [
+    { id: "visual-gap-1", kind: "plate-covered-tile-local-missing", x: 640, y: 342, score: 71, plateDelta: 88, tileLocalDelta: 9 },
+  ];
+  const staleRows = finalAccumulationRowsFor(anchors).map((row) => ({
+    ...row,
+    anchorPixel: { id: "visual-gap-1", x: 1, y: 2 },
+  }));
+  const staleLedger = {
+    anchorLedgers: survivalLedgerFor(anchors).anchorLedgers.map((ledger) => ({
+      ...ledger,
+      anchorPixel: { id: "visual-gap-1", x: 3, y: 4 },
+    })),
+  };
+  const result = classifyStaticDessertWitness({
+    captures: [
+      ...staticDessertRequiredCaptures(),
+      witnessCapture("visual-gap-trace", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        visualGapAnchors: anchors,
+        perPixelFinalColorAccumulation: staleRows,
+        perPixelRetainedToOrderedSurvivalLedger: staleLedger,
+      }),
+    ],
+  });
+
+  assert.equal(result.closeable, false);
+  assert.equal(result.metrics.visualGapTrace.status, "partial");
+  assert.equal(result.metrics.visualGapTrace.anchors[0].traceStatus, "final-accumulation-anchor-mismatch");
+  assert.equal(result.findings.some((finding) => finding.kind === "visual-gap-trace-incomplete"), true);
 });
 
 test("static dessert witness classifier flags tile-local final-color footprint expansion against plate", () => {
@@ -256,7 +625,44 @@ test("visual smoke CLI exposes a static dessert witness batch mode", () => {
   assert.match(source, /Porous body projected support splats/);
   assert.match(source, /Center leak band retention audit/);
   assert.match(source, /metrics\.retentionAudit\.regions\.centerLeakBand\.region/);
+  assert.match(source, /deriveStaticDessertVisualGapAnchors/);
+  assert.match(source, /Visual Gap Trace/);
+  assert.match(source, /metrics\.visualGapTrace\.anchors/);
 });
+
+function staticDessertRequiredCaptures() {
+  return [
+    witnessCapture("final-color", {
+      rendererLabel: "tile-local-visible-gaussian-compositor",
+    }),
+    witnessCapture("plate-final-color", {
+      rendererLabel: "plate",
+    }),
+    witnessCapture("coverage-weight"),
+    witnessCapture("accumulated-alpha", {
+      diagnostics: {
+        alpha: { estimatedMaxAccumulatedAlpha: 1, estimatedMinTransmittance: 0 },
+      },
+    }),
+    witnessCapture("transmittance", {
+      diagnostics: {
+        alpha: { estimatedMaxAccumulatedAlpha: 1, estimatedMinTransmittance: 0 },
+      },
+    }),
+    witnessCapture("tile-ref-count"),
+    witnessCapture("conic-shape"),
+  ];
+}
+
+function imageFromPixels(width, height, pixelFor) {
+  const rgba = Buffer.alloc(width * height * 4);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      rgba.set(pixelFor(x, y), (y * width + x) * 4);
+    }
+  }
+  return { width, height, rgba };
+}
 
 function witnessCapture(id, overrides = {}) {
   const rendererLabel = overrides.rendererLabel ?? `tile-local-visible-debug-${id}`;
@@ -266,6 +672,7 @@ function witnessCapture(id, overrides = {}) {
       nonblank: true,
       realSplatEvidence: true,
       harnessPassed: true,
+      ...overrides.classification,
     },
     pageEvidence: {
       rendererLabel,
@@ -294,6 +701,10 @@ function witnessCapture(id, overrides = {}) {
         refs: 24000,
         tileColumns: 80,
         tileRows: 45,
+        perPixelFinalColorAccumulation: overrides.perPixelFinalColorAccumulation ?? [],
+        perPixelRetainedToOrderedSurvivalLedger: overrides.perPixelRetainedToOrderedSurvivalLedger ?? {
+          anchorLedgers: [],
+        },
         diagnostics: {
           debugMode: id,
           tileRefs: { total: 24000, maxPerTile: 32, nonEmptyTiles: 400 },
@@ -309,5 +720,58 @@ function witnessCapture(id, overrides = {}) {
       changedPixelRatio: overrides.changedPixelRatio ?? 0.2,
       distinctColorCount: 1024,
     },
+    visualGapAnchors: overrides.visualGapAnchors,
+    routeIdentity: overrides.routeIdentity ?? (id === "visual-gap-trace"
+      ? visualGapTraceRoute(overrides.visualGapAnchors ?? [])
+      : undefined),
+    url: overrides.url,
+    screenshotPath: overrides.screenshotPath ?? `${id}.png`,
+  };
+}
+
+function visualGapTraceRoute(anchors) {
+  return {
+    assetPath: "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json",
+    witnessView: "default",
+    renderer: "tile-local-visible",
+    arenaBackend: "gpu",
+    tileSizePx: "16",
+    maxRefsPerTile: "256",
+    traceAnchors: encodeTraceAnchorsForTest(anchors),
+    presentationScope: "full-scene",
+  };
+}
+
+function encodeTraceAnchorsForTest(anchors) {
+  return (Array.isArray(anchors) ? anchors : [])
+    .map((anchor) => `${sanitizeTraceToken(anchor.id)}@${Math.floor(anchor.x)},${Math.floor(anchor.y)}:${sanitizeTraceToken(anchor.kind)}`)
+    .join(";");
+}
+
+function sanitizeTraceToken(value) {
+  return String(value).trim().replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+function finalAccumulationRowsFor(anchors) {
+  return anchors.map((anchor) => ({
+    status: "present",
+    anchorPixel: { id: anchor.id, x: anchor.x, y: anchor.y },
+    finalColorAccumulation: {
+      steps: [{ splatIndex: 1 }],
+      outputColor: [0.1, 0.2, 0.3, 0.44],
+      remainingTransmittance: 0.56,
+    },
+  }));
+}
+
+function survivalLedgerFor(anchors) {
+  return {
+    anchorLedgers: anchors.map((anchor) => ({
+      anchorPixel: { id: anchor.id, x: anchor.x, y: anchor.y },
+      category: "ordered-present",
+      mechanism: "retained-foreground-identity-survives-to-final-accumulation",
+      counts: { retainedForeground: 2, orderedForeground: 3 },
+      metrics: { finalForegroundAlpha: 0.44 },
+    })),
   };
 }
