@@ -429,11 +429,15 @@ async function runOperatorWitnessLoop({ browser, options, baseUrl, reportDir, an
 }
 
 async function runGpuLiveParityMugshot({ browser, options, baseUrl, reportDir, analysisPath, reportPath, generatedAt }) {
-  const plan = buildGpuLiveParityMugshotPlan(baseUrl, { timeoutMs: options.timeoutMs });
+  const plan = buildGpuLiveParityMugshotPlan(baseUrl, {
+    timeoutMs: options.timeoutMs,
+    sourceMode: options.gpuLiveParitySourceMode,
+  });
+  const referenceRouteLabel = gpuLiveParityReferenceRouteLabel(options);
   const cpuSession = await captureOperatorWitnessSession({
     browser,
     options,
-    plan: plan.filter((capture) => capture.routeRole === "cpu-reference"),
+    plan: plan.filter((capture) => capture.routeRole !== "direct-gpu-live"),
     reportDir,
   });
   const gpuSession = await captureOperatorWitnessSession({
@@ -467,7 +471,7 @@ async function runGpuLiveParityMugshot({ browser, options, baseUrl, reportDir, a
     contactSheetPath,
     smokeHandoff: buildSmokeHandoff(options, {
       smokeKind: "visual",
-      decisionRequested: "Classify same-view CPU reference versus direct GPU live route divergence before visual repair.",
+      decisionRequested: `Classify same-view ${referenceRouteLabel} versus direct GPU live route divergence before visual repair.`,
       expectedVisualDelta: "none expected from this harness-only slice",
       evidenceSurface: "GPU live parity mugshot report, contact sheet, screenshots, route identities, and pair image diffs",
     }),
@@ -1468,6 +1472,10 @@ function renderGpuLiveParityMugshotReport(result) {
   const classification = result.classification;
   const metrics = classification.metrics;
   const divergence = classification.divergence;
+  const referenceRouteLabel = gpuLiveParityReferenceRouteLabel(result.options);
+  const referenceRouteBoundary = result.options?.gpuLiveParitySourceMode === "direct-gpu-repeat"
+    ? "Direct GPU reference remains the repeat-control route; direct GPU remains the live presentation route under test."
+    : "CPU/reference remains an observable oracle; direct GPU remains the live presentation route under test.";
   return `# GPU Live Parity Mugshot Report
 
 - Status: ${classification.summary.status}
@@ -1568,14 +1576,18 @@ ${JSON.stringify(result.captures.map((capture) => ({ id: capture.id, pairId: cap
 
 ## Boundary
 
-- This witness compares final-color CPU/reference and direct GPU-live tile-local routes under the same camera/view.
+- This witness compares final-color ${referenceRouteLabel} and direct GPU-live tile-local routes under the same camera/view.
 - It does not repair alpha, conic, ordering, source selection, camera, tile caps, or deferred semantics.
-- CPU/reference remains an observable oracle; direct GPU remains the live presentation route under test.
+- ${referenceRouteBoundary}
 
 ## Summary
 
 ${classification.summary.text}
 `;
+}
+
+function gpuLiveParityReferenceRouteLabel(options = {}) {
+  return options.gpuLiveParitySourceMode === "direct-gpu-repeat" ? "direct GPU reference" : "CPU/reference";
 }
 
 function renderOperatorTimingTable(timing = {}) {
@@ -1702,6 +1714,7 @@ function parseArgs(args) {
     staticDessertWitness: false,
     operatorWitnessLoop: false,
     gpuLiveParityMugshot: false,
+    gpuLiveParitySourceMode: "cpu-vs-direct-gpu",
     smokeKind: undefined,
     decisionRequested: undefined,
     expectedVisualDelta: undefined,
@@ -1808,6 +1821,18 @@ function parseArgs(args) {
           options.settleMs = 5000;
         }
         break;
+      case "--gpu-live-same-source-mugshot":
+      case "--gpu-live-repeat-parity":
+        options.gpuLiveParityMugshot = true;
+        options.gpuLiveParitySourceMode = "direct-gpu-repeat";
+        options.requireRealSplat = true;
+        if (options.timeoutMs === 15000) {
+          options.timeoutMs = 60000;
+        }
+        if (options.settleMs === 1000) {
+          options.settleMs = 5000;
+        }
+        break;
       case "--smoke-kind":
         options.smokeKind = parseSmokeKind(next());
         break;
@@ -1854,6 +1879,7 @@ function publicOptions(options) {
     staticDessertWitness: options.staticDessertWitness,
     operatorWitnessLoop: options.operatorWitnessLoop,
     gpuLiveParityMugshot: options.gpuLiveParityMugshot,
+    gpuLiveParitySourceMode: options.gpuLiveParitySourceMode,
     smokeHandoff: buildSmokeHandoff(options),
   };
 }
@@ -1968,6 +1994,7 @@ Options:
   --static-dessert-witness        Capture fixed dessert final color plus tile-local debug evidence in one report.
   --operator-witness-loop         Capture whole-render-first operator visuals plus close crops and interaction filmstrip.
   --gpu-live-parity-mugshot       Capture CPU reference vs direct GPU live final-color pairs under the same views.
+  --gpu-live-same-source-mugshot  Capture direct GPU reference vs direct GPU live pairs under the same views.
 `);
 }
 

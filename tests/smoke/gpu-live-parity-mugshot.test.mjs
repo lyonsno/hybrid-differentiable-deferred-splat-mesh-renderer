@@ -50,6 +50,26 @@ test("GPU live parity mugshot plan captures CPU reference and direct GPU under t
   assert.ok(plan.every((capture) => capture.timeoutScreenshotMs === 60000));
 });
 
+test("GPU live parity mugshot plan can capture same-source direct GPU repeat pairs", () => {
+  const plan = buildGpuLiveParityMugshotPlan(BASE_URL, { sourceMode: "direct-gpu-repeat" });
+
+  assert.deepEqual(
+    plan.map((capture) => [capture.id, capture.pairId, capture.routeRole]),
+    [
+      [GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeCpu, "whole-render", "direct-gpu-reference"],
+      [GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeGpu, "whole-render", "direct-gpu-live"],
+      [GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.dessertCloseCpu, "dessert-close", "direct-gpu-reference"],
+      [GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.dessertCloseGpu, "dessert-close", "direct-gpu-live"],
+      [GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.porousCloseCpu, "porous-close", "direct-gpu-reference"],
+      [GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.porousCloseGpu, "porous-close", "direct-gpu-live"],
+    ]
+  );
+  assert.ok(plan.every((capture) => new URL(capture.url).searchParams.get("arenaBackend") === "gpu"));
+  assert.equal(plan[0].url, plan[1].url);
+  assert.equal(plan[2].url, plan[3].url);
+  assert.equal(plan[4].url, plan[5].url);
+});
+
 test("GPU live parity mugshot replaces incoming trace routes with canonical diagnostic anchors", () => {
   const plan = buildGpuLiveParityMugshotPlan(
     `${BASE_URL}&traceAnchors=operator@1,2:stale&presentationAnchors=operator@3,4:stale&presentationScope=anchor-neighborhood&tileDebug=refs`
@@ -151,6 +171,79 @@ test("GPU live parity classifier closes the witness while preserving route diver
     "porous-close",
   ]);
   assert.equal(result.divergence.pairsNeedingInvestigation, 3);
+});
+
+test("GPU live parity classifier closes a same-source direct GPU repeat witness", () => {
+  const result = classifyGpuLiveParityMugshot({
+    captures: [
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeCpu, {
+        pairId: "whole-render",
+        routeRole: "direct-gpu-reference",
+        arenaBackend: "gpu",
+        effectiveArenaBackend: "gpu",
+        refs: 2360150,
+        refAccounting: liveRefAccounting(2360150, 2360150),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeGpu, {
+        pairId: "whole-render",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        effectiveArenaBackend: "gpu",
+        refs: 2360150,
+        refAccounting: liveRefAccounting(2360150, 2360150),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.dessertCloseCpu, {
+        pairId: "dessert-close",
+        routeRole: "direct-gpu-reference",
+        arenaBackend: "gpu",
+        effectiveArenaBackend: "gpu",
+        witnessView: "dessert-close",
+        refs: 2360150,
+        refAccounting: liveRefAccounting(2360150, 2360150),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.dessertCloseGpu, {
+        pairId: "dessert-close",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        effectiveArenaBackend: "gpu",
+        witnessView: "dessert-close",
+        refs: 2360150,
+        refAccounting: liveRefAccounting(2360150, 2360150),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.porousCloseCpu, {
+        pairId: "porous-close",
+        routeRole: "direct-gpu-reference",
+        arenaBackend: "gpu",
+        effectiveArenaBackend: "gpu",
+        witnessView: "dessert-porous-close",
+        refs: 2360150,
+        refAccounting: liveRefAccounting(2360150, 2360150),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.porousCloseGpu, {
+        pairId: "porous-close",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        effectiveArenaBackend: "gpu",
+        witnessView: "dessert-porous-close",
+        refs: 2360150,
+        refAccounting: liveRefAccounting(2360150, 2360150),
+      }),
+    ],
+    comparisons: [
+      { pairId: "whole-render", comparable: true, changedPixelRatio: 0, changedPixels: 0, totalPixels: 921600 },
+      { pairId: "dessert-close", comparable: true, changedPixelRatio: 0, changedPixels: 0, totalPixels: 921600 },
+      { pairId: "porous-close", comparable: true, changedPixelRatio: 0, changedPixels: 0, totalPixels: 921600 },
+    ],
+    contactSheetPath: "smoke-reports/gpu-live-parity/contact-sheet.png",
+  });
+
+  const whole = result.metrics.pairs[0];
+  assert.equal(result.closeable, true);
+  assert.equal(whole.cpuSourceTopology.sourceClass, "compact-bounded-full-scene-source");
+  assert.equal(whole.gpuSourceTopology.sourceClass, "compact-bounded-full-scene-source");
+  assert.equal(whole.sourceTopologyComparison.status, "same-source-topology");
+  assert.equal(result.divergence.primary, "no-observed-divergence");
+  assert.deepEqual(result.divergence.sourceTopologyMismatchPairs, []);
 });
 
 test("GPU live parity classifier fails if routes differ by more than backend", () => {
@@ -1559,6 +1652,9 @@ test("visual smoke CLI exposes the GPU live parity mugshot batch mode", () => {
   const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
 
   assert.match(source, /--gpu-live-parity-mugshot/);
+  assert.match(source, /--gpu-live-same-source-mugshot/);
+  assert.match(source, /gpuLiveParityReferenceRouteLabel/);
+  assert.doesNotMatch(source, /Classify same-view CPU reference versus direct GPU live/);
   assert.match(source, /runGpuLiveParityMugshot/);
   assert.match(source, /renderGpuLiveParityMugshotReport/);
 });
@@ -1574,7 +1670,7 @@ function witnessCapture(id, overrides = {}) {
   const refs = overrides.refs ?? 94406;
   const compactSourceConstruction = Object.hasOwn(overrides, "compactSourceConstruction")
     ? overrides.compactSourceConstruction
-    : routeRole === "direct-gpu-live"
+    : routeRole === "direct-gpu-live" || routeRole === "direct-gpu-reference"
       ? boundedFullSceneConstruction({
           projectedRefEstimate: refs,
           streamedProjectedRefs: refs,

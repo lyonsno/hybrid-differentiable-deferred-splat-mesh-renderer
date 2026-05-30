@@ -75,15 +75,19 @@ const DIFFERENT_PIXEL_THRESHOLD = 8;
 const VISUAL_DIVERGENCE_THRESHOLD = 0.005;
 const REF_DIVERGENCE_RATIO = 2;
 
-export function buildGpuLiveParityMugshotPlan(baseUrl, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
+export function buildGpuLiveParityMugshotPlan(
+  baseUrl,
+  { timeoutMs = DEFAULT_TIMEOUT_MS, sourceMode = "cpu-vs-direct-gpu" } = {}
+) {
+  const sameSourceDirectGpu = sourceMode === "direct-gpu-repeat";
   const captures = [];
   for (const pair of GPU_LIVE_PARITY_MUGSHOT_PAIRS) {
     captures.push(
       captureForPair(baseUrl, pair, {
         id: pair.cpuCaptureId,
-        title: `${pair.title} CPU reference`,
-        routeRole: "cpu-reference",
-        arenaBackend: "cpu",
+        title: sameSourceDirectGpu ? `${pair.title} direct GPU reference` : `${pair.title} CPU reference`,
+        routeRole: sameSourceDirectGpu ? "direct-gpu-reference" : "cpu-reference",
+        arenaBackend: sameSourceDirectGpu ? "gpu" : "cpu",
         timeoutMs,
       }),
       captureForPair(baseUrl, pair, {
@@ -163,6 +167,12 @@ export function classifyGpuLiveParityMugshot({ captures = [], comparisons = [], 
     if (gpuRefSourceFinding) {
       findings.push(gpuRefSourceFinding);
     }
+    if (cpu.routeRole === "direct-gpu-reference") {
+      const directGpuReferenceRefSourceFinding = validateDirectGpuRefSource(pair, cpu);
+      if (directGpuReferenceRefSourceFinding) {
+        findings.push(directGpuReferenceRefSourceFinding);
+      }
+    }
     const gpuCompactSourceConstruction = summarizeCompactSourceConstruction(gpu);
     if (gpuCompactSourceConstruction.status !== "present") {
       findings.push(
@@ -193,12 +203,15 @@ export function classifyGpuLiveParityMugshot({ captures = [], comparisons = [], 
 
   const divergence = classifyDivergence(pairs);
   const closeable = findings.length === 0;
+  const referenceRouteLabel = captures.some((capture) => capture.routeRole === "direct-gpu-reference")
+    ? "direct GPU reference"
+    : "CPU reference";
   return {
     closeable,
     summary: {
       status: closeable ? "PASS" : "FAIL",
       text: closeable
-        ? `PASS: CPU reference and direct GPU live routes were captured under ${pairs.length} same-view final-color pairs; primary divergence is ${divergence.primary}.`
+        ? `PASS: ${referenceRouteLabel} and direct GPU live routes were captured under ${pairs.length} same-view final-color pairs; primary divergence is ${divergence.primary}.`
         : `FAIL: ${findings[0]?.summary ?? "GPU live parity mugshot criteria were not satisfied"}`,
     },
     metrics: {
@@ -369,28 +382,29 @@ function comparePairRoutes(pair, cpu, gpu) {
       );
     }
   }
-  if (routeField(cpu, "arenaBackend") !== "cpu" || routeField(gpu, "arenaBackend") !== "gpu") {
+  const expectedReferenceBackend = cpu.routeRole === "direct-gpu-reference" ? "gpu" : "cpu";
+  if (routeField(cpu, "arenaBackend") !== expectedReferenceBackend || routeField(gpu, "arenaBackend") !== "gpu") {
     return finding(
       "pair-backend-mismatch",
-      `${pair.id} expected arenaBackend cpu/gpu but saw ${routeField(cpu, "arenaBackend") || "missing"}/${routeField(gpu, "arenaBackend") || "missing"}.`
+      `${pair.id} expected arenaBackend ${expectedReferenceBackend}/gpu but saw ${routeField(cpu, "arenaBackend") || "missing"}/${routeField(gpu, "arenaBackend") || "missing"}.`
     );
   }
-  if (routeField(cpu, "effectiveArenaBackend") !== "cpu" || routeField(gpu, "effectiveArenaBackend") !== "gpu") {
+  if (routeField(cpu, "effectiveArenaBackend") !== expectedReferenceBackend || routeField(gpu, "effectiveArenaBackend") !== "gpu") {
     return finding(
       "pair-effective-backend-mismatch",
-      `${pair.id} expected effectiveArenaBackend cpu/gpu but saw ${routeField(cpu, "effectiveArenaBackend") || "missing"}/${routeField(gpu, "effectiveArenaBackend") || "missing"}.`
+      `${pair.id} expected effectiveArenaBackend ${expectedReferenceBackend}/gpu but saw ${routeField(cpu, "effectiveArenaBackend") || "missing"}/${routeField(gpu, "effectiveArenaBackend") || "missing"}.`
     );
   }
   return null;
 }
 
-function validateDirectGpuRefSource(pair, gpu) {
-  const refSource = tileRefSource(gpu);
-  const refStatus = tileRefStatus(gpu);
+function validateDirectGpuRefSource(pair, capture) {
+  const refSource = tileRefSource(capture);
+  const refStatus = tileRefStatus(capture);
   if (refSource !== "gpu-scatter-cursor-readback" || refStatus !== "present") {
     return finding(
       "gpu-live-ref-source-missing",
-      `${pair.id} direct GPU live capture reported refs from ${refSource || "missing"} (${refStatus || "missing"}) instead of present gpu-scatter-cursor-readback.`
+      `${pair.id} ${capture.routeRole || "direct-gpu"} capture reported refs from ${refSource || "missing"} (${refStatus || "missing"}) instead of present gpu-scatter-cursor-readback.`
     );
   }
   return null;
@@ -405,12 +419,12 @@ function summarizePair(pair, cpu, gpu, comparison) {
   const cpuCompactSourceConstruction = summarizeCompactSourceConstruction(cpu);
   const gpuCompactSourceConstruction = summarizeCompactSourceConstruction(gpu);
   const cpuSourceTopology = summarizeSourceTopology({
-    routeRole: "cpu-reference",
+    routeRole: cpu.routeRole ?? "cpu-reference",
     refSource: cpuRefSource,
     compactSourceConstruction: cpuCompactSourceConstruction,
   });
   const gpuSourceTopology = summarizeSourceTopology({
-    routeRole: "direct-gpu-live",
+    routeRole: gpu.routeRole ?? "direct-gpu-live",
     refSource: gpuRefSource,
     compactSourceConstruction: gpuCompactSourceConstruction,
   });
