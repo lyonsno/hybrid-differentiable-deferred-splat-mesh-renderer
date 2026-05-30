@@ -1647,6 +1647,192 @@ test("GPU live parity classifier distinguishes retained identity set mismatch fr
   assert.deepEqual(delta.anchorDiffs[0].retainedIdentityDelta.gpuContributorIdSample, [80, 70]);
   assert.deepEqual(delta.anchorDiffs[0].retainedIdentityDelta.cpuContributorIdentitySample, ["7:70", "8:80"]);
   assert.deepEqual(delta.anchorDiffs[0].retainedIdentityDelta.gpuContributorIdentitySample, ["8:80", "7:70"]);
+  assert.equal(delta.anchorDiffs[0].retainedIdentityDelta.orderKeyDelta.status, "same-order-keys");
+  assert.deepEqual(delta.anchorDiffs[0].retainedIdentityDelta.orderKeyDelta.comparedFields, [
+    "tileIndex",
+    "viewRank",
+    "viewDepth",
+    "splatIndex",
+    "originalId",
+  ]);
+  assert.deepEqual(delta.anchorDiffs[0].retainedIdentityDelta.orderKeyDelta.missingFields, []);
+  assert.deepEqual(delta.anchorDiffs[0].retainedIdentityDelta.orderKeyDelta.firstDisplacement, {
+    identityKey: "7:70",
+    cpuIndex: 0,
+    gpuIndex: 1,
+    cpuOrderKey: "302:7:-7:7:70",
+    gpuOrderKey: "302:7:-7:7:70",
+  });
+});
+
+test("GPU live parity classifier reports order-key field mismatches for retained identity reorderings", () => {
+  const result = classifyGpuLiveParityMugshot({
+    captures: [
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeCpu, {
+        pairId: "whole-render",
+        routeRole: "direct-gpu-reference",
+        arenaBackend: "gpu",
+        refs: 2,
+        refAccounting: liveRefAccounting(2),
+        finalColorRows: blockedFinalColorRows(["whole-a"]),
+        compositorInputReadback: liveCompositorInputReadback(
+          "whole-a",
+          [120, 80, 60, 255],
+          [
+            compositorContributor({ layer: 0, splatIndex: 7, originalId: 70, viewRank: 7 }),
+            compositorContributor({ layer: 1, splatIndex: 8, originalId: 80, viewRank: 8 }),
+          ],
+          "gpu-buffer-readback"
+        ),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeGpu, {
+        pairId: "whole-render",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        refs: 2,
+        refAccounting: liveRefAccounting(2),
+        finalColorRows: blockedFinalColorRows(["whole-a"]),
+        compositorInputReadback: liveCompositorInputReadback(
+          "whole-a",
+          [151, 88, 53, 255],
+          [
+            compositorContributor({ layer: 0, splatIndex: 8, originalId: 80, viewRank: 8 }),
+            compositorContributor({ layer: 1, splatIndex: 7, originalId: 70, viewRank: 99 }),
+          ],
+          "gpu-buffer-readback"
+        ),
+      }),
+    ],
+    comparisons: [
+      { pairId: "whole-render", comparable: true, changedPixelRatio: 0.0464, changedPixels: 42763, totalPixels: 921600 },
+    ],
+    contactSheetPath: "smoke-reports/gpu-live-parity/contact-sheet.png",
+  });
+
+  const retainedIdentityDelta = result.metrics.pairs[0].finalColorLedger.compositorRowDelta
+    .anchorDiffs[0].retainedIdentityDelta;
+  assert.equal(retainedIdentityDelta.status, "order-mismatch");
+  assert.equal(retainedIdentityDelta.orderKeyDelta.status, "order-key-field-mismatch");
+  assert.deepEqual(retainedIdentityDelta.orderKeyDelta.missingFields, []);
+  assert.deepEqual(retainedIdentityDelta.orderKeyDelta.mismatchSample[0], {
+    identityKey: "7:70",
+    field: "viewRank",
+    cpu: 7,
+    gpu: 99,
+    cpuOrderKey: "302:7:-7:7:70",
+    gpuOrderKey: "302:99:-7:7:70",
+  });
+});
+
+test("GPU live parity classifier compares duplicate retained identity order-key multisets", () => {
+  const result = classifyGpuLiveParityMugshot({
+    captures: [
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeCpu, {
+        pairId: "whole-render",
+        routeRole: "direct-gpu-reference",
+        arenaBackend: "gpu",
+        refs: 3,
+        refAccounting: liveRefAccounting(3),
+        finalColorRows: blockedFinalColorRows(["whole-a"]),
+        compositorInputReadback: liveCompositorInputReadback(
+          "whole-a",
+          [120, 80, 60, 255],
+          [
+            compositorContributor({ layer: 0, splatIndex: 7, originalId: 70, viewRank: 1, viewDepth: -1 }),
+            compositorContributor({ layer: 1, splatIndex: 7, originalId: 70, viewRank: 2, viewDepth: -2 }),
+            compositorContributor({ layer: 2, splatIndex: 8, originalId: 80, viewRank: 3, viewDepth: -3 }),
+          ],
+          "gpu-buffer-readback"
+        ),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeGpu, {
+        pairId: "whole-render",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        refs: 3,
+        refAccounting: liveRefAccounting(3),
+        finalColorRows: blockedFinalColorRows(["whole-a"]),
+        compositorInputReadback: liveCompositorInputReadback(
+          "whole-a",
+          [151, 88, 53, 255],
+          [
+            compositorContributor({ layer: 0, splatIndex: 8, originalId: 80, viewRank: 3, viewDepth: -3 }),
+            compositorContributor({ layer: 1, splatIndex: 7, originalId: 70, viewRank: 2, viewDepth: -2 }),
+            compositorContributor({ layer: 2, splatIndex: 7, originalId: 70, viewRank: 1, viewDepth: -1 }),
+          ],
+          "gpu-buffer-readback"
+        ),
+      }),
+    ],
+    comparisons: [
+      { pairId: "whole-render", comparable: true, changedPixelRatio: 0.0464, changedPixels: 42763, totalPixels: 921600 },
+    ],
+    contactSheetPath: "smoke-reports/gpu-live-parity/contact-sheet.png",
+  });
+
+  const retainedIdentityDelta = result.metrics.pairs[0].finalColorLedger.compositorRowDelta
+    .anchorDiffs[0].retainedIdentityDelta;
+  assert.equal(retainedIdentityDelta.status, "order-mismatch");
+  assert.equal(retainedIdentityDelta.orderKeyDelta.status, "same-order-keys");
+  assert.deepEqual(retainedIdentityDelta.orderKeyDelta.mismatchSample, []);
+  assert.deepEqual(retainedIdentityDelta.orderKeyDelta.firstDisplacement, {
+    identityKey: "7:70",
+    cpuIndex: 0,
+    gpuIndex: 2,
+    cpuOrderKey: "302:1:-1:7:70",
+    gpuOrderKey: "302:1:-1:7:70",
+  });
+});
+
+test("GPU live parity classifier surfaces missing order keys for retained identity reorderings", () => {
+  const result = classifyGpuLiveParityMugshot({
+    captures: [
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeCpu, {
+        pairId: "whole-render",
+        routeRole: "direct-gpu-reference",
+        arenaBackend: "gpu",
+        refs: 2,
+        refAccounting: liveRefAccounting(2),
+        finalColorRows: blockedFinalColorRows(["whole-a"]),
+        compositorInputReadback: liveCompositorInputReadback(
+          "whole-a",
+          [120, 80, 60, 255],
+          [
+            { layer: 0, splatIndex: 7, originalId: 70 },
+            { layer: 1, splatIndex: 8, originalId: 80 },
+          ],
+          "gpu-buffer-readback"
+        ),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeGpu, {
+        pairId: "whole-render",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        refs: 2,
+        refAccounting: liveRefAccounting(2),
+        finalColorRows: blockedFinalColorRows(["whole-a"]),
+        compositorInputReadback: liveCompositorInputReadback(
+          "whole-a",
+          [151, 88, 53, 255],
+          [
+            { layer: 0, splatIndex: 8, originalId: 80 },
+            { layer: 1, splatIndex: 7, originalId: 70 },
+          ],
+          "gpu-buffer-readback"
+        ),
+      }),
+    ],
+    comparisons: [
+      { pairId: "whole-render", comparable: true, changedPixelRatio: 0.0464, changedPixels: 42763, totalPixels: 921600 },
+    ],
+    contactSheetPath: "smoke-reports/gpu-live-parity/contact-sheet.png",
+  });
+
+  const retainedIdentityDelta = result.metrics.pairs[0].finalColorLedger.compositorRowDelta
+    .anchorDiffs[0].retainedIdentityDelta;
+  assert.equal(retainedIdentityDelta.status, "order-mismatch");
+  assert.equal(retainedIdentityDelta.orderKeyDelta.status, "missing-order-key-fields");
+  assert.deepEqual(retainedIdentityDelta.orderKeyDelta.missingFields, ["tileIndex", "viewRank", "viewDepth"]);
 });
 
 test("GPU live parity classifier treats trace-anchor mismatches as route mismatches", () => {
@@ -1898,11 +2084,16 @@ function liveCompositorInputReadback(id, rgba8, contributorsOrCount, source, anc
 }
 
 function compositorContributor(overrides = {}) {
+  const splatIndex = overrides.splatIndex ?? 7;
+  const originalId = overrides.originalId ?? 70;
   return {
     layer: overrides.layer ?? 0,
     refIndex: overrides.refIndex ?? 10,
-    splatIndex: overrides.splatIndex ?? 7,
-    originalId: overrides.originalId ?? 70,
+    splatIndex,
+    originalId,
+    tileIndex: overrides.tileIndex ?? 302,
+    viewRank: overrides.viewRank ?? splatIndex,
+    viewDepth: overrides.viewDepth ?? -splatIndex,
     alphaParamIndex: overrides.alphaParamIndex ?? 10,
     centerPx: overrides.centerPx ?? [640.5, 360.5],
     inverseConic: overrides.inverseConic ?? [0.2, 0, 0.2],

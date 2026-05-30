@@ -74,6 +74,13 @@ const DEFAULT_TIMEOUT_MS = 60000;
 const DIFFERENT_PIXEL_THRESHOLD = 8;
 const VISUAL_DIVERGENCE_THRESHOLD = 0.005;
 const REF_DIVERGENCE_RATIO = 2;
+const COMPOSITOR_ORDER_KEY_FIELDS = Object.freeze([
+  "tileIndex",
+  "viewRank",
+  "viewDepth",
+  "splatIndex",
+  "originalId",
+]);
 
 export function buildGpuLiveParityMugshotPlan(
   baseUrl,
@@ -983,6 +990,7 @@ function summarizeRetainedIdentityDelta(cpuContributors, gpuContributors) {
     sameOrderedKeys ? "match" :
     sameKeyMultiset ? "order-mismatch" :
     "set-mismatch";
+  const orderKeyDelta = summarizeCompositorOrderKeyDelta(cpuContributors, gpuContributors, status);
   return {
     status,
     cpuContributorCount: cpuKeys.length,
@@ -1001,7 +1009,165 @@ function summarizeRetainedIdentityDelta(cpuContributors, gpuContributors) {
     gpuContributorIdSample: gpuContributors.slice(0, 8).map((contributor) => contributor.originalId),
     cpuContributorIdentitySample: cpuKeys.slice(0, 8),
     gpuContributorIdentitySample: gpuKeys.slice(0, 8),
+    orderKeyDelta,
   };
+}
+
+function summarizeCompositorOrderKeyDelta(cpuContributors, gpuContributors, retainedIdentityStatus) {
+  if (retainedIdentityStatus !== "order-mismatch") {
+    return undefined;
+  }
+  const missingFields = new Set();
+  const comparedFields = new Set();
+  const mismatchSamples = [];
+  const cpuContributorGroups = groupContributorsByIdentityKey(cpuContributors);
+  const gpuContributorGroups = groupContributorsByIdentityKey(gpuContributors);
+  for (const [identityKey, cpuGroup] of cpuContributorGroups) {
+    const gpuGroup = gpuContributorGroups.get(identityKey) ?? [];
+    for (const contributor of [...cpuGroup, ...gpuGroup]) {
+      for (const field of COMPOSITOR_ORDER_KEY_FIELDS) {
+        if (!hasOrderKeyField(contributor, field)) {
+          missingFields.add(field);
+        } else {
+          comparedFields.add(field);
+        }
+      }
+    }
+    if (COMPOSITOR_ORDER_KEY_FIELDS.some((field) =>
+      cpuGroup.some((contributor) => !hasOrderKeyField(contributor, field)) ||
+      gpuGroup.some((contributor) => !hasOrderKeyField(contributor, field))
+    )) {
+      continue;
+    }
+    const cpuOrderKeyCounts = countStringKeys(cpuGroup.map(compositorContributorOrderKey));
+    const gpuOrderKeyCounts = countStringKeys(gpuGroup.map(compositorContributorOrderKey));
+    const cpuOnlyOrderKeys = subtractStringKeys(cpuOrderKeyCounts, gpuOrderKeyCounts);
+    const gpuOnlyOrderKeys = subtractStringKeys(gpuOrderKeyCounts, cpuOrderKeyCounts);
+    for (let index = 0; index < Math.min(cpuOnlyOrderKeys.length, gpuOnlyOrderKeys.length, 4 - mismatchSamples.length); index += 1) {
+      mismatchSamples.push(buildOrderKeyMismatchSample({
+        identityKey,
+        cpuContributor: cpuGroup.find((contributor) => compositorContributorOrderKey(contributor) === cpuOnlyOrderKeys[index]) ?? cpuGroup[0],
+        gpuContributor: gpuGroup.find((contributor) => compositorContributorOrderKey(contributor) === gpuOnlyOrderKeys[index]) ?? gpuGroup[0],
+      }));
+    }
+    if (mismatchSamples.length >= 4) {
+      break;
+    }
+  }
+  return {
+    status: mismatchSamples.length > 0
+      ? "order-key-field-mismatch"
+      : missingFields.size > 0
+        ? "missing-order-key-fields"
+        : "same-order-keys",
+    comparedFields: [...comparedFields],
+    missingFields: [...missingFields],
+    firstDisplacement: firstCompositorOrderDisplacement(cpuContributors, gpuContributors),
+    mismatchSample: mismatchSamples.slice(0, 4),
+    cpuOrderKeySample: cpuContributors.slice(0, 8).map(compositorContributorOrderKey),
+    gpuOrderKeySample: gpuContributors.slice(0, 8).map(compositorContributorOrderKey),
+  };
+}
+
+function groupContributorsByIdentityKey(contributors) {
+  const groups = new Map();
+  for (const contributor of contributors) {
+    const key = compositorContributorIdentityKey(contributor);
+    const group = groups.get(key) ?? [];
+    group.push(contributor);
+    groups.set(key, group);
+  }
+  return groups;
+}
+
+function hasOrderKeyField(contributor, field) {
+  return Object.hasOwn(contributor, field) && contributor[field] !== undefined && contributor[field] !== null;
+}
+
+function countStringKeys(keys) {
+  const counts = new Map();
+  for (const key of keys) {
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function subtractStringKeys(leftCounts, rightCounts) {
+  const keys = [];
+  for (const [key, count] of leftCounts) {
+    const delta = count - (rightCounts.get(key) ?? 0);
+    for (let index = 0; index < delta; index += 1) {
+      keys.push(key);
+    }
+  }
+  return keys;
+}
+
+function buildOrderKeyMismatchSample({ identityKey, cpuContributor = {}, gpuContributor = {} }) {
+  const field = COMPOSITOR_ORDER_KEY_FIELDS.find((candidate) =>
+    hasOrderKeyField(cpuContributor, candidate) &&
+    hasOrderKeyField(gpuContributor, candidate) &&
+    !orderKeyFieldEqual(cpuContributor[candidate], gpuContributor[candidate])
+  ) ?? "orderKey";
+  return {
+    identityKey,
+    field,
+    cpu: field === "orderKey" ? compositorContributorOrderKey(cpuContributor) : cpuContributor[field],
+    gpu: field === "orderKey" ? compositorContributorOrderKey(gpuContributor) : gpuContributor[field],
+    cpuOrderKey: compositorContributorOrderKey(cpuContributor),
+    gpuOrderKey: compositorContributorOrderKey(gpuContributor),
+  };
+}
+
+function compositorContributorOrderKey(contributor = {}) {
+  return COMPOSITOR_ORDER_KEY_FIELDS.map((field) => {
+    const value = contributor[field];
+    return value === undefined || value === null ? "missing" : String(value);
+  }).join(":");
+}
+
+function firstCompositorOrderDisplacement(cpuContributors, gpuContributors) {
+  const gpuPositions = new Map();
+  gpuContributors.forEach((contributor, index) => {
+    const key = compositorContributorIdentityKey(contributor);
+    const positions = gpuPositions.get(key) ?? [];
+    positions.push({ index, contributor, consumed: false });
+    gpuPositions.set(key, positions);
+  });
+  for (let cpuIndex = 0; cpuIndex < cpuContributors.length; cpuIndex += 1) {
+    const cpuContributor = cpuContributors[cpuIndex];
+    const gpuContributorAtIndex = gpuContributors[cpuIndex];
+    const key = compositorContributorIdentityKey(cpuContributor);
+    const positions = gpuPositions.get(key) ?? [];
+    if (key === compositorContributorIdentityKey(gpuContributorAtIndex)) {
+      const directPosition = positions.find((position) => position.index === cpuIndex && !position.consumed);
+      if (directPosition) {
+        directPosition.consumed = true;
+      }
+      continue;
+    }
+    const cpuOrderKey = compositorContributorOrderKey(cpuContributor);
+    const position =
+      positions.find((candidate) => !candidate.consumed && compositorContributorOrderKey(candidate.contributor) === cpuOrderKey) ??
+      positions.find((candidate) => !candidate.consumed);
+    if (position) {
+      position.consumed = true;
+    }
+    return removeUndefinedProperties({
+      identityKey: key,
+      cpuIndex,
+      gpuIndex: position?.index,
+      cpuOrderKey,
+      gpuOrderKey: position === undefined ? undefined : compositorContributorOrderKey(position.contributor),
+    });
+  }
+  return undefined;
+}
+
+function orderKeyFieldEqual(left, right) {
+  return typeof left === "number" || typeof right === "number"
+    ? Number(left) === Number(right)
+    : left === right;
 }
 
 function summarizeMissingAnchorRetainedIdentityDelta(cpuAnchor, gpuAnchor) {
@@ -1154,6 +1320,9 @@ function summarizeCompositorContributor(contributor = {}) {
     refIndex: finiteNumber(contributor.refIndex),
     splatIndex: finiteNumber(contributor.splatIndex),
     originalId: finiteNumber(contributor.originalId),
+    tileIndex: finiteNumber(contributor.tileIndex),
+    viewRank: finiteNumber(contributor.viewRank),
+    viewDepth: finiteNumber(contributor.viewDepth),
     alphaParamIndex: finiteNumber(contributor.alphaParamIndex),
     centerPx: numericArray(contributor.centerPx),
     inverseConic: numericArray(contributor.inverseConic),

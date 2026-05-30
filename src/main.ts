@@ -200,6 +200,7 @@ interface TileLocalSceneState {
   tileScatterCursorBuffer: GPUBuffer;
   alphaParamBuffer: GPUBuffer;
   alphaParamData: Float32Array;
+  sourceViewDepths: Float32Array;
   sourceOpacities: Float32Array;
   tileRefShapeParams: Float32Array;
   outputTexture: GPUTexture;
@@ -328,6 +329,9 @@ interface TileLocalCompositorInputReadback {
       readonly refIndex: number;
       readonly splatIndex: number;
       readonly originalId: number;
+      readonly tileIndex: number;
+      readonly viewRank: number;
+      readonly viewDepth: number;
       readonly alphaParamIndex: number;
       readonly centerPx: readonly [number, number];
       readonly inverseConic: readonly [number, number, number];
@@ -351,6 +355,7 @@ interface PendingTileLocalCompositorInputReadback {
   readonly frameId: number;
   readonly plan: GpuTileCoveragePlan;
   readonly sourceColors: Float32Array;
+  readonly sourceViewDepths: Float32Array;
   readonly anchors: readonly PixelTraceAnchor[];
   readonly tileHeaderBuffer: GPUBuffer;
   readonly tileRefBuffer: GPUBuffer;
@@ -1355,6 +1360,7 @@ function createGpuArenaTileLocalSceneState(
   }
   const gpuArenaRuntime = createGpuTileContributorArenaRuntime(device, plan, gpuArenaProjectedContributors);
   const legacyProjection = gpuArenaRuntime.legacyProjection;
+  const sourceDepthEvidence = compactSourceBackToFrontDepthEvidence(attributes, viewMatrix);
   const pipeline = createGpuTileCoveragePipelineSkeleton(device, "rgba16float");
   const frameUniformBuffer = createUniformBuffer(
     device,
@@ -1430,6 +1436,7 @@ function createGpuArenaTileLocalSceneState(
     tileScatterCursorBuffer,
     alphaParamBuffer: gpuArenaRuntime.buffers.legacyAlphaParamBuffer,
     alphaParamData,
+    sourceViewDepths: sourceDepthEvidence.depths,
     sourceOpacities: effectiveOpacities,
     tileRefShapeParams: legacyProjection.tileRefShapeParams,
     outputTexture,
@@ -3712,6 +3719,7 @@ function createCpuTileLocalSceneState(
     ? createGpuTileContributorArenaRuntime(device, plan, gpuArenaProjectedContributors)
     : null;
   const legacyProjection = gpuArenaRuntime?.legacyProjection;
+  const sourceDepthEvidence = compactSourceBackToFrontDepthEvidence(attributes, viewMatrix);
   const budgetDiagnostics: TileLocalPrepassBudgetDiagnostics = {
     ...bridge.budgetDiagnostics,
     arenaRefs: legacyProjection
@@ -3821,6 +3829,7 @@ function createCpuTileLocalSceneState(
     tileScatterCursorBuffer,
     alphaParamBuffer,
     alphaParamData,
+    sourceViewDepths: sourceDepthEvidence.depths,
     sourceOpacities: effectiveOpacities,
     tileRefShapeParams: legacyProjection?.tileRefShapeParams ?? bridge.tileRefShapeParams,
     outputTexture,
@@ -4000,6 +4009,7 @@ function enqueueTileLocalCompositorInputReadback(
     frameId,
     plan: state.plan,
     sourceColors,
+    sourceViewDepths: state.sourceViewDepths,
     anchors,
     tileHeaderBuffer,
     tileRefBuffer,
@@ -4057,6 +4067,7 @@ function resolveTileLocalCompositorInputReadback(state: TileLocalSceneState): vo
           anchor,
           plan: pending.plan,
           sourceColors: pending.sourceColors,
+          sourceViewDepths: pending.sourceViewDepths,
           tileHeaders,
           tileRefs,
           tileCoverageWeights,
@@ -4152,6 +4163,7 @@ function ensureCpuReferenceCompositorInputReadback(
       anchor,
       plan: state.plan,
       sourceColors,
+      sourceViewDepths: state.sourceViewDepths,
       tileHeaders: state.tileHeaderData,
       tileRefs: state.tileRefData!,
       tileCoverageWeights: state.tileCoverageWeightData,
@@ -4364,6 +4376,7 @@ function readCompositorInputAnchor({
   anchor,
   plan,
   sourceColors,
+  sourceViewDepths,
   tileHeaders,
   tileRefs,
   tileCoverageWeights,
@@ -4373,6 +4386,7 @@ function readCompositorInputAnchor({
   readonly anchor: PixelTraceAnchor;
   readonly plan: GpuTileCoveragePlan;
   readonly sourceColors: Float32Array;
+  readonly sourceViewDepths: Float32Array;
   readonly tileHeaders: Uint32Array;
   readonly tileRefs: Uint32Array;
   readonly tileCoverageWeights: Float32Array;
@@ -4402,13 +4416,20 @@ function readCompositorInputAnchor({
     const tileRefBase = refIndex * (GPU_TILE_COVERAGE_TILE_REF_BYTES / Uint32Array.BYTES_PER_ELEMENT);
     const splatIndex = tileRefs[tileRefBase] ?? plan.splatCount;
     const originalId = tileRefs[tileRefBase + 1] ?? splatIndex;
+    const tileIndex = tileRefs[tileRefBase + 2] ?? tileAddress.tileIndex;
     const alphaParamIndex = Math.min(tileRefs[tileRefBase + 3] ?? refIndex, plan.maxTileRefs - 1);
+    const alphaParam = readVec4(alphaParams, alphaParamIndex);
+    const viewRank = Number.isFinite(alphaParam[3]) ? Math.trunc(alphaParam[3]) : -1;
+    const viewDepth = sourceViewDepths[splatIndex] ?? 0;
     if (splatIndex >= plan.splatCount) {
       contributors.push({
         layer,
         refIndex,
         splatIndex,
         originalId,
+        tileIndex,
+        viewRank,
+        viewDepth: roundColorChannel(viewDepth),
         alphaParamIndex,
         centerPx: [0, 0],
         inverseConic: [0, 0, 0],
@@ -4428,7 +4449,6 @@ function readCompositorInputAnchor({
     }
     const tileCoverageWeight = Math.max(tileCoverageWeights[refIndex] ?? 0, 0);
     if (tileCoverageWeight <= 0) {
-      const alphaParam = readVec4(alphaParams, alphaParamIndex);
       const conicParam = readVec4(alphaParams, alphaParamIndex + plan.maxTileRefs);
       const sourceOpacity = Math.min(clamp01(alphaParam[0]), 0.999);
       contributors.push({
@@ -4436,6 +4456,9 @@ function readCompositorInputAnchor({
         refIndex,
         splatIndex,
         originalId,
+        tileIndex,
+        viewRank,
+        viewDepth: roundColorChannel(viewDepth),
         alphaParamIndex,
         centerPx: [roundColorChannel(alphaParam[1]), roundColorChannel(alphaParam[2])],
         inverseConic: [roundColorChannel(conicParam[0]), roundColorChannel(conicParam[1]), roundColorChannel(conicParam[2])],
@@ -4453,7 +4476,6 @@ function readCompositorInputAnchor({
       });
       continue;
     }
-    const alphaParam = readVec4(alphaParams, alphaParamIndex);
     const conicParam = readVec4(alphaParams, alphaParamIndex + plan.maxTileRefs);
     const sourceOpacity = Math.min(clamp01(alphaParam[0]), 0.999);
     const pixelCoverageWeight = conicPixelWeightFromParams(alphaParam, conicParam, pixelCenter);
@@ -4469,6 +4491,9 @@ function readCompositorInputAnchor({
       refIndex,
       splatIndex,
       originalId,
+      tileIndex,
+      viewRank,
+      viewDepth: roundColorChannel(viewDepth),
       alphaParamIndex,
       centerPx: [roundColorChannel(alphaParam[1]), roundColorChannel(alphaParam[2])],
       inverseConic: [roundColorChannel(conicParam[0]), roundColorChannel(conicParam[1]), roundColorChannel(conicParam[2])],

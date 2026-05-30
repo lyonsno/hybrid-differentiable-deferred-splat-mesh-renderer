@@ -1624,7 +1624,19 @@ function formatMetricRatio(value) {
 function formatRetainedIdentityDelta(delta) {
   if (!delta) return "not reported";
   if (delta.retainedIdentityStatus === "not-evaluated") return "not evaluated";
-  return delta.retainedIdentityMismatchedAnchorIds?.join(", ") || "none";
+  const anchors = Array.isArray(delta.anchorDiffs)
+    ? delta.anchorDiffs.filter((anchor) => anchor.retainedIdentityDelta?.status && anchor.retainedIdentityDelta.status !== "match")
+    : [];
+  if (anchors.length === 0) {
+    return delta.retainedIdentityMismatchedAnchorIds?.join(", ") || "none";
+  }
+  return anchors
+    .map((anchor) => {
+      const retained = anchor.retainedIdentityDelta;
+      const orderKeyStatus = retained.orderKeyDelta?.status;
+      return `${anchor.id}:${retained.status}${orderKeyStatus ? `/${orderKeyStatus}` : ""}`;
+    })
+    .join(", ");
 }
 
 function formatCompactSourceConstruction(construction) {
