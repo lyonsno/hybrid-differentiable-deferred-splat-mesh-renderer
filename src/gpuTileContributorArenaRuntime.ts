@@ -1,12 +1,19 @@
 import gpuTileContributorArenaShader from "./shaders/gpu_tile_contributor_arena.wgsl?raw";
 import {
-  GPU_TILE_CONTRIBUTOR_ARENA_RECORD_FLOAT32_STRIDE,
-  GPU_TILE_CONTRIBUTOR_ARENA_RECORD_UINT32_STRIDE,
   getGpuTileContributorArenaDispatchPlan,
   type GpuTileCoverageDispatch,
   type GpuTileCoveragePlan,
   type GpuTileContributorArenaProjectedContributor,
 } from "./gpuTileCoverage.js";
+import {
+  orderGpuArenaContributorsForLegacyStorage,
+  packGpuArenaProjectedContributors,
+} from "./gpuTileContributorArenaPacking.js";
+
+export {
+  orderGpuArenaContributorsForLegacyStorage,
+  packGpuArenaProjectedContributors,
+} from "./gpuTileContributorArenaPacking.js";
 
 export interface GpuTileContributorArenaLegacyProjection {
   readonly tileHeaders: Uint32Array;
@@ -114,7 +121,7 @@ export function projectGpuArenaToLegacyCompositorBuffers(
   plan: Pick<GpuTileCoveragePlan, "tileCount" | "maxTileRefs">,
   contributors: readonly GpuTileContributorArenaProjectedContributor[],
 ): GpuTileContributorArenaLegacyProjection {
-  const orderedContributors = [...contributors].sort(compareGpuArenaContributorStorageOrder);
+  const orderedContributors = orderGpuArenaContributorsForLegacyStorage(contributors);
   const tileHeaders = new Uint32Array(Math.max(0, plan.tileCount * 4));
   const tileRefs = new Uint32Array(Math.max(0, plan.maxTileRefs * 4));
   const tileCoverageWeights = new Float32Array(Math.max(0, plan.maxTileRefs));
@@ -191,50 +198,6 @@ export function projectGpuArenaToLegacyCompositorBuffers(
     alphaParamData,
     tileRefSplatIds,
   };
-}
-
-function compareGpuArenaContributorStorageOrder(
-  left: GpuTileContributorArenaProjectedContributor,
-  right: GpuTileContributorArenaProjectedContributor,
-): number {
-  return (
-    left.tileIndex - right.tileIndex ||
-    left.viewRank - right.viewRank ||
-    left.viewDepth - right.viewDepth ||
-    left.splatIndex - right.splatIndex ||
-    left.originalId - right.originalId
-  );
-}
-
-export function packGpuArenaProjectedContributors(contributors: readonly GpuTileContributorArenaProjectedContributor[]): {
-  readonly u32: Uint32Array;
-  readonly f32: Float32Array;
-} {
-  const u32 = new Uint32Array(Math.max(1, contributors.length) * GPU_TILE_CONTRIBUTOR_ARENA_RECORD_UINT32_STRIDE);
-  const f32 = new Float32Array(Math.max(1, contributors.length) * GPU_TILE_CONTRIBUTOR_ARENA_RECORD_FLOAT32_STRIDE);
-  contributors.forEach((contributor, index) => {
-    const u32Base = index * GPU_TILE_CONTRIBUTOR_ARENA_RECORD_UINT32_STRIDE;
-    const f32Base = index * GPU_TILE_CONTRIBUTOR_ARENA_RECORD_FLOAT32_STRIDE;
-    u32[u32Base] = contributor.splatIndex;
-    u32[u32Base + 1] = contributor.originalId;
-    u32[u32Base + 2] = contributor.tileIndex;
-    u32[u32Base + 3] = index;
-    u32[u32Base + 4] = contributor.viewRank;
-    f32[f32Base] = contributor.viewDepth;
-    f32[f32Base + 1] = contributor.depthBand;
-    f32[f32Base + 2] = contributor.coverageWeight;
-    f32[f32Base + 3] = contributor.centerPx[0];
-    f32[f32Base + 4] = contributor.centerPx[1];
-    f32[f32Base + 5] = contributor.inverseConic[0];
-    f32[f32Base + 6] = contributor.inverseConic[1];
-    f32[f32Base + 7] = contributor.inverseConic[2];
-    f32[f32Base + 8] = contributor.opacity;
-    f32[f32Base + 9] = contributor.coverageAlpha;
-    f32[f32Base + 10] = contributor.transmittanceBefore;
-    f32[f32Base + 11] = contributor.retentionWeight;
-    f32[f32Base + 12] = contributor.occlusionWeight;
-  });
-  return { u32, f32 };
 }
 
 function createRuntimeBuffers(

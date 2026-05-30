@@ -47,6 +47,10 @@ fn projected_view_rank(index: u32) -> u32 {
   return projectedContributorU32[index * RECORD_U32_STRIDE + 4u];
 }
 
+fn projected_legacy_ref_index(index: u32) -> u32 {
+  return projectedContributorU32[index * RECORD_U32_STRIDE + 3u];
+}
+
 fn projected_f32(index: u32, field: u32) -> f32 {
   return projectedContributorF32[index * RECORD_F32_STRIDE + field];
 }
@@ -100,9 +104,13 @@ fn projected_f32(index: u32, field: u32) -> f32 {
 
   let slotInTile = atomicAdd(&scatterCursors[tileIndex], 1u);
   let tileHeader = legacyTileHeaders[tileIndex];
-  let recordIndex = tileHeader.x + slotInTile;
+  let recordIndex = projected_legacy_ref_index(contributorIndex);
   if (recordIndex >= arrayLength(&legacyTileRefs)) {
     legacyTileHeaders[tileIndex] = vec4u(tileHeader.x, tileHeader.y, tileHeader.z, tileHeader.w | 2u);
+    return;
+  }
+  if (recordIndex < tileHeader.x || recordIndex >= tileHeader.x + tileHeader.y || slotInTile >= tileHeader.y) {
+    legacyTileHeaders[tileIndex] = vec4u(tileHeader.x, tileHeader.y, tileHeader.z, tileHeader.w | 4u);
     return;
   }
 

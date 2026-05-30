@@ -133,6 +133,7 @@ test("GPU contributor arena WGSL has production count, prefix, and scatter stage
   assert.match(shader, /atomicAdd\(&projectedCounts\[tileIndex\],\s*1u\)/);
   assert.match(shader, /legacyTileHeaders\[tileIndex\]\s*=\s*vec4u\(runningOffset,\s*projectedCount,\s*projectedCount,\s*0u\)/);
   assert.match(shader, /atomicAdd\(&scatterCursors\[tileIndex\],\s*1u\)/);
+  assert.match(shader, /let\s+recordIndex\s*=\s*projected_legacy_ref_index\(contributorIndex\)/);
   assert.match(shader, /legacyTileRefs\[recordIndex\]\s*=\s*vec4u\(splatIndex,\s*originalId,\s*tileIndex,\s*recordIndex\)/);
   assert.doesNotMatch(shader, /@binding\(8\)|@binding\(9\)|@binding\(10\)|@binding\(11\)|@binding\(12\)/);
   assert.doesNotMatch(shader, /TODO\(contributor-arena-contract\)|intentionally inert|does not route first smoke/);
@@ -143,14 +144,22 @@ test("GPU contributor arena runtime writes legacy compositor buffers for live co
     new URL("../../src/gpuTileContributorArenaRuntime.ts", import.meta.url),
     "utf8",
   );
+  const packingSource = readFileSync(
+    new URL("../../src/gpuTileContributorArenaPacking.ts", import.meta.url),
+    "utf8",
+  );
   const shader = readFileSync(new URL("../../src/shaders/gpu_tile_contributor_arena.wgsl", import.meta.url), "utf8");
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
 
   assert.match(runtimeSource, /createGpuTileContributorArenaRuntime/);
   assert.match(runtimeSource, /projectGpuArenaToLegacyCompositorBuffers/);
-  assert.match(runtimeSource, /orderedContributors = \[\.\.\.contributors\]\.sort\(compareGpuArenaContributorStorageOrder\)/);
-  assert.match(runtimeSource, /left\.tileIndex - right\.tileIndex/);
-  assert.match(runtimeSource, /left\.viewRank - right\.viewRank/);
+  assert.match(runtimeSource, /orderGpuArenaContributorsForLegacyStorage/);
+  assert.match(runtimeSource, /packGpuArenaProjectedContributors/);
+  assert.match(packingSource, /const orderedContributors = orderGpuArenaContributorsForLegacyStorage\(contributors\)/);
+  assert.match(packingSource, /orderedContributors\.forEach\(\(contributor,\s*index\) =>/);
+  assert.match(packingSource, /u32\[u32Base \+ 3\]\s*=\s*index/);
+  assert.match(packingSource, /left\.tileIndex - right\.tileIndex/);
+  assert.match(packingSource, /left\.viewRank - right\.viewRank/);
   assert.match(shader, /legacyTileHeaders/);
   assert.match(shader, /legacyTileRefs/);
   assert.match(shader, /legacyTileCoverageWeights/);
