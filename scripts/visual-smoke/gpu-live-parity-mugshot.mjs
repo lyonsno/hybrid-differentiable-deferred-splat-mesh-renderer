@@ -404,6 +404,17 @@ function summarizePair(pair, cpu, gpu, comparison) {
   const finalColorLedger = summarizeFinalColorDivergenceLedger({ cpu, gpu });
   const cpuCompactSourceConstruction = summarizeCompactSourceConstruction(cpu);
   const gpuCompactSourceConstruction = summarizeCompactSourceConstruction(gpu);
+  const cpuSourceTopology = summarizeSourceTopology({
+    routeRole: "cpu-reference",
+    refSource: cpuRefSource,
+    compactSourceConstruction: cpuCompactSourceConstruction,
+  });
+  const gpuSourceTopology = summarizeSourceTopology({
+    routeRole: "direct-gpu-live",
+    refSource: gpuRefSource,
+    compactSourceConstruction: gpuCompactSourceConstruction,
+  });
+  const sourceTopologyComparison = compareSourceTopology(cpuSourceTopology, gpuSourceTopology);
   const lowerRefs = Math.max(1, Math.min(cpuRefs || 0, gpuRefs || 0));
   const upperRefs = Math.max(cpuRefs || 0, gpuRefs || 0);
   return {
@@ -417,6 +428,9 @@ function summarizePair(pair, cpu, gpu, comparison) {
     gpuRefSource,
     cpuCompactSourceConstruction,
     gpuCompactSourceConstruction,
+    cpuSourceTopology,
+    gpuSourceTopology,
+    sourceTopologyComparison,
     refRatio: lowerRefs > 0 ? upperRefs / lowerRefs : 0,
     cpuEffectiveArenaBackend: routeField(cpu, "effectiveArenaBackend"),
     gpuEffectiveArenaBackend: routeField(gpu, "effectiveArenaBackend"),
@@ -426,6 +440,68 @@ function summarizePair(pair, cpu, gpu, comparison) {
     imageComparable: comparison?.comparable !== false,
     imageComparisonReason: comparison?.reason ?? "",
     finalColorLedger,
+  };
+}
+
+function summarizeSourceTopology({ routeRole, refSource, compactSourceConstruction }) {
+  if (routeRole === "cpu-reference" && refSource === "tile-header-diagnostics") {
+    return {
+      status: "present",
+      sourceClass: "cpu-prepass-bridge-diagnostic-source",
+      routeRole,
+      refSource,
+      constructionStatus: compactSourceConstruction?.status ?? "missing",
+    };
+  }
+  if (compactSourceConstruction?.status === "present") {
+    const compactClassByFootprint = {
+      "bounded-full-scene-source": "compact-bounded-full-scene-source",
+      "unbounded-full-scene-source": "compact-unbounded-full-scene-source",
+      "anchor-neighborhood-source": "compact-anchor-neighborhood-source",
+    };
+    return removeUndefinedProperties({
+      status: "present",
+      sourceClass: compactClassByFootprint[compactSourceConstruction.footprintComparisonClass] ?? "compact-source",
+      routeRole,
+      refSource,
+      constructionStatus: compactSourceConstruction.status,
+      footprintComparisonClass: compactSourceConstruction.footprintComparisonClass,
+      classification: compactSourceConstruction.classification,
+      prestreamClassification: compactSourceConstruction.prestreamClassification,
+      sourceTileCount: compactSourceConstruction.sourceTileCount,
+      traceTileCount: compactSourceConstruction.traceTileCount,
+      projectedRefs: compactSourceConstruction.projectedRefs,
+      retainedRefs: compactSourceConstruction.retainedRefs,
+      droppedRefs: compactSourceConstruction.droppedRefs,
+    });
+  }
+  if (refSource === "gpu-scatter-cursor-readback") {
+    return {
+      status: "underinstrumented",
+      sourceClass: "gpu-scatter-cursor-source",
+      routeRole,
+      refSource,
+      constructionStatus: compactSourceConstruction?.status ?? "missing",
+    };
+  }
+  return {
+    status: "missing",
+    sourceClass: "unknown-source",
+    routeRole,
+    refSource: refSource || "",
+    constructionStatus: compactSourceConstruction?.status ?? "missing",
+  };
+}
+
+function compareSourceTopology(cpuSourceTopology, gpuSourceTopology) {
+  const cpuSourceClass = cpuSourceTopology?.sourceClass || "unknown-source";
+  const gpuSourceClass = gpuSourceTopology?.sourceClass || "unknown-source";
+  const sourceClassMatch = cpuSourceClass === gpuSourceClass;
+  return {
+    status: sourceClassMatch ? "same-source-topology" : "different-source-topology",
+    sourceClassMatch,
+    cpuSourceClass,
+    gpuSourceClass,
   };
 }
 
@@ -531,16 +607,22 @@ function summarizeCompactSourceConstruction(capture = {}) {
 
 function classifyDivergence(pairs) {
   const tileRefPairs = pairs.filter((pair) => pair.refRatio >= REF_DIVERGENCE_RATIO);
+  const sourceTopologyMismatchPairs = pairs.filter((pair) => pair.sourceTopologyComparison?.sourceClassMatch === false);
+  const sourceTopologyPairs = tileRefPairs.filter((pair) => pair.sourceTopologyComparison?.sourceClassMatch === false);
   const visualPairs = pairs.filter((pair) => pair.changedPixelRatio >= VISUAL_DIVERGENCE_THRESHOLD);
   let primary = "no-observed-divergence";
-  if (tileRefPairs.length > 0) {
+  if (sourceTopologyPairs.length > 0) {
+    primary = "source-topology-divergence";
+  } else if (tileRefPairs.length > 0) {
     primary = "tile-ref-population-divergence";
   } else if (visualPairs.length > 0) {
     primary = "final-color-divergence";
   }
   return {
     primary,
-    pairsNeedingInvestigation: unique([...tileRefPairs, ...visualPairs].map((pair) => pair.pairId)).length,
+    pairsNeedingInvestigation: unique([...sourceTopologyPairs, ...tileRefPairs, ...visualPairs].map((pair) => pair.pairId)).length,
+    sourceTopologyMismatchPairs: sourceTopologyMismatchPairs.map((pair) => pair.pairId),
+    sourceTopologyDivergencePairs: sourceTopologyPairs.map((pair) => pair.pairId),
     tileRefDivergencePairs: tileRefPairs.map((pair) => pair.pairId),
     finalColorDivergencePairs: visualPairs.map((pair) => pair.pairId),
     thresholds: {

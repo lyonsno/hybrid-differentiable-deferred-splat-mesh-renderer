@@ -1489,6 +1489,8 @@ ${renderSmokeHandoffSection(result.smokeHandoff)}
 - Tile budgets: ${metrics.tileBudgets.join(", ") || "none"}
 - Primary divergence: ${divergence.primary}
 - Pairs needing investigation: ${divergence.pairsNeedingInvestigation}
+- Source-topology mismatch pairs: ${divergence.sourceTopologyMismatchPairs?.join(", ") || "none"}
+- Source-topology divergence pairs: ${divergence.sourceTopologyDivergencePairs?.join(", ") || "none"}
 - Tile-ref divergence pairs: ${divergence.tileRefDivergencePairs.join(", ") || "none"}
 - Final-color divergence pairs: ${divergence.finalColorDivergencePairs.join(", ") || "none"}
 
@@ -1505,6 +1507,8 @@ ${metrics.pairs
 - GPU refs: ${pair.gpuRefs}
 - CPU ref source: ${pair.cpuRefSource || "not reported"}
 - GPU ref source: ${pair.gpuRefSource || "not reported"}
+- Source topology CPU/GPU: ${formatSourceTopology(pair.cpuSourceTopology)} / ${formatSourceTopology(pair.gpuSourceTopology)}
+- Source topology comparison: ${pair.sourceTopologyComparison?.status || "not reported"}
 - Compact source CPU/GPU: ${formatCompactSourceConstruction(pair.cpuCompactSourceConstruction)} / ${formatCompactSourceConstruction(pair.gpuCompactSourceConstruction)}
 - Compact footprint CPU/GPU: ${pair.cpuCompactSourceConstruction?.footprintComparisonClass || "not reported"} / ${pair.gpuCompactSourceConstruction?.footprintComparisonClass || "not reported"}
 - Compact refs CPU/GPU retained/projected: ${formatCompactSourceRefs(pair.cpuCompactSourceConstruction)} / ${formatCompactSourceRefs(pair.gpuCompactSourceConstruction)}
@@ -1617,6 +1621,14 @@ function formatCompactSourceConstruction(construction) {
   const sourceTiles = construction.sourceTileCount ?? "?";
   const traceTiles = construction.traceTileCount ?? "?";
   return `${construction.classification || "unknown"} (${construction.prestreamClassification || "unknown"}, maxTiles=${maxTiles}, sourceTiles=${sourceTiles}, traceTiles=${traceTiles})`;
+}
+
+function formatSourceTopology(topology) {
+  if (!topology || topology.status === "missing") return "not reported";
+  const counts = topology.sourceTileCount != null
+    ? `, sourceTiles=${topology.sourceTileCount}, traceTiles=${topology.traceTileCount ?? "?"}`
+    : "";
+  return `${topology.sourceClass || "unknown-source"} (${topology.refSource || "no-ref-source"}${counts})`;
 }
 
 function formatCompactSourceRefs(construction) {

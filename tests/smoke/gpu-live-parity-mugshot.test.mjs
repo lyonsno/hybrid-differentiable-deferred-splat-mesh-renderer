@@ -72,6 +72,7 @@ test("GPU live parity classifier closes the witness while preserving route diver
       arenaBackend: "cpu",
       effectiveArenaBackend: "cpu",
       refs: 94406,
+      refAccounting: diagnosticRefAccounting(94406),
     }),
     witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeGpu, {
       pairId: "whole-render",
@@ -88,6 +89,7 @@ test("GPU live parity classifier closes the witness while preserving route diver
       effectiveArenaBackend: "cpu",
       witnessView: "dessert-close",
       refs: 94406,
+      refAccounting: diagnosticRefAccounting(94406),
     }),
     witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.dessertCloseGpu, {
       pairId: "dessert-close",
@@ -105,6 +107,7 @@ test("GPU live parity classifier closes the witness while preserving route diver
       effectiveArenaBackend: "cpu",
       witnessView: "dessert-porous-close",
       refs: 94406,
+      refAccounting: diagnosticRefAccounting(94406),
     }),
     witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.porousCloseGpu, {
       pairId: "porous-close",
@@ -133,7 +136,20 @@ test("GPU live parity classifier closes the witness while preserving route diver
   assert.deepEqual(result.metrics.witnessViews, ["default", "dessert-close", "dessert-porous-close"]);
   assert.equal(result.metrics.pairs.length, 3);
   assert.equal(result.metrics.pairs[0].refRatio, 25);
-  assert.equal(result.divergence.primary, "tile-ref-population-divergence");
+  assert.equal(result.metrics.pairs[0].cpuSourceTopology.sourceClass, "cpu-prepass-bridge-diagnostic-source");
+  assert.equal(result.metrics.pairs[0].gpuSourceTopology.sourceClass, "compact-bounded-full-scene-source");
+  assert.equal(result.metrics.pairs[0].sourceTopologyComparison.status, "different-source-topology");
+  assert.equal(result.divergence.primary, "source-topology-divergence");
+  assert.deepEqual(result.divergence.sourceTopologyMismatchPairs, [
+    "whole-render",
+    "dessert-close",
+    "porous-close",
+  ]);
+  assert.deepEqual(result.divergence.sourceTopologyDivergencePairs, [
+    "whole-render",
+    "dessert-close",
+    "porous-close",
+  ]);
   assert.equal(result.divergence.pairsNeedingInvestigation, 3);
 });
 
@@ -328,7 +344,7 @@ test("GPU live parity classifier accepts tiny real captures below the generic sm
 
   assert.equal(result.closeable, true);
   assert.equal(result.findings.length, 0);
-  assert.equal(result.divergence.primary, "tile-ref-population-divergence");
+  assert.equal(result.divergence.primary, "source-topology-divergence");
 });
 
 test("GPU live parity classifier refuses direct GPU legacy refs without live readback source", () => {
@@ -458,7 +474,7 @@ test("GPU live parity classifier carries compact-source footprint evidence with 
         routeRole: "cpu-reference",
         arenaBackend: "cpu",
         refs: 61643,
-        refAccounting: liveRefAccounting(61643),
+        refAccounting: diagnosticRefAccounting(61643),
       }),
       witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeGpu, {
         pairId: "whole-render",
@@ -477,7 +493,7 @@ test("GPU live parity classifier carries compact-source footprint evidence with 
         routeRole: "cpu-reference",
         arenaBackend: "cpu",
         witnessView: "dessert-close",
-        refAccounting: liveRefAccounting(412939),
+        refAccounting: diagnosticRefAccounting(412939),
       }),
       witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.dessertCloseGpu, {
         pairId: "dessert-close",
@@ -506,6 +522,96 @@ test("GPU live parity classifier carries compact-source footprint evidence with 
   assert.equal(whole.gpuCompactSourceConstruction.effectiveMaxTilesPerSplat, 9);
   assert.equal(whole.gpuCompactSourceConstruction.retainedRefs, 37590);
   assert.equal(whole.cpuCompactSourceConstruction.status, "missing");
+  assert.equal(whole.cpuSourceTopology.sourceClass, "cpu-prepass-bridge-diagnostic-source");
+  assert.equal(whole.gpuSourceTopology.sourceClass, "compact-bounded-full-scene-source");
+  assert.equal(whole.sourceTopologyComparison.sourceClassMatch, false);
+  assert.equal(result.divergence.primary, "source-topology-divergence");
+});
+
+test("GPU live parity classifier keeps CPU tile-header diagnostics authoritative over compact evidence", () => {
+  const result = classifyGpuLiveParityMugshot({
+    captures: [
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeCpu, {
+        pairId: "whole-render",
+        routeRole: "cpu-reference",
+        arenaBackend: "cpu",
+        refs: 94406,
+        refAccounting: diagnosticRefAccounting(94406),
+        compactSourceConstruction: boundedFullSceneConstruction({
+          projectedRefEstimate: 94406,
+          projectedRefs: 94406,
+          retainedRefs: 94406,
+        }),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeGpu, {
+        pairId: "whole-render",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        refs: 2360150,
+        refAccounting: liveRefAccounting(2360150, 2360150),
+        compactSourceConstruction: boundedFullSceneConstruction({
+          projectedRefEstimate: 2360150,
+          projectedRefs: 2360150,
+          retainedRefs: 2360150,
+        }),
+      }),
+    ],
+    comparisons: [
+      { pairId: "whole-render", comparable: true, changedPixelRatio: 0.28, changedPixels: 258048, totalPixels: 921600 },
+    ],
+    contactSheetPath: "smoke-reports/gpu-live-parity/contact-sheet.png",
+  });
+
+  const whole = result.metrics.pairs[0];
+  assert.equal(whole.cpuSourceTopology.sourceClass, "cpu-prepass-bridge-diagnostic-source");
+  assert.equal(whole.gpuSourceTopology.sourceClass, "compact-bounded-full-scene-source");
+  assert.equal(whole.sourceTopologyComparison.status, "different-source-topology");
+  assert.equal(result.divergence.primary, "source-topology-divergence");
+  assert.deepEqual(result.divergence.sourceTopologyMismatchPairs, ["whole-render"]);
+  assert.deepEqual(result.divergence.sourceTopologyDivergencePairs, ["whole-render"]);
+});
+
+test("GPU live parity classifier keeps tile-ref divergence primary when source topology matches", () => {
+  const result = classifyGpuLiveParityMugshot({
+    captures: [
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeCpu, {
+        pairId: "whole-render",
+        routeRole: "cpu-reference",
+        arenaBackend: "cpu",
+        refs: 94406,
+        refAccounting: compactReferenceRefAccounting(94406),
+        compactSourceConstruction: boundedFullSceneConstruction({
+          projectedRefEstimate: 94406,
+          projectedRefs: 94406,
+          retainedRefs: 94406,
+        }),
+      }),
+      witnessCapture(GPU_LIVE_PARITY_MUGSHOT_CAPTURE_IDS.wholeGpu, {
+        pairId: "whole-render",
+        routeRole: "direct-gpu-live",
+        arenaBackend: "gpu",
+        refs: 2360150,
+        refAccounting: liveRefAccounting(2360150, 2360150),
+        compactSourceConstruction: boundedFullSceneConstruction({
+          projectedRefEstimate: 2360150,
+          projectedRefs: 2360150,
+          retainedRefs: 2360150,
+        }),
+      }),
+    ],
+    comparisons: [
+      { pairId: "whole-render", comparable: true, changedPixelRatio: 0.28, changedPixels: 258048, totalPixels: 921600 },
+    ],
+    contactSheetPath: "smoke-reports/gpu-live-parity/contact-sheet.png",
+  });
+
+  const whole = result.metrics.pairs[0];
+  assert.equal(whole.cpuSourceTopology.sourceClass, "compact-bounded-full-scene-source");
+  assert.equal(whole.gpuSourceTopology.sourceClass, "compact-bounded-full-scene-source");
+  assert.equal(whole.sourceTopologyComparison.status, "same-source-topology");
+  assert.equal(result.divergence.primary, "tile-ref-population-divergence");
+  assert.deepEqual(result.divergence.sourceTopologyMismatchPairs, []);
+  assert.deepEqual(result.divergence.sourceTopologyDivergencePairs, []);
 });
 
 test("GPU live parity classifier preserves unbounded compact-source footprint evidence", () => {
@@ -1573,6 +1679,26 @@ function liveRefAccounting(retainedRefs, allocatedRefs = retainedRefs) {
     retainedRefs,
     allocatedRefs,
     estimatedRetainedRefs: allocatedRefs,
+  };
+}
+
+function diagnosticRefAccounting(retainedRefs, allocatedRefs = retainedRefs) {
+  return {
+    status: "diagnostic-summary",
+    source: "tile-header-diagnostics",
+    retainedRefs,
+    allocatedRefs,
+    estimatedRetainedRefs: retainedRefs,
+  };
+}
+
+function compactReferenceRefAccounting(retainedRefs, allocatedRefs = retainedRefs) {
+  return {
+    status: "present",
+    source: "compact-reference-fixture",
+    retainedRefs,
+    allocatedRefs,
+    estimatedRetainedRefs: retainedRefs,
   };
 }
 
