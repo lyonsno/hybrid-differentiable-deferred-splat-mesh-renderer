@@ -688,8 +688,8 @@ function classifyFinalColorLedgerStatus({ cpuTrace, gpuTrace, mismatchedAnchors,
   if (cpuTrace.compositorInputStatus !== "present" || gpuTrace.compositorInputStatus !== "present") {
     return "missing-live-compositor-input-readback";
   }
-  if (compositorRowDelta?.status === "compositor-source-mismatch") {
-    return "compositor-source-mismatch";
+  if (compositorRowDelta?.status && compositorRowDelta.status !== "compositor-row-match") {
+    return compositorRowDelta.status;
   }
   return mismatchedAnchors.length > 0 ? "final-color-row-divergence" : "final-color-row-match";
 }
@@ -798,10 +798,7 @@ function summarizeCompositorRowDeltaLedger({ cpuTrace, gpuTrace }) {
       retainedIdentityMismatchedAnchorIds: [],
     };
   }
-  if (
-    cpuTrace.compositorInputSource !== "cpu-reference-diagnostic-state" ||
-    gpuTrace.compositorInputSource !== "gpu-buffer-readback"
-  ) {
+  if (!isComparableCompositorInputSourcePair(cpuTrace.compositorInputSource, gpuTrace.compositorInputSource)) {
     return {
       status: "compositor-source-mismatch",
       cpuSource: cpuTrace.compositorInputSource,
@@ -845,6 +842,13 @@ function summarizeCompositorRowDeltaLedger({ cpuTrace, gpuTrace }) {
     retainedIdentityStatus: "evaluated",
     retainedIdentityMismatchedAnchorIds: retainedIdentityMismatchedAnchors.map((anchor) => anchor.id),
   };
+}
+
+function isComparableCompositorInputSourcePair(cpuSource, gpuSource) {
+  return (
+    (cpuSource === "cpu-reference-diagnostic-state" && gpuSource === "gpu-buffer-readback") ||
+    (cpuSource === "gpu-buffer-readback" && gpuSource === "gpu-buffer-readback")
+  );
 }
 
 function compareCompositorRowAnchor(id, cpuAnchor, gpuAnchor) {
