@@ -1,0 +1,584 @@
+{
+  "generatedAt": "2026-05-31T20:08:22.902Z",
+  "url": "http://127.0.0.1:61732/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-close&renderer=tile-local-visible&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256&wgslProjectedRefStream=on",
+  "elapsedMs": 5892,
+  "screenshotPath": "smoke-reports/wgsl-projected-ref-source-equivalence-0531-evidence/screenshot.png",
+  "consoleMessages": [
+    {
+      "type": "debug",
+      "text": "[vite] connecting..."
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connected."
+    }
+  ],
+  "pageErrors": [],
+  "evidence": {
+    "ready": true,
+    "rendererLabel": "tile-local-visible-gaussian-compositor",
+    "sourceKind": "scaniverse_ply",
+    "splatCount": 94406,
+    "tileLocal": {
+      "status": "current",
+      "refs": 157547,
+      "allocatedRefs": 157547,
+      "refAccounting": {
+        "status": "diagnostic-summary",
+        "source": "tile-header-diagnostics",
+        "retainedRefs": 157547,
+        "allocatedRefs": 157547,
+        "estimatedRetainedRefs": 157547,
+        "projectedRefs": 724912,
+        "droppedRefs": 567365,
+        "nonEmptyTiles": 861,
+        "saturatedTiles": 546,
+        "maxRefsPerTile": 256,
+        "tileCount": 3600,
+        "tileCapacity": 43
+      },
+      "tileColumns": 80,
+      "tileRows": 45,
+      "perPixelProjectedContributors": [],
+      "perPixelRetainedContributors": [],
+      "perPixelFinalColorAccumulation": [],
+      "presentationScope": "full-scene",
+      "traceAnchors": [],
+      "perPixelDeadSplatElectorLedger": {
+        "status": "blocked",
+        "anchorLedgers": [],
+        "summary": {
+          "totalAnchors": 0,
+          "categoryCounts": {},
+          "wrongRetainedSetAnchorIds": [],
+          "laterTransferFailureAnchorIds": []
+        },
+        "contract": {
+          "consumes": [
+            "gpu-live-trace:per-pixel-retained-contributors.projectedContributors",
+            "gpu-live-trace:per-pixel-retained-contributors.retainedContributors",
+            "gpu-live-trace:per-pixel-retained-contributors.droppedContributors"
+          ],
+          "categories": [
+            "blocked-missing-retention-trace",
+            "source-sparse",
+            "wrong-retained-set",
+            "later-transfer-failure",
+            "narrower-blocker"
+          ],
+          "owns": [
+            "retained-vs-dropped contributor identity",
+            "foreground sealing role survival under cap pressure",
+            "retained slate role/depth/weight summaries"
+          ],
+          "separatesFrom": [
+            "visual-policy-repair",
+            "global-opacity-scale-tuning",
+            "tile-size-or-cap-change",
+            "camera-or-projection-repair",
+            "source-decode",
+            "urmina-backend-construction",
+            "deferred-gbuffer-voting"
+          ]
+        }
+      },
+      "perPixelRetainedToOrderedSurvivalLedger": {
+        "status": "classified",
+        "contract": {
+          "consumes": [
+            "gpu-live-trace:per-pixel-retained-contributors.retainedContributors",
+            "gpu-live-trace:per-pixel-ordered-contributors.orderedContributors",
+            "gpu-live-trace:per-pixel-final-color-accumulation.steps"
+          ],
+          "categories": [
+            "ordered-present",
+            "projected-foreground-dropped-before-retention",
+            "retained-missing-from-order",
+            "ordered-present-final-alpha-weak",
+            "trace-blocked",
+            "narrower-role-source-blocker"
+          ],
+          "owns": [
+            "projected foreground support lost before retained tile rows",
+            "retained foreground contributor identity surviving into ordered output",
+            "ordered rank/depth/tie-break custody for retained foreground contributors",
+            "final accumulation alpha/RGB participation for retained foreground contributors"
+          ],
+          "separatesFrom": [
+            "retention-policy-repair",
+            "visual-policy-repair",
+            "global-opacity-scale-tuning",
+            "tile-size-or-cap-change",
+            "camera-or-projection-repair",
+            "source-decode",
+            "urmina-backend-construction",
+            "deferred-gbuffer-voting"
+          ]
+        },
+        "summary": {
+          "anchorCount": 0,
+          "totalAnchors": 0,
+          "categoryCounts": {},
+          "mechanismCounts": {},
+          "retainedForegroundCount": 0,
+          "orderedForegroundCount": 0,
+          "missingFromOrderCount": 0,
+          "accumulatedForegroundCount": 0
+        },
+        "anchorLedgers": []
+      },
+      "orderingBackend": "gpu-sorted-index-rank-inversion",
+      "debugMode": "final-color",
+      "visibleCompositedRefLimit": 256,
+      "freshness": {
+        "status": "current",
+        "cachedFrameAgeMs": 0,
+        "cachedFrame": 1,
+        "currentFrameSignature": "tile-local@87196525",
+        "cachedFrameSignature": "tile-local@87196525"
+      },
+      "budget": {
+        "status": "current",
+        "tileSizePx": 16,
+        "maxRefsPerTile": 256,
+        "currentViewportWidth": 1280,
+        "currentViewportHeight": 720,
+        "currentTileColumns": 80,
+        "currentTileRows": 45,
+        "maxProjectedRefs": 20000000,
+        "skippedProjectedRefs": null,
+        "skipReason": null,
+        "overflowReasons": [],
+        "guardPolicy": null
+      },
+      "compactSourceConstruction": {
+        "classification": "compact-source-valid",
+        "prestreamClassification": "compact-source-full-scene-bounded-overflow",
+        "guardedQuantity": "compact-source-dense-projected-tile-refs",
+        "presentationScope": "full-scene",
+        "forceAnchorOnly": false,
+        "allowAnchorOnlyBudgetFallback": false,
+        "shouldRestrictToAnchorTiles": false,
+        "shouldBoundSplatTileFootprints": true,
+        "projectedOverflow": false,
+        "retainedBudgetWithinProjectedLimit": true,
+        "tileCount": 3600,
+        "sourceTileCount": 3600,
+        "traceTileCount": 0,
+        "candidateSplatCount": 94406,
+        "projectedSplatCount": 94406,
+        "fullSceneConstructionRefUpperBound": 339861600,
+        "projectedRefEstimate": 724912,
+        "streamedProjectedRefs": 724912,
+        "projectedRefs": 724912,
+        "retainedRefs": 157547,
+        "droppedRefs": 567365,
+        "maxProjectedRefs": 20000000,
+        "retainedBudgetRefs": 921600,
+        "maxRefsPerTile": 256,
+        "maxTilesPerSplat": 9,
+        "effectiveMaxTilesPerSplat": 9,
+        "footprintComparisonClass": "bounded-full-scene-source"
+      },
+      "retainedSourceConstruction": {
+        "requestedSourceBackend": "gpu-retained-source-substrate",
+        "effectiveSourceBackend": "deterministic-gpu-retention-carrier",
+        "oracleBackend": "cpu-reference",
+        "runtimeConsumerBackend": "gpu-contributor-arena-runtime",
+        "sourceHandoff": "cpu-projected-candidate-records",
+        "falseClosureGuard": "gpu-retention-carrier-does-not-imply-wgsl-source-construction",
+        "cpuOwnedStages": [
+          "compact-source-project-splats",
+          "compact-source-estimate-ref-budget",
+          "compact-source-stream-retention",
+          "compact-source-pixel-traces"
+        ],
+        "gpuReadyStages": [
+          "gpu-projection-retention-election-carrier",
+          "gpu-contributor-arena-count-prefix-scatter",
+          "gpu-contributor-arena-legacy-compositor-consumer"
+        ],
+        "nextGpuOffloadStage": "wgsl-projected-ref-stream",
+        "projectedRefs": 724912,
+        "retainedRefs": 157547,
+        "droppedRefs": 567365
+      },
+      "wgslProjectedRefStream": {
+        "requestedBackend": "wgsl-projected-ref-stream",
+        "effectiveBackend": "wgsl-projected-ref-stream-sidecar",
+        "sourceRole": "diagnostic-sidecar-not-retention-source",
+        "runtimeConsumerBackend": "none",
+        "falseClosureGuard": "wgsl-projected-ref-stream-sidecar-does-not-feed-retention-or-compositor",
+        "compactSourceProjectedRefs": 724912,
+        "compactSourceRetainedRefs": 157547,
+        "allocatedProjectedRefs": 724912,
+        "tileCount": 3600,
+        "maxRefsPerTile": 201,
+        "dispatchEnqueueDurationMs": 0,
+        "readback": {
+          "status": "present",
+          "source": "wgsl-projected-ref-stream-readback",
+          "frameId": 1,
+          "tileCount": 3600,
+          "tileCapacity": 201,
+          "allocatedProjectedRefs": 724912,
+          "compactSourceProjectedRefs": 724912,
+          "compactSourceRetainedRefs": 157547,
+          "projectedScatterRefs": 4780549,
+          "retainedRefs": 404863,
+          "droppedRefs": 4375686,
+          "projectedRefDelta": 4055637,
+          "nonEmptyTiles": 3379,
+          "saturatedTiles": 1687,
+          "maxRefsPerTile": 201,
+          "headerRetainedRefs": 0,
+          "headerProjectedRefs": 0,
+          "headerCountClass": "headers-clear-only",
+          "comparisonClass": "raw-gpu-projection-superset"
+        }
+      },
+      "budgetDiagnostics": {
+        "version": 1,
+        "arenaRefs": {
+          "projected": 724912,
+          "retained": 157547,
+          "dropped": 567365,
+          "cappedTileCount": 546,
+          "saturatedRetainedTileCount": 546,
+          "maxProjectedRefsPerTile": 3568,
+          "maxRetainedRefsPerTile": 256
+        },
+        "overflowReasons": [
+          {
+            "reason": "per-tile-ref-cap",
+            "projectedRefs": 724912,
+            "retainedRefs": 157547,
+            "droppedRefs": 567365,
+            "cappedTileCount": 546,
+            "maxRefsPerTile": 256
+          }
+        ],
+        "capPressure": {
+          "version": 1,
+          "classification": "over-cap",
+          "refs": {
+            "projected": 724912,
+            "retained": 157547,
+            "dropped": 567365,
+            "maxRefsPerTile": 256,
+            "tileCount": 3600
+          },
+          "retainedBands": {
+            "front": {
+              "total": 0,
+              "coverageHigh": 0,
+              "coverageMedium": 0,
+              "coverageLow": 0
+            },
+            "middle": {
+              "total": 0,
+              "coverageHigh": 0,
+              "coverageMedium": 0,
+              "coverageLow": 0
+            },
+            "back": {
+              "total": 0,
+              "coverageHigh": 0,
+              "coverageMedium": 0,
+              "coverageLow": 0
+            }
+          },
+          "droppedBands": {
+            "front": {
+              "total": 0,
+              "coverageHigh": 0,
+              "coverageMedium": 0,
+              "coverageLow": 0
+            },
+            "middle": {
+              "total": 0,
+              "coverageHigh": 0,
+              "coverageMedium": 0,
+              "coverageLow": 0
+            },
+            "back": {
+              "total": 0,
+              "coverageHigh": 0,
+              "coverageMedium": 0,
+              "coverageLow": 0
+            }
+          },
+          "overflowReasons": {},
+          "lossSignals": {
+            "foregroundDroppedRefs": 0,
+            "behindSurfaceDroppedRefs": 0,
+            "policyReserveDisplacedRefs": 0,
+            "highCoverageDroppedRefs": 0,
+            "highRetentionDroppedRefs": 0,
+            "highOcclusionDroppedRefs": 0
+          },
+          "policyHooks": []
+        },
+        "retainedBands": {
+          "front": {
+            "total": 0,
+            "coverageHigh": 0,
+            "coverageMedium": 0,
+            "coverageLow": 0
+          },
+          "middle": {
+            "total": 0,
+            "coverageHigh": 0,
+            "coverageMedium": 0,
+            "coverageLow": 0
+          },
+          "back": {
+            "total": 0,
+            "coverageHigh": 0,
+            "coverageMedium": 0,
+            "coverageLow": 0
+          }
+        },
+        "droppedBands": {
+          "front": {
+            "total": 0,
+            "coverageHigh": 0,
+            "coverageMedium": 0,
+            "coverageLow": 0
+          },
+          "middle": {
+            "total": 0,
+            "coverageHigh": 0,
+            "coverageMedium": 0,
+            "coverageLow": 0
+          },
+          "back": {
+            "total": 0,
+            "coverageHigh": 0,
+            "coverageMedium": 0,
+            "coverageLow": 0
+          }
+        },
+        "heat": {
+          "cpu": {
+            "projectedRefs": 724912,
+            "projectedRefsPerTile": 201.36444444444444,
+            "projectedToRetainedRatio": 4.601242803734759
+          },
+          "gpu": {
+            "retainedRefs": 157547,
+            "retainedRefBufferBytes": 2520752,
+            "coverageWeightBufferBytes": 630188,
+            "alphaParamBufferBytes": 5041504
+          }
+        }
+      },
+      "diagnostics": {
+        "version": 1,
+        "debugMode": "final-color",
+        "tileGrid": {
+          "columns": 80,
+          "rows": 45,
+          "tileSizePx": 16
+        },
+        "tileRefs": {
+          "total": 157547,
+          "nonEmptyTiles": 861,
+          "maxPerTile": 256,
+          "averagePerNonEmptyTile": 182.981417,
+          "density": 0.239167
+        },
+        "tileRefCustody": {
+          "projectedTileEntryCount": 724912,
+          "retainedTileEntryCount": 157547,
+          "evictedTileEntryCount": 567365,
+          "cappedTileCount": 546,
+          "saturatedRetainedTileCount": 546,
+          "maxProjectedRefsPerTile": 3568,
+          "maxRetainedRefsPerTile": 256,
+          "headerRefCount": 157547,
+          "headerAccountingMatches": true
+        },
+        "runtimeRefBudget": {
+          "classification": "telemetry-insufficient",
+          "tileCount": 3600,
+          "runtimeRetainedRefs": 157547,
+          "effectiveRefsPerTile": 43.763056,
+          "maxTraceRetainedContributors": 0,
+          "maxTraceFinalSteps": 0,
+          "blockingAnchors": [],
+          "frameHeaderAccounting": {
+            "projectedTileEntryCount": 724912,
+            "retainedTileEntryCount": 157547,
+            "evictedTileEntryCount": 567365,
+            "cappedTileCount": 546,
+            "saturatedRetainedTileCount": 546,
+            "maxProjectedRefsPerTile": 3568,
+            "maxRetainedRefsPerTile": 256,
+            "headerRefCount": 157547,
+            "headerAccountingMatches": true
+          },
+          "anchorTileEvidence": []
+        },
+        "presentationFootprint": {
+          "classification": "telemetry-insufficient",
+          "frameTileCount": 3600,
+          "nonEmptyTileCount": 861,
+          "nonEmptyTileRatio": 0.239167,
+          "retainedRefCount": 157547,
+          "anchorFinalRowsPresent": false,
+          "blocker": ""
+        },
+        "retentionAudit": {
+          "fullFrame": {
+            "region": "gpu-live-custody-estimate",
+            "tileCount": 3600,
+            "cappedTileCount": 546,
+            "projectedTileEntryCount": 724912,
+            "currentRetainedEntryCount": 157547,
+            "legacyRetainedEntryCount": 157547,
+            "addedByPolicyCount": 0,
+            "droppedByPolicyCount": 0,
+            "addedRetentionWeightSum": 0,
+            "droppedRetentionWeightSum": 0,
+            "addedOcclusionWeightSum": 0,
+            "droppedOcclusionWeightSum": 0,
+            "addedByPolicySamples": [],
+            "droppedByPolicySamples": []
+          },
+          "regions": {
+            "porousBody": {
+              "region": "gpu-live-region-unavailable:porous-body",
+              "tileCount": 0,
+              "cappedTileCount": 0,
+              "projectedTileEntryCount": 0,
+              "currentRetainedEntryCount": 0,
+              "legacyRetainedEntryCount": 0,
+              "addedByPolicyCount": 0,
+              "droppedByPolicyCount": 0,
+              "addedRetentionWeightSum": 0,
+              "droppedRetentionWeightSum": 0,
+              "addedOcclusionWeightSum": 0,
+              "droppedOcclusionWeightSum": 0,
+              "addedByPolicySamples": [],
+              "droppedByPolicySamples": []
+            },
+            "centerLeakBand": {
+              "region": "gpu-live-region-unavailable:center-leak-band",
+              "tileCount": 0,
+              "cappedTileCount": 0,
+              "projectedTileEntryCount": 0,
+              "currentRetainedEntryCount": 0,
+              "legacyRetainedEntryCount": 0,
+              "addedByPolicyCount": 0,
+              "droppedByPolicyCount": 0,
+              "addedRetentionWeightSum": 0,
+              "droppedRetentionWeightSum": 0,
+              "addedOcclusionWeightSum": 0,
+              "droppedOcclusionWeightSum": 0,
+              "addedByPolicySamples": [],
+              "droppedByPolicySamples": []
+            }
+          }
+        },
+        "coverageWeight": {
+          "min": 0,
+          "max": 18.005634,
+          "mean": 0.353084
+        },
+        "alpha": {
+          "maxSourceOpacity": 0.999,
+          "meanSourceOpacity": 0.328736,
+          "estimatedMaxAccumulatedAlpha": 1,
+          "estimatedMinTransmittance": 0,
+          "alphaParamRefs": 157547
+        },
+        "conicShape": {
+          "maxMajorRadiusPx": 188.369457,
+          "minMinorRadiusPx": 1.5,
+          "maxAnisotropyRatio": 100.036645
+        }
+      },
+      "pixelContributorTrace": {
+        "schemaVersion": 1,
+        "anchorPixel": {
+          "id": "black-band-dropout-2300-1055",
+          "kind": "black-band-dropout",
+          "x": 2300,
+          "y": 1055
+        },
+        "tileAddress": {
+          "tileSizePx": 16,
+          "tileX": 143,
+          "tileY": 65,
+          "tileIndex": 14183,
+          "localX": 12,
+          "localY": 15
+        },
+        "projectedContributors": [],
+        "retainedContributors": [],
+        "orderedContributors": [],
+        "finalColorAccumulation": {
+          "steps": [],
+          "outputColor": [
+            0.02,
+            0.02,
+            0.04,
+            0
+          ],
+          "clearColor": [
+            0.02,
+            0.02,
+            0.04
+          ],
+          "remainingTransmittance": 1
+        },
+        "dispatchCache": {
+          "tileIndex": 5343,
+          "clearFrameId": 1,
+          "buildFrameId": 1,
+          "compositeFrameId": 1,
+          "tileY": 65,
+          "tileSpan": {
+            "minTileX": 139,
+            "maxTileX": 149,
+            "minTileY": 64,
+            "maxTileY": 66
+          },
+          "cacheState": "current",
+          "presentationFrameId": 1,
+          "rowDispatchState": {
+            "tileCoveredByClear": false,
+            "tileCoveredByBuild": false,
+            "tileCoveredByComposite": false,
+            "rowCoveredByComposite": false,
+            "currentFrameComplete": false
+          }
+        },
+        "rendererMetadata": {
+          "requestedRenderer": "tile-local-visible",
+          "effectiveRenderer": "tile-local-visible-gaussian-compositor",
+          "requestedArenaBackend": "gpu",
+          "effectiveArenaBackend": "gpu",
+          "tileSizePx": 16,
+          "maxRefsPerTile": 256,
+          "viewport": {
+            "width": 1280,
+            "height": 720
+          }
+        },
+        "deferredFields": {
+          "preserved": true,
+          "deferredSurface": null,
+          "missingReason": "production deferred G-buffer voting is outside the trace packet scope"
+        },
+        "blockers": [
+          {
+            "field": "finalColorAccumulation.steps",
+            "reason": "tileLocal.perPixelFinalColorAccumulation missing contributors for black-band-dropout-2300-1055"
+          }
+        ]
+      }
+    }
+  }
+}

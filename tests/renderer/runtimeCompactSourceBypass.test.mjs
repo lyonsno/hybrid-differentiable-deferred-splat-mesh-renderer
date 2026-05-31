@@ -246,7 +246,14 @@ test("WGSL projected-ref stream sidecar is not the retained source or compositor
   assert.match(streamReadbackSource, /copyBufferToBuffer\(stream\.tileHeaderBuffer/);
   assert.match(streamReadbackSource, /copyBufferToBuffer\(stream\.tileScatterCursorBuffer/);
   assert.match(streamReadbackSummarySource, /projectedScatterRefs - stream\.compactSourceProjectedRefs/);
-  assert.match(streamReadbackSummarySource, /comparisonClass:\s*projectedRefDelta === 0/);
+  assert.match(streamReadbackSummarySource, /classifyWgslProjectedRefStreamComparison\(/);
+  assert.doesNotMatch(
+    streamReadbackSummarySource,
+    /"diverges-from-compact-projected-refs"/,
+    "projected-stream evidence must distinguish raw GPU projection supersets from underpopulated compact-source reads",
+  );
+  assert.match(mainSource, /"raw-gpu-projection-superset"/);
+  assert.match(mainSource, /"underpopulated-vs-compact-projected-refs"/);
   assert.match(streamReadbackSummarySource, /headerCountClass:[\s\S]*"headers-clear-only"/);
   assert.match(mainSource, /requested === "on" \|\| requested === "enabled" \|\| requested === "1"/);
   assert.match(gpuFactorySource, /const\s+gpuArenaProjectedContributors\s*=\s*compactSource\.retainedRecords/);

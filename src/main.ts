@@ -312,6 +312,11 @@ interface WgslProjectedRefStreamEvidence {
   readonly unavailableReason?: string;
 }
 
+type WgslProjectedRefStreamComparisonClass =
+  | "matches-compact-projected-refs"
+  | "raw-gpu-projection-superset"
+  | "underpopulated-vs-compact-projected-refs";
+
 interface WgslProjectedRefStreamReadback {
   readonly status: "pending" | "present" | "blocked";
   readonly source: "wgsl-projected-ref-stream-readback";
@@ -331,7 +336,7 @@ interface WgslProjectedRefStreamReadback {
   readonly headerRetainedRefs: number;
   readonly headerProjectedRefs: number;
   readonly headerCountClass: "headers-clear-only" | "headers-populated" | "headers-empty";
-  readonly comparisonClass: "matches-compact-projected-refs" | "diverges-from-compact-projected-refs";
+  readonly comparisonClass: WgslProjectedRefStreamComparisonClass;
   readonly blockedReason?: string;
 }
 
@@ -2309,6 +2314,19 @@ function refreshWgslProjectedRefStreamEvidence(state: TileLocalSceneState): void
     dispatchEnqueueDurationMs: state.wgslProjectedRefStream.dispatchEnqueueDurationMs,
     readback: state.wgslProjectedRefStream.readback,
   };
+}
+
+function classifyWgslProjectedRefStreamComparison(
+  projectedScatterRefs: number,
+  compactSourceProjectedRefs: number,
+): WgslProjectedRefStreamComparisonClass {
+  if (projectedScatterRefs === compactSourceProjectedRefs) {
+    return "matches-compact-projected-refs";
+  }
+  if (projectedScatterRefs > compactSourceProjectedRefs) {
+    return "raw-gpu-projection-superset";
+  }
+  return "underpopulated-vs-compact-projected-refs";
 }
 
 function classifyCompactSourceFootprintComparison({
@@ -4751,9 +4769,7 @@ function enqueueWgslProjectedRefStreamReadback(
     headerRetainedRefs: 0,
     headerProjectedRefs: 0,
     headerCountClass: "headers-empty",
-    comparisonClass: stream.compactSourceProjectedRefs === 0
-      ? "matches-compact-projected-refs"
-      : "diverges-from-compact-projected-refs",
+    comparisonClass: classifyWgslProjectedRefStreamComparison(0, stream.compactSourceProjectedRefs),
   };
   refreshWgslProjectedRefStreamEvidence(state);
 }
@@ -4799,9 +4815,7 @@ function resolveWgslProjectedRefStreamReadback(state: TileLocalSceneState): void
         headerRetainedRefs: 0,
         headerProjectedRefs: 0,
         headerCountClass: "headers-empty",
-        comparisonClass: pending.stream.compactSourceProjectedRefs === 0
-          ? "matches-compact-projected-refs"
-          : "diverges-from-compact-projected-refs",
+        comparisonClass: classifyWgslProjectedRefStreamComparison(0, pending.stream.compactSourceProjectedRefs),
         blockedReason: errorMessage(error),
       };
       if (wgslProjectedRefStreamReadbackCanPublish(state, pending)) {
@@ -4870,9 +4884,7 @@ function summarizeWgslProjectedRefStreamReadback(
       : projectedScatterRefs > 0
         ? "headers-clear-only"
         : "headers-empty",
-    comparisonClass: projectedRefDelta === 0
-      ? "matches-compact-projected-refs"
-      : "diverges-from-compact-projected-refs",
+    comparisonClass: classifyWgslProjectedRefStreamComparison(projectedScatterRefs, stream.compactSourceProjectedRefs),
   };
 }
 
