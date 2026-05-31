@@ -403,11 +403,13 @@ test("requested GPU arena live path consumes compact retained source while retai
   assert.doesNotMatch(gpuFactorySource, /buildTileLocalPrepassBridge/);
   assert.doesNotMatch(gpuFactorySource, /adaptGpuArenaRetainedContributors/);
   assert.match(gpuFactorySource, /buildCompactRetainedSourceForRuntime/);
+  assert.match(gpuFactorySource, /createWgslProjectedRefStreamState/);
   assert.match(streamingSource, /buildCompactRetainedRecordsWithGpuCarrier/);
   assert.match(compactSourceSource, /buildProjectionRetentionArena\(\{/);
   assert.match(compactSourceSource, /candidateSources:\s*\{/);
   assert.match(gpuFactorySource, /const\s+gpuArenaProjectedContributors\s*=\s*compactSource\.retainedRecords/);
   assert.match(gpuFactorySource, /buildGpuArenaRetainedSourceConstructionEvidence\(compactSource\)/);
+  assert.match(gpuFactorySource, /buildWgslProjectedRefStreamEvidence\(/);
   assert.match(gpuFactorySource, /createGpuTileCoveragePipelineSkeleton/);
   assert.match(gpuFactorySource, /createGpuTileContributorArenaRuntime/);
   assert.match(gpuFactorySource, /compactRetainedSourceBudgetDiagnostics/);
@@ -449,8 +451,11 @@ test("GPU arena runtime exposes retained-source construction custody without cla
   assert.match(retainedSourceEvidence, /"gpu-projection-retention-election-carrier"/);
   assert.match(retainedSourceEvidence, /nextGpuOffloadStage:\s*"wgsl-projected-ref-stream"/);
   assert.match(arenaEvidenceSource, /retainedSourceConstruction:\s*tileLocalState\?\.retainedSourceConstruction/);
+  assert.match(arenaEvidenceSource, /wgslProjectedRefStream:\s*tileLocalState\?\.wgslProjectedRefStreamEvidence/);
   assert.match(exposeSource, /retainedSourceConstruction:\s*tileLocalState\.retainedSourceConstruction/);
+  assert.match(exposeSource, /wgslProjectedRefStream:\s*tileLocalState\.wgslProjectedRefStreamEvidence/);
   assert.match(statsSource, /retained-source:/);
+  assert.match(statsSource, /projected-stream:/);
 });
 
 test("requested GPU arena live path declares compact source trace custody instead of fabricating CPU bridge traces", () => {

@@ -29,6 +29,7 @@ export interface GpuTileCoveragePipelineSkeleton {
   readonly compositeTilesPipeline: GPUComputePipeline;
   createBindGroup(buffers: GpuTileCoverageBuffers): GPUBindGroup;
   dispatch(pass: GPUComputePassEncoder, bindGroup: GPUBindGroup, plan: GpuTileCoveragePlan): GpuTileCoverageDispatchPlan;
+  dispatchProjectedRefStream(pass: GPUComputePassEncoder, bindGroup: GPUBindGroup, plan: GpuTileCoveragePlan): Pick<GpuTileCoverageDispatchPlan, "clearTiles" | "buildTileRefs">;
   dispatchComposite(pass: GPUComputePassEncoder, bindGroup: GPUBindGroup, plan: GpuTileCoveragePlan): void;
 }
 
@@ -110,6 +111,15 @@ export function createGpuTileCoveragePipelineSkeleton(
       dispatchStage(pass, buildTileRefsPipeline, bindGroup, dispatchPlan.buildTileRefs);
       dispatchStage(pass, compositeTilesPipeline, bindGroup, dispatchPlan.compositeTiles);
       return dispatchPlan;
+    },
+    dispatchProjectedRefStream(pass: GPUComputePassEncoder, bindGroup: GPUBindGroup, plan: GpuTileCoveragePlan): Pick<GpuTileCoverageDispatchPlan, "clearTiles" | "buildTileRefs"> {
+      const dispatchPlan = getGpuTileCoverageDispatchPlan(plan);
+      dispatchStage(pass, clearTilesPipeline, bindGroup, dispatchPlan.clearTiles);
+      dispatchStage(pass, buildTileRefsPipeline, bindGroup, dispatchPlan.buildTileRefs);
+      return {
+        clearTiles: dispatchPlan.clearTiles,
+        buildTileRefs: dispatchPlan.buildTileRefs,
+      };
     },
     dispatchComposite(pass: GPUComputePassEncoder, bindGroup: GPUBindGroup, plan: GpuTileCoveragePlan): void {
       dispatchStage(pass, compositeTilesPipeline, bindGroup, {

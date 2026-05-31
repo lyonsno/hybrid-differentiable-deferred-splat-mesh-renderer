@@ -16,6 +16,9 @@ test("requested GPU arena runtime routes presentation through compact retained s
   assert.doesNotMatch(gpuFactorySource, /adaptGpuArenaRetainedContributors/);
   assert.match(gpuFactorySource, /buildCompactRetainedSourceForRuntime/);
   assert.match(gpuFactorySource, /const\s+gpuArenaProjectedContributors\s*=\s*compactSource\.retainedRecords/);
+  assert.match(gpuFactorySource, /createWgslProjectedRefStreamState/);
+  assert.match(gpuFactorySource, /wgslProjectedRefStream,/);
+  assert.match(gpuFactorySource, /wgslProjectedRefStreamEvidence,/);
   assert.match(gpuFactorySource, /createGpuTileCoveragePipelineSkeleton/);
   assert.match(gpuFactorySource, /createGpuTileContributorArenaRuntime/);
   assert.match(gpuFactorySource, /compactRetainedSourceBudgetDiagnostics/);
@@ -161,6 +164,7 @@ test("tile-local-visible dispatch preserves CPU-populated refs when no GPU contr
 
   const renderLoopSource = mainSource.slice(renderLoopStart, renderLoopEnd);
   assert.match(renderLoopSource, /tileLocalState\.gpuArenaRuntime\.dispatch/);
+  assert.match(renderLoopSource, /tileLocalState\.pipeline\.dispatchProjectedRefStream/);
   assert.match(renderLoopSource, /tileLocalState\.pipeline\.dispatchComposite/);
   assert.match(
     renderLoopSource,
@@ -200,6 +204,50 @@ test("direct GPU live tile-local-visible without a runtime still runs the full b
   );
 });
 
+test("WGSL projected-ref stream sidecar is not the retained source or compositor input", () => {
+  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const rendererSource = readFileSync(new URL("../../src/gpuTileCoverageRenderer.ts", import.meta.url), "utf8");
+  const gpuFactorySource = extractFunctionSource(mainSource, "createGpuArenaTileLocalSceneState");
+  const streamFactorySource = extractSourceBetween(
+    mainSource,
+    "function createWgslProjectedRefStreamState",
+    "function buildGpuArenaRetainedSourceConstructionEvidence",
+  );
+  const streamEvidenceSource = extractFunctionSource(mainSource, "buildWgslProjectedRefStreamEvidence");
+  const renderLoopStart = mainSource.indexOf("const tileLocalComputePass = encoder.beginComputePass");
+  const renderLoopEnd = mainSource.indexOf("tileLocalComputePass.end()", renderLoopStart);
+  const renderLoopSource = mainSource.slice(renderLoopStart, renderLoopEnd);
+
+  assert.match(rendererSource, /dispatchProjectedRefStream/);
+  assert.match(rendererSource, /dispatchStage\(pass,\s*clearTilesPipeline/);
+  assert.match(rendererSource, /dispatchStage\(pass,\s*buildTileRefsPipeline/);
+  assert.doesNotMatch(
+    rendererSource.slice(
+      rendererSource.indexOf("dispatchProjectedRefStream"),
+      rendererSource.indexOf("dispatchComposite"),
+    ),
+    /compositeTilesPipeline/,
+    "the projected-stream sidecar must not composite into the visible output",
+  );
+  assert.match(streamFactorySource, /wgsl_projected_ref_stream_tile_headers/);
+  assert.match(streamFactorySource, /wgsl_projected_ref_stream_tile_refs/);
+  assert.match(streamFactorySource, /sourceRole:\s*"diagnostic-sidecar-not-retention-source"/);
+  assert.match(streamFactorySource, /maxTileRefs:\s*Math\.max\(/);
+  assert.match(streamEvidenceSource, /runtimeConsumerBackend:\s*"none"/);
+  assert.match(
+    streamEvidenceSource,
+    /falseClosureGuard:\s*"wgsl-projected-ref-stream-sidecar-does-not-feed-retention-or-compositor"/,
+  );
+  assert.match(mainSource, /requested === "on" \|\| requested === "enabled" \|\| requested === "1"/);
+  assert.match(gpuFactorySource, /const\s+gpuArenaProjectedContributors\s*=\s*compactSource\.retainedRecords/);
+  assert.match(renderLoopSource, /dispatchProjectedRefStream/);
+  assert.match(renderLoopSource, /gpuArenaRuntime\.dispatch/);
+  assert.ok(
+    renderLoopSource.indexOf("dispatchProjectedRefStream") < renderLoopSource.indexOf("gpuArenaRuntime.dispatch"),
+    "sidecar projection should run before the retained-source runtime so it can become a comparable source witness",
+  );
+});
+
 function extractFunctionSource(source, name) {
   const start = source.indexOf(`function ${name}`);
   assert.ok(start >= 0, `${name} should exist`);
@@ -218,4 +266,12 @@ function extractFunctionSource(source, name) {
     }
   }
   assert.fail(`${name} function body was not closed`);
+}
+
+function extractSourceBetween(source, startMarker, endMarker) {
+  const start = source.indexOf(startMarker);
+  assert.ok(start >= 0, `${startMarker} should exist`);
+  const end = source.indexOf(endMarker, start);
+  assert.ok(end > start, `${endMarker} should bound ${startMarker}`);
+  return source.slice(start, end);
 }
