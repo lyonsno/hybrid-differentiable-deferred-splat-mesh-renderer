@@ -186,9 +186,11 @@ test("requested GPU arena live path consumes compact retained source while retai
   assert.doesNotMatch(gpuFactorySource, /adaptGpuArenaRetainedContributors/);
   assert.match(gpuFactorySource, /buildCompactRetainedSourceForRuntime/);
   assert.match(gpuFactorySource, /const\s+gpuArenaProjectedContributors\s*=\s*compactSource\.retainedRecords/);
+  assert.match(gpuFactorySource, /buildGpuArenaRetainedSourceConstructionEvidence\(compactSource\)/);
   assert.match(gpuFactorySource, /createGpuTileCoveragePipelineSkeleton/);
   assert.match(gpuFactorySource, /createGpuTileContributorArenaRuntime/);
   assert.match(gpuFactorySource, /compactRetainedSourceBudgetDiagnostics/);
+  assert.match(gpuFactorySource, /retainedSourceConstruction,/);
   assert.doesNotMatch(gpuFactorySource, /gpuLiveMaxTileRefs/);
   assert.doesNotMatch(gpuFactorySource, /gpuArenaRuntime:\s*null/);
   assert.match(cpuFactorySource, /buildTileLocalPrepassBridge/);
@@ -196,6 +198,38 @@ test("requested GPU arena live path consumes compact retained source while retai
   assert.match(compactSourceSource, /buildStreamingCompactRetainedSourceForRuntime/);
   assert.match(mainSource, /maxStorageBufferBindingSize/);
   assert.match(mainSource, /REQUESTED_ARENA_BACKEND === "gpu"[\s\S]*createGpuArenaTileLocalSceneState/);
+});
+
+test("GPU arena runtime exposes retained-source construction custody without claiming GPU source ownership", () => {
+  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const gpuFactorySource = extractFunctionSource(mainSource, "createGpuArenaTileLocalSceneState");
+  const retainedSourceEvidence = extractFunctionSource(mainSource, "buildGpuArenaRetainedSourceConstructionEvidence");
+  const arenaEvidenceSource = extractFunctionSource(mainSource, "buildArenaRuntimeEvidence");
+  const exposeSource = mainSource.slice(
+    mainSource.indexOf("function exposeTileLocalRuntimeEvidence"),
+    mainSource.indexOf("function traceContributorListByAnchorId"),
+  );
+  const statsStart = mainSource.indexOf("// Stats overlay");
+  const statsEnd = mainSource.indexOf("statsEl.textContent = statsText;", statsStart);
+  const statsSource = mainSource.slice(statsStart, statsEnd);
+
+  assert.match(gpuFactorySource, /const retainedSourceConstruction = buildGpuArenaRetainedSourceConstructionEvidence\(compactSource\)/);
+  assert.match(retainedSourceEvidence, /requestedSourceBackend:\s*"gpu-retained-source-substrate"/);
+  assert.match(retainedSourceEvidence, /effectiveSourceBackend:\s*"cpu-reference"/);
+  assert.match(retainedSourceEvidence, /oracleBackend:\s*"cpu-reference"/);
+  assert.match(retainedSourceEvidence, /runtimeConsumerBackend:\s*"gpu-contributor-arena-runtime"/);
+  assert.match(retainedSourceEvidence, /sourceHandoff:\s*"cpu-retained-records"/);
+  assert.match(
+    retainedSourceEvidence,
+    /falseClosureGuard:\s*"gpu-arena-runtime-does-not-imply-gpu-retained-source-construction"/,
+  );
+  assert.match(retainedSourceEvidence, /"compact-source-stream-retention"/);
+  assert.match(retainedSourceEvidence, /"compact-source-finalize-retained"/);
+  assert.match(retainedSourceEvidence, /nextGpuOffloadStage:\s*"projected-ref-stream-and-retention-election"/);
+  assert.match(arenaEvidenceSource, /retainedSourceConstruction:\s*tileLocalState\?\.retainedSourceConstruction/);
+  assert.match(exposeSource, /retainedSourceConstruction:\s*tileLocalState\.retainedSourceConstruction/);
+  assert.match(statsSource, /retained-source:/);
+  assert.doesNotMatch(retainedSourceEvidence, /effectiveSourceBackend:\s*"gpu/);
 });
 
 test("requested GPU arena live path declares compact source trace custody instead of fabricating CPU bridge traces", () => {

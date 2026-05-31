@@ -223,6 +223,7 @@ interface TileLocalSceneState {
   retentionAudit: TileRetentionAudit;
   budgetDiagnostics: TileLocalPrepassBudgetDiagnostics;
   compactSourceConstruction?: CompactSourceConstructionEvidence;
+  retainedSourceConstruction?: RetainedSourceConstructionEvidence;
   tileRefSplatIds: Uint32Array;
   prepassSignature: string;
   debugMode: GpuTileCoverageDebugMode;
@@ -254,6 +255,7 @@ interface TileLocalSceneState {
 interface ArenaRuntimeEvidence {
   requestedArenaBackend: "cpu" | "gpu";
   effectiveArenaBackend: "cpu" | "gpu";
+  retainedSourceConstruction?: RetainedSourceConstructionEvidence;
   cpuBuildDurationMs?: number;
   cpuBridgeBuildDurationMs?: number;
   gpuDispatchEnqueueDurationMs?: number;
@@ -450,6 +452,21 @@ interface CompactSourceConstructionEvidence {
   readonly maxTilesPerSplat: number | null;
   readonly effectiveMaxTilesPerSplat: number | null;
   readonly footprintComparisonClass: string;
+}
+
+interface RetainedSourceConstructionEvidence {
+  readonly requestedSourceBackend: "gpu-retained-source-substrate";
+  readonly effectiveSourceBackend: "cpu-reference";
+  readonly oracleBackend: "cpu-reference";
+  readonly runtimeConsumerBackend: "gpu-contributor-arena-runtime";
+  readonly sourceHandoff: "cpu-retained-records";
+  readonly falseClosureGuard: "gpu-arena-runtime-does-not-imply-gpu-retained-source-construction";
+  readonly cpuOwnedStages: readonly string[];
+  readonly gpuReadyStages: readonly string[];
+  readonly nextGpuOffloadStage: "projected-ref-stream-and-retention-election";
+  readonly projectedRefs: number;
+  readonly retainedRefs: number;
+  readonly droppedRefs: number;
 }
 
 interface SortSettleState {
@@ -1176,6 +1193,10 @@ async function main() {
       if (scene.tileLocalState.debugMode !== "final-color") {
         statsText += ` | tile-debug: ${scene.tileLocalState.debugMode}`;
       }
+      if (scene.tileLocalState.retainedSourceConstruction) {
+        const sourceConstruction = scene.tileLocalState.retainedSourceConstruction;
+        statsText += ` | retained-source: ${sourceConstruction.effectiveSourceBackend}->${sourceConstruction.runtimeConsumerBackend}`;
+      }
     }
     const arenaRuntime = buildArenaRuntimeEvidence(
       REQUESTED_ARENA_BACKEND,
@@ -1455,6 +1476,7 @@ function createGpuArenaTileLocalSceneState(
     alphaParamData,
     sourceOpacities: effectiveOpacities,
   });
+  const retainedSourceConstruction = buildGpuArenaRetainedSourceConstructionEvidence(compactSource);
 
   return {
     viewportWidth,
@@ -1485,6 +1507,7 @@ function createGpuArenaTileLocalSceneState(
     retentionAudit,
     budgetDiagnostics,
     compactSourceConstruction: compactSource.compactSourceConstruction,
+    retainedSourceConstruction,
     tileRefSplatIds: legacyProjection.tileRefSplatIds,
     prepassSignature,
     debugMode: TILE_LOCAL_DEBUG_MODE,
@@ -2007,6 +2030,34 @@ function buildCompactSourceConstructionEvidence({
       shouldBoundSplatTileFootprints,
       effectiveMaxTilesPerSplat,
     }),
+  };
+}
+
+function buildGpuArenaRetainedSourceConstructionEvidence(
+  compactSource: CompactRetainedSourceForRuntime,
+): RetainedSourceConstructionEvidence {
+  return {
+    requestedSourceBackend: "gpu-retained-source-substrate",
+    effectiveSourceBackend: "cpu-reference",
+    oracleBackend: "cpu-reference",
+    runtimeConsumerBackend: "gpu-contributor-arena-runtime",
+    sourceHandoff: "cpu-retained-records",
+    falseClosureGuard: "gpu-arena-runtime-does-not-imply-gpu-retained-source-construction",
+    cpuOwnedStages: [
+      "compact-source-project-splats",
+      "compact-source-estimate-ref-budget",
+      "compact-source-stream-retention",
+      "compact-source-finalize-retained",
+      "compact-source-pixel-traces",
+    ],
+    gpuReadyStages: [
+      "gpu-contributor-arena-count-prefix-scatter",
+      "gpu-contributor-arena-legacy-compositor-consumer",
+    ],
+    nextGpuOffloadStage: "projected-ref-stream-and-retention-election",
+    projectedRefs: compactSource.projectedContributorCount,
+    retainedRefs: compactSource.retainedContributorCount,
+    droppedRefs: compactSource.droppedContributorCount,
   };
 }
 
@@ -5616,6 +5667,7 @@ function exposeTileLocalRuntimeEvidence(
             status: tileLocalStatus,
           },
           compactSourceConstruction: tileLocalState.compactSourceConstruction,
+          retainedSourceConstruction: tileLocalState.retainedSourceConstruction,
           budgetDiagnostics: tileLocalState.budgetDiagnostics,
           diagnostics,
           pixelContributorTrace,
@@ -5660,6 +5712,7 @@ function buildArenaRuntimeEvidence(
   return {
     requestedArenaBackend,
     effectiveArenaBackend,
+    retainedSourceConstruction: tileLocalState?.retainedSourceConstruction,
     cpuBuildDurationMs: typeof cpuBuildDurationMs === "number" && Number.isFinite(cpuBuildDurationMs)
       ? cpuBuildDurationMs
       : undefined,

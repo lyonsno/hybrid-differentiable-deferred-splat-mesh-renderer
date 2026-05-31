@@ -251,6 +251,7 @@ test("operator witness app frame timing routes requested GPU presentation throug
 
   assert.match(ensureSource, /footprintParams,\s*frameTiming/);
   assert.match(gpuSource, /buildCompactRetainedSourceForRuntime/);
+  assert.match(gpuSource, /buildGpuArenaRetainedSourceConstructionEvidence\(compactSource\)/);
   assert.match(gpuSource, /createGpuTileContributorArenaRuntime/);
   assert.match(gpuSource, /compactRetainedSourceBudgetDiagnostics/);
   assert.doesNotMatch(gpuSource, /gpuLiveMaxTileRefs/);
@@ -258,6 +259,24 @@ test("operator witness app frame timing routes requested GPU presentation throug
   assert.match(dispatchSource, /gpuDispatchEnqueueStartedAtMs/);
   assert.match(dispatchSource, /tileLocalState\.gpuArenaRuntime\.dispatch\(tileLocalComputePass/);
   assert.match(dispatchSource, /tileLocalState\.pipeline\.dispatchComposite\(tileLocalComputePass/);
+});
+
+test("operator witness evidence distinguishes GPU arena consumption from retained-source construction ownership", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const gpuSource = extractFunctionSource(source, "createGpuArenaTileLocalSceneState");
+  const evidenceSource = extractFunctionSource(source, "buildGpuArenaRetainedSourceConstructionEvidence");
+  const runtimeEvidenceSource = extractFunctionSource(source, "buildArenaRuntimeEvidence");
+  const exposureStart = source.indexOf("function exposeTileLocalRuntimeEvidence");
+  const exposureEnd = source.indexOf("function traceContributorListByAnchorId", exposureStart);
+  const exposureSource = source.slice(exposureStart, exposureEnd);
+
+  assert.match(gpuSource, /retainedSourceConstruction,/);
+  assert.match(evidenceSource, /effectiveSourceBackend:\s*"cpu-reference"/);
+  assert.match(evidenceSource, /runtimeConsumerBackend:\s*"gpu-contributor-arena-runtime"/);
+  assert.match(evidenceSource, /falseClosureGuard:\s*"gpu-arena-runtime-does-not-imply-gpu-retained-source-construction"/);
+  assert.match(evidenceSource, /nextGpuOffloadStage:\s*"projected-ref-stream-and-retention-election"/);
+  assert.match(runtimeEvidenceSource, /retainedSourceConstruction:\s*tileLocalState\?\.retainedSourceConstruction/);
+  assert.match(exposureSource, /retainedSourceConstruction:\s*tileLocalState\.retainedSourceConstruction/);
 });
 
 test("operator witness compact source timing exposes internal construction stages", () => {
