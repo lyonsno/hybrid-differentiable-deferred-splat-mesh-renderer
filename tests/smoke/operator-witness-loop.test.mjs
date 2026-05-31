@@ -271,10 +271,10 @@ test("operator witness evidence distinguishes GPU arena consumption from retaine
   const exposureSource = source.slice(exposureStart, exposureEnd);
 
   assert.match(gpuSource, /retainedSourceConstruction,/);
-  assert.match(evidenceSource, /effectiveSourceBackend:\s*"cpu-reference"/);
+  assert.match(evidenceSource, /effectiveSourceBackend:\s*"deterministic-gpu-retention-carrier"/);
   assert.match(evidenceSource, /runtimeConsumerBackend:\s*"gpu-contributor-arena-runtime"/);
-  assert.match(evidenceSource, /falseClosureGuard:\s*"gpu-arena-runtime-does-not-imply-gpu-retained-source-construction"/);
-  assert.match(evidenceSource, /nextGpuOffloadStage:\s*"projected-ref-stream-and-retention-election"/);
+  assert.match(evidenceSource, /falseClosureGuard:\s*"gpu-retention-carrier-does-not-imply-wgsl-source-construction"/);
+  assert.match(evidenceSource, /nextGpuOffloadStage:\s*"wgsl-projected-ref-stream"/);
   assert.match(runtimeEvidenceSource, /retainedSourceConstruction:\s*tileLocalState\?\.retainedSourceConstruction/);
   assert.match(exposureSource, /retainedSourceConstruction:\s*tileLocalState\.retainedSourceConstruction/);
 });
@@ -370,20 +370,21 @@ test("compact stream retention scores local conic support separately from tile i
   assert.match(contributorSource, /occlusionWeight:\s*retentionSupportWeight \* opacity/);
 });
 
-test("compact finalize retention reuses bounded priority candidate lists", () => {
+test("compact finalize retention routes bounded priority candidate lists through the GPU carrier", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const electionSource = readFileSync(new URL("../../src/compactRetentionElection.js", import.meta.url), "utf8");
   const compactSourceStart = source.indexOf("function buildCompactRetainedSourceForRuntime");
   const compactSourceEnd = source.indexOf("function estimateCompactProjectedTileRefCount", compactSourceStart);
   const compactSource = source.slice(compactSourceStart, compactSourceEnd);
 
-  assert.match(compactSource, /selectCompactProjectionRetentionRecords\(\s*projectedTileRecords,\s*maxRefsPerTile,\s*\{/);
-  assert.match(compactSource, /coverageRecords:\s*bucket\.coverageRecords\.records/);
-  assert.match(compactSource, /retentionRecords:\s*bucket\.retentionRecords\.records/);
-  assert.match(compactSource, /occlusionRecords:\s*bucket\.occlusionRecords\.records/);
-  assert.match(compactSource, /supportSampleRecords:\s*compactSupportSampleCandidateRecords\(bucket\)/);
-  assert.match(compactSource, /supportSampleRecordGroups:\s*compactSupportSampleCandidateRecordGroups\(bucket\)/);
-  assert.match(source, /selectCompactProjectionRetentionRecords,/);
+  assert.match(compactSource, /buildCompactRetainedRecordsWithGpuCarrier/);
+  assert.match(source, /buildProjectionRetentionArena\(\{/);
+  assert.match(source, /coverageRecords,/);
+  assert.match(source, /retentionRecords,/);
+  assert.match(source, /occlusionRecords,/);
+  assert.match(source, /supportSampleRecords,/);
+  assert.match(source, /supportSampleRecordGroups,/);
+  assert.match(source, /buildDeterministicGpuTileProjectionRetentionArena,/);
   assert.match(source, /compareCompactProjectionSupportSamplePriority,/);
   assert.match(electionSource, /const SUPPORT_SAMPLE_FINAL_FRACTION = 0\.25/);
   assert.match(electionSource, /const priorityTarget = maxRefsPerTile - supportTarget/);

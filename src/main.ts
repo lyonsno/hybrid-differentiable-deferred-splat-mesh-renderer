@@ -456,14 +456,14 @@ interface CompactSourceConstructionEvidence {
 
 interface RetainedSourceConstructionEvidence {
   readonly requestedSourceBackend: "gpu-retained-source-substrate";
-  readonly effectiveSourceBackend: "cpu-reference";
+  readonly effectiveSourceBackend: "deterministic-gpu-retention-carrier";
   readonly oracleBackend: "cpu-reference";
   readonly runtimeConsumerBackend: "gpu-contributor-arena-runtime";
-  readonly sourceHandoff: "cpu-retained-records";
-  readonly falseClosureGuard: "gpu-arena-runtime-does-not-imply-gpu-retained-source-construction";
+  readonly sourceHandoff: "cpu-projected-candidate-records";
+  readonly falseClosureGuard: "gpu-retention-carrier-does-not-imply-wgsl-source-construction";
   readonly cpuOwnedStages: readonly string[];
   readonly gpuReadyStages: readonly string[];
-  readonly nextGpuOffloadStage: "projected-ref-stream-and-retention-election";
+  readonly nextGpuOffloadStage: "wgsl-projected-ref-stream";
   readonly projectedRefs: number;
   readonly retainedRefs: number;
   readonly droppedRefs: number;
@@ -1683,6 +1683,7 @@ function buildCompactRetainedSourceForRuntime({
     maxTilesPerSplat: fullSceneConstructionMaxTilesPerSplat,
     fullSceneConstructionRefUpperBound,
     prestreamConstructionBudget: fullSceneConstructionBudget,
+    buildProjectionRetentionArena,
     rendererMetadata,
     frameTiming,
   });
@@ -1709,6 +1710,7 @@ function buildStreamingCompactRetainedSourceForRuntime({
   maxTilesPerSplat,
   fullSceneConstructionRefUpperBound,
   prestreamConstructionBudget,
+  buildProjectionRetentionArena,
   rendererMetadata,
   frameTiming,
 }: {
@@ -1732,6 +1734,7 @@ function buildStreamingCompactRetainedSourceForRuntime({
   readonly maxTilesPerSplat?: number | null;
   readonly fullSceneConstructionRefUpperBound?: number;
   readonly prestreamConstructionBudget?: ReturnType<typeof classifyCompactSourceConstructionBudget>;
+  readonly buildProjectionRetentionArena: typeof buildDeterministicGpuTileProjectionRetentionArena;
   readonly rendererMetadata: Record<string, unknown>;
   readonly frameTiming?: FrameTimingDraft;
 }): CompactRetainedSourceForRuntime {
@@ -1834,40 +1837,30 @@ function buildStreamingCompactRetainedSourceForRuntime({
   });
 
   const retainedRecords: GpuTileContributorArenaProjectedContributor[] = [];
-  timeOptionalFrameStage(frameTiming, "compact-source-finalize-retained", () => {
-    for (let tileIndex = 0; tileIndex < tileCount; tileIndex += 1) {
-      const bucket = buckets.get(tileIndex);
-      const projectedCount = projectedCounts[tileIndex] ?? 0;
-      const retainedOffset = retainedRecords.length;
-      let retainedTileRecords: GpuTileContributorArenaProjectedContributor[] = [];
-      if (bucket) {
-        const projectedTileRecords = compactMergedTileCandidateRecords(bucket)
-          .sort(compareCompactProjectionRetentionCoverageOrder);
-        retainedTileRecords = selectCompactProjectionRetentionRecords(
-          projectedTileRecords,
-          maxRefsPerTile,
-          {
-            coverageRecords: bucket.coverageRecords.records,
-            retentionRecords: bucket.retentionRecords.records,
-            occlusionRecords: bucket.occlusionRecords.records,
-            supportSampleRecords: compactSupportSampleCandidateRecords(bucket),
-            supportSampleRecordGroups: compactSupportSampleCandidateRecordGroups(bucket),
-          },
-        ).sort(compareCompactProjectionRetentionCompositorOrder);
-        retainedRecords.push(...retainedTileRecords);
-      }
+  const retainedRecordsByTile = timeOptionalFrameStage(frameTiming, "compact-source-finalize-retained", () =>
+    buildCompactRetainedRecordsWithGpuCarrier({
+      tileCount,
+      maxRefsPerTile,
+      buckets,
+      buildProjectionRetentionArena,
+    })
+  );
+  for (let tileIndex = 0; tileIndex < tileCount; tileIndex += 1) {
+    const projectedCount = projectedCounts[tileIndex] ?? 0;
+    const retainedOffset = retainedRecords.length;
+    const retainedTileRecords = retainedRecordsByTile.get(tileIndex) ?? [];
+    retainedRecords.push(...retainedTileRecords);
 
-      const retainedCount = retainedTileRecords.length;
-      const droppedCount = Math.max(0, projectedCount - retainedCount);
-      const headerBase = tileIndex * 8;
-      tileHeaderU32[headerBase] = retainedOffset;
-      tileHeaderU32[headerBase + 1] = retainedCount;
-      tileHeaderU32[headerBase + 2] = projectedCount;
-      tileHeaderU32[headerBase + 3] = droppedCount;
-      tileHeaderU32[headerBase + 4] = droppedCount > 0 ? 1 : 0;
-      tileHeaderU32[headerBase + 5] = retainedCount === 0 ? 0xffffffff : compactMaxRetainedViewRank(retainedTileRecords);
-    }
-  });
+    const retainedCount = retainedTileRecords.length;
+    const droppedCount = Math.max(0, projectedCount - retainedCount);
+    const headerBase = tileIndex * 8;
+    tileHeaderU32[headerBase] = retainedOffset;
+    tileHeaderU32[headerBase + 1] = retainedCount;
+    tileHeaderU32[headerBase + 2] = projectedCount;
+    tileHeaderU32[headerBase + 3] = droppedCount;
+    tileHeaderU32[headerBase + 4] = droppedCount > 0 ? 1 : 0;
+    tileHeaderU32[headerBase + 5] = retainedCount === 0 ? 0xffffffff : compactMaxRetainedViewRank(retainedTileRecords);
+  }
 
   const streamedProjectedContributorCount = projectedIndex;
   const projectedContributorCount = streamedProjectedContributorCount;
@@ -2038,23 +2031,23 @@ function buildGpuArenaRetainedSourceConstructionEvidence(
 ): RetainedSourceConstructionEvidence {
   return {
     requestedSourceBackend: "gpu-retained-source-substrate",
-    effectiveSourceBackend: "cpu-reference",
+    effectiveSourceBackend: "deterministic-gpu-retention-carrier",
     oracleBackend: "cpu-reference",
     runtimeConsumerBackend: "gpu-contributor-arena-runtime",
-    sourceHandoff: "cpu-retained-records",
-    falseClosureGuard: "gpu-arena-runtime-does-not-imply-gpu-retained-source-construction",
+    sourceHandoff: "cpu-projected-candidate-records",
+    falseClosureGuard: "gpu-retention-carrier-does-not-imply-wgsl-source-construction",
     cpuOwnedStages: [
       "compact-source-project-splats",
       "compact-source-estimate-ref-budget",
       "compact-source-stream-retention",
-      "compact-source-finalize-retained",
       "compact-source-pixel-traces",
     ],
     gpuReadyStages: [
+      "gpu-projection-retention-election-carrier",
       "gpu-contributor-arena-count-prefix-scatter",
       "gpu-contributor-arena-legacy-compositor-consumer",
     ],
-    nextGpuOffloadStage: "projected-ref-stream-and-retention-election",
+    nextGpuOffloadStage: "wgsl-projected-ref-stream",
     projectedRefs: compactSource.projectedContributorCount,
     retainedRefs: compactSource.retainedContributorCount,
     droppedRefs: compactSource.droppedContributorCount,
@@ -2240,6 +2233,61 @@ function compactRetainSupportSampleRecords({
       );
     }
   }
+}
+
+function buildCompactRetainedRecordsWithGpuCarrier({
+  tileCount,
+  maxRefsPerTile,
+  buckets,
+  buildProjectionRetentionArena,
+}: {
+  readonly tileCount: number;
+  readonly maxRefsPerTile: number;
+  readonly buckets: ReadonlyMap<number, CompactStreamingTileBucket>;
+  readonly buildProjectionRetentionArena: typeof buildDeterministicGpuTileProjectionRetentionArena;
+}): Map<number, GpuTileContributorArenaProjectedContributor[]> {
+  const projectedCandidateRecords: GpuTileContributorArenaProjectedContributor[] = [];
+  const coverageRecords: GpuTileContributorArenaProjectedContributor[] = [];
+  const retentionRecords: GpuTileContributorArenaProjectedContributor[] = [];
+  const occlusionRecords: GpuTileContributorArenaProjectedContributor[] = [];
+  const supportSampleRecords: GpuTileContributorArenaProjectedContributor[] = [];
+  const supportSampleRecordGroups: (readonly GpuTileContributorArenaProjectedContributor[])[] = [];
+
+  for (const bucket of buckets.values()) {
+    projectedCandidateRecords.push(...compactMergedTileCandidateRecords(bucket).sort(compareCompactProjectionRetentionCoverageOrder));
+    coverageRecords.push(...bucket.coverageRecords.records);
+    retentionRecords.push(...bucket.retentionRecords.records);
+    occlusionRecords.push(...bucket.occlusionRecords.records);
+    supportSampleRecords.push(...compactSupportSampleCandidateRecords(bucket));
+    supportSampleRecordGroups.push(...compactSupportSampleCandidateRecordGroups(bucket));
+  }
+
+  const retentionArena = buildProjectionRetentionArena({
+    tileCount,
+    maxContributors: projectedCandidateRecords.length,
+    maxRefsPerTile,
+    contributors: projectedCandidateRecords,
+    candidateSources: {
+      coverageRecords,
+      retentionRecords,
+      occlusionRecords,
+      supportSampleRecords,
+      supportSampleRecordGroups,
+    },
+  });
+  const retainedRecordsByTile = new Map<number, GpuTileContributorArenaProjectedContributor[]>();
+  for (const record of retentionArena.retainedRecords) {
+    const records = retainedRecordsByTile.get(record.tileIndex);
+    if (records) {
+      records.push(record);
+    } else {
+      retainedRecordsByTile.set(record.tileIndex, [record]);
+    }
+  }
+  for (const records of retainedRecordsByTile.values()) {
+    records.sort(compareCompactProjectionRetentionCompositorOrder);
+  }
+  return retainedRecordsByTile;
 }
 
 function compactMergedTileCandidateRecords(

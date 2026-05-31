@@ -205,6 +205,55 @@ test("GPU-owned projection retention honors compact support-sample quotas and ca
   assert.ok(arena.retainedRecords.some((record) => record.originalId >= 300 && record.originalId < 400));
 });
 
+test("GPU-owned projection retention indexes candidate sources once instead of filtering global pools per tile", () => {
+  const coverageRecords = Array.from({ length: 12 }, (_, tileIndex) => contributor({
+    splatIndex: tileIndex,
+    originalId: tileIndex,
+    tileIndex,
+    coverageWeight: 100 - tileIndex,
+    retentionWeight: 100 - tileIndex,
+  }));
+  const supportSampleRecordGroups = [
+    coverageRecords.map((record) => ({
+      ...record,
+      splatIndex: record.splatIndex + 100,
+      originalId: record.originalId + 100,
+      supportSampleWeight: 1000 - record.tileIndex,
+      supportSampleRetentionWeight: 1000 - record.tileIndex,
+    })),
+  ];
+  const records = [
+    ...coverageRecords,
+    ...supportSampleRecordGroups.flat(),
+  ];
+  const arena = buildDeterministicGpuTileProjectionRetentionArena({
+    tileCount: 12,
+    maxContributors: records.length,
+    maxRefsPerTile: 2,
+    contributors: records,
+    candidateSources: {
+      coverageRecords,
+      retentionRecords: coverageRecords,
+      supportSampleRecordGroups,
+    },
+  });
+
+  assert.deepEqual([...arena.projectedCounts], new Array(12).fill(2));
+  assert.deepEqual([...arena.retainedCounts], new Array(12).fill(2));
+  for (let tileIndex = 0; tileIndex < 12; tileIndex += 1) {
+    assert.deepEqual(
+      selectedIdList(arena.retainedRecords.filter((record) => record.tileIndex === tileIndex)),
+      [tileIndex, tileIndex + 100],
+    );
+  }
+
+  const source = readFileSync(new URL("../../src/gpuTileCoverage.ts", import.meta.url), "utf8");
+  assert.match(source, /const candidateSourcesByTile = indexGpuProjectionRetentionCandidateSourcesByTile/);
+  assert.match(source, /candidateSourcesByTile\[tileIndex\]/);
+  assert.doesNotMatch(source, /filterGpuProjectionRetentionCandidateSources/);
+  assert.doesNotMatch(source, /filterGpuProjectionRetentionRecordsByTile/);
+});
+
 test("GPU-owned projection retention treats missing occlusion density like the compact oracle", () => {
   const records = [
     contributor({
@@ -342,13 +391,21 @@ test("requested GPU arena live path consumes compact retained source while retai
   const cpuFactorySource = extractFunctionSource(mainSource, "createCpuTileLocalSceneState");
   const compactSourceStart = mainSource.indexOf("function buildCompactRetainedSourceForRuntime");
   const compactSourceEnd = mainSource.indexOf("interface RuntimeCompactTileCoverage", compactSourceStart);
+  const streamingStart = mainSource.indexOf("function buildStreamingCompactRetainedSourceForRuntime");
+  const streamingEnd = mainSource.indexOf("function buildCompactSourceConstructionEvidence", streamingStart);
   assert.ok(compactSourceStart >= 0, "compact-source reference builder should exist");
   assert.ok(compactSourceEnd > compactSourceStart, "compact-source reference builder slice should be bounded");
+  assert.ok(streamingStart >= 0, "streaming compact-source builder should exist");
+  assert.ok(streamingEnd > streamingStart, "streaming compact-source builder slice should be bounded");
   const compactSourceSource = mainSource.slice(compactSourceStart, compactSourceEnd);
+  const streamingSource = mainSource.slice(streamingStart, streamingEnd);
 
   assert.doesNotMatch(gpuFactorySource, /buildTileLocalPrepassBridge/);
   assert.doesNotMatch(gpuFactorySource, /adaptGpuArenaRetainedContributors/);
   assert.match(gpuFactorySource, /buildCompactRetainedSourceForRuntime/);
+  assert.match(streamingSource, /buildCompactRetainedRecordsWithGpuCarrier/);
+  assert.match(compactSourceSource, /buildProjectionRetentionArena\(\{/);
+  assert.match(compactSourceSource, /candidateSources:\s*\{/);
   assert.match(gpuFactorySource, /const\s+gpuArenaProjectedContributors\s*=\s*compactSource\.retainedRecords/);
   assert.match(gpuFactorySource, /buildGpuArenaRetainedSourceConstructionEvidence\(compactSource\)/);
   assert.match(gpuFactorySource, /createGpuTileCoveragePipelineSkeleton/);
@@ -364,7 +421,7 @@ test("requested GPU arena live path consumes compact retained source while retai
   assert.match(mainSource, /REQUESTED_ARENA_BACKEND === "gpu"[\s\S]*createGpuArenaTileLocalSceneState/);
 });
 
-test("GPU arena runtime exposes retained-source construction custody without claiming GPU source ownership", () => {
+test("GPU arena runtime exposes retained-source construction custody without claiming WGSL source ownership", () => {
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const gpuFactorySource = extractFunctionSource(mainSource, "createGpuArenaTileLocalSceneState");
   const retainedSourceEvidence = extractFunctionSource(mainSource, "buildGpuArenaRetainedSourceConstructionEvidence");
@@ -379,21 +436,21 @@ test("GPU arena runtime exposes retained-source construction custody without cla
 
   assert.match(gpuFactorySource, /const retainedSourceConstruction = buildGpuArenaRetainedSourceConstructionEvidence\(compactSource\)/);
   assert.match(retainedSourceEvidence, /requestedSourceBackend:\s*"gpu-retained-source-substrate"/);
-  assert.match(retainedSourceEvidence, /effectiveSourceBackend:\s*"cpu-reference"/);
+  assert.match(retainedSourceEvidence, /effectiveSourceBackend:\s*"deterministic-gpu-retention-carrier"/);
   assert.match(retainedSourceEvidence, /oracleBackend:\s*"cpu-reference"/);
   assert.match(retainedSourceEvidence, /runtimeConsumerBackend:\s*"gpu-contributor-arena-runtime"/);
-  assert.match(retainedSourceEvidence, /sourceHandoff:\s*"cpu-retained-records"/);
+  assert.match(retainedSourceEvidence, /sourceHandoff:\s*"cpu-projected-candidate-records"/);
   assert.match(
     retainedSourceEvidence,
-    /falseClosureGuard:\s*"gpu-arena-runtime-does-not-imply-gpu-retained-source-construction"/,
+    /falseClosureGuard:\s*"gpu-retention-carrier-does-not-imply-wgsl-source-construction"/,
   );
   assert.match(retainedSourceEvidence, /"compact-source-stream-retention"/);
-  assert.match(retainedSourceEvidence, /"compact-source-finalize-retained"/);
-  assert.match(retainedSourceEvidence, /nextGpuOffloadStage:\s*"projected-ref-stream-and-retention-election"/);
+  assert.doesNotMatch(retainedSourceEvidence, /cpuOwnedStages:[\s\S]*"compact-source-finalize-retained"/);
+  assert.match(retainedSourceEvidence, /"gpu-projection-retention-election-carrier"/);
+  assert.match(retainedSourceEvidence, /nextGpuOffloadStage:\s*"wgsl-projected-ref-stream"/);
   assert.match(arenaEvidenceSource, /retainedSourceConstruction:\s*tileLocalState\?\.retainedSourceConstruction/);
   assert.match(exposeSource, /retainedSourceConstruction:\s*tileLocalState\.retainedSourceConstruction/);
   assert.match(statsSource, /retained-source:/);
-  assert.doesNotMatch(retainedSourceEvidence, /effectiveSourceBackend:\s*"gpu/);
 });
 
 test("requested GPU arena live path declares compact source trace custody instead of fabricating CPU bridge traces", () => {
