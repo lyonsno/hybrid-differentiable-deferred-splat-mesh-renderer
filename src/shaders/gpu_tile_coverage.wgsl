@@ -8,7 +8,8 @@ struct FrameUniforms {
   maxTileRefs: u32,
   splatScale: f32,
   minRadiusPx: f32,
-  uniformPadding: vec2f,
+  sourceSplatCount: u32,
+  maxTilesPerSplat: u32,
 };
 
 const DEBUG_MODE_FINAL_COLOR = 0.0;
@@ -278,8 +279,15 @@ fn debug_heatmap_color(
 }
 
 @compute @workgroup_size(64) fn build_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
-  let splatId = globalId.x;
-  if (splatId >= frame.splatCount) {
+  let sourceOrdinal = globalId.x;
+  if (sourceOrdinal >= frame.sourceSplatCount) {
+    return;
+  }
+  var splatId = sourceOrdinal;
+  if (frame.maxTilesPerSplat > 0u || frame.sourceSplatCount != frame.splatCount) {
+    splatId = tileHeaders[tile_count() + sourceOrdinal].x;
+  }
+  if (splatId == 0xffffffffu || splatId >= frame.splatCount) {
     return;
   }
 
@@ -301,10 +309,19 @@ fn debug_heatmap_color(
   let viewportMax = max(frame.viewport - vec2f(1.0, 1.0), vec2f(0.0, 0.0));
   let minCenterPx = clamp(centerPx - vec2f(support, support), vec2f(0.0, 0.0), viewportMax);
   let maxCenterPx = clamp(centerPx + vec2f(support, support), vec2f(0.0, 0.0), viewportMax);
-  let minTileX = min(u32(minCenterPx.x) / tileSizePx, maxTile.x);
-  let maxTileX = min(u32(maxCenterPx.x) / tileSizePx, maxTile.x);
-  let minTileY = min(u32(minCenterPx.y) / tileSizePx, maxTile.y);
-  let maxTileY = min(u32(maxCenterPx.y) / tileSizePx, maxTile.y);
+  var minTileX = min(u32(minCenterPx.x) / tileSizePx, maxTile.x);
+  var maxTileX = min(u32(maxCenterPx.x) / tileSizePx, maxTile.x);
+  var minTileY = min(u32(minCenterPx.y) / tileSizePx, maxTile.y);
+  var maxTileY = min(u32(maxCenterPx.y) / tileSizePx, maxTile.y);
+  if (frame.maxTilesPerSplat > 0u) {
+    let radiusTiles = u32(max(floor((sqrt(f32(frame.maxTilesPerSplat)) - 1.0) / 2.0), 0.0));
+    let footprintCapTileX = clamp(u32(centerPx.x) / tileSizePx, minTileX, maxTileX);
+    let footprintCapTileY = clamp(u32(centerPx.y) / tileSizePx, minTileY, maxTileY);
+    minTileX = max(minTileX, footprintCapTileX - min(footprintCapTileX, radiusTiles));
+    minTileY = max(minTileY, footprintCapTileY - min(footprintCapTileY, radiusTiles));
+    maxTileX = min(maxTileX, footprintCapTileX + radiusTiles);
+    maxTileY = min(maxTileY, footprintCapTileY + radiusTiles);
+  }
   let orderingKey = splatId;
   for (var tileY = minTileY; tileY <= maxTileY; tileY = tileY + 1u) {
     for (var tileX = minTileX; tileX <= maxTileX; tileX = tileX + 1u) {

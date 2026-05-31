@@ -291,6 +291,7 @@ interface WgslProjectedRefStreamState {
   readonly alphaParamBuffer: GPUBuffer;
   readonly compactSourceProjectedRefs: number;
   readonly compactSourceRetainedRefs: number;
+  readonly sourceSplatCount: number;
   dispatchEnqueueDurationMs?: number;
   readback?: WgslProjectedRefStreamReadback;
   pendingReadback?: PendingWgslProjectedRefStreamReadback;
@@ -304,6 +305,8 @@ interface WgslProjectedRefStreamEvidence {
   readonly falseClosureGuard: "wgsl-projected-ref-stream-sidecar-does-not-feed-retention-or-compositor";
   readonly compactSourceProjectedRefs: number;
   readonly compactSourceRetainedRefs: number;
+  readonly sourceSplatCount: number;
+  readonly maxTilesPerSplat: number | null;
   readonly allocatedProjectedRefs: number;
   readonly tileCount: number;
   readonly maxRefsPerTile: number;
@@ -314,6 +317,7 @@ interface WgslProjectedRefStreamEvidence {
 
 type WgslProjectedRefStreamComparisonClass =
   | "matches-compact-projected-refs"
+  | "compact-candidate-footprint-divergence"
   | "raw-gpu-projection-superset"
   | "underpopulated-vs-compact-projected-refs";
 
@@ -326,6 +330,8 @@ interface WgslProjectedRefStreamReadback {
   readonly allocatedProjectedRefs: number;
   readonly compactSourceProjectedRefs: number;
   readonly compactSourceRetainedRefs: number;
+  readonly sourceSplatCount: number;
+  readonly maxTilesPerSplat: number | null;
   readonly projectedScatterRefs: number;
   readonly retainedRefs: number;
   readonly droppedRefs: number;
@@ -487,6 +493,7 @@ interface CompactRetainedSourceForRuntime {
   readonly projectedRecords: readonly GpuTileContributorArenaProjectedContributor[];
   readonly retainedRecords: readonly GpuTileContributorArenaProjectedContributor[];
   readonly droppedRecords: readonly GpuTileContributorArenaProjectedContributor[];
+  readonly candidateSplatIndexes: Uint32Array;
   readonly projectedContributorCount: number;
   readonly retainedContributorCount: number;
   readonly droppedContributorCount: number;
@@ -1695,12 +1702,14 @@ function createWgslProjectedRefStreamState({
     viewportHeight,
     tileSizePx,
     splatCount,
+    sourceSplatCount: compactSource.candidateSplatIndexes.length,
     maxTileRefs: Math.max(
       compactSource.projectedContributorCount,
       compactSource.retainedContributorCount,
-      splatCount,
+      compactSource.candidateSplatIndexes.length,
       1,
     ),
+    maxTilesPerSplat: compactSource.compactSourceConstruction?.effectiveMaxTilesPerSplat ?? null,
   });
   const bufferBlocker = gpuTileCoverageBufferUnavailableReason(device, plan);
   if (bufferBlocker) {
@@ -1712,7 +1721,12 @@ function createWgslProjectedRefStreamState({
     "wgsl_projected_ref_stream_frame_uniforms"
   );
   const frameUniformData = new Float32Array(GPU_TILE_COVERAGE_FRAME_UNIFORM_BYTES / Float32Array.BYTES_PER_ELEMENT);
-  const tileHeaderBuffer = createEmptyStorageBuffer(device, plan.tileHeaderBytes, "wgsl_projected_ref_stream_tile_headers");
+  const tileHeaderBuffer = createTileHeaderStorageBuffer(
+    device,
+    plan,
+    compactSource.candidateSplatIndexes,
+    "wgsl_projected_ref_stream_tile_headers"
+  );
   const tileRefBuffer = createEmptyStorageBuffer(device, plan.tileRefBytes, "wgsl_projected_ref_stream_tile_refs");
   const tileCoverageWeightBuffer = createEmptyStorageBuffer(
     device,
@@ -1755,6 +1769,7 @@ function createWgslProjectedRefStreamState({
       alphaParamBuffer,
       compactSourceProjectedRefs: compactSource.projectedContributorCount,
       compactSourceRetainedRefs: compactSource.retainedContributorCount,
+      sourceSplatCount: compactSource.candidateSplatIndexes.length,
     },
   };
 }
@@ -1995,6 +2010,7 @@ function buildStreamingCompactRetainedSourceForRuntime({
     compactSourceBudget.projectedRefBudgetOverflow;
   const { ranks, depths } = compactSourceBackToFrontDepthEvidence(attributes, viewMatrix);
   const splatsByIndex = new Map(splats.map((splat) => [splat.splatIndex, splat]));
+  const compactSourceCandidateSplatIndexes = new Uint32Array(splats.map((splat) => splat.splatIndex));
   const buckets = new Map<number, CompactStreamingTileBucket>();
   const anchorProjectedRecords: GpuTileContributorArenaProjectedContributor[] = [];
   const tileHeaderU32 = new Uint32Array(Math.max(0, tileCount * 8));
@@ -2149,6 +2165,7 @@ function buildStreamingCompactRetainedSourceForRuntime({
     projectedRecords: anchorProjectedRecords,
     retainedRecords,
     droppedRecords: [],
+    candidateSplatIndexes: compactSourceCandidateSplatIndexes,
     projectedContributorCount,
     retainedContributorCount: retainedRecords.length,
     droppedContributorCount,
@@ -2293,6 +2310,8 @@ function buildWgslProjectedRefStreamEvidence(
     falseClosureGuard: "wgsl-projected-ref-stream-sidecar-does-not-feed-retention-or-compositor",
     compactSourceProjectedRefs: compactSource.projectedContributorCount,
     compactSourceRetainedRefs: compactSource.retainedContributorCount,
+    sourceSplatCount: stream?.plan.sourceSplatCount ?? compactSource.candidateSplatIndexes.length,
+    maxTilesPerSplat: stream?.plan.maxTilesPerSplat ?? null,
     allocatedProjectedRefs: stream?.plan.maxTileRefs ?? 0,
     tileCount: stream?.plan.tileCount ?? 0,
     maxRefsPerTile: stream ? gpuLiveEffectiveRefsPerTile(stream.plan) : 0,
@@ -2310,6 +2329,8 @@ function refreshWgslProjectedRefStreamEvidence(state: TileLocalSceneState): void
     ...state.wgslProjectedRefStreamEvidence,
     allocatedProjectedRefs: state.wgslProjectedRefStream.plan.maxTileRefs,
     tileCount: state.wgslProjectedRefStream.plan.tileCount,
+    sourceSplatCount: state.wgslProjectedRefStream.plan.sourceSplatCount,
+    maxTilesPerSplat: state.wgslProjectedRefStream.plan.maxTilesPerSplat ?? null,
     maxRefsPerTile: gpuLiveEffectiveRefsPerTile(state.wgslProjectedRefStream.plan),
     dispatchEnqueueDurationMs: state.wgslProjectedRefStream.dispatchEnqueueDurationMs,
     readback: state.wgslProjectedRefStream.readback,
@@ -2319,11 +2340,18 @@ function refreshWgslProjectedRefStreamEvidence(state: TileLocalSceneState): void
 function classifyWgslProjectedRefStreamComparison(
   projectedScatterRefs: number,
   compactSourceProjectedRefs: number,
+  stream: WgslProjectedRefStreamState,
 ): WgslProjectedRefStreamComparisonClass {
   if (projectedScatterRefs === compactSourceProjectedRefs) {
     return "matches-compact-projected-refs";
   }
   if (projectedScatterRefs > compactSourceProjectedRefs) {
+    if (
+      stream.plan.sourceSplatCount !== stream.plan.splatCount ||
+      (stream.plan.maxTilesPerSplat ?? 0) > 0
+    ) {
+      return "compact-candidate-footprint-divergence";
+    }
     return "raw-gpu-projection-superset";
   }
   return "underpopulated-vs-compact-projected-refs";
@@ -2955,6 +2983,7 @@ function buildBoundedCompactRetainedSourceForRuntime({
   const tileCount = tileColumns * tileRows;
   const { ranks, depths } = compactSourceBackToFrontDepthEvidence(attributes, viewMatrix);
   const splatsByIndex = new Map(coverage.splats.map((splat) => [splat.splatIndex, splat]));
+  const candidateSplatIndexes = new Uint32Array(coverage.splats.map((splat) => splat.splatIndex));
   const anchorTileIndexes = compactSourceAnchorTileIndexes({ anchors, tileSizePx, tileColumns, tileRows });
   const retainedRecords: GpuTileContributorArenaProjectedContributor[] = [];
   const anchorProjectedRecords: GpuTileContributorArenaProjectedContributor[] = [];
@@ -3024,6 +3053,7 @@ function buildBoundedCompactRetainedSourceForRuntime({
     projectedRecords: anchorProjectedRecords,
     retainedRecords,
     droppedRecords: [],
+    candidateSplatIndexes,
     projectedContributorCount,
     retainedContributorCount: retainedRecords.length,
     droppedContributorCount,
@@ -4759,6 +4789,8 @@ function enqueueWgslProjectedRefStreamReadback(
     allocatedProjectedRefs: stream.plan.maxTileRefs,
     compactSourceProjectedRefs: stream.compactSourceProjectedRefs,
     compactSourceRetainedRefs: stream.compactSourceRetainedRefs,
+    sourceSplatCount: stream.plan.sourceSplatCount,
+    maxTilesPerSplat: stream.plan.maxTilesPerSplat ?? null,
     projectedScatterRefs: 0,
     retainedRefs: 0,
     droppedRefs: 0,
@@ -4769,7 +4801,7 @@ function enqueueWgslProjectedRefStreamReadback(
     headerRetainedRefs: 0,
     headerProjectedRefs: 0,
     headerCountClass: "headers-empty",
-    comparisonClass: classifyWgslProjectedRefStreamComparison(0, stream.compactSourceProjectedRefs),
+    comparisonClass: classifyWgslProjectedRefStreamComparison(0, stream.compactSourceProjectedRefs, stream),
   };
   refreshWgslProjectedRefStreamEvidence(state);
 }
@@ -4805,6 +4837,8 @@ function resolveWgslProjectedRefStreamReadback(state: TileLocalSceneState): void
         allocatedProjectedRefs: pending.stream.plan.maxTileRefs,
         compactSourceProjectedRefs: pending.stream.compactSourceProjectedRefs,
         compactSourceRetainedRefs: pending.stream.compactSourceRetainedRefs,
+        sourceSplatCount: pending.stream.plan.sourceSplatCount,
+        maxTilesPerSplat: pending.stream.plan.maxTilesPerSplat ?? null,
         projectedScatterRefs: 0,
         retainedRefs: 0,
         droppedRefs: 0,
@@ -4815,7 +4849,7 @@ function resolveWgslProjectedRefStreamReadback(state: TileLocalSceneState): void
         headerRetainedRefs: 0,
         headerProjectedRefs: 0,
         headerCountClass: "headers-empty",
-        comparisonClass: classifyWgslProjectedRefStreamComparison(0, pending.stream.compactSourceProjectedRefs),
+        comparisonClass: classifyWgslProjectedRefStreamComparison(0, pending.stream.compactSourceProjectedRefs, pending.stream),
         blockedReason: errorMessage(error),
       };
       if (wgslProjectedRefStreamReadbackCanPublish(state, pending)) {
@@ -4870,6 +4904,8 @@ function summarizeWgslProjectedRefStreamReadback(
     allocatedProjectedRefs: stream.plan.maxTileRefs,
     compactSourceProjectedRefs: stream.compactSourceProjectedRefs,
     compactSourceRetainedRefs: stream.compactSourceRetainedRefs,
+    sourceSplatCount: stream.plan.sourceSplatCount,
+    maxTilesPerSplat: stream.plan.maxTilesPerSplat ?? null,
     projectedScatterRefs,
     retainedRefs,
     droppedRefs,
@@ -4884,7 +4920,7 @@ function summarizeWgslProjectedRefStreamReadback(
       : projectedScatterRefs > 0
         ? "headers-clear-only"
         : "headers-empty",
-    comparisonClass: classifyWgslProjectedRefStreamComparison(projectedScatterRefs, stream.compactSourceProjectedRefs),
+    comparisonClass: classifyWgslProjectedRefStreamComparison(projectedScatterRefs, stream.compactSourceProjectedRefs, stream),
   };
 }
 
@@ -5235,6 +5271,35 @@ function createEmptyStorageBuffer(device: GPUDevice, size: number, label: string
     size: Math.max(16, size),
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
   });
+}
+
+function createTileHeaderStorageBuffer(
+  device: GPUDevice,
+  plan: GpuTileCoveragePlan,
+  candidateSplatIndexes: Uint32Array | null,
+  label: string,
+): GPUBuffer {
+  if (!candidateSplatIndexes || candidateSplatIndexes.length === 0) {
+    return createEmptyStorageBuffer(device, plan.tileHeaderBytes, label);
+  }
+  const headerU32 = new Uint32Array(plan.tileHeaderBytes / Uint32Array.BYTES_PER_ELEMENT);
+  const sourceIndexOffset = plan.tileCount * 4;
+  for (let index = 0; index < candidateSplatIndexes.length; index += 1) {
+    headerU32[sourceIndexOffset + index * 4] = candidateSplatIndexes[index];
+  }
+  return createInitializedReadableStorageBuffer(device, headerU32.buffer, label);
+}
+
+function createInitializedReadableStorageBuffer(device: GPUDevice, data: ArrayBuffer, label: string): GPUBuffer {
+  const buffer = device.createBuffer({
+    label,
+    size: Math.max(16, data.byteLength),
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
+    mappedAtCreation: true,
+  });
+  new Uint8Array(buffer.getMappedRange()).set(new Uint8Array(data));
+  buffer.unmap();
+  return buffer;
 }
 
 function gpuTileCoverageBufferUnavailableReason(device: GPUDevice, plan: GpuTileCoveragePlan): string | undefined {

@@ -99,10 +99,10 @@ test("GPU live tile-ref builder scatters a projected conic footprint across ever
   assert.match(shader, /min\(frame\.viewport\.x, frame\.viewport\.y\) \* 0\.65/);
   assert.match(shader, /let support = gpu_live_support_radius_px\(conic\.majorRadiusPx, conic\.minorRadiusPx\)/);
   assert.doesNotMatch(shader, /return 10\.0/);
-  assert.match(shader, /let minTileX =/);
-  assert.match(shader, /let maxTileX =/);
-  assert.match(shader, /let minTileY =/);
-  assert.match(shader, /let maxTileY =/);
+  assert.match(shader, /\b(?:let|var) minTileX =/);
+  assert.match(shader, /\b(?:let|var) maxTileX =/);
+  assert.match(shader, /\b(?:let|var) minTileY =/);
+  assert.match(shader, /\b(?:let|var) maxTileY =/);
   assert.match(shader, /for\s*\(var tileY = minTileY; tileY <= maxTileY; tileY = tileY \+ 1u\)/);
   assert.match(shader, /for\s*\(var tileX = minTileX; tileX <= maxTileX; tileX = tileX \+ 1u\)/);
   assert.doesNotMatch(shader, /let firstTile = tileY \* frame\.tileGrid\.x \+ tileX;[\s\S]*tileRefs\[refIndex\] = vec4u\(splatId, splatId, firstTile, refIndex\);/);

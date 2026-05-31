@@ -55,10 +55,13 @@ export interface GpuTileCoveragePlanInput {
   readonly viewportHeight: number;
   readonly tileSizePx: number;
   readonly splatCount: number;
+  readonly sourceSplatCount?: number;
   readonly maxTileRefs: number;
+  readonly maxTilesPerSplat?: number | null;
 }
 
 export interface GpuTileCoveragePlan extends GpuTileCoveragePlanInput {
+  readonly sourceSplatCount: number;
   readonly tileColumns: number;
   readonly tileRows: number;
   readonly tileCount: number;
@@ -201,26 +204,37 @@ export function createGpuTileCoveragePlan(input: GpuTileCoveragePlanInput): GpuT
   const viewportHeight = assertPositiveInteger(input.viewportHeight, "viewport height");
   const tileSizePx = assertPositiveInteger(input.tileSizePx, "tile size");
   const splatCount = assertNonNegativeInteger(input.splatCount, "splat count");
+  const sourceSplatCount = input.sourceSplatCount === undefined
+    ? splatCount
+    : assertNonNegativeInteger(input.sourceSplatCount, "source splat count");
   const maxTileRefs = assertPositiveInteger(input.maxTileRefs, "max tile refs");
-  if (maxTileRefs < splatCount) {
-    throw new Error("Max tile refs must be at least the splat count for the skeleton buffer contract");
+  if (maxTileRefs < sourceSplatCount) {
+    throw new Error("Max tile refs must be at least the source splat count for the skeleton buffer contract");
   }
+  const maxTilesPerSplat = input.maxTilesPerSplat === undefined || input.maxTilesPerSplat === null
+    ? null
+    : assertNonNegativeInteger(input.maxTilesPerSplat, "max tiles per splat");
 
   const tileColumns = Math.ceil(viewportWidth / tileSizePx);
   const tileRows = Math.ceil(viewportHeight / tileSizePx);
   const tileCount = tileColumns * tileRows;
+  const sourceIndexTableEntries = sourceSplatCount !== splatCount || (maxTilesPerSplat !== null && maxTilesPerSplat > 0)
+    ? sourceSplatCount
+    : 0;
 
   return {
     viewportWidth,
     viewportHeight,
     tileSizePx,
     splatCount,
+    sourceSplatCount,
     maxTileRefs,
+    maxTilesPerSplat,
     tileColumns,
     tileRows,
     tileCount,
-    projectedBoundsBytes: Math.max(16, splatCount * GPU_TILE_COVERAGE_PROJECTED_BOUNDS_BYTES),
-    tileHeaderBytes: Math.max(16, tileCount * GPU_TILE_COVERAGE_TILE_HEADER_BYTES),
+    projectedBoundsBytes: Math.max(16, sourceSplatCount * GPU_TILE_COVERAGE_PROJECTED_BOUNDS_BYTES),
+    tileHeaderBytes: Math.max(16, (tileCount + sourceIndexTableEntries) * GPU_TILE_COVERAGE_TILE_HEADER_BYTES),
     tileRefBytes: Math.max(16, maxTileRefs * GPU_TILE_COVERAGE_TILE_REF_BYTES),
     tileCoverageWeightBytes: Math.max(16, maxTileRefs * Float32Array.BYTES_PER_ELEMENT),
     alphaParamBytes: Math.max(16, maxTileRefs * GPU_TILE_COVERAGE_ALPHA_PARAM_FLOATS_PER_REF * Float32Array.BYTES_PER_ELEMENT),
@@ -432,7 +446,7 @@ export function buildDeterministicGpuTileProjectionRetentionArena(
 export function getGpuTileCoverageDispatchPlan(plan: GpuTileCoveragePlan): GpuTileCoverageDispatchPlan {
   return {
     clearTiles: linearDispatch(plan.tileCount),
-    buildTileRefs: linearDispatch(plan.splatCount),
+    buildTileRefs: linearDispatch(plan.sourceSplatCount),
     compositeTiles: {
       x: Math.ceil(plan.viewportWidth / GPU_TILE_COVERAGE_COMPOSITE_WORKGROUP_WIDTH),
       y: Math.ceil(plan.viewportHeight / GPU_TILE_COVERAGE_COMPOSITE_WORKGROUP_HEIGHT),
@@ -504,6 +518,8 @@ export function writeGpuTileCoverageFrameUniforms(
   targetU32[23] = plan.maxTileRefs;
   target[24] = finiteNonNegativeOrDefault(footprintParams.splatScale, 1);
   target[25] = finiteNonNegativeOrDefault(footprintParams.minRadiusPx, 1.5);
+  targetU32[26] = plan.sourceSplatCount;
+  targetU32[27] = plan.maxTilesPerSplat ?? 0;
 }
 
 export function resolveGpuLiveFootprintPolicy(input: GpuLiveFootprintPolicyInput): GpuLiveFootprintPolicyResult {

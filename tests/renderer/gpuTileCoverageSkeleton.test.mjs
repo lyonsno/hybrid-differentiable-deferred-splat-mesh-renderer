@@ -85,6 +85,8 @@ test("GPU tile coverage frame uniforms expose viewport, tile grid, and counts at
   assert.equal(targetU32[23], 40);
   assert.equal(target[24], 1);
   assert.equal(target[25], 1.5);
+  assert.equal(targetU32[26], 9);
+  assert.equal(targetU32[27], 0);
   writeGpuTileCoverageFrameUniforms(target, viewProj, plan, "final-color", { splatScale: 600, minRadiusPx: 4 });
   assert.equal(target[24], 600);
   assert.equal(target[25], 4);

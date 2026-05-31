@@ -253,6 +253,7 @@ test("WGSL projected-ref stream sidecar is not the retained source or compositor
     "projected-stream evidence must distinguish raw GPU projection supersets from underpopulated compact-source reads",
   );
   assert.match(mainSource, /"raw-gpu-projection-superset"/);
+  assert.match(mainSource, /"compact-candidate-footprint-divergence"/);
   assert.match(mainSource, /"underpopulated-vs-compact-projected-refs"/);
   assert.match(streamReadbackSummarySource, /headerCountClass:[\s\S]*"headers-clear-only"/);
   assert.match(mainSource, /requested === "on" \|\| requested === "enabled" \|\| requested === "1"/);
@@ -263,6 +264,66 @@ test("WGSL projected-ref stream sidecar is not the retained source or compositor
     renderLoopSource.indexOf("dispatchProjectedRefStream") < renderLoopSource.indexOf("gpuArenaRuntime.dispatch"),
     "sidecar projection should run before the retained-source runtime so it can become a comparable source witness",
   );
+});
+
+test("WGSL projected-ref stream consumes compact source candidates and footprint bounds", () => {
+  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const coverageSource = readFileSync(new URL("../../src/gpuTileCoverage.ts", import.meta.url), "utf8");
+  const rendererSource = readFileSync(new URL("../../src/gpuTileCoverageRenderer.ts", import.meta.url), "utf8");
+  const shaderSource = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
+  const gpuFactorySource = extractFunctionSource(mainSource, "createGpuArenaTileLocalSceneState");
+  const compactSourceSource = extractSourceBetween(
+    mainSource,
+    "function buildStreamingCompactRetainedSourceForRuntime",
+    "function buildCompactSourceConstructionEvidence",
+  );
+  const streamFactorySource = extractSourceBetween(
+    mainSource,
+    "function createWgslProjectedRefStreamState",
+    "function buildGpuArenaRetainedSourceConstructionEvidence",
+  );
+
+  assert.match(
+    compactSourceSource,
+    /candidateSplatIndexes:\s*compactSourceCandidateSplatIndexes/,
+    "compact retained source must preserve the splat-index universe it actually projected",
+  );
+  assert.match(
+    streamFactorySource,
+    /const\s+tileHeaderBuffer\s*=\s*createTileHeaderStorageBuffer\([\s\S]*compactSource\.candidateSplatIndexes/,
+    "WGSL projected-ref sidecar must seed compact source splat ids into the tile-header source table instead of iterating raw source order",
+  );
+  assert.match(
+    streamFactorySource,
+    /sourceSplatCount:\s*compactSource\.candidateSplatIndexes\.length/,
+    "WGSL projected-ref sidecar dispatch count must be the compact candidate count, not attributes.count",
+  );
+  assert.doesNotMatch(
+    streamFactorySource,
+    /splatCount:\s*splatCount,\s*maxTileRefs:[\s\S]*splatCount,/,
+    "WGSL projected-ref sidecar must not size its evidence stream by raw splat count as a hidden source substitute",
+  );
+  assert.match(
+    streamFactorySource,
+    /maxTilesPerSplat:\s*compactSource\.compactSourceConstruction\?\.effectiveMaxTilesPerSplat/,
+    "WGSL projected-ref sidecar must inherit the compact source footprint cap when one is active",
+  );
+  assert.doesNotMatch(
+    gpuFactorySource,
+    /sourceSplatIndexBuffer/,
+    "visible compositor bind group must not spend an extra storage binding for identity source indexes",
+  );
+  assert.match(mainSource, /function createTileHeaderStorageBuffer/);
+  assert.match(coverageSource, /readonly sourceSplatCount: number;/);
+  assert.match(coverageSource, /readonly maxTilesPerSplat\?: number \| null;/);
+  assert.match(coverageSource, /buildTileRefs:\s*linearDispatch\(plan\.sourceSplatCount\)/);
+  assert.doesNotMatch(rendererSource, /sourceSplatIndexBuffer: GPUBuffer/);
+  assert.doesNotMatch(shaderSource, /@binding\(10\) var<storage, read> sourceSplatIndexes: array<u32>/);
+  assert.match(shaderSource, /let sourceOrdinal = globalId\.x/);
+  assert.match(shaderSource, /var splatId = sourceOrdinal/);
+  assert.match(shaderSource, /tileHeaders\[tile_count\(\) \+ sourceOrdinal\]\.x/);
+  assert.match(shaderSource, /sourceOrdinal >= frame\.sourceSplatCount/);
+  assert.match(shaderSource, /frame\.maxTilesPerSplat > 0u/);
 });
 
 function extractFunctionSource(source, name) {
