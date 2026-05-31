@@ -13,6 +13,9 @@ import {
   createGpuTileCoveragePlan,
   createGpuTileContributorArenaLayout,
 } from "../../node_modules/.cache/renderer-tests/src/gpuTileCoverage.js";
+import {
+  selectCompactProjectionRetentionRecords,
+} from "../../src/compactRetentionElection.js";
 import { buildTileLocalContributorArena } from "../../src/gpuTileCoverageBridge.js";
 
 const expectedRecordBytes =
@@ -91,34 +94,195 @@ test("GPU contributor arena builder fails loudly when projected contributors exc
   );
 });
 
-test("GPU-owned projection retention selects the CPU reference retained records under cap pressure", () => {
+test("GPU-owned projection retention matches the compact retained-source election law under cap pressure", () => {
   const cpuArena = buildTileLocalContributorArena(denseTileCoverage(), {
     maxRefsPerTile: 4,
     depthBandCount: 4,
   });
+  const expectedRetainedIds = selectedIdSet(
+    selectCompactProjectionRetentionRecords(cpuArena.projectedContributors, 4),
+  );
   const arena = buildDeterministicGpuTileProjectionRetentionArena({
     tileCount: 1,
     maxContributors: 8,
     maxRefsPerTile: 4,
     contributors: cpuArena.projectedContributors,
   });
-  const cpuRetainedIds = cpuArena.contributors
-    .sort((left, right) => left.contributorIndex - right.contributorIndex)
-    .map((record) => record.originalId);
-  const cpuDroppedIds = cpuArena.projectedContributors
-    .filter((record) => !record.retained)
-    .map((record) => record.originalId);
+  const expectedDroppedIds = cpuArena.projectedContributors
+    .filter((record) => !expectedRetainedIds.has(record.originalId))
+    .map((record) => record.originalId)
+    .sort((left, right) => left - right);
 
   assert.equal(arena.projectedContributorCount, 8);
   assert.equal(arena.retainedContributorCount, 4);
   assert.equal(arena.droppedContributorCount, 4);
-  assert.deepEqual(arena.retainedRecords.map((record) => record.originalId), cpuRetainedIds);
-  assert.deepEqual(arena.droppedRecords.map((record) => record.originalId), cpuDroppedIds);
+  assert.deepEqual(selectedIdList(arena.retainedRecords), [...expectedRetainedIds].sort((left, right) => left - right));
+  assert.deepEqual(selectedIdList(arena.droppedRecords), expectedDroppedIds);
   assert.deepEqual([...arena.tileHeaderU32.slice(0, GPU_TILE_CONTRIBUTOR_ARENA_HEADER_UINT32_STRIDE)], [
     0, 4, 8, 4, 1, 7, 0, 0,
   ]);
   assert.deepEqual([...arena.projectedCounts], [8]);
   assert.deepEqual([...arena.retainedCounts], [4]);
+});
+
+test("GPU-owned projection retention honors compact support-sample quotas and candidate source pools", () => {
+  const maxRefsPerTile = 16;
+  const occluder = contributor({
+    splatIndex: 9001,
+    originalId: 9001,
+    retentionWeight: 0.05,
+    occlusionWeight: 100,
+    occlusionDensity: 100,
+    coverageWeight: 0.1,
+  });
+  const retentionRecords = Array.from({ length: 8 }, (_, index) => contributor({
+    splatIndex: 100 + index,
+    originalId: 100 + index,
+    retentionWeight: 80 - index,
+    occlusionWeight: 1,
+    coverageWeight: 1,
+  }));
+  const occlusionRecords = [
+    occluder,
+    ...Array.from({ length: 7 }, (_, index) => contributor({
+      splatIndex: 200 + index,
+      originalId: 200 + index,
+      retentionWeight: 1,
+      occlusionWeight: 40 - index,
+      occlusionDensity: 40 - index,
+      coverageWeight: 1,
+    })),
+  ];
+  const coverageRecords = Array.from({ length: 8 }, (_, index) => contributor({
+    splatIndex: 300 + index,
+    originalId: 300 + index,
+    retentionWeight: 1,
+    occlusionWeight: 1,
+    coverageWeight: 60 - index,
+  }));
+  const supportRecords = Array.from({ length: 64 }, (_, index) => contributor({
+    splatIndex: 1000 + index,
+    originalId: 1000 + index,
+    retentionWeight: 500,
+    occlusionWeight: 1,
+    coverageWeight: 500,
+    supportSampleWeight: 1000 - index,
+    supportSampleRetentionWeight: 1000 - index,
+  }));
+  const records = [
+    ...retentionRecords,
+    ...occlusionRecords,
+    ...coverageRecords,
+    ...supportRecords,
+  ];
+  const candidateSources = {
+    coverageRecords,
+    retentionRecords,
+    occlusionRecords,
+    supportSampleRecords: supportRecords,
+    supportSampleRecordGroups: [supportRecords],
+  };
+  const arena = buildDeterministicGpuTileProjectionRetentionArena({
+    tileCount: 1,
+    maxContributors: records.length,
+    maxRefsPerTile,
+    contributors: records,
+    candidateSources,
+  });
+  const expectedRetainedIds = selectedIdSet(
+    selectCompactProjectionRetentionRecords(records, maxRefsPerTile, candidateSources),
+  );
+  const supportRetainedCount = arena.retainedRecords
+    .filter((record) => record.originalId >= 1000 && record.originalId < 2000)
+    .length;
+
+  assert.equal(arena.retainedContributorCount, maxRefsPerTile);
+  assert.deepEqual(selectedIdList(arena.retainedRecords), [...expectedRetainedIds].sort((left, right) => left - right));
+  assert.ok(expectedRetainedIds.has(occluder.originalId), "top occlusion candidate must be in the shared election oracle");
+  assert.ok(arena.retainedRecords.some((record) => record.originalId === occluder.originalId));
+  assert.ok(supportRetainedCount <= 4, "support candidates must not exceed the 25% final support quota");
+  assert.ok(arena.retainedRecords.some((record) => record.originalId >= 100 && record.originalId < 200));
+  assert.ok(arena.retainedRecords.some((record) => record.originalId >= 300 && record.originalId < 400));
+});
+
+test("GPU-owned projection retention treats missing occlusion density like the compact oracle", () => {
+  const records = [
+    contributor({
+      splatIndex: 1,
+      originalId: 1,
+      coverageWeight: 100,
+      retentionWeight: 100,
+      occlusionWeight: 1,
+    }),
+    contributor({
+      splatIndex: 2,
+      originalId: 2,
+      coverageWeight: 20,
+      retentionWeight: 1,
+      occlusionWeight: 30,
+    }),
+    contributor({
+      splatIndex: 3,
+      originalId: 3,
+      coverageWeight: 0.1,
+      retentionWeight: 1,
+      occlusionWeight: 5,
+    }),
+  ];
+  const arena = buildDeterministicGpuTileProjectionRetentionArena({
+    tileCount: 1,
+    maxContributors: records.length,
+    maxRefsPerTile: 2,
+    contributors: records,
+  });
+  const expectedRetainedIds = selectedIdSet(selectCompactProjectionRetentionRecords(records, 2));
+
+  assert.deepEqual(selectedIdList(arena.retainedRecords), [...expectedRetainedIds].sort((left, right) => left - right));
+  assert.deepEqual(selectedIdList(arena.retainedRecords), [1, 2]);
+  assert.equal(arena.droppedContributorCount, 1);
+});
+
+test("GPU-owned projection retention full-identity keys do not collide across wide original ids", () => {
+  const records = [
+    contributor({
+      splatIndex: 0,
+      originalId: 2 ** 32,
+      coverageWeight: 100,
+      retentionWeight: 100,
+      occlusionWeight: 1,
+    }),
+    contributor({
+      splatIndex: 1,
+      originalId: 0,
+      coverageWeight: 99,
+      retentionWeight: 99,
+      occlusionWeight: 1,
+    }),
+    contributor({
+      splatIndex: 2,
+      originalId: 12,
+      coverageWeight: 1,
+      retentionWeight: 1,
+      occlusionWeight: 1,
+    }),
+  ];
+  const arena = buildDeterministicGpuTileProjectionRetentionArena({
+    tileCount: 1,
+    maxContributors: records.length,
+    maxRefsPerTile: 2,
+    contributors: records,
+  });
+
+  assert.deepEqual(
+    arena.retainedRecords.map((record) => [record.splatIndex, record.originalId]),
+    [
+      [0, 2 ** 32],
+      [1, 0],
+    ],
+  );
+  assert.deepEqual(arena.droppedRecords.map((record) => record.originalId), [12]);
+  assert.equal(arena.droppedContributorCount, 1);
+  assert.equal(arena.tileHeaderU32[3], 1);
 });
 
 test("GPU contributor arena WGSL has production count, prefix, and scatter stages rather than inert TODOs", () => {
@@ -286,6 +450,14 @@ function contributor(overrides) {
     occlusionWeight: 0.6,
     ...overrides,
   };
+}
+
+function selectedIdSet(records) {
+  return new Set(records.map((record) => record.originalId));
+}
+
+function selectedIdList(records) {
+  return records.map((record) => record.originalId).sort((left, right) => left - right);
 }
 
 function denseTileCoverage() {

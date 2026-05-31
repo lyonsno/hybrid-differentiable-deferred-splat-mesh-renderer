@@ -164,8 +164,17 @@ export interface GpuTileContributorArenaBuildInput {
   readonly contributors: readonly GpuTileContributorArenaProjectedContributor[];
 }
 
+export interface GpuProjectionRetentionCandidateSources {
+  readonly coverageRecords?: readonly GpuTileContributorArenaProjectedContributor[];
+  readonly retentionRecords?: readonly GpuTileContributorArenaProjectedContributor[];
+  readonly occlusionRecords?: readonly GpuTileContributorArenaProjectedContributor[];
+  readonly supportSampleRecords?: readonly GpuTileContributorArenaProjectedContributor[];
+  readonly supportSampleRecordGroups?: readonly (readonly GpuTileContributorArenaProjectedContributor[])[];
+}
+
 export interface GpuTileProjectionRetentionArenaBuildInput extends GpuTileContributorArenaBuildInput {
   readonly maxRefsPerTile: number;
+  readonly candidateSources?: GpuProjectionRetentionCandidateSources;
 }
 
 export interface DeterministicGpuTileContributorArena {
@@ -366,7 +375,11 @@ export function buildDeterministicGpuTileProjectionRetentionArena(
 
   for (let tileIndex = 0; tileIndex < tileCount; tileIndex += 1) {
     const projectedTileRecords = contributorsByTile[tileIndex].sort(compareGpuProjectionRetentionCoverageOrder);
-    const selected = selectGpuProjectionRetentionRecords(projectedTileRecords, maxRefsPerTile);
+    const selected = selectGpuProjectionRetentionRecords(
+      projectedTileRecords,
+      maxRefsPerTile,
+      filterGpuProjectionRetentionCandidateSources(input.candidateSources, tileIndex),
+    );
     const selectedKeys = new Set(selected.map(gpuProjectionRetentionRecordKey));
     const retainedTileRecords = selected.sort(compareGpuProjectionRetentionCompositorOrder);
     const retainedOffset = retainedRecords.length;
@@ -568,6 +581,15 @@ function validateProjectedContributor(
   assertUnitInterval(contributor.transmittanceBefore, "arena contributor transmittanceBefore");
   assertFiniteNumber(contributor.retentionWeight, "arena contributor retentionWeight");
   assertFiniteNumber(contributor.occlusionWeight, "arena contributor occlusionWeight");
+  if (contributor.occlusionDensity !== undefined) {
+    assertFiniteNumber(contributor.occlusionDensity, "arena contributor occlusionDensity");
+  }
+  if (contributor.supportSampleWeight !== undefined) {
+    assertFiniteNumber(contributor.supportSampleWeight, "arena contributor supportSampleWeight");
+  }
+  if (contributor.supportSampleRetentionWeight !== undefined) {
+    assertFiniteNumber(contributor.supportSampleRetentionWeight, "arena contributor supportSampleRetentionWeight");
+  }
   return {
     ...contributor,
     centerPx: [contributor.centerPx[0], contributor.centerPx[1]],
@@ -606,77 +628,95 @@ function writeContributorRecord(
 function selectGpuProjectionRetentionRecords(
   records: readonly GpuTileContributorArenaProjectedContributor[],
   maxRefsPerTile: number,
+  candidateSources: GpuProjectionRetentionCandidateSources | undefined,
 ): GpuTileContributorArenaProjectedContributor[] {
   if (records.length <= maxRefsPerTile) {
     return [...records];
   }
-  const selected = records.slice(0, maxRefsPerTile);
-  const reserveCount = resolveGpuProjectionRetentionReserveCount(records.length, maxRefsPerTile);
-  const selectedKeys = new Set(selected.map(gpuProjectionRetentionRecordKey));
-  const candidates = selectGpuProjectionRetentionCandidates(records, selectedKeys, reserveCount);
-  const reservedKeys = new Set(candidates.map(({ record }) => gpuProjectionRetentionRecordKey(record)));
+  const selected: GpuTileContributorArenaProjectedContributor[] = [];
+  const selectedKeys = new Set<bigint>();
+  const supportSampleGroups = gpuProjectionRetentionSupportSampleGroups(records, candidateSources);
+  const supportTarget = supportSampleGroups.length > 0 ? Math.max(1, Math.floor(maxRefsPerTile * 0.25)) : 0;
+  const priorityTarget = maxRefsPerTile - supportTarget;
 
-  for (const { record: candidate, comparePriority } of candidates) {
-    const candidateKey = gpuProjectionRetentionRecordKey(candidate);
-    if (selectedKeys.has(candidateKey)) {
-      continue;
-    }
-    const replacementIndex = findGpuProjectionRetentionReplacementIndex(selected, reservedKeys, comparePriority);
-    if (comparePriority(candidate, selected[replacementIndex]) > 0) {
-      continue;
-    }
-    const removedKey = gpuProjectionRetentionRecordKey(selected[replacementIndex]);
-    selected[replacementIndex] = candidate;
-    selectedKeys.delete(removedKey);
-    selectedKeys.add(candidateKey);
+  roundRobinSelectGpuProjectionRetentionRecords({
+    selected,
+    selectedKeys,
+    maxSelected: priorityTarget,
+    pools: gpuProjectionRetentionPriorityPools(records, candidateSources),
+  });
+  roundRobinSelectGpuProjectionRetentionRecords({
+    selected,
+    selectedKeys,
+    maxSelected: maxRefsPerTile,
+    pools: supportSampleGroups.map((group) => ({
+      records: [...group].sort(compareGpuProjectionSupportSamplePriority),
+    })),
+  });
+  if (selected.length >= maxRefsPerTile) {
+    return selected;
   }
 
-  return selected;
+  return backfillGpuProjectionRetentionRecords(selected, records, maxRefsPerTile);
 }
 
-function resolveGpuProjectionRetentionReserveCount(projectedRefCount: number, maxRefsPerTile: number): number {
-  const baseReserveCount = Math.min(maxRefsPerTile, Math.min(4, Math.max(2, Math.floor(maxRefsPerTile / 8))));
-  if (projectedRefCount <= maxRefsPerTile) {
-    return 0;
-  }
-  const overflowFraction = (projectedRefCount - maxRefsPerTile) / projectedRefCount;
-  const pressureReserveCount = Math.floor(maxRefsPerTile * Math.min(0.5, overflowFraction));
-  return Math.min(maxRefsPerTile, Math.max(baseReserveCount, pressureReserveCount));
-}
-
-function selectGpuProjectionRetentionCandidates(
+function gpuProjectionRetentionSupportSampleGroups(
   records: readonly GpuTileContributorArenaProjectedContributor[],
-  selectedKeys: ReadonlySet<string>,
-  reserveCount: number,
+  candidateSources: GpuProjectionRetentionCandidateSources | undefined,
+): readonly (readonly GpuTileContributorArenaProjectedContributor[])[] {
+  const groups = candidateSources?.supportSampleRecordGroups;
+  if (groups && groups.length > 0) {
+    return groups;
+  }
+  const flatSupportRecords = candidateSources?.supportSampleRecords;
+  return flatSupportRecords && flatSupportRecords.length > 0 ? [flatSupportRecords] : [];
+}
+
+function gpuProjectionRetentionPriorityPools(
+  records: readonly GpuTileContributorArenaProjectedContributor[],
+  candidateSources: GpuProjectionRetentionCandidateSources | undefined,
 ): readonly {
-  readonly record: GpuTileContributorArenaProjectedContributor;
-  readonly comparePriority: typeof compareGpuProjectionRetentionPriority;
+  readonly records: GpuTileContributorArenaProjectedContributor[];
 }[] {
-  const pools = [
-    { records: [...records].sort(compareGpuProjectionRetentionPriority), comparePriority: compareGpuProjectionRetentionPriority },
-    { records: [...records].sort(compareGpuProjectionOcclusionPriority), comparePriority: compareGpuProjectionOcclusionPriority },
+  const retentionRecords = candidateSources?.retentionRecords ?? records;
+  const occlusionRecords = candidateSources?.occlusionRecords ?? records;
+  const coverageRecords = candidateSources?.coverageRecords ?? records;
+  return [
+    { records: [...retentionRecords].sort(compareGpuProjectionRetentionPriority) },
+    { records: [...occlusionRecords].sort(compareGpuProjectionOcclusionPriority) },
+    { records: [...coverageRecords].sort(compareGpuProjectionRetentionCoverageOrder) },
   ];
-  const candidates: {
-    readonly record: GpuTileContributorArenaProjectedContributor;
-    readonly comparePriority: typeof compareGpuProjectionRetentionPriority;
-  }[] = [];
-  const candidatePriorityKeys = new Set<string>();
+}
+
+function roundRobinSelectGpuProjectionRetentionRecords({
+  selected,
+  selectedKeys,
+  maxSelected,
+  pools,
+}: {
+  readonly selected: GpuTileContributorArenaProjectedContributor[];
+  readonly selectedKeys: Set<bigint>;
+  readonly maxSelected: number;
+  readonly pools: readonly { readonly records: readonly GpuTileContributorArenaProjectedContributor[] }[];
+}): void {
+  if (maxSelected <= selected.length || pools.length === 0) {
+    return;
+  }
   const cursors = new Array(pools.length).fill(0);
 
-  while (candidates.length < reserveCount) {
+  while (selected.length < maxSelected) {
     let added = false;
-    for (let poolIndex = 0; poolIndex < pools.length && candidates.length < reserveCount; poolIndex += 1) {
+    for (let poolIndex = 0; poolIndex < pools.length && selected.length < maxSelected; poolIndex += 1) {
       const pool = pools[poolIndex].records;
       while (cursors[poolIndex] < pool.length) {
         const record = pool[cursors[poolIndex]];
         cursors[poolIndex] += 1;
         const key = gpuProjectionRetentionRecordKey(record);
-        const priorityKey = `${poolIndex}:${key}`;
-        if (selectedKeys.has(key) || candidatePriorityKeys.has(priorityKey)) {
+        if (selectedKeys.has(key)) {
           continue;
         }
-        candidates.push({ record, comparePriority: pools[poolIndex].comparePriority });
-        candidatePriorityKeys.add(priorityKey);
+        selected.push(record);
+        selectedKeys.add(key);
         added = true;
         break;
       }
@@ -685,28 +725,27 @@ function selectGpuProjectionRetentionCandidates(
       break;
     }
   }
-
-  return candidates;
 }
 
-function findGpuProjectionRetentionReplacementIndex(
+function backfillGpuProjectionRetentionRecords(
   selected: readonly GpuTileContributorArenaProjectedContributor[],
-  reservedKeys: ReadonlySet<string>,
-  comparePriority: typeof compareGpuProjectionRetentionPriority,
-): number {
-  let replacementIndex = -1;
-  for (let index = 0; index < selected.length; index += 1) {
-    if (reservedKeys.has(gpuProjectionRetentionRecordKey(selected[index]))) {
+  records: readonly GpuTileContributorArenaProjectedContributor[],
+  maxRefsPerTile: number,
+): GpuTileContributorArenaProjectedContributor[] {
+  const selectedRecords = [...selected];
+  const selectedKeys = new Set(selectedRecords.map(gpuProjectionRetentionRecordKey));
+  for (const record of records) {
+    if (selectedRecords.length >= maxRefsPerTile) {
+      break;
+    }
+    const key = gpuProjectionRetentionRecordKey(record);
+    if (selectedKeys.has(key)) {
       continue;
     }
-    if (
-      replacementIndex === -1 ||
-      comparePriority(selected[index], selected[replacementIndex]) > 0
-    ) {
-      replacementIndex = index;
-    }
+    selectedRecords.push(record);
+    selectedKeys.add(key);
   }
-  return replacementIndex === -1 ? selected.length - 1 : replacementIndex;
+  return selectedRecords;
 }
 
 function compareGpuProjectionRetentionCoverageOrder(
@@ -748,6 +787,21 @@ function compareGpuProjectionRetentionPriority(
   );
 }
 
+function compareGpuProjectionSupportSamplePriority(
+  left: GpuTileContributorArenaProjectedContributor,
+  right: GpuTileContributorArenaProjectedContributor,
+): number {
+  return (
+    finiteOrZero(right.supportSampleRetentionWeight) - finiteOrZero(left.supportSampleRetentionWeight) ||
+    finiteOrZero(right.supportSampleWeight) - finiteOrZero(left.supportSampleWeight) ||
+    right.retentionWeight - left.retentionWeight ||
+    right.occlusionWeight - left.occlusionWeight ||
+    left.viewRank - right.viewRank ||
+    left.splatIndex - right.splatIndex ||
+    left.originalId - right.originalId
+  );
+}
+
 function compareGpuProjectionOcclusionPriority(
   left: GpuTileContributorArenaProjectedContributor,
   right: GpuTileContributorArenaProjectedContributor,
@@ -766,15 +820,47 @@ function compareGpuProjectionOcclusionPriority(
 
 function readGpuProjectionOcclusionDensity(contributor: GpuTileContributorArenaProjectedContributor): number {
   const occlusionDensity = contributor.occlusionDensity;
-  if (Number.isFinite(occlusionDensity) && occlusionDensity !== undefined && occlusionDensity >= 0) {
+  if (Number.isFinite(occlusionDensity) && occlusionDensity !== undefined) {
     return occlusionDensity;
   }
-  const coverageWeight = contributor.coverageWeight > 0 ? contributor.coverageWeight : 1;
-  return contributor.occlusionWeight / coverageWeight;
+  return 0;
 }
 
-function gpuProjectionRetentionRecordKey(contributor: GpuTileContributorArenaProjectedContributor): string {
-  return `${contributor.tileIndex}:${contributor.splatIndex}:${contributor.originalId}`;
+function filterGpuProjectionRetentionCandidateSources(
+  candidateSources: GpuProjectionRetentionCandidateSources | undefined,
+  tileIndex: number,
+): GpuProjectionRetentionCandidateSources | undefined {
+  if (!candidateSources) {
+    return undefined;
+  }
+  return {
+    coverageRecords: filterGpuProjectionRetentionRecordsByTile(candidateSources.coverageRecords, tileIndex),
+    retentionRecords: filterGpuProjectionRetentionRecordsByTile(candidateSources.retentionRecords, tileIndex),
+    occlusionRecords: filterGpuProjectionRetentionRecordsByTile(candidateSources.occlusionRecords, tileIndex),
+    supportSampleRecords: filterGpuProjectionRetentionRecordsByTile(candidateSources.supportSampleRecords, tileIndex),
+    supportSampleRecordGroups: candidateSources.supportSampleRecordGroups
+      ?.map((group) => group.filter((record) => record.tileIndex === tileIndex))
+      .filter((group) => group.length > 0),
+  };
+}
+
+function filterGpuProjectionRetentionRecordsByTile(
+  records: readonly GpuTileContributorArenaProjectedContributor[] | undefined,
+  tileIndex: number,
+): readonly GpuTileContributorArenaProjectedContributor[] | undefined {
+  return records?.filter((record) => record.tileIndex === tileIndex);
+}
+
+function gpuProjectionRetentionRecordKey(contributor: GpuTileContributorArenaProjectedContributor): bigint {
+  return (
+    (BigInt(contributor.tileIndex) << 128n) |
+    (BigInt(contributor.splatIndex) << 64n) |
+    BigInt(contributor.originalId)
+  );
+}
+
+function finiteOrZero(value: number | undefined): number {
+  return value !== undefined && Number.isFinite(value) ? value : 0;
 }
 
 function maxRetainedViewRank(records: readonly GpuTileContributorArenaProjectedContributor[]): number {

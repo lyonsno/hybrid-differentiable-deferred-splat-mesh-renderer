@@ -76,6 +76,8 @@ function normalizeProjectedContributor(
     retentionWeight: record.retentionWeight,
     occlusionWeight: record.occlusionWeight,
     occlusionDensity: record.occlusionDensity,
+    supportSampleWeight: record.supportSampleWeight,
+    supportSampleRetentionWeight: record.supportSampleRetentionWeight,
   };
 }
 
