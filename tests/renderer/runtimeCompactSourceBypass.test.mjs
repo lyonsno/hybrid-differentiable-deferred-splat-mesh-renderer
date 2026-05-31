@@ -214,6 +214,8 @@ test("WGSL projected-ref stream sidecar is not the retained source or compositor
     "function buildGpuArenaRetainedSourceConstructionEvidence",
   );
   const streamEvidenceSource = extractFunctionSource(mainSource, "buildWgslProjectedRefStreamEvidence");
+  const streamReadbackSource = extractFunctionSource(mainSource, "enqueueWgslProjectedRefStreamReadback");
+  const streamReadbackSummarySource = extractFunctionSource(mainSource, "summarizeWgslProjectedRefStreamReadback");
   const renderLoopStart = mainSource.indexOf("const tileLocalComputePass = encoder.beginComputePass");
   const renderLoopEnd = mainSource.indexOf("tileLocalComputePass.end()", renderLoopStart);
   const renderLoopSource = mainSource.slice(renderLoopStart, renderLoopEnd);
@@ -234,10 +236,18 @@ test("WGSL projected-ref stream sidecar is not the retained source or compositor
   assert.match(streamFactorySource, /sourceRole:\s*"diagnostic-sidecar-not-retention-source"/);
   assert.match(streamFactorySource, /maxTileRefs:\s*Math\.max\(/);
   assert.match(streamEvidenceSource, /runtimeConsumerBackend:\s*"none"/);
+  assert.match(streamEvidenceSource, /readback:\s*stream\?\.readback/);
   assert.match(
     streamEvidenceSource,
     /falseClosureGuard:\s*"wgsl-projected-ref-stream-sidecar-does-not-feed-retention-or-compositor"/,
   );
+  assert.match(streamReadbackSource, /wgsl_projected_ref_stream_tile_headers_readback/);
+  assert.match(streamReadbackSource, /wgsl_projected_ref_stream_scatter_cursors_readback/);
+  assert.match(streamReadbackSource, /copyBufferToBuffer\(stream\.tileHeaderBuffer/);
+  assert.match(streamReadbackSource, /copyBufferToBuffer\(stream\.tileScatterCursorBuffer/);
+  assert.match(streamReadbackSummarySource, /projectedScatterRefs - stream\.compactSourceProjectedRefs/);
+  assert.match(streamReadbackSummarySource, /comparisonClass:\s*projectedRefDelta === 0/);
+  assert.match(streamReadbackSummarySource, /headerCountClass:[\s\S]*"headers-clear-only"/);
   assert.match(mainSource, /requested === "on" \|\| requested === "enabled" \|\| requested === "1"/);
   assert.match(gpuFactorySource, /const\s+gpuArenaProjectedContributors\s*=\s*compactSource\.retainedRecords/);
   assert.match(renderLoopSource, /dispatchProjectedRefStream/);

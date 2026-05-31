@@ -292,6 +292,8 @@ interface WgslProjectedRefStreamState {
   readonly compactSourceProjectedRefs: number;
   readonly compactSourceRetainedRefs: number;
   dispatchEnqueueDurationMs?: number;
+  readback?: WgslProjectedRefStreamReadback;
+  pendingReadback?: PendingWgslProjectedRefStreamReadback;
 }
 
 interface WgslProjectedRefStreamEvidence {
@@ -306,7 +308,40 @@ interface WgslProjectedRefStreamEvidence {
   readonly tileCount: number;
   readonly maxRefsPerTile: number;
   readonly dispatchEnqueueDurationMs?: number;
+  readonly readback?: WgslProjectedRefStreamReadback;
   readonly unavailableReason?: string;
+}
+
+interface WgslProjectedRefStreamReadback {
+  readonly status: "pending" | "present" | "blocked";
+  readonly source: "wgsl-projected-ref-stream-readback";
+  readonly frameId: number;
+  readonly tileCount: number;
+  readonly tileCapacity: number;
+  readonly allocatedProjectedRefs: number;
+  readonly compactSourceProjectedRefs: number;
+  readonly compactSourceRetainedRefs: number;
+  readonly projectedScatterRefs: number;
+  readonly retainedRefs: number;
+  readonly droppedRefs: number;
+  readonly projectedRefDelta: number;
+  readonly nonEmptyTiles: number;
+  readonly saturatedTiles: number;
+  readonly maxRefsPerTile: number;
+  readonly headerRetainedRefs: number;
+  readonly headerProjectedRefs: number;
+  readonly headerCountClass: "headers-clear-only" | "headers-populated" | "headers-empty";
+  readonly comparisonClass: "matches-compact-projected-refs" | "diverges-from-compact-projected-refs";
+  readonly blockedReason?: string;
+}
+
+interface PendingWgslProjectedRefStreamReadback {
+  readonly frameId: number;
+  readonly stream: WgslProjectedRefStreamState;
+  readonly tileHeaderBuffer: GPUBuffer;
+  readonly tileScatterCursorBuffer: GPUBuffer;
+  mapStarted: boolean;
+  cancelled: boolean;
 }
 
 type TileLocalPresentationScope = "full-scene" | "anchor-neighborhood";
@@ -1103,6 +1138,7 @@ async function main() {
           enqueueTileLocalOutputTextureReadback(gpu.device, encoder, tileLocalState, frameSerial);
           enqueueTileLocalCompositorInputReadback(gpu.device, encoder, tileLocalState, frameSerial, scene.attributes.colors);
           enqueueTileLocalRefStatsReadback(gpu.device, encoder, tileLocalState, frameSerial);
+          enqueueWgslProjectedRefStreamReadback(gpu.device, encoder, tileLocalState, frameSerial);
         });
         tileLocalState.bandDispatchCacheTrace = buildBandDispatchCacheTrace({
           tileColumns: tileLocalState.plan.tileColumns,
@@ -1197,6 +1233,7 @@ async function main() {
         resolveTileLocalOutputTextureReadback(scene.tileLocalState!);
         resolveTileLocalCompositorInputReadback(scene.tileLocalState!);
         resolveTileLocalRefStatsReadback(scene.tileLocalState!);
+        resolveWgslProjectedRefStreamReadback(scene.tileLocalState!);
       });
     }
 
@@ -2255,6 +2292,7 @@ function buildWgslProjectedRefStreamEvidence(
     tileCount: stream?.plan.tileCount ?? 0,
     maxRefsPerTile: stream ? gpuLiveEffectiveRefsPerTile(stream.plan) : 0,
     dispatchEnqueueDurationMs: stream?.dispatchEnqueueDurationMs,
+    readback: stream?.readback,
     unavailableReason,
   };
 }
@@ -2269,6 +2307,7 @@ function refreshWgslProjectedRefStreamEvidence(state: TileLocalSceneState): void
     tileCount: state.wgslProjectedRefStream.plan.tileCount,
     maxRefsPerTile: gpuLiveEffectiveRefsPerTile(state.wgslProjectedRefStream.plan),
     dispatchEnqueueDurationMs: state.wgslProjectedRefStream.dispatchEnqueueDurationMs,
+    readback: state.wgslProjectedRefStream.readback,
   };
 }
 
@@ -4659,6 +4698,215 @@ function publishTileLocalRefStatsReadback(
   };
 }
 
+function enqueueWgslProjectedRefStreamReadback(
+  device: GPUDevice,
+  encoder: GPUCommandEncoder,
+  state: TileLocalSceneState,
+  frameId: number
+): void {
+  const stream = state.wgslProjectedRefStream;
+  if (!stream || frameId < 0 || state.disposed || state.debugMode !== "final-color") {
+    return;
+  }
+  if (stream.pendingReadback || stream.readback?.frameId === frameId) {
+    return;
+  }
+  const tileHeaderBuffer = createReadbackBuffer(
+    device,
+    stream.plan.tileHeaderBytes,
+    "wgsl_projected_ref_stream_tile_headers_readback"
+  );
+  const scatterCursorBytes = Math.max(16, stream.plan.tileCount * Uint32Array.BYTES_PER_ELEMENT);
+  const tileScatterCursorBuffer = createReadbackBuffer(
+    device,
+    scatterCursorBytes,
+    "wgsl_projected_ref_stream_scatter_cursors_readback"
+  );
+  encoder.copyBufferToBuffer(stream.tileHeaderBuffer, 0, tileHeaderBuffer, 0, stream.plan.tileHeaderBytes);
+  encoder.copyBufferToBuffer(stream.tileScatterCursorBuffer, 0, tileScatterCursorBuffer, 0, scatterCursorBytes);
+  stream.pendingReadback = {
+    frameId,
+    stream,
+    tileHeaderBuffer,
+    tileScatterCursorBuffer,
+    mapStarted: false,
+    cancelled: false,
+  };
+  stream.readback = {
+    status: "pending",
+    source: "wgsl-projected-ref-stream-readback",
+    frameId,
+    tileCount: stream.plan.tileCount,
+    tileCapacity: gpuLiveEffectiveRefsPerTile(stream.plan),
+    allocatedProjectedRefs: stream.plan.maxTileRefs,
+    compactSourceProjectedRefs: stream.compactSourceProjectedRefs,
+    compactSourceRetainedRefs: stream.compactSourceRetainedRefs,
+    projectedScatterRefs: 0,
+    retainedRefs: 0,
+    droppedRefs: 0,
+    projectedRefDelta: -stream.compactSourceProjectedRefs,
+    nonEmptyTiles: 0,
+    saturatedTiles: 0,
+    maxRefsPerTile: 0,
+    headerRetainedRefs: 0,
+    headerProjectedRefs: 0,
+    headerCountClass: "headers-empty",
+    comparisonClass: stream.compactSourceProjectedRefs === 0
+      ? "matches-compact-projected-refs"
+      : "diverges-from-compact-projected-refs",
+  };
+  refreshWgslProjectedRefStreamEvidence(state);
+}
+
+function resolveWgslProjectedRefStreamReadback(state: TileLocalSceneState): void {
+  const stream = state.wgslProjectedRefStream;
+  const pending = stream?.pendingReadback;
+  if (!stream || !pending || pending.mapStarted) {
+    return;
+  }
+  pending.mapStarted = true;
+  stream.pendingReadback = undefined;
+  const buffers = [pending.tileHeaderBuffer, pending.tileScatterCursorBuffer];
+  void Promise.all(buffers.map((buffer) => buffer.mapAsync(GPUMapMode.READ)))
+    .then(() => {
+      const tileHeaders = new Uint32Array(pending.tileHeaderBuffer.getMappedRange());
+      const scatterCursors = new Uint32Array(pending.tileScatterCursorBuffer.getMappedRange());
+      const readback = summarizeWgslProjectedRefStreamReadback(pending.stream, pending.frameId, tileHeaders, scatterCursors);
+      if (wgslProjectedRefStreamReadbackCanPublish(state, pending)) {
+        pending.stream.readback = readback;
+        refreshWgslProjectedRefStreamEvidence(state);
+        publishWgslProjectedRefStreamReadback(state, readback);
+      }
+      destroyMappedReadbackBuffers(buffers);
+    })
+    .catch((error) => {
+      const readback: WgslProjectedRefStreamReadback = {
+        status: "blocked",
+        source: "wgsl-projected-ref-stream-readback",
+        frameId: pending.frameId,
+        tileCount: pending.stream.plan.tileCount,
+        tileCapacity: gpuLiveEffectiveRefsPerTile(pending.stream.plan),
+        allocatedProjectedRefs: pending.stream.plan.maxTileRefs,
+        compactSourceProjectedRefs: pending.stream.compactSourceProjectedRefs,
+        compactSourceRetainedRefs: pending.stream.compactSourceRetainedRefs,
+        projectedScatterRefs: 0,
+        retainedRefs: 0,
+        droppedRefs: 0,
+        projectedRefDelta: -pending.stream.compactSourceProjectedRefs,
+        nonEmptyTiles: 0,
+        saturatedTiles: 0,
+        maxRefsPerTile: 0,
+        headerRetainedRefs: 0,
+        headerProjectedRefs: 0,
+        headerCountClass: "headers-empty",
+        comparisonClass: pending.stream.compactSourceProjectedRefs === 0
+          ? "matches-compact-projected-refs"
+          : "diverges-from-compact-projected-refs",
+        blockedReason: errorMessage(error),
+      };
+      if (wgslProjectedRefStreamReadbackCanPublish(state, pending)) {
+        pending.stream.readback = readback;
+        refreshWgslProjectedRefStreamEvidence(state);
+        publishWgslProjectedRefStreamReadback(state, readback);
+      }
+      destroyReadbackBuffers(buffers);
+    });
+}
+
+function summarizeWgslProjectedRefStreamReadback(
+  stream: WgslProjectedRefStreamState,
+  frameId: number,
+  tileHeaders: Uint32Array,
+  scatterCursors: Uint32Array,
+): WgslProjectedRefStreamReadback {
+  const tileCapacity = gpuLiveEffectiveRefsPerTile(stream.plan);
+  let projectedScatterRefs = 0;
+  let retainedRefs = 0;
+  let droppedRefs = 0;
+  let nonEmptyTiles = 0;
+  let saturatedTiles = 0;
+  let maxRefsPerTile = 0;
+  let headerRetainedRefs = 0;
+  let headerProjectedRefs = 0;
+  const headerStride = GPU_TILE_COVERAGE_TILE_HEADER_BYTES / Uint32Array.BYTES_PER_ELEMENT;
+  for (let tileIndex = 0; tileIndex < stream.plan.tileCount; tileIndex += 1) {
+    const projectedRefs = scatterCursors[tileIndex] ?? 0;
+    const tileRetainedRefs = Math.min(projectedRefs, tileCapacity);
+    projectedScatterRefs += projectedRefs;
+    retainedRefs += tileRetainedRefs;
+    droppedRefs += Math.max(0, projectedRefs - tileCapacity);
+    maxRefsPerTile = Math.max(maxRefsPerTile, tileRetainedRefs);
+    if (projectedRefs > 0) {
+      nonEmptyTiles += 1;
+    }
+    if (projectedRefs >= tileCapacity) {
+      saturatedTiles += 1;
+    }
+    const headerBase = tileIndex * headerStride;
+    headerRetainedRefs += tileHeaders[headerBase + 1] ?? 0;
+    headerProjectedRefs += tileHeaders[headerBase + 2] ?? 0;
+  }
+  const projectedRefDelta = projectedScatterRefs - stream.compactSourceProjectedRefs;
+  return {
+    status: "present",
+    source: "wgsl-projected-ref-stream-readback",
+    frameId,
+    tileCount: stream.plan.tileCount,
+    tileCapacity,
+    allocatedProjectedRefs: stream.plan.maxTileRefs,
+    compactSourceProjectedRefs: stream.compactSourceProjectedRefs,
+    compactSourceRetainedRefs: stream.compactSourceRetainedRefs,
+    projectedScatterRefs,
+    retainedRefs,
+    droppedRefs,
+    projectedRefDelta,
+    nonEmptyTiles,
+    saturatedTiles,
+    maxRefsPerTile,
+    headerRetainedRefs,
+    headerProjectedRefs,
+    headerCountClass: headerRetainedRefs > 0 || headerProjectedRefs > 0
+      ? "headers-populated"
+      : projectedScatterRefs > 0
+        ? "headers-clear-only"
+        : "headers-empty",
+    comparisonClass: projectedRefDelta === 0
+      ? "matches-compact-projected-refs"
+      : "diverges-from-compact-projected-refs",
+  };
+}
+
+function wgslProjectedRefStreamReadbackCanPublish(
+  state: TileLocalSceneState,
+  pending: PendingWgslProjectedRefStreamReadback
+): boolean {
+  return (
+    !state.disposed &&
+    !pending.cancelled &&
+    pending.frameId === state.lastCompositedFrame &&
+    state.wgslProjectedRefStream === pending.stream
+  );
+}
+
+function publishWgslProjectedRefStreamReadback(
+  state: TileLocalSceneState,
+  readback: WgslProjectedRefStreamReadback
+): void {
+  const runtimeWindow = window as unknown as { __MESH_SPLAT_SMOKE__?: Record<string, unknown> };
+  const smoke = runtimeWindow.__MESH_SPLAT_SMOKE__;
+  if (!smoke || typeof smoke !== "object") {
+    return;
+  }
+  const tileLocal = smoke.tileLocal && typeof smoke.tileLocal === "object"
+    ? smoke.tileLocal as Record<string, unknown>
+    : {};
+  smoke.tileLocal = {
+    ...tileLocal,
+    wgslProjectedRefStream: state.wgslProjectedRefStreamEvidence,
+    wgslProjectedRefStreamReadback: readback,
+  };
+}
+
 function sameFramePublishedTileLocalRefStatsReadback(
   smoke: Record<string, unknown> | undefined,
   frameId: number
@@ -5291,6 +5539,14 @@ function destroyTileLocalSceneState(state: TileLocalSceneState): void {
     state.alphaParamBuffer.destroy();
   }
   if (state.wgslProjectedRefStream) {
+    if (state.wgslProjectedRefStream.pendingReadback) {
+      state.wgslProjectedRefStream.pendingReadback.cancelled = true;
+      destroyReadbackBuffers([
+        state.wgslProjectedRefStream.pendingReadback.tileHeaderBuffer,
+        state.wgslProjectedRefStream.pendingReadback.tileScatterCursorBuffer,
+      ]);
+      state.wgslProjectedRefStream.pendingReadback = undefined;
+    }
     state.wgslProjectedRefStream.frameUniformBuffer.destroy();
     state.wgslProjectedRefStream.tileHeaderBuffer.destroy();
     state.wgslProjectedRefStream.tileRefBuffer.destroy();

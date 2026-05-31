@@ -428,6 +428,7 @@ test("GPU arena runtime exposes retained-source construction custody without cla
   const gpuFactorySource = extractFunctionSource(mainSource, "createGpuArenaTileLocalSceneState");
   const retainedSourceEvidence = extractFunctionSource(mainSource, "buildGpuArenaRetainedSourceConstructionEvidence");
   const arenaEvidenceSource = extractFunctionSource(mainSource, "buildArenaRuntimeEvidence");
+  const streamReadbackSummarySource = extractFunctionSource(mainSource, "summarizeWgslProjectedRefStreamReadback");
   const exposeSource = mainSource.slice(
     mainSource.indexOf("function exposeTileLocalRuntimeEvidence"),
     mainSource.indexOf("function traceContributorListByAnchorId"),
@@ -452,6 +453,9 @@ test("GPU arena runtime exposes retained-source construction custody without cla
   assert.match(retainedSourceEvidence, /nextGpuOffloadStage:\s*"wgsl-projected-ref-stream"/);
   assert.match(arenaEvidenceSource, /retainedSourceConstruction:\s*tileLocalState\?\.retainedSourceConstruction/);
   assert.match(arenaEvidenceSource, /wgslProjectedRefStream:\s*tileLocalState\?\.wgslProjectedRefStreamEvidence/);
+  assert.match(streamReadbackSummarySource, /compactSourceProjectedRefs:\s*stream\.compactSourceProjectedRefs/);
+  assert.match(streamReadbackSummarySource, /compactSourceRetainedRefs:\s*stream\.compactSourceRetainedRefs/);
+  assert.match(streamReadbackSummarySource, /source:\s*"wgsl-projected-ref-stream-readback"/);
   assert.match(exposeSource, /retainedSourceConstruction:\s*tileLocalState\.retainedSourceConstruction/);
   assert.match(exposeSource, /wgslProjectedRefStream:\s*tileLocalState\.wgslProjectedRefStreamEvidence/);
   assert.match(statsSource, /retained-source:/);
