@@ -48,10 +48,20 @@ Review questions:
 
 Known local verification before review:
 
+- Initial Aposképsis review of this probolé returned `needs repair` because
+  the carrier filtered global candidate-source arrays once per tile, producing
+  a quadratic finalize shape.
+- The current branch repairs that by indexing candidate sources by tile once
+  inside the carrier before the tile loop and adds a structural regression test
+  for that shape.
 - `npm run build`
   - passing.
-- `npm test`
-  - passing: 39 unit tests and 244 renderer tests.
+- `npm run test:unit`
+  - passing: 39/39.
+- `npm run test:renderer`
+  - passing: 245/245.
+- `node --test tests/smoke/operator-witness-loop.test.mjs`
+  - passing: 35/35.
 - Initial parallel `npm run test:smoke`
   - failed only in the browser shape-gate group after Chromium/WebGPU device
     loss while other broad jobs were running.

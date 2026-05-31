@@ -205,6 +205,55 @@ test("GPU-owned projection retention honors compact support-sample quotas and ca
   assert.ok(arena.retainedRecords.some((record) => record.originalId >= 300 && record.originalId < 400));
 });
 
+test("GPU-owned projection retention indexes candidate sources once instead of filtering global pools per tile", () => {
+  const coverageRecords = Array.from({ length: 12 }, (_, tileIndex) => contributor({
+    splatIndex: tileIndex,
+    originalId: tileIndex,
+    tileIndex,
+    coverageWeight: 100 - tileIndex,
+    retentionWeight: 100 - tileIndex,
+  }));
+  const supportSampleRecordGroups = [
+    coverageRecords.map((record) => ({
+      ...record,
+      splatIndex: record.splatIndex + 100,
+      originalId: record.originalId + 100,
+      supportSampleWeight: 1000 - record.tileIndex,
+      supportSampleRetentionWeight: 1000 - record.tileIndex,
+    })),
+  ];
+  const records = [
+    ...coverageRecords,
+    ...supportSampleRecordGroups.flat(),
+  ];
+  const arena = buildDeterministicGpuTileProjectionRetentionArena({
+    tileCount: 12,
+    maxContributors: records.length,
+    maxRefsPerTile: 2,
+    contributors: records,
+    candidateSources: {
+      coverageRecords,
+      retentionRecords: coverageRecords,
+      supportSampleRecordGroups,
+    },
+  });
+
+  assert.deepEqual([...arena.projectedCounts], new Array(12).fill(2));
+  assert.deepEqual([...arena.retainedCounts], new Array(12).fill(2));
+  for (let tileIndex = 0; tileIndex < 12; tileIndex += 1) {
+    assert.deepEqual(
+      selectedIdList(arena.retainedRecords.filter((record) => record.tileIndex === tileIndex)),
+      [tileIndex, tileIndex + 100],
+    );
+  }
+
+  const source = readFileSync(new URL("../../src/gpuTileCoverage.ts", import.meta.url), "utf8");
+  assert.match(source, /const candidateSourcesByTile = indexGpuProjectionRetentionCandidateSourcesByTile/);
+  assert.match(source, /candidateSourcesByTile\[tileIndex\]/);
+  assert.doesNotMatch(source, /filterGpuProjectionRetentionCandidateSources/);
+  assert.doesNotMatch(source, /filterGpuProjectionRetentionRecordsByTile/);
+});
+
 test("GPU-owned projection retention treats missing occlusion density like the compact oracle", () => {
   const records = [
     contributor({
