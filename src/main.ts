@@ -29,6 +29,15 @@ import {
   type GpuTileCoveragePlan,
 } from "./gpuTileCoverage.js";
 import {
+  compareCompactProjectionOcclusionPriority,
+  compareCompactProjectionRetentionCompositorOrder,
+  compareCompactProjectionRetentionCoverageOrder,
+  compareCompactProjectionRetentionPriority,
+  compareCompactProjectionSupportSamplePriority,
+  compactProjectionRetentionRecordKey,
+  selectCompactProjectionRetentionRecords,
+} from "./compactRetentionElection.js";
+import {
   createGpuTileContributorArenaRuntime,
   packGpuArenaProjectedContributors,
   projectGpuArenaToLegacyCompositorBuffers,
@@ -138,6 +147,7 @@ const SORT_BACKEND = "gpu-bitonic-cpu-depth-keys";
 const TILE_LOCAL_ORDERING_BACKEND = "gpu-sorted-index-rank-inversion";
 const GPU_SORT_SETTLE_MS = 160;
 const ALPHA_DENSITY_SETTLE_MS = 160;
+const TILE_LOCAL_REBUILD_SETTLE_MS = 260;
 const ALPHA_DENSITY_MODE = selectedAlphaDensityMode();
 const RENDERER_MODE = selectedRendererMode();
 const TILE_LOCAL_DEBUG_MODE = selectedTileLocalDebugMode();
@@ -158,6 +168,7 @@ const COMPACT_SOURCE_PRESENTATION_TILE_NEIGHBORHOOD_RADIUS = 5;
 const COMPACT_SOURCE_FULL_SCENE_MAX_TILES_PER_SPLAT = 9;
 const COMPACT_SOURCE_ANCHOR_PREFILTER_MIN_MARGIN_PX = 96;
 const COMPACT_SOURCE_ANCHOR_PREFILTER_MAX_MARGIN_PX = 384;
+const COMPACT_SOURCE_RETENTION_SUPPORT_SAMPLES_PER_AXIS = 4;
 const COMPACT_SOURCE_EPSILON = 1e-9;
 const TILE_LOCAL_UNSAFE = selectedTileLocalUnsafeMode();
 const GPU_LIVE_POINT_SIGMA_PX = 10;
@@ -176,6 +187,8 @@ interface ActiveSplatScene {
   tileLocalDisabledReason: string | null;
   tileLocalLastSkipReason: string | null;
   tileLocalLastSkipSignature: string | null;
+  tileLocalLastObservedSignature: string | null;
+  tileLocalLastSignatureChangeMs: number;
   rendererMode: RendererMode;
   count: number;
   assetPath: string;
@@ -745,6 +758,8 @@ async function main() {
       tileLocalDisabledReason,
       tileLocalLastSkipReason: null,
       tileLocalLastSkipSignature: null,
+      tileLocalLastObservedSignature: tileLocalState?.lastCompositedSignature ?? null,
+      tileLocalLastSignatureChangeMs: Number.NEGATIVE_INFINITY,
       rendererMode: RENDERER_MODE,
       count: attributes.count,
       assetPath: sceneAssetPath,
@@ -920,17 +935,31 @@ async function main() {
         nearFadeEndNdc: activeNearFadeEnd,
       })
       : null;
+    if (tileLocalCurrentSignature && tileLocalCurrentSignature !== scene.tileLocalLastObservedSignature) {
+      scene.tileLocalLastObservedSignature = tileLocalCurrentSignature;
+      scene.tileLocalLastSignatureChangeMs = now;
+    }
+    const tileLocalPresentationStaleForCurrentView = Boolean(
+      scene.tileLocalState &&
+      tileLocalCurrentSignature &&
+      tileLocalCurrentSignature !== scene.tileLocalState.lastCompositedSignature
+    );
     if (
       scene.tileLocalState &&
-      tileLocalCurrentSignature !== scene.tileLocalState.lastCompositedSignature
+      tileLocalPresentationStaleForCurrentView
     ) {
       scene.tileLocalState.needsDispatch = true;
     }
+    const deferTileLocalRebuildForActiveInput = Boolean(
+      scene.tileLocalState?.arenaBackend === "gpu" &&
+      (activeInput || now - scene.tileLocalLastSignatureChangeMs < TILE_LOCAL_REBUILD_SETTLE_MS) &&
+      tileLocalPresentationStaleForCurrentView
+    );
 
     if (scene.tileLocalState && shouldDispatchTileLocalCompositor({
       needsDispatch: scene.tileLocalState.needsDispatch,
       activeInput,
-      allowActiveInputDispatch: scene.tileLocalState.arenaBackend === "gpu",
+      allowActiveInputDispatch: scene.tileLocalState.arenaBackend === "gpu" && !deferTileLocalRebuildForActiveInput,
       pendingGpuSort,
       pendingAlphaDensity,
     })) {
@@ -954,6 +983,8 @@ async function main() {
         scene.tileLocalState = tileLocalState;
         scene.tileLocalLastSkipReason = null;
         scene.tileLocalLastSkipSignature = null;
+        scene.tileLocalLastObservedSignature = tileLocalCurrentSignature ?? tileLocalState.lastCompositedSignature;
+        scene.tileLocalLastSignatureChangeMs = Number.NEGATIVE_INFINITY;
         timeFrameStage(frameTiming, "tile-local-dispatch-encode", () => {
           writeGpuTileCoverageFrameUniforms(
             tileLocalState.frameUniformData,
@@ -1014,6 +1045,8 @@ async function main() {
         }
         scene.tileLocalLastSkipReason = errorMessage(err);
         scene.tileLocalLastSkipSignature = tileLocalCurrentSignature;
+        scene.tileLocalLastObservedSignature = tileLocalCurrentSignature ?? scene.tileLocalLastObservedSignature;
+        scene.tileLocalLastSignatureChangeMs = Number.NEGATIVE_INFINITY;
         scene.tileLocalState.needsDispatch = false;
       }
     }
@@ -1059,7 +1092,11 @@ async function main() {
       ts.labels.push("render", "render_end");
     }
 
-    if (scene.rendererMode === "tile-local-visible" && scene.tileLocalState) {
+    const useTileLocalInteractionPreview = scene.rendererMode === "tile-local-visible" &&
+      Boolean(scene.tileLocalState) &&
+      activeInput &&
+      tileLocalPresentationStaleForCurrentView;
+    if (scene.rendererMode === "tile-local-visible" && scene.tileLocalState && !useTileLocalInteractionPreview) {
       tileLocalPresenter.draw(renderPass, scene.tileLocalState.outputView);
     } else {
       renderPass.setBindGroup(0, bindGroup);
@@ -1091,12 +1128,14 @@ async function main() {
 
     // Stats overlay
     const alphaSummary = scene.alphaDensityState.summary;
-    const baseRendererLabel = labelRendererMode(
-      scene.rendererMode,
-      scene.tileLocalState,
-      scene.tileLocalDisabledReason,
-      scene.tileLocalLastSkipReason
-    );
+    const baseRendererLabel = useTileLocalInteractionPreview
+      ? "tile-local-visible-interaction-preview-plate"
+      : labelRendererMode(
+          scene.rendererMode,
+          scene.tileLocalState,
+          scene.tileLocalDisabledReason,
+          scene.tileLocalLastSkipReason
+        );
     // In shape-witness mode, prefix the renderer label so the capture harness sees "shape-witness".
     const rendererLabel = shapeWitnessFixtureId !== null
       ? `shape-witness`
@@ -1198,10 +1237,10 @@ async function main() {
       activeInput,
       pendingGpuSort,
       pendingAlphaDensity,
-      pendingTileLocalCompositor: shouldDispatchTileLocalCompositor({
+      pendingTileLocalCompositor: deferTileLocalRebuildForActiveInput || shouldDispatchTileLocalCompositor({
         needsDispatch: scene.tileLocalState?.needsDispatch === true,
         activeInput,
-        allowActiveInputDispatch: scene.tileLocalState?.arenaBackend === "gpu",
+        allowActiveInputDispatch: scene.tileLocalState?.arenaBackend === "gpu" && !deferTileLocalRebuildForActiveInput,
         pendingGpuSort,
         pendingAlphaDensity,
       }),
@@ -1723,7 +1762,7 @@ function buildStreamingCompactRetainedSourceForRuntime({
       samplesPerAxis,
       onlyTileIndexes: retainOnlyAnchorTiles ? sourceTileIndexes : null,
       maxTilesPerSplat,
-      onEntry({ splat, tileIndex, tileX, tileY, coverageWeight }) {
+      onEntry({ splat, tileIndex, tileX, tileY, coverageWeight, localSupportWeight }) {
         const currentProjectedIndex = projectedIndex;
         projectedIndex += 1;
         projectedCounts[tileIndex] += 1;
@@ -1740,6 +1779,7 @@ function buildStreamingCompactRetainedSourceForRuntime({
             splatIndex: splat.splatIndex,
             originalId: splat.originalId,
             coverageWeight,
+            localSupportWeight,
           },
           projectedIndex: currentProjectedIndex,
           splatsByIndex,
@@ -1756,6 +1796,15 @@ function buildStreamingCompactRetainedSourceForRuntime({
           compactRetainTopRecord(bucket.coverageRecords, record, maxRefsPerTile, compareCompactProjectionRetentionCoverageOrder);
           compactRetainTopRecord(bucket.retentionRecords, record, Math.max(1, Math.floor(maxRefsPerTile / 2)), compareCompactProjectionRetentionPriority);
           compactRetainTopRecord(bucket.occlusionRecords, record, Math.max(1, Math.floor(maxRefsPerTile / 2)), compareCompactProjectionOcclusionPriority);
+          compactRetainSupportSampleRecords({
+            bucket,
+            record,
+            tileMinX: tileX * tileSizePx,
+            tileMinY: tileY * tileSizePx,
+            tileMaxX: Math.min(viewportWidth, (tileX + 1) * tileSizePx),
+            tileMaxY: Math.min(viewportHeight, (tileY + 1) * tileSizePx),
+            maxRefsPerTile,
+          });
         }
       },
     });
@@ -1775,8 +1824,11 @@ function buildStreamingCompactRetainedSourceForRuntime({
           projectedTileRecords,
           maxRefsPerTile,
           {
+            coverageRecords: bucket.coverageRecords.records,
             retentionRecords: bucket.retentionRecords.records,
             occlusionRecords: bucket.occlusionRecords.records,
+            supportSampleRecords: compactSupportSampleCandidateRecords(bucket),
+            supportSampleRecordGroups: compactSupportSampleCandidateRecordGroups(bucket),
           },
         ).sort(compareCompactProjectionRetentionCompositorOrder);
         retainedRecords.push(...retainedTileRecords);
@@ -2019,6 +2071,7 @@ interface CompactStreamingTileBucket {
   readonly coverageRecords: CompactRetainedRecordList;
   readonly retentionRecords: CompactRetainedRecordList;
   readonly occlusionRecords: CompactRetainedRecordList;
+  readonly supportSampleRecords: readonly CompactRetainedRecordList[];
 }
 
 interface CompactRetainedRecordList {
@@ -2043,10 +2096,18 @@ function compactStreamingTileBucket(
       coverageRecords: compactRetainedRecordList(),
       retentionRecords: compactRetainedRecordList(),
       occlusionRecords: compactRetainedRecordList(),
+      supportSampleRecords: compactSupportSampleRecordLists(),
     };
     buckets.set(tileIndex, bucket);
   }
   return bucket;
+}
+
+function compactSupportSampleRecordLists(): readonly CompactRetainedRecordList[] {
+  const sampleCount =
+    COMPACT_SOURCE_RETENTION_SUPPORT_SAMPLES_PER_AXIS *
+    COMPACT_SOURCE_RETENTION_SUPPORT_SAMPLES_PER_AXIS;
+  return Array.from({ length: sampleCount }, compactRetainedRecordList);
 }
 
 function compactRetainTopRecord(
@@ -2085,12 +2146,62 @@ function compactRetainedRecordListWorstIndex(
   return worstIndex;
 }
 
+function compactRetainSupportSampleRecords({
+  bucket,
+  record,
+  tileMinX,
+  tileMinY,
+  tileMaxX,
+  tileMaxY,
+  maxRefsPerTile,
+}: {
+  readonly bucket: CompactStreamingTileBucket;
+  readonly record: GpuTileContributorArenaProjectedContributor;
+  readonly tileMinX: number;
+  readonly tileMinY: number;
+  readonly tileMaxX: number;
+  readonly tileMaxY: number;
+  readonly maxRefsPerTile: number;
+}): void {
+  const width = tileMaxX - tileMinX;
+  const height = tileMaxY - tileMinY;
+  if (width <= 0 || height <= 0) {
+    return;
+  }
+  const samplesPerAxis = COMPACT_SOURCE_RETENTION_SUPPORT_SAMPLES_PER_AXIS;
+  const sampleLimit = Math.max(1, Math.ceil(maxRefsPerTile / (samplesPerAxis * samplesPerAxis * 2)));
+  for (let sampleY = 0; sampleY < samplesPerAxis; sampleY += 1) {
+    const y = tileMinY + ((sampleY + 0.5) / samplesPerAxis) * height;
+    for (let sampleX = 0; sampleX < samplesPerAxis; sampleX += 1) {
+      const x = tileMinX + ((sampleX + 0.5) / samplesPerAxis) * width;
+      const supportSampleWeight = compactSourceConicPixelWeight(record, [x, y]) * record.opacity;
+      if (supportSampleWeight <= 1e-8) {
+        continue;
+      }
+      const supportLuminance = record.occlusionWeight > 0 ? record.retentionWeight / record.occlusionWeight : 0;
+      const supportSampleRetentionWeight = supportSampleWeight * Math.max(0, finiteOrZero(supportLuminance));
+      const sampleIndex = sampleY * samplesPerAxis + sampleX;
+      compactRetainTopRecord(
+        bucket.supportSampleRecords[sampleIndex],
+        { ...record, supportSampleWeight, supportSampleRetentionWeight },
+        sampleLimit,
+        compareCompactProjectionSupportSamplePriority,
+      );
+    }
+  }
+}
+
 function compactMergedTileCandidateRecords(
   bucket: CompactStreamingTileBucket,
 ): GpuTileContributorArenaProjectedContributor[] {
   const records = [];
   const seen = new Set<bigint>();
-  for (const record of [...bucket.coverageRecords.records, ...bucket.retentionRecords.records, ...bucket.occlusionRecords.records]) {
+  for (const record of [
+    ...bucket.coverageRecords.records,
+    ...bucket.retentionRecords.records,
+    ...bucket.occlusionRecords.records,
+    ...compactSupportSampleCandidateRecords(bucket),
+  ]) {
     const key = compactProjectionRetentionRecordKey(record);
     if (seen.has(key)) {
       continue;
@@ -2099,6 +2210,16 @@ function compactMergedTileCandidateRecords(
     records.push(record);
   }
   return records;
+}
+
+function compactSupportSampleCandidateRecords(bucket: CompactStreamingTileBucket): GpuTileContributorArenaProjectedContributor[] {
+  return bucket.supportSampleRecords.flatMap((recordList) => recordList.records);
+}
+
+function compactSupportSampleCandidateRecordGroups(
+  bucket: CompactStreamingTileBucket,
+): readonly (readonly GpuTileContributorArenaProjectedContributor[])[] {
+  return bucket.supportSampleRecords.map((recordList) => recordList.records);
 }
 
 function streamCompactProjectedTileRefs({
@@ -2126,6 +2247,7 @@ function streamCompactProjectedTileRefs({
     readonly tileX: number;
     readonly tileY: number;
     readonly coverageWeight: number;
+    readonly localSupportWeight?: number;
   }) => void;
 }): void {
   const selectedTileRows = onlyTileIndexes ? compactSourceSelectedTileRows(onlyTileIndexes, tileColumns) : null;
@@ -2170,7 +2292,15 @@ function streamCompactProjectedTileRefs({
       if (coverageWeight <= 0) {
         return;
       }
-      onEntry({ splat, tileIndex, tileX, tileY, coverageWeight });
+      const localSupportWeight = compactSourceTileLocalSupportWeight({
+        centerPx: splat.centerPx,
+        densityParams,
+        tileMinX,
+        tileMinY,
+        tileMaxX,
+        tileMaxY,
+      });
+      onEntry({ splat, tileIndex, tileX, tileY, coverageWeight, localSupportWeight });
     };
     for (let tileY = minTileY; tileY <= maxTileY; tileY += 1) {
       const rowTileXs = selectedTileRows?.tileXsByRow.get(tileY);
@@ -2349,6 +2479,26 @@ function compactSourceTileCoverageWeight({
   return (densitySum / (samplesPerAxis * samplesPerAxis)) * width * height;
 }
 
+function compactSourceTileLocalSupportWeight({
+  centerPx,
+  densityParams,
+  tileMinX,
+  tileMinY,
+  tileMaxX,
+  tileMaxY,
+}: {
+  readonly centerPx: readonly [number, number];
+  readonly densityParams: CompactSourceCovarianceDensityParams;
+  readonly tileMinX: number;
+  readonly tileMinY: number;
+  readonly tileMaxX: number;
+  readonly tileMaxY: number;
+}): number {
+  const closestX = compactClamp(centerPx[0], tileMinX, tileMaxX);
+  const closestY = compactClamp(centerPx[1], tileMinY, tileMaxY);
+  return compactSourceConicPixelWeightFromDensityParams(closestX, closestY, centerPx, densityParams);
+}
+
 interface CompactSourceCovarianceDensityParams {
   readonly invXx: number;
   readonly invXy: number;
@@ -2380,6 +2530,21 @@ function compactSourceCovarianceDensity(
     2 * densityParams.invXy * dx * dy +
     densityParams.invYy * dy * dy;
   return densityParams.normalization * Math.exp(-0.5 * mahalanobis2);
+}
+
+function compactSourceConicPixelWeightFromDensityParams(
+  x: number,
+  y: number,
+  centerPx: readonly [number, number],
+  densityParams: CompactSourceCovarianceDensityParams,
+): number {
+  const dx = x - centerPx[0];
+  const dy = y - centerPx[1];
+  const mahalanobis2 =
+    densityParams.invXx * dx * dx +
+    2 * densityParams.invXy * dx * dy +
+    densityParams.invYy * dy * dy;
+  return Math.exp(-2 * Math.max(mahalanobis2, 0));
 }
 
 function compactClamp(value: number, min: number, max: number): number {
@@ -2872,7 +3037,7 @@ function compactCoverageEntryToRuntimeContributor({
   attributes,
   effectiveOpacities,
 }: {
-  readonly entry: RuntimeCompactTileCoverage["tileEntries"][number];
+  readonly entry: RuntimeCompactTileCoverage["tileEntries"][number] & { readonly localSupportWeight?: number };
   readonly projectedIndex: number;
   readonly splatsByIndex: ReadonlyMap<number, RuntimeCompactTileCoverage["splats"][number]>;
   readonly ranks: ArrayLike<number>;
@@ -2884,6 +3049,8 @@ function compactCoverageEntryToRuntimeContributor({
   const inverseConic = invertCompactSourceCovariance(splat?.covariancePx);
   const opacity = readCompactSourceOpacity(attributes, effectiveOpacities, entry.splatIndex);
   const coverageWeight = Math.max(0, finiteOrZero(entry.coverageWeight));
+  const localSupportWeight = Math.max(0, finiteOrZero(entry.localSupportWeight));
+  const retentionSupportWeight = Math.max(coverageWeight, localSupportWeight);
   const luminance = readCompactSourceLuminance(attributes, entry.splatIndex);
   return {
     splatIndex: entry.splatIndex,
@@ -2901,8 +3068,8 @@ function compactCoverageEntryToRuntimeContributor({
     opacity,
     coverageAlpha: transferCompactSourceCoverageAlpha(opacity, coverageWeight),
     transmittanceBefore: 1,
-    retentionWeight: coverageWeight * opacity * luminance,
-    occlusionWeight: coverageWeight * opacity,
+    retentionWeight: retentionSupportWeight * opacity * luminance,
+    occlusionWeight: retentionSupportWeight * opacity,
     occlusionDensity: opacity,
   };
 }
@@ -2958,180 +3125,6 @@ function compactSourceAnchorTileNeighborhoodIndexes({
     }
   }
   return tileIndexes;
-}
-
-function selectCompactProjectionRetentionRecords(
-  records: readonly GpuTileContributorArenaProjectedContributor[],
-  maxRefsPerTile: number,
-  candidateSources?: CompactProjectionRetentionCandidateSources,
-): GpuTileContributorArenaProjectedContributor[] {
-  if (records.length <= maxRefsPerTile) {
-    return [...records];
-  }
-  const selected = records.slice(0, maxRefsPerTile);
-  const reserveCount = compactProjectionRetentionReserveCount(records.length, maxRefsPerTile);
-  const selectedKeys = new Set(selected.map(compactProjectionRetentionRecordKey));
-  const candidates = compactProjectionRetentionCandidates(records, selectedKeys, reserveCount, candidateSources);
-  const reservedKeys = new Set(candidates.map(({ record }) => compactProjectionRetentionRecordKey(record)));
-
-  for (const { record: candidate, comparePriority } of candidates) {
-    const candidateKey = compactProjectionRetentionRecordKey(candidate);
-    if (selectedKeys.has(candidateKey)) {
-      continue;
-    }
-    const replacementIndex = compactProjectionRetentionReplacementIndex(selected, reservedKeys, comparePriority);
-    if (comparePriority(candidate, selected[replacementIndex]) > 0) {
-      continue;
-    }
-    const removedKey = compactProjectionRetentionRecordKey(selected[replacementIndex]);
-    selected[replacementIndex] = candidate;
-    selectedKeys.delete(removedKey);
-    selectedKeys.add(candidateKey);
-  }
-
-  return selected;
-}
-
-interface CompactProjectionRetentionCandidateSources {
-  readonly retentionRecords?: readonly GpuTileContributorArenaProjectedContributor[];
-  readonly occlusionRecords?: readonly GpuTileContributorArenaProjectedContributor[];
-}
-
-function compactProjectionRetentionReserveCount(projectedRefCount: number, maxRefsPerTile: number): number {
-  const baseReserveCount = Math.min(maxRefsPerTile, Math.min(4, Math.max(2, Math.floor(maxRefsPerTile / 8))));
-  if (projectedRefCount <= maxRefsPerTile) {
-    return 0;
-  }
-  const overflowFraction = (projectedRefCount - maxRefsPerTile) / projectedRefCount;
-  const pressureReserveCount = Math.floor(maxRefsPerTile * Math.min(0.5, overflowFraction));
-  return Math.min(maxRefsPerTile, Math.max(baseReserveCount, pressureReserveCount));
-}
-
-function compactProjectionRetentionCandidates(
-  records: readonly GpuTileContributorArenaProjectedContributor[],
-  selectedKeys: ReadonlySet<bigint>,
-  reserveCount: number,
-  candidateSources?: CompactProjectionRetentionCandidateSources,
-): readonly {
-  readonly record: GpuTileContributorArenaProjectedContributor;
-  readonly comparePriority: typeof compareCompactProjectionRetentionPriority;
-}[] {
-  const retentionRecords = candidateSources?.retentionRecords ?? records;
-  const occlusionRecords = candidateSources?.occlusionRecords ?? records;
-  const pools = [
-    { records: [...retentionRecords].sort(compareCompactProjectionRetentionPriority), comparePriority: compareCompactProjectionRetentionPriority },
-    { records: [...occlusionRecords].sort(compareCompactProjectionOcclusionPriority), comparePriority: compareCompactProjectionOcclusionPriority },
-  ];
-  const candidates: {
-    readonly record: GpuTileContributorArenaProjectedContributor;
-    readonly comparePriority: typeof compareCompactProjectionRetentionPriority;
-  }[] = [];
-  const candidatePriorityKeys = pools.map(() => new Set<bigint>());
-  const cursors = new Array(pools.length).fill(0);
-
-  while (candidates.length < reserveCount) {
-    let added = false;
-    for (let poolIndex = 0; poolIndex < pools.length && candidates.length < reserveCount; poolIndex += 1) {
-      const pool = pools[poolIndex].records;
-      while (cursors[poolIndex] < pool.length) {
-        const record = pool[cursors[poolIndex]];
-        cursors[poolIndex] += 1;
-        const key = compactProjectionRetentionRecordKey(record);
-        if (selectedKeys.has(key) || candidatePriorityKeys[poolIndex].has(key)) {
-          continue;
-        }
-        candidates.push({ record, comparePriority: pools[poolIndex].comparePriority });
-        candidatePriorityKeys[poolIndex].add(key);
-        added = true;
-        break;
-      }
-    }
-    if (!added) {
-      break;
-    }
-  }
-
-  return candidates;
-}
-
-function compactProjectionRetentionReplacementIndex(
-  selected: readonly GpuTileContributorArenaProjectedContributor[],
-  reservedKeys: ReadonlySet<bigint>,
-  comparePriority: typeof compareCompactProjectionRetentionPriority,
-): number {
-  let replacementIndex = -1;
-  for (let index = 0; index < selected.length; index += 1) {
-    if (reservedKeys.has(compactProjectionRetentionRecordKey(selected[index]))) {
-      continue;
-    }
-    if (replacementIndex === -1 || comparePriority(selected[index], selected[replacementIndex]) > 0) {
-      replacementIndex = index;
-    }
-  }
-  return replacementIndex === -1 ? selected.length - 1 : replacementIndex;
-}
-
-function compareCompactProjectionRetentionCoverageOrder(
-  left: GpuTileContributorArenaProjectedContributor,
-  right: GpuTileContributorArenaProjectedContributor,
-): number {
-  return (
-    left.tileIndex - right.tileIndex ||
-    right.coverageWeight - left.coverageWeight ||
-    left.viewRank - right.viewRank ||
-    left.splatIndex - right.splatIndex ||
-    left.originalId - right.originalId
-  );
-}
-
-function compareCompactProjectionRetentionCompositorOrder(
-  left: GpuTileContributorArenaProjectedContributor,
-  right: GpuTileContributorArenaProjectedContributor,
-): number {
-  return (
-    left.tileIndex - right.tileIndex ||
-    left.viewRank - right.viewRank ||
-    left.viewDepth - right.viewDepth ||
-    left.splatIndex - right.splatIndex ||
-    left.originalId - right.originalId
-  );
-}
-
-function compareCompactProjectionRetentionPriority(
-  left: GpuTileContributorArenaProjectedContributor,
-  right: GpuTileContributorArenaProjectedContributor,
-): number {
-  return (
-    right.retentionWeight - left.retentionWeight ||
-    right.coverageWeight - left.coverageWeight ||
-    left.viewRank - right.viewRank ||
-    left.splatIndex - right.splatIndex ||
-    left.originalId - right.originalId
-  );
-}
-
-function compareCompactProjectionOcclusionPriority(
-  left: GpuTileContributorArenaProjectedContributor,
-  right: GpuTileContributorArenaProjectedContributor,
-): number {
-  const leftDensity = finiteOrZero(left.occlusionDensity);
-  const rightDensity = finiteOrZero(right.occlusionDensity);
-  return (
-    rightDensity - leftDensity ||
-    right.occlusionWeight - left.occlusionWeight ||
-    right.coverageWeight - left.coverageWeight ||
-    left.viewRank - right.viewRank ||
-    left.splatIndex - right.splatIndex ||
-    left.originalId - right.originalId
-  );
-}
-
-function compactProjectionRetentionRecordKey(contributor: GpuTileContributorArenaProjectedContributor): bigint {
-  return (
-    (BigInt(contributor.tileIndex) << 64n) |
-    (BigInt(contributor.splatIndex) << 32n) |
-    BigInt(contributor.originalId)
-  );
 }
 
 function compactMaxRetainedViewRank(records: readonly GpuTileContributorArenaProjectedContributor[]): number {

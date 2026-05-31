@@ -325,37 +325,69 @@ test("compact stream retention precomputes covariance density parameters", () =>
   assert.doesNotMatch(densitySource, /Math\.sqrt\(covariance\.determinant\)/);
 });
 
+test("compact stream retention scores local conic support separately from tile integral coverage", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const streamStart = source.indexOf("function streamCompactProjectedTileRefs");
+  const streamEnd = source.indexOf("function compactStreamDenseTileXRange", streamStart);
+  const streamSource = source.slice(streamStart, streamEnd);
+  const bucketStart = source.indexOf("interface CompactStreamingTileBucket");
+  const bucketEnd = source.indexOf("function compactMergedTileCandidateRecords", bucketStart);
+  const bucketSource = source.slice(bucketStart, bucketEnd);
+  const contributorStart = source.indexOf("function compactCoverageEntryToRuntimeContributor");
+  const contributorEnd = source.indexOf("function compactSourceAnchorTileIndexes", contributorStart);
+  const contributorSource = source.slice(contributorStart, contributorEnd);
+
+  assert.match(source, /const COMPACT_SOURCE_RETENTION_SUPPORT_SAMPLES_PER_AXIS = 4/);
+  assert.match(bucketSource, /supportSampleRecords:\s*compactSupportSampleRecordLists\(\)/);
+  assert.match(bucketSource, /function compactRetainSupportSampleRecords/);
+  assert.match(bucketSource, /const sampleLimit = Math\.max\(1,\s*Math\.ceil\(maxRefsPerTile \/ \(samplesPerAxis \* samplesPerAxis \* 2\)\)\)/);
+  assert.match(bucketSource, /const supportSampleWeight = compactSourceConicPixelWeight\(record,\s*\[x,\s*y\]\) \* record\.opacity/);
+  assert.match(bucketSource, /const supportSampleRetentionWeight = supportSampleWeight \* Math\.max\(0,\s*finiteOrZero\(supportLuminance\)\)/);
+  assert.match(bucketSource, /compareCompactProjectionSupportSamplePriority/);
+  assert.match(streamSource, /const localSupportWeight = compactSourceTileLocalSupportWeight\(\{/);
+  assert.match(streamSource, /onEntry\(\{ splat, tileIndex, tileX, tileY, coverageWeight, localSupportWeight \}\)/);
+  assert.match(contributorSource, /const retentionSupportWeight = Math\.max\(coverageWeight,\s*localSupportWeight\)/);
+  assert.match(contributorSource, /retentionWeight:\s*retentionSupportWeight \* opacity \* luminance/);
+  assert.match(contributorSource, /occlusionWeight:\s*retentionSupportWeight \* opacity/);
+});
+
 test("compact finalize retention reuses bounded priority candidate lists", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const electionSource = readFileSync(new URL("../../src/compactRetentionElection.js", import.meta.url), "utf8");
   const compactSourceStart = source.indexOf("function buildCompactRetainedSourceForRuntime");
   const compactSourceEnd = source.indexOf("function estimateCompactProjectedTileRefCount", compactSourceStart);
   const compactSource = source.slice(compactSourceStart, compactSourceEnd);
-  const candidatesStart = source.indexOf("function compactProjectionRetentionCandidates");
-  const candidatesEnd = source.indexOf("function compactProjectionRetentionReplacementIndex", candidatesStart);
-  const candidatesSource = source.slice(candidatesStart, candidatesEnd);
 
   assert.match(compactSource, /selectCompactProjectionRetentionRecords\(\s*projectedTileRecords,\s*maxRefsPerTile,\s*\{/);
+  assert.match(compactSource, /coverageRecords:\s*bucket\.coverageRecords\.records/);
   assert.match(compactSource, /retentionRecords:\s*bucket\.retentionRecords\.records/);
   assert.match(compactSource, /occlusionRecords:\s*bucket\.occlusionRecords\.records/);
-  assert.doesNotMatch(candidatesSource, /records:\s*\[\.\.\.records\]\.sort\(compareCompactProjectionRetentionPriority\)/);
-  assert.doesNotMatch(candidatesSource, /records:\s*\[\.\.\.records\]\.sort\(compareCompactProjectionOcclusionPriority\)/);
+  assert.match(compactSource, /supportSampleRecords:\s*compactSupportSampleCandidateRecords\(bucket\)/);
+  assert.match(compactSource, /supportSampleRecordGroups:\s*compactSupportSampleCandidateRecordGroups\(bucket\)/);
+  assert.match(source, /selectCompactProjectionRetentionRecords,/);
+  assert.match(source, /compareCompactProjectionSupportSamplePriority,/);
+  assert.match(electionSource, /const SUPPORT_SAMPLE_FINAL_FRACTION = 0\.25/);
+  assert.match(electionSource, /const priorityTarget = maxRefsPerTile - supportTarget/);
+  assert.match(electionSource, /const coverageRecords = candidateSources\?\.coverageRecords \?\? records/);
+  assert.doesNotMatch(electionSource, /const supportGlobalTarget = supportSampleGroups\.length > 0/);
+  assert.doesNotMatch(electionSource, /maxRefsPerTile - Math\.max\(16,\s*Math\.floor\(maxRefsPerTile \* 0\.125\)\)/);
 });
 
 test("compact finalize retention uses non-string full-identity keys", () => {
-  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const source = readFileSync(new URL("../../src/compactRetentionElection.js", import.meta.url), "utf8");
   const keyStart = source.indexOf("function compactProjectionRetentionRecordKey");
-  const keyEnd = source.indexOf("function compactMaxRetainedViewRank", keyStart);
+  const keyEnd = source.indexOf("function finiteOrZero", keyStart);
   const keySource = source.slice(keyStart, keyEnd);
-  const candidatesStart = source.indexOf("function compactProjectionRetentionCandidates");
-  const candidatesEnd = source.indexOf("function compactProjectionRetentionReplacementIndex", candidatesStart);
-  const candidatesSource = source.slice(candidatesStart, candidatesEnd);
+  const balancedStart = source.indexOf("function compactProjectionRoundRobinSelect");
+  const balancedEnd = source.indexOf("function compactProjectionBackfillRetentionRecords", balancedStart);
+  const balancedSource = source.slice(balancedStart, balancedEnd);
 
-  assert.match(keySource, /function compactProjectionRetentionRecordKey\([^)]*\):\s*bigint/);
+  assert.match(keySource, /function compactProjectionRetentionRecordKey\([^)]*\)/);
   assert.match(keySource, /BigInt\(contributor\.tileIndex\)\s*<<\s*64n/);
   assert.match(keySource, /BigInt\(contributor\.splatIndex\)\s*<<\s*32n/);
   assert.match(keySource, /BigInt\(contributor\.originalId\)/);
   assert.doesNotMatch(keySource, /`/);
-  assert.doesNotMatch(candidatesSource, /`\$\{poolIndex\}:/);
+  assert.doesNotMatch(balancedSource, /`\$\{poolIndex\}:/);
 });
 
 test("operator witness loop classifier rejects otherwise-valid captures on stale CPU or 6px routes", () => {

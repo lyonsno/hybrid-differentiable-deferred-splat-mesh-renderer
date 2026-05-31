@@ -42,6 +42,35 @@ test("main labels skipped tile-local rebuilds as stale cached presentations", ()
   );
 });
 
+test("main defers compact GPU retained-source rebuilds during active input and presents a plate preview", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+
+  assert.match(source, /const\s+tileLocalPresentationStaleForCurrentView\s*=\s*Boolean/);
+  assert.match(source, /const\s+deferTileLocalRebuildForActiveInput\s*=\s*Boolean/);
+  assert.match(source, /const\s+TILE_LOCAL_REBUILD_SETTLE_MS\s*=\s*260/);
+  assert.match(source, /tileLocalLastObservedSignature:\s*tileLocalState\?\.lastCompositedSignature \?\? null/);
+  assert.match(source, /tileLocalCurrentSignature !== scene\.tileLocalLastObservedSignature[\s\S]*scene\.tileLocalLastSignatureChangeMs = now/);
+  assert.match(source, /scene\.tileLocalState\?\.arenaBackend === "gpu"[\s\S]*activeInput \|\| now - scene\.tileLocalLastSignatureChangeMs < TILE_LOCAL_REBUILD_SETTLE_MS[\s\S]*tileLocalPresentationStaleForCurrentView/);
+  assert.match(
+    source,
+    /allowActiveInputDispatch:\s*scene\.tileLocalState\.arenaBackend === "gpu" && !deferTileLocalRebuildForActiveInput/,
+  );
+  assert.match(source, /const\s+useTileLocalInteractionPreview\s*=/);
+  assert.match(source, /tile-local-visible-interaction-preview-plate/);
+  assert.match(
+    source,
+    /scene\.rendererMode === "tile-local-visible" && scene\.tileLocalState && !useTileLocalInteractionPreview[\s\S]*tileLocalPresenter\.draw/,
+  );
+  assert.match(
+    source,
+    /else \{\s*renderPass\.setBindGroup\(0,\s*bindGroup\);\s*splatRenderer\.draw\(renderPass,\s*scene\.splatBindGroup,\s*scene\.count\);/,
+  );
+  assert.match(
+    source,
+    /pendingTileLocalCompositor:\s*deferTileLocalRebuildForActiveInput \|\| shouldDispatchTileLocalCompositor/,
+  );
+});
+
 test("main leaves tile-local ordering to the retained ref and alpha-param contracts", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
 

@@ -154,6 +154,8 @@ export interface GpuTileContributorArenaProjectedContributor {
   readonly retentionWeight: number;
   readonly occlusionWeight: number;
   readonly occlusionDensity?: number;
+  readonly supportSampleWeight?: number;
+  readonly supportSampleRetentionWeight?: number;
 }
 
 export interface GpuTileContributorArenaBuildInput {
