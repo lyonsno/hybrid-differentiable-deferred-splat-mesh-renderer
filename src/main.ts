@@ -24,6 +24,7 @@ import {
   GPU_TILE_COVERAGE_TILE_HEADER_BYTES,
   GPU_TILE_COVERAGE_TILE_REF_BYTES,
   writeGpuTileCoverageFrameUniforms,
+  writeGpuTileCoverageSourceIndexTable,
   type GpuTileContributorArenaProjectedContributor,
   type GpuTileCoverageDebugMode,
   type GpuTileCoveragePlan,
@@ -5283,10 +5284,7 @@ function createTileHeaderStorageBuffer(
     return createEmptyStorageBuffer(device, plan.tileHeaderBytes, label);
   }
   const headerU32 = new Uint32Array(plan.tileHeaderBytes / Uint32Array.BYTES_PER_ELEMENT);
-  const sourceIndexOffset = plan.tileCount * 4;
-  for (let index = 0; index < candidateSplatIndexes.length; index += 1) {
-    headerU32[sourceIndexOffset + index * 4] = candidateSplatIndexes[index];
-  }
+  writeGpuTileCoverageSourceIndexTable(headerU32, plan, candidateSplatIndexes);
   return createInitializedReadableStorageBuffer(device, headerU32.buffer, label);
 }
 

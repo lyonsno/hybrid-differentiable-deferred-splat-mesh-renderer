@@ -23,6 +23,7 @@ import {
   GPU_TILE_CONTRIBUTOR_ARENA_RECORD_FLOAT32_STRIDE,
   GPU_TILE_CONTRIBUTOR_ARENA_RECORD_UINT32_STRIDE,
   getGpuTileCoverageDispatchPlan,
+  writeGpuTileCoverageSourceIndexTable,
   writeGpuTileCoverageFrameUniforms,
 } from "../../node_modules/.cache/renderer-tests/src/gpuTileCoverage.js";
 
@@ -112,6 +113,32 @@ test("GPU tile coverage dispatch plan separates bounds, list construction, and t
       z: 1,
     },
   });
+});
+
+test("GPU tile coverage compact source table stores non-contiguous source ids after tile headers", () => {
+  const plan = createGpuTileCoveragePlan({
+    viewportWidth: 64,
+    viewportHeight: 64,
+    tileSizePx: 32,
+    splatCount: 4,
+    sourceSplatCount: 2,
+    maxTileRefs: 8,
+  });
+  const target = new Uint32Array(plan.tileHeaderBytes / Uint32Array.BYTES_PER_ELEMENT);
+  target.fill(0xcafebabe, 0, plan.tileCount * 4);
+
+  const layout = writeGpuTileCoverageSourceIndexTable(target, plan, Uint32Array.of(3, 1));
+
+  assert.deepEqual(layout, { offsetU32: 16, strideU32: 4, count: 2 });
+  assert.deepEqual(getGpuTileCoverageDispatchPlan(plan).buildTileRefs, { x: 1, y: 1, z: 1 });
+  assert.equal(plan.sourceSplatCount, 2);
+  assert.equal(plan.splatCount, 4);
+  assert.equal(plan.tileHeaderBytes, (plan.tileCount + plan.sourceSplatCount) * GPU_TILE_COVERAGE_TILE_HEADER_BYTES);
+  assert.deepEqual([...target.slice(0, 16)], Array.from({ length: 16 }, () => 0xcafebabe));
+  assert.equal(target[16], 3);
+  assert.equal(target[20], 1);
+  assert.equal(target[17], 0);
+  assert.equal(target[21], 0);
 });
 
 test("GPU tile coverage bindings carry the live tile buffers inside WebGPU storage limits", () => {

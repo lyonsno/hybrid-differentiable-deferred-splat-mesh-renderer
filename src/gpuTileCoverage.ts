@@ -105,6 +105,12 @@ export interface GpuTileCoverageDispatchPlan {
   readonly compositeTiles: GpuTileCoverageDispatch;
 }
 
+export interface GpuTileCoverageSourceIndexTableLayout {
+  readonly offsetU32: number;
+  readonly strideU32: number;
+  readonly count: number;
+}
+
 export interface GpuTileContributorArenaLayout {
   readonly tileCount: number;
   readonly maxContributors: number;
@@ -453,6 +459,32 @@ export function getGpuTileCoverageDispatchPlan(plan: GpuTileCoveragePlan): GpuTi
       z: 1,
     },
   };
+}
+
+export function writeGpuTileCoverageSourceIndexTable(
+  target: Uint32Array,
+  plan: Pick<GpuTileCoveragePlan, "tileCount" | "tileHeaderBytes">,
+  candidateSplatIndexes: ArrayLike<number>,
+): GpuTileCoverageSourceIndexTableLayout {
+  const tileCount = assertNonNegativeInteger(plan.tileCount, "source-index table tile count");
+  const tileHeaderBytes = assertPositiveInteger(plan.tileHeaderBytes, "source-index table header bytes");
+  const strideU32 = GPU_TILE_COVERAGE_TILE_HEADER_BYTES / Uint32Array.BYTES_PER_ELEMENT;
+  const offsetU32 = tileCount * strideU32;
+  const requiredLength = offsetU32 + candidateSplatIndexes.length * strideU32;
+  if (target.length * Uint32Array.BYTES_PER_ELEMENT < tileHeaderBytes) {
+    throw new Error("GPU tile coverage source-index table target is smaller than the tile-header plan");
+  }
+  if (target.length < requiredLength) {
+    throw new Error("GPU tile coverage source-index table target is too small for compact source ids");
+  }
+
+  for (let index = 0; index < candidateSplatIndexes.length; index += 1) {
+    target[offsetU32 + index * strideU32] = assertNonNegativeInteger(
+      candidateSplatIndexes[index],
+      "source-index table splat id",
+    );
+  }
+  return { offsetU32, strideU32, count: candidateSplatIndexes.length };
 }
 
 export function getGpuTileContributorArenaDispatchPlan(plan: GpuTileCoveragePlan): GpuTileContributorArenaDispatchPlan {
