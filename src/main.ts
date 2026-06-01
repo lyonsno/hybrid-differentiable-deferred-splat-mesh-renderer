@@ -577,6 +577,8 @@ interface RetainedSourceConstructionEvidence {
   readonly projectedRefs: number;
   readonly retainedRefs: number;
   readonly droppedRefs: number;
+  readonly retainedBudgetRefs?: number;
+  readonly maxRefsPerTile?: number;
 }
 
 interface SortSettleState {
@@ -1762,6 +1764,15 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     maxTilesPerSplat,
     tileCount,
   };
+  const sourceFrontierTileRefCapacity = gpuLiveMaxTileRefs(
+    device,
+    frontierSource.tileCount,
+    Math.max(
+      frontierSource.projectedRefEstimate,
+      frontierSource.candidateSplatIndexes.length,
+      1,
+    ),
+  );
   const plan = createGpuTileCoveragePlan({
     viewportWidth,
     viewportHeight,
@@ -1769,6 +1780,7 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     splatCount: attributes.count,
     sourceSplatCount: frontierSource.candidateSplatIndexes.length,
     maxTileRefs: Math.max(
+      sourceFrontierTileRefCapacity,
       frontierSource.projectedRefEstimate,
       frontierSource.candidateSplatIndexes.length,
       1,
@@ -1861,7 +1873,7 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     alphaParamData,
     sourceOpacities: effectiveOpacities,
   });
-  const retainedSourceConstruction = buildWgslProjectedSourceFrontierConstructionEvidence(frontierSource);
+  const retainedSourceConstruction = buildWgslProjectedSourceFrontierConstructionEvidence(frontierSource, plan);
   const wgslProjectedRefStreamEvidence = buildWgslProjectedRefStreamEvidence(compactSource, null);
 
   return {
@@ -2619,6 +2631,7 @@ function buildGpuArenaRetainedSourceConstructionEvidence(
 
 function buildWgslProjectedSourceFrontierConstructionEvidence(
   frontierSource: WgslProjectedSourceFrontierSource,
+  plan: GpuTileCoveragePlan,
 ): RetainedSourceConstructionEvidence {
   const compactSourceStreamRetentionBlockedStage = "compact-source-stream-retention";
   return {
@@ -2641,6 +2654,8 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
     projectedRefs: frontierSource.projectedRefEstimate,
     retainedRefs: 0,
     droppedRefs: 0,
+    retainedBudgetRefs: plan.maxTileRefs,
+    maxRefsPerTile: gpuLiveEffectiveRefsPerTile(plan),
     frontierBlockedStages: [
       compactSourceStreamRetentionBlockedStage,
       "compact-source-pixel-traces",
@@ -2665,7 +2680,7 @@ function buildWgslProjectedRefStreamEvidence(
       compactSourceRetainedRefs: compactSource.retainedContributorCount,
       sourceSplatCount: compactSource.candidateSplatIndexes.length,
       maxTilesPerSplat: compactSource.compactSourceConstruction?.effectiveMaxTilesPerSplat ?? null,
-      allocatedProjectedRefs: compactSource.projectedContributorCount,
+      allocatedProjectedRefs: compactSource.compactSourceConstruction?.retainedBudgetRefs ?? compactSource.projectedContributorCount,
       tileCount: compactSource.compactSourceConstruction?.tileCount ?? 0,
       maxRefsPerTile: compactSource.compactSourceConstruction?.maxRefsPerTile ?? 0,
       dispatchEnqueueDurationMs: stream?.dispatchEnqueueDurationMs,

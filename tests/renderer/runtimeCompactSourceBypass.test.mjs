@@ -348,13 +348,38 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(frontierFactorySource, /projectRuntimeSplatsForCompactSource/);
   assert.match(frontierFactorySource, /estimateCompactProjectedTileRefCount/);
+  assert.match(
+    frontierFactorySource,
+    /sourceFrontierTileRefCapacity[\s\S]*gpuLiveMaxTileRefs\([\s\S]*frontierSource\.tileCount[\s\S]*frontierSource\.projectedRefEstimate/,
+    "source-frontier route must request the compositor's hardware-aware per-tile capacity, not collapse capacity to average projected refs per tile",
+  );
+  assert.match(
+    frontierFactorySource,
+    /maxTileRefs:\s*Math\.max\([\s\S]*sourceFrontierTileRefCapacity/,
+    "source-frontier plan must pass the per-tile source capacity into the GPU tile ref arena",
+  );
   assert.match(frontierFactorySource, /createTileHeaderStorageBuffer\([\s\S]*frontierSource\.candidateSplatIndexes/);
   assert.match(frontierFactorySource, /gpuArenaRuntime:\s*null/);
   assert.match(frontierFactorySource, /arenaBackend:\s*"gpu"/);
   assert.match(retainedSourceEvidence, /effectiveSourceBackend:\s*"wgsl-projected-ref-stream-source-frontier"/);
   assert.match(retainedSourceEvidence, /sourceHandoff:\s*"wgsl-projected-ref-stream-gpu-buffers"/);
+  assert.match(
+    retainedSourceEvidence,
+    /retainedBudgetRefs:\s*plan\.maxTileRefs/,
+    "source-frontier retained-source evidence must report the actual allocated GPU tile-ref arena, not only the projected estimate",
+  );
+  assert.match(
+    retainedSourceEvidence,
+    /maxRefsPerTile:\s*gpuLiveEffectiveRefsPerTile\(plan\)/,
+    "source-frontier retained-source evidence must report the effective hardware-aware per-tile cap",
+  );
   assert.match(retainedSourceEvidence, /"compact-source-stream-retention"[\s\S]*frontierBlockedStages/);
   assert.match(streamEvidenceSource, /"wgsl-projected-ref-stream-source-frontier"/);
+  assert.match(
+    streamEvidenceSource,
+    /allocatedProjectedRefs:\s*compactSource\.compactSourceConstruction\?\.retainedBudgetRefs/,
+    "source-frontier stream evidence must expose the allocated GPU source arena capacity",
+  );
   assert.match(renderLoopSource, /else \{\s*tileLocalState\.pipeline\.dispatch\(tileLocalComputePass,\s*tileLocalState\.bindGroup,\s*tileLocalState\.plan\);/);
 });
 
