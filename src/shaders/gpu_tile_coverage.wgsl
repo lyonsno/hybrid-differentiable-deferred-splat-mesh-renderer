@@ -40,6 +40,7 @@ const MAX_ANISOTROPIC_MINOR_RADIUS_INFLATION = 4.0;
 const MIN_ANISOTROPIC_MINOR_RADIUS_FRACTION = 0.015625;
 const COMPACT_FOOTPRINT_SIGMA_RADIUS = 3.0;
 const COMPACT_FOOTPRINT_EPSILON = 0.000000001;
+const SOURCE_FRONTIER_COMPOSITOR_ORDER_BUCKET_COUNT = 16u;
 
 struct SplatShape {
   axis0: vec3f,
@@ -242,9 +243,26 @@ fn gpu_live_overflow_election_slot(tileId: u32, splatId: u32, tileCapacity: u32)
   return hashed % max(tileCapacity, 1u);
 }
 
-fn gpu_live_retention_election_slot(projectedSlot: u32, tileId: u32, splatId: u32, tileCapacity: u32) -> u32 {
+fn gpu_live_compositor_order_slot(sourceDepthNdc: f32, projectedSlot: u32, tileCapacity: u32) -> u32 {
+  let safeCapacity = max(tileCapacity, 1u);
+  let bucketCount = min(SOURCE_FRONTIER_COMPOSITOR_ORDER_BUCKET_COUNT, safeCapacity);
+  let frontness = clamp(1.0 - sourceDepthNdc, 0.0, 1.0);
+  let bucket = min(u32(frontness * f32(bucketCount - 1u)), bucketCount - 1u);
+  let bucketStart = (bucket * safeCapacity) / bucketCount;
+  let nextBucketStart = ((bucket + 1u) * safeCapacity) / bucketCount;
+  let bucketWidth = max(nextBucketStart - bucketStart, 1u);
+  return min(bucketStart + (projectedSlot % bucketWidth), safeCapacity - 1u);
+}
+
+fn gpu_live_retention_election_slot(
+  projectedSlot: u32,
+  compositorOrderSlot: u32,
+  tileId: u32,
+  splatId: u32,
+  tileCapacity: u32,
+) -> u32 {
   if (projectedSlot < tileCapacity) {
-    return projectedSlot;
+    return compositorOrderSlot;
   }
   return gpu_live_overflow_election_slot(tileId, splatId, tileCapacity);
 }
@@ -434,6 +452,7 @@ fn debug_heatmap_color(
     maxTileY = min(maxTileY, footprintCapTileY + radiusTiles);
   }
   let orderingKey = splatId;
+  let sourceDepthNdc = centerClip.z / max(centerClip.w, 0.000001);
   for (var tileY = minTileY; tileY <= maxTileY; tileY = tileY + 1u) {
     for (var tileX = minTileX; tileX <= maxTileX; tileX = tileX + 1u) {
       let tileId = tileY * frame.tileGrid.x + tileX;
@@ -441,7 +460,8 @@ fn debug_heatmap_color(
         continue;
       }
       let projectedSlot = atomicAdd(&tileScatterCursors[tileId], 1u);
-      let slot = gpu_live_retention_election_slot(projectedSlot, tileId, splatId, tileCapacity);
+      let compositorOrderSlot = gpu_live_compositor_order_slot(sourceDepthNdc, projectedSlot, tileCapacity);
+      let slot = gpu_live_retention_election_slot(projectedSlot, compositorOrderSlot, tileId, splatId, tileCapacity);
       let refIndex = tileId * tileCapacity + slot;
       if (refIndex >= frame.maxTileRefs) {
         continue;
@@ -451,7 +471,6 @@ fn debug_heatmap_color(
         gpu_live_tile_center_px(tileX, tileY, tileSizePx)
       );
       let sourceOpacity = clamp(opacities[splatId], 0.0, 0.999);
-      let sourceDepthNdc = centerClip.z / max(centerClip.w, 0.000001);
       let retentionScore = gpu_live_retention_election_score(
         tileCoverageWeight,
         sourceOpacity,

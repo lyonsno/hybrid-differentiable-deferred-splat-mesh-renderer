@@ -2672,6 +2672,7 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
       "wgsl-projected-ref-stream-source-table",
       "wgsl-projected-ref-stream-build-tile-refs",
       "wgsl-source-frontier-depth-aware-retention-election",
+      "wgsl-source-frontier-depth-bucket-compositor-order",
       "tile-local-visible-gaussian-compositor",
     ],
     nextGpuOffloadStage: "gpu-retained-source-prefix-scatter",

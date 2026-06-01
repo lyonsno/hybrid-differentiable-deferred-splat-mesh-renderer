@@ -431,6 +431,31 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
     /let sourceDepthNdc = centerClip\.z \/ max\(centerClip\.w, 0\.000001\)[\s\S]*gpu_live_retention_election_score\([\s\S]*sourceDepthNdc/,
     "source-frontier build must pass the current projected depth into the retained-ref election score",
   );
+  assert.match(
+    shaderSource,
+    /const SOURCE_FRONTIER_COMPOSITOR_ORDER_BUCKET_COUNT = 16u/,
+    "source-frontier compositor ordering must declare its provisional depth-bucket approximation explicitly",
+  );
+  assert.match(
+    shaderSource,
+    /fn gpu_live_compositor_order_slot\([\s\S]*sourceDepthNdc:\s*f32[\s\S]*projectedSlot:\s*u32[\s\S]*tileCapacity:\s*u32[\s\S]*frontness[\s\S]*bucket[\s\S]*bucketWidth/,
+    "source-frontier compositor ordering must derive storage slots from projected depth buckets, not first-arrival slot order",
+  );
+  assert.match(
+    shaderSource,
+    /let compositorOrderSlot = gpu_live_compositor_order_slot\(sourceDepthNdc,\s*projectedSlot,\s*tileCapacity\)[\s\S]*gpu_live_retention_election_slot\(projectedSlot,\s*compositorOrderSlot,\s*tileId,\s*splatId,\s*tileCapacity\)/,
+    "source-frontier retained refs must feed the visible compositor in provisional back-to-front slot order",
+  );
+  assert.doesNotMatch(
+    shaderSource,
+    /let slot = gpu_live_retention_election_slot\(projectedSlot,\s*tileId,\s*splatId,\s*tileCapacity\);/,
+    "source-frontier must not let first-arrival projectedSlot impersonate compositor draw order",
+  );
+  assert.match(
+    retainedSourceEvidence,
+    /"wgsl-source-frontier-depth-bucket-compositor-order"/,
+    "source-frontier retained-source evidence must advertise the provisional depth-bucket compositor-order stage",
+  );
   assert.doesNotMatch(
     shaderSource,
     /let slot = atomicAdd\(&tileScatterCursors\[tileId\], 1u\);\s*if \(slot >= tileCapacity\) \{\s*continue;\s*\}/,
