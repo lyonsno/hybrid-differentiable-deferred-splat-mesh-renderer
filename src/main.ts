@@ -5907,10 +5907,10 @@ function runtimeBudgetDiagnosticsForRefStatsReadback(
       },
       overflowReasons: droppedRefs > 0
         ? {
-            ...base.capPressure.overflowReasons,
+            ...omitPerTileRetainedCapOverflowReason(base.capPressure.overflowReasons),
             perTileRetainedCap: droppedRefs,
           }
-        : base.capPressure.overflowReasons,
+        : omitPerTileRetainedCapOverflowReason(base.capPressure.overflowReasons),
       policyHooks: droppedRefs > 0 && base.capPressure.policyHooks.length === 0
         ? [
             {
@@ -5939,6 +5939,13 @@ function runtimeBudgetDiagnosticsForRefStatsReadback(
       },
     },
   };
+}
+
+function omitPerTileRetainedCapOverflowReason(
+  overflowReasons: Readonly<Record<string, number>>
+): Readonly<Record<string, number>> {
+  const { perTileRetainedCap: _perTileRetainedCap, ...remainingOverflowReasons } = overflowReasons;
+  return remainingOverflowReasons;
 }
 
 function emptyTileLocalBudgetBandCounter() {

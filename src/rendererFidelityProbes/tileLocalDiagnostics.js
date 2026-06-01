@@ -206,8 +206,9 @@ function normalizeFrameHeaderAccounting(tileRefCustody, runtimeRefStats) {
 }
 
 function runtimePreferredStat(runtimeValue, fallbackValue) {
-  const runtime = nonNegativeFiniteInteger(runtimeValue);
-  return runtime > 0 ? runtime : nonNegativeFiniteInteger(fallbackValue);
+  return Number.isFinite(runtimeValue)
+    ? nonNegativeFiniteInteger(runtimeValue)
+    : nonNegativeFiniteInteger(fallbackValue);
 }
 
 function summarizeAnchorTileEvidence({

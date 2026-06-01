@@ -340,6 +340,7 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   const runtimeEvidenceSource = extractFunctionSource(mainSource, "exposeTileLocalRuntimeEvidence");
   const compositorInputReadbackSource = extractFunctionSource(mainSource, "resolveTileLocalCompositorInputReadback");
   const refStatsPublisherSource = extractFunctionSource(mainSource, "publishTileLocalRefStatsReadback");
+  const budgetReadbackSource = extractFunctionSource(mainSource, "runtimeBudgetDiagnosticsForRefStatsReadback");
 
   assert.match(modeSource, /"source-frontier"/);
   assert.match(modeSource, /requested === "source"/);
@@ -433,6 +434,16 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
     refStatsPublisherSource,
     /runtimeBudgetDiagnosticsForRefStatsReadback\(state\.budgetDiagnostics,\s*state\.plan,\s*readback\)/,
     "source-frontier readback publication must update budget diagnostics from live dropped/saturated ref stats",
+  );
+  assert.match(
+    mainSource,
+    /function omitPerTileRetainedCapOverflowReason/,
+    "source-frontier budget diagnostics must be able to drop stale per-tile cap pressure on zero-drop live readback",
+  );
+  assert.match(
+    budgetReadbackSource,
+    /droppedRefs > 0[\s\S]*omitPerTileRetainedCapOverflowReason\(base\.capPressure\.overflowReasons\)[\s\S]*perTileRetainedCap:\s*droppedRefs[\s\S]*:\s*omitPerTileRetainedCapOverflowReason\(base\.capPressure\.overflowReasons\)/,
+    "source-frontier budget diagnostics must prefer live zero-drop readback over stale nested cap-pressure overflow reasons",
   );
   assert.match(
     compositorInputReadbackSource,
