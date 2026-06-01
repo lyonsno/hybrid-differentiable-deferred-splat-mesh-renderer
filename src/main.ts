@@ -1779,12 +1779,7 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     tileSizePx,
     splatCount: attributes.count,
     sourceSplatCount: frontierSource.candidateSplatIndexes.length,
-    maxTileRefs: Math.max(
-      sourceFrontierTileRefCapacity,
-      frontierSource.projectedRefEstimate,
-      frontierSource.candidateSplatIndexes.length,
-      1,
-    ),
+    maxTileRefs: sourceFrontierTileRefCapacity,
     maxTilesPerSplat: frontierSource.maxTilesPerSplat,
   });
   const bufferBlocker = gpuTileCoverageBufferUnavailableReason(device, plan);
@@ -1964,8 +1959,8 @@ function buildWgslProjectedSourceFrontierCompactSourceConstruction(
     retainedRefs: 0,
     droppedRefs: 0,
     maxProjectedRefs: TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES,
-    retainedBudgetRefs: plan.tileCount * TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
-    maxRefsPerTile: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
+    retainedBudgetRefs: plan.maxTileRefs,
+    maxRefsPerTile: gpuLiveEffectiveRefsPerTile(plan),
     maxTilesPerSplat: frontierSource.maxTilesPerSplat,
     effectiveMaxTilesPerSplat: frontierSource.maxTilesPerSplat,
     footprintComparisonClass: "wgsl-source-frontier-bounded-full-scene",
@@ -4746,7 +4741,10 @@ function resolveTileLocalOutputTextureReadback(state: TileLocalSceneState): void
 }
 
 function publishTileLocalOutputTextureReadback(readback: TileLocalOutputTextureReadback): void {
-  const runtimeWindow = window as unknown as { __MESH_SPLAT_SMOKE__?: Record<string, unknown> };
+  const runtimeWindow = window as unknown as {
+    __MESH_SPLAT_SMOKE__?: Record<string, unknown>;
+    __MESH_SPLAT_TILE_LOCAL_DIAGNOSTICS__?: TileLocalDiagnosticSummary;
+  };
   const smoke = runtimeWindow.__MESH_SPLAT_SMOKE__;
   if (!smoke || typeof smoke !== "object") {
     return;
@@ -4841,7 +4839,7 @@ function resolveTileLocalCompositorInputReadback(state: TileLocalSceneState): vo
         {
           frameId: pending.frameId,
           tileCount: pending.plan.tileCount,
-          tileCapacity: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
+          tileCapacity: gpuLiveEffectiveRefsPerTile(pending.plan),
           allocatedRefs: pending.plan.maxTileRefs,
         },
         tileScatterCursors
@@ -5119,7 +5117,10 @@ function publishTileLocalRefStatsReadback(
   state: TileLocalSceneState,
   readback: TileLocalRefStatsReadback
 ): void {
-  const runtimeWindow = window as unknown as { __MESH_SPLAT_SMOKE__?: Record<string, unknown> };
+  const runtimeWindow = window as unknown as {
+    __MESH_SPLAT_SMOKE__?: Record<string, unknown>;
+    __MESH_SPLAT_TILE_LOCAL_DIAGNOSTICS__?: TileLocalDiagnosticSummary;
+  };
   const smoke = runtimeWindow.__MESH_SPLAT_SMOKE__;
   if (!smoke || typeof smoke !== "object") {
     return;
@@ -5127,13 +5128,17 @@ function publishTileLocalRefStatsReadback(
   const tileLocal = smoke.tileLocal && typeof smoke.tileLocal === "object"
     ? smoke.tileLocal as Record<string, unknown>
     : {};
-  const refAccounting = tileLocalRefAccounting(state, state.diagnostics, readback);
+  const diagnostics = refreshTileLocalDiagnostics(state);
+  const refAccounting = tileLocalRefAccounting(state, diagnostics, readback);
   smoke.tileLocal = {
     ...tileLocal,
     refs: refAccounting.retainedRefs,
+    allocatedRefs: refAccounting.allocatedRefs,
     refAccounting,
     refStatsReadback: readback,
+    diagnostics,
   };
+  runtimeWindow.__MESH_SPLAT_TILE_LOCAL_DIAGNOSTICS__ = diagnostics;
 }
 
 function enqueueWgslProjectedRefStreamReadback(
@@ -6296,6 +6301,7 @@ function labelRendererMode(
 function refreshTileLocalDiagnostics(
   state: TileLocalSceneState,
   perPixelFinalColorAccumulation: readonly Record<string, unknown>[] = [],
+  runtimeRefStatsReadback: TileLocalRefStatsReadback | undefined = state.refStatsReadback,
 ): TileLocalDiagnosticSummary {
   state.diagnostics = summarizeTileLocalDiagnostics({
     debugMode: state.debugMode,
@@ -6308,6 +6314,7 @@ function refreshTileLocalDiagnostics(
     alphaParamData: state.alphaParamData,
     sourceOpacities: state.sourceOpacities,
     runtimeContributors: state.gpuArenaProjectedContributors,
+    runtimeRefStatsReadback,
     traceCapacityEvidence: traceCapacityEvidenceFromState(state, perPixelFinalColorAccumulation),
   });
   return state.diagnostics;
@@ -6631,7 +6638,7 @@ function exposeTileLocalRuntimeEvidence(
       )
     : undefined;
   const diagnostics = tileLocalState
-    ? refreshTileLocalDiagnostics(tileLocalState, perPixelFinalColorAccumulation)
+    ? refreshTileLocalDiagnostics(tileLocalState, perPixelFinalColorAccumulation, refStatsReadback)
     : undefined;
   const refAccounting = tileLocalState && diagnostics
     ? tileLocalRefAccounting(tileLocalState, diagnostics, refStatsReadback)
@@ -6649,7 +6656,7 @@ function exposeTileLocalRuntimeEvidence(
       ? {
           status: tileLocalStatus,
           refs: refAccounting?.retainedRefs ?? diagnostics.tileRefs.total,
-          allocatedRefs: tileLocalState.tileEntryCount,
+          allocatedRefs: refAccounting?.allocatedRefs ?? tileLocalState.tileEntryCount,
           refAccounting,
           refStatsReadback,
           tileColumns: tileLocalState.plan.tileColumns,

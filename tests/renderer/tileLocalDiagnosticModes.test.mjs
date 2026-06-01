@@ -125,6 +125,55 @@ test("tile-local diagnostic summary uses GPU custody and opacity estimates when 
   assert(summary.alpha.estimatedMinTransmittance < 1);
 });
 
+test("tile-local diagnostic summary trusts live GPU ref readback when CPU tile arrays are empty", () => {
+  const summary = summarizeTileLocalDiagnostics({
+    debugMode: "final-color",
+    plan: {
+      tileColumns: 216,
+      tileRows: 120,
+      tileSizePx: 16,
+      maxTileRefs: 6_635_520,
+    },
+    tileEntryCount: 0,
+    tileHeaders: new Uint32Array(216 * 120 * 4),
+    tileRefCustody: {
+      projectedTileEntryCount: 833_927,
+      retainedTileEntryCount: 0,
+      evictedTileEntryCount: 206_284,
+      cappedTileCount: 0,
+      saturatedRetainedTileCount: 0,
+      maxProjectedRefsPerTile: 0,
+      maxRetainedRefsPerTile: 0,
+      headerRefCount: 0,
+      headerAccountingMatches: false,
+    },
+    tileCoverageWeights: new Float32Array(0),
+    alphaParamData: new Float32Array(8),
+    runtimeRefStatsReadback: {
+      status: "present",
+      source: "gpu-scatter-cursor-readback",
+      frameId: 4,
+      tileCount: 25_920,
+      tileCapacity: 256,
+      allocatedRefs: 6_635_520,
+      projectedScatterRefs: 833_927,
+      retainedRefs: 627_643,
+      droppedRefs: 206_284,
+      nonEmptyTiles: 2_472,
+      saturatedTiles: 110,
+      maxRefsPerTile: 256,
+    },
+  });
+
+  assert.equal(summary.tileRefs.total, 627_643);
+  assert.equal(summary.tileRefs.nonEmptyTiles, 2_472);
+  assert.equal(summary.tileRefs.maxPerTile, 256);
+  assert.equal(summary.runtimeRefBudget.runtimeRetainedRefs, 627_643);
+  assert.equal(summary.runtimeRefBudget.effectiveRefsPerTile > 0, true);
+  assert.equal(summary.presentationFootprint.classification, "frame-footprint-present");
+  assert.equal(summary.presentationFootprint.retainedRefCount, 627_643);
+});
+
 test("tile-local diagnostic summary classifies GPU runtime budget below trace retained contributors", () => {
   const summary = summarizeTileLocalDiagnostics({
     debugMode: "final-color",

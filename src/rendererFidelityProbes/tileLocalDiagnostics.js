@@ -9,17 +9,21 @@ export function summarizeTileLocalDiagnostics({
   alphaParamData,
   sourceOpacities,
   runtimeContributors,
+  runtimeRefStatsReadback,
   traceCapacityEvidence,
 } = {}) {
   const maxTileRefs = positiveInteger(plan?.maxTileRefs, "plan.maxTileRefs");
   const tileCount = positiveInteger(plan?.tileColumns, "plan.tileColumns") *
     positiveInteger(plan?.tileRows, "plan.tileRows");
   const refLimit = Math.min(nonNegativeInteger(tileEntryCount, "tileEntryCount"), maxTileRefs);
+  const runtimeRefStats = normalizeRuntimeRefStatsReadback(runtimeRefStatsReadback);
   const observedTileRefs = summarizeTileRefs(tileHeaders, tileCount);
   const tileRefs = observedTileRefs.total > 0
     ? observedTileRefs
-    : summarizeEstimatedTileRefs(tileRefCustody, tileCount);
-  const normalizedTileRefCustody = normalizeTileRefCustody(tileRefCustody, tileRefs);
+    : runtimeRefStats
+      ? summarizeTileRefsFromRuntimeRefStats(runtimeRefStats, tileCount)
+      : summarizeEstimatedTileRefs(tileRefCustody, tileCount);
+  const normalizedTileRefCustody = normalizeTileRefCustody(tileRefCustody, tileRefs, runtimeRefStats);
   const coverageWeight = summarizeFloatRange(tileCoverageWeights, refLimit);
   const alpha = summarizeAlpha({
     alphaParamData,
@@ -38,6 +42,7 @@ export function summarizeTileLocalDiagnostics({
     tileRefs,
     tileRefCustody: normalizedTileRefCustody,
     runtimeContributors,
+    runtimeRefStats,
     traceCapacityEvidence,
   });
 
@@ -85,7 +90,7 @@ function summarizePresentationFootprint({ tileCount, tileRefs, runtimeRefBudget 
   } else if (anchorFinalRowsPresent && sparseFootprint) {
     classification = "anchor-neighborhood-only-output";
     blocker = "Compact rows are present at traced anchors, but retained tiles cover less than 1% of the frame, so the global final-color canvas can remain below the nonblank threshold.";
-  } else if (anchorEvidence.length > 0) {
+  } else {
     classification = "frame-footprint-present";
   }
 
@@ -106,12 +111,16 @@ function summarizeRuntimeRefBudget({
   tileRefs,
   tileRefCustody,
   runtimeContributors,
+  runtimeRefStats,
   traceCapacityEvidence,
 }) {
   const tileCount = positiveInteger(plan?.tileColumns, "plan.tileColumns") *
     positiveInteger(plan?.tileRows, "plan.tileRows");
   const retainedRuntimeRefs = nonNegativeFiniteInteger(
-    tileRefCustody?.retainedTileEntryCount ?? tileRefCustody?.headerRefCount ?? tileRefs?.total
+    runtimeRefStats?.retainedRefs ??
+      tileRefCustody?.retainedTileEntryCount ??
+      tileRefCustody?.headerRefCount ??
+      tileRefs?.total
   );
   const effectiveRefsPerTile = tileCount > 0 ? round(retainedRuntimeRefs / tileCount) : 0;
   const anchors = normalizeTraceCapacityAnchors(traceCapacityEvidence?.anchors);
@@ -153,7 +162,7 @@ function summarizeRuntimeRefBudget({
     maxTraceRetainedContributors,
     maxTraceFinalSteps,
     blockingAnchors: resolvedBlockingAnchors,
-    frameHeaderAccounting: normalizeFrameHeaderAccounting(tileRefCustody),
+    frameHeaderAccounting: normalizeFrameHeaderAccounting(tileRefCustody, runtimeRefStats),
     anchorTileEvidence,
   };
 }
@@ -177,16 +186,28 @@ function normalizeTraceCapacityAnchors(anchors) {
     }));
 }
 
-function normalizeFrameHeaderAccounting(tileRefCustody) {
+function normalizeFrameHeaderAccounting(tileRefCustody, runtimeRefStats) {
   return {
-    projectedTileEntryCount: nonNegativeFiniteInteger(tileRefCustody?.projectedTileEntryCount),
-    retainedTileEntryCount: nonNegativeFiniteInteger(tileRefCustody?.retainedTileEntryCount),
-    evictedTileEntryCount: nonNegativeFiniteInteger(tileRefCustody?.evictedTileEntryCount),
+    projectedTileEntryCount: nonNegativeFiniteInteger(
+      tileRefCustody?.projectedTileEntryCount ?? runtimeRefStats?.projectedScatterRefs
+    ),
+    retainedTileEntryCount: nonNegativeFiniteInteger(
+      tileRefCustody?.retainedTileEntryCount ?? runtimeRefStats?.retainedRefs
+    ),
+    evictedTileEntryCount: nonNegativeFiniteInteger(
+      tileRefCustody?.evictedTileEntryCount ?? runtimeRefStats?.droppedRefs
+    ),
     cappedTileCount: nonNegativeFiniteInteger(tileRefCustody?.cappedTileCount),
-    saturatedRetainedTileCount: nonNegativeFiniteInteger(tileRefCustody?.saturatedRetainedTileCount),
-    maxProjectedRefsPerTile: nonNegativeFiniteInteger(tileRefCustody?.maxProjectedRefsPerTile),
-    maxRetainedRefsPerTile: nonNegativeFiniteInteger(tileRefCustody?.maxRetainedRefsPerTile),
-    headerRefCount: nonNegativeFiniteInteger(tileRefCustody?.headerRefCount),
+    saturatedRetainedTileCount: nonNegativeFiniteInteger(
+      tileRefCustody?.saturatedRetainedTileCount ?? runtimeRefStats?.saturatedTiles
+    ),
+    maxProjectedRefsPerTile: nonNegativeFiniteInteger(
+      tileRefCustody?.maxProjectedRefsPerTile ?? runtimeRefStats?.maxRefsPerTile
+    ),
+    maxRetainedRefsPerTile: nonNegativeFiniteInteger(
+      tileRefCustody?.maxRetainedRefsPerTile ?? runtimeRefStats?.maxRefsPerTile
+    ),
+    headerRefCount: nonNegativeFiniteInteger(tileRefCustody?.headerRefCount ?? runtimeRefStats?.retainedRefs),
     headerAccountingMatches: tileRefCustody?.headerAccountingMatches === true,
   };
 }
@@ -434,17 +455,27 @@ function normalizeRetentionAuditSamples(samples) {
   }));
 }
 
-function normalizeTileRefCustody(tileRefCustody, tileRefs) {
+function normalizeTileRefCustody(tileRefCustody, tileRefs, runtimeRefStats) {
   if (tileRefCustody && typeof tileRefCustody === "object") {
+    const runtimeRetainedRefs = runtimeRefStats ? nonNegativeFiniteInteger(runtimeRefStats.retainedRefs) : 0;
+    const runtimeMaxRefsPerTile = runtimeRefStats ? nonNegativeFiniteInteger(runtimeRefStats.maxRefsPerTile) : 0;
+    const projectedTileEntryCount = nonNegativeFiniteInteger(
+      tileRefCustody.projectedTileEntryCount ?? runtimeRefStats?.projectedScatterRefs
+    );
+    const retainedTileEntryCount = nonNegativeFiniteInteger(tileRefCustody.retainedTileEntryCount);
+    const headerRefCount = nonNegativeFiniteInteger(tileRefCustody.headerRefCount);
+    const maxRetainedRefsPerTile = nonNegativeFiniteInteger(tileRefCustody.maxRetainedRefsPerTile);
     return {
-      projectedTileEntryCount: nonNegativeFiniteInteger(tileRefCustody.projectedTileEntryCount),
-      retainedTileEntryCount: nonNegativeFiniteInteger(tileRefCustody.retainedTileEntryCount),
-      evictedTileEntryCount: nonNegativeFiniteInteger(tileRefCustody.evictedTileEntryCount),
+      projectedTileEntryCount,
+      retainedTileEntryCount: retainedTileEntryCount > 0 ? retainedTileEntryCount : runtimeRetainedRefs,
+      evictedTileEntryCount: nonNegativeFiniteInteger(tileRefCustody.evictedTileEntryCount ?? runtimeRefStats?.droppedRefs),
       cappedTileCount: nonNegativeFiniteInteger(tileRefCustody.cappedTileCount),
-      saturatedRetainedTileCount: nonNegativeFiniteInteger(tileRefCustody.saturatedRetainedTileCount),
-      maxProjectedRefsPerTile: nonNegativeFiniteInteger(tileRefCustody.maxProjectedRefsPerTile),
-      maxRetainedRefsPerTile: nonNegativeFiniteInteger(tileRefCustody.maxRetainedRefsPerTile),
-      headerRefCount: nonNegativeFiniteInteger(tileRefCustody.headerRefCount),
+      saturatedRetainedTileCount: nonNegativeFiniteInteger(
+        tileRefCustody.saturatedRetainedTileCount ?? runtimeRefStats?.saturatedTiles
+      ),
+      maxProjectedRefsPerTile: nonNegativeFiniteInteger(tileRefCustody.maxProjectedRefsPerTile ?? runtimeRefStats?.maxRefsPerTile),
+      maxRetainedRefsPerTile: maxRetainedRefsPerTile > 0 ? maxRetainedRefsPerTile : runtimeMaxRefsPerTile,
+      headerRefCount: headerRefCount > 0 ? headerRefCount : runtimeRetainedRefs,
       headerAccountingMatches: tileRefCustody.headerAccountingMatches === true,
     };
   }
@@ -458,6 +489,39 @@ function normalizeTileRefCustody(tileRefCustody, tileRefs) {
     maxRetainedRefsPerTile: tileRefs.maxPerTile,
     headerRefCount: tileRefs.total,
     headerAccountingMatches: true,
+  };
+}
+
+function normalizeRuntimeRefStatsReadback(readback) {
+  if (!readback || readback.status !== "present") {
+    return null;
+  }
+  return {
+    tileCount: nonNegativeFiniteInteger(readback.tileCount),
+    tileCapacity: nonNegativeFiniteInteger(readback.tileCapacity),
+    allocatedRefs: nonNegativeFiniteInteger(readback.allocatedRefs),
+    projectedScatterRefs: nonNegativeFiniteInteger(readback.projectedScatterRefs),
+    retainedRefs: nonNegativeFiniteInteger(readback.retainedRefs),
+    droppedRefs: nonNegativeFiniteInteger(readback.droppedRefs),
+    nonEmptyTiles: nonNegativeFiniteInteger(readback.nonEmptyTiles),
+    saturatedTiles: nonNegativeFiniteInteger(readback.saturatedTiles),
+    maxRefsPerTile: nonNegativeFiniteInteger(readback.maxRefsPerTile),
+  };
+}
+
+function summarizeTileRefsFromRuntimeRefStats(readback, tileCount) {
+  const total = nonNegativeFiniteInteger(readback?.retainedRefs);
+  const nonEmptyTiles = Math.min(
+    nonNegativeFiniteInteger(tileCount),
+    nonNegativeFiniteInteger(readback?.nonEmptyTiles)
+  );
+  const maxPerTile = nonNegativeFiniteInteger(readback?.maxRefsPerTile);
+  return {
+    total,
+    nonEmptyTiles,
+    maxPerTile,
+    averagePerNonEmptyTile: nonEmptyTiles > 0 ? round(total / nonEmptyTiles) : 0,
+    density: tileCount > 0 ? round(nonEmptyTiles / tileCount) : 0,
   };
 }
 

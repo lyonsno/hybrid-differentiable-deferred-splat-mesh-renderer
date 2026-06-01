@@ -334,8 +334,12 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   const gpuFactorySource = extractFunctionSource(mainSource, "createGpuArenaTileLocalSceneState");
   const frontierFactorySource = extractFunctionSource(mainSource, "createWgslProjectedSourceFrontierTileLocalSceneState");
   const modeSource = extractFunctionSource(mainSource, "selectedWgslProjectedRefStreamMode");
+  const compactSourceConstruction = extractFunctionSource(mainSource, "buildWgslProjectedSourceFrontierCompactSourceConstruction");
   const retainedSourceEvidence = extractFunctionSource(mainSource, "buildWgslProjectedSourceFrontierConstructionEvidence");
   const streamEvidenceSource = extractFunctionSource(mainSource, "buildWgslProjectedRefStreamEvidence");
+  const runtimeEvidenceSource = extractFunctionSource(mainSource, "exposeTileLocalRuntimeEvidence");
+  const compositorInputReadbackSource = extractFunctionSource(mainSource, "resolveTileLocalCompositorInputReadback");
+  const refStatsPublisherSource = extractFunctionSource(mainSource, "publishTileLocalRefStatsReadback");
 
   assert.match(modeSource, /"source-frontier"/);
   assert.match(modeSource, /requested === "source"/);
@@ -355,12 +359,27 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     frontierFactorySource,
-    /maxTileRefs:\s*Math\.max\([\s\S]*sourceFrontierTileRefCapacity/,
+    /maxTileRefs:\s*sourceFrontierTileRefCapacity/,
     "source-frontier plan must pass the per-tile source capacity into the GPU tile ref arena",
+  );
+  assert.doesNotMatch(
+    frontierFactorySource,
+    /maxTileRefs:\s*Math\.max\([\s\S]*sourceFrontierTileRefCapacity[\s\S]*frontierSource\.projectedRefEstimate/,
+    "source-frontier plan must not re-expand beyond the hardware-aware source capacity after gpuLiveMaxTileRefs clamps it",
   );
   assert.match(frontierFactorySource, /createTileHeaderStorageBuffer\([\s\S]*frontierSource\.candidateSplatIndexes/);
   assert.match(frontierFactorySource, /gpuArenaRuntime:\s*null/);
   assert.match(frontierFactorySource, /arenaBackend:\s*"gpu"/);
+  assert.match(
+    compactSourceConstruction,
+    /retainedBudgetRefs:\s*plan\.maxTileRefs/,
+    "source-frontier compact construction evidence must expose the actual allocated plan capacity",
+  );
+  assert.match(
+    compactSourceConstruction,
+    /maxRefsPerTile:\s*gpuLiveEffectiveRefsPerTile\(plan\)/,
+    "source-frontier compact construction evidence must expose the effective hardware-aware per-tile cap",
+  );
   assert.match(retainedSourceEvidence, /effectiveSourceBackend:\s*"wgsl-projected-ref-stream-source-frontier"/);
   assert.match(retainedSourceEvidence, /sourceHandoff:\s*"wgsl-projected-ref-stream-gpu-buffers"/);
   assert.match(
@@ -380,14 +399,61 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
     /allocatedProjectedRefs:\s*compactSource\.compactSourceConstruction\?\.retainedBudgetRefs/,
     "source-frontier stream evidence must expose the allocated GPU source arena capacity",
   );
+  assert.match(
+    runtimeEvidenceSource,
+    /allocatedRefs:\s*refAccounting\?\.allocatedRefs/,
+    "source-frontier smoke evidence must publish live readback allocated refs instead of stale CPU tileEntryCount",
+  );
+  assert.match(
+    runtimeEvidenceSource,
+    /refreshTileLocalDiagnostics\(tileLocalState,\s*perPixelFinalColorAccumulation,\s*refStatsReadback\)/,
+    "source-frontier smoke diagnostics must consume same-frame published readback when state was rebuilt",
+  );
+  assert.match(
+    refStatsPublisherSource,
+    /const diagnostics = refreshTileLocalDiagnostics\(state\)/,
+    "source-frontier readback publication must refresh diagnostics after installing live GPU ref stats",
+  );
+  assert.match(
+    refStatsPublisherSource,
+    /diagnostics,/,
+    "source-frontier readback publication must republish diagnostics with live GPU ref stats",
+  );
+  assert.match(
+    refStatsPublisherSource,
+    /__MESH_SPLAT_TILE_LOCAL_DIAGNOSTICS__ = diagnostics/,
+    "source-frontier readback publication must update the standalone diagnostics evidence surface",
+  );
+  assert.match(
+    compositorInputReadbackSource,
+    /tileCapacity:\s*gpuLiveEffectiveRefsPerTile\(pending\.plan\)/,
+    "source-frontier compositor-input readback must report the effective plan cap rather than a hardcoded requested cap",
+  );
   assert.match(renderLoopSource, /else \{\s*tileLocalState\.pipeline\.dispatch\(tileLocalComputePass,\s*tileLocalState\.bindGroup,\s*tileLocalState\.plan\);/);
 });
 
 function extractFunctionSource(source, name) {
   const start = source.indexOf(`function ${name}`);
   assert.ok(start >= 0, `${name} should exist`);
-  const bodyStart = source.indexOf("{", start);
-  assert.ok(bodyStart > start, `${name} should have a function body`);
+  const parameterStart = source.indexOf("(", start);
+  assert.ok(parameterStart > start, `${name} should have parameters`);
+  let parameterDepth = 0;
+  let parameterEnd = -1;
+  for (let index = parameterStart; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === "(") {
+      parameterDepth += 1;
+    } else if (character === ")") {
+      parameterDepth -= 1;
+      if (parameterDepth === 0) {
+        parameterEnd = index;
+        break;
+      }
+    }
+  }
+  assert.ok(parameterEnd > parameterStart, `${name} parameter list should close`);
+  const bodyStart = source.indexOf("{", parameterEnd);
+  assert.ok(bodyStart > parameterEnd, `${name} should have a function body`);
   let depth = 0;
   for (let index = bodyStart; index < source.length; index += 1) {
     const character = source[index];

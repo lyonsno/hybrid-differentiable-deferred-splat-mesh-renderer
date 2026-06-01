@@ -193,7 +193,7 @@ test("direct GPU live route reports retained refs from scatter cursors instead o
   assert.match(source, /encoder\.copyBufferToBuffer\(tileLocalRefStatsReadbackSourceBuffer\(state\)/);
   assert.match(source, /encoder\.copyBufferToBuffer\(tileLocalRefStatsReadbackSourceBuffer\(state\),\s*0,\s*tileScatterCursorBuffer/);
   assert.match(source, /const refStatsReadback = summarizeTileLocalRefStatsReadback/);
-  assert.match(source, /tileCapacity:\s*TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE/);
+  assert.match(source, /tileCapacity:\s*gpuLiveEffectiveRefsPerTile\(pending\.plan\)/);
   assert.match(source, /state\.refStatsReadback = refStatsReadback/);
   assert.match(source, /publishTileLocalRefStatsReadback\(state,\s*refStatsReadback\)/);
   assert.match(source, /function tileLocalRefStatsReadbackSourceBuffer/);
@@ -220,6 +220,7 @@ test("direct GPU live route reports retained refs from scatter cursors instead o
   assert.match(source, /pending\.frameId\s*===\s*state\.lastCompositedFrame/);
   assert.match(source, /const stateRefStatsReadback = tileLocalState\?\.refStatsReadback\?\.frameId === evidenceFrameId/);
   assert.match(source, /const refStatsReadback = stateRefStatsReadback \?\? publishedRefStatsReadback/);
-  assert.match(source, /tileLocalRefAccounting\(state,\s*state\.diagnostics,\s*readback\)/);
+  assert.match(source, /const diagnostics = refreshTileLocalDiagnostics\(state\)/);
+  assert.match(source, /tileLocalRefAccounting\(state,\s*diagnostics,\s*readback\)/);
   assert.match(source, /scene\.tileLocalState\.lastCompositedFrame/);
 });

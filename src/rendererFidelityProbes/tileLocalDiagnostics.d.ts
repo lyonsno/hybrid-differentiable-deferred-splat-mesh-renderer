@@ -16,6 +16,18 @@ export interface TileLocalDiagnosticSummaryInput {
     readonly originalId?: number;
     readonly tileIndex?: number;
   }[];
+  readonly runtimeRefStatsReadback?: {
+    readonly status?: string;
+    readonly tileCount?: number;
+    readonly tileCapacity?: number;
+    readonly allocatedRefs?: number;
+    readonly projectedScatterRefs?: number;
+    readonly retainedRefs?: number;
+    readonly droppedRefs?: number;
+    readonly nonEmptyTiles?: number;
+    readonly saturatedTiles?: number;
+    readonly maxRefsPerTile?: number;
+  };
   readonly traceCapacityEvidence?: {
     readonly anchors?: readonly {
       readonly id?: string;
