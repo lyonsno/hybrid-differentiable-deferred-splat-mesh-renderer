@@ -1303,7 +1303,9 @@ async function main() {
       : "real Scaniverse splats";
     let statsText = `${width}×${height} | ${displayFps} fps | ${scene.count.toLocaleString()} ${splatKindLabel} | renderer: ${rendererLabel} | sort: ${SORT_BACKEND} | alpha: ${alphaSummary.accountingMode} density ${alphaSummary.compensatedSplatCount.toLocaleString()} splats/${alphaSummary.hotTileCount} tiles`;
     if (scene.tileLocalState) {
-      const refAccounting = tileLocalRefAccounting(scene.tileLocalState, scene.tileLocalState.diagnostics);
+      const runtimeWindow = window as unknown as { __MESH_SPLAT_SMOKE__?: Record<string, unknown> };
+      const overlayRefStatsReadback = overlayTileLocalRefStatsReadback(scene.tileLocalState, runtimeWindow.__MESH_SPLAT_SMOKE__);
+      const refAccounting = tileLocalRefAccounting(scene.tileLocalState, scene.tileLocalState.diagnostics, overlayRefStatsReadback);
       statsText += ` | tile-local: ${scene.tileLocalState.plan.tileColumns}x${scene.tileLocalState.plan.tileRows} tiles/${refAccounting.retainedRefs} refs`;
       if (refAccounting.source === "gpu-scatter-cursor-readback") {
         statsText += ` | tile-local live refs: ${refAccounting.source}`;
@@ -5128,14 +5130,18 @@ function publishTileLocalRefStatsReadback(
   const tileLocal = smoke.tileLocal && typeof smoke.tileLocal === "object"
     ? smoke.tileLocal as Record<string, unknown>
     : {};
-  const diagnostics = refreshTileLocalDiagnostics(state);
+  const budgetDiagnostics = runtimeBudgetDiagnosticsForRefStatsReadback(state.budgetDiagnostics, state.plan, readback);
+  state.budgetDiagnostics = budgetDiagnostics;
+  const diagnostics = refreshTileLocalDiagnostics(state, [], readback);
   const refAccounting = tileLocalRefAccounting(state, diagnostics, readback);
+  refreshStatsOverlayTileLocalRefAccounting(state, refAccounting);
   smoke.tileLocal = {
     ...tileLocal,
     refs: refAccounting.retainedRefs,
     allocatedRefs: refAccounting.allocatedRefs,
     refAccounting,
     refStatsReadback: readback,
+    budgetDiagnostics,
     diagnostics,
   };
   runtimeWindow.__MESH_SPLAT_TILE_LOCAL_DIAGNOSTICS__ = diagnostics;
@@ -5371,6 +5377,34 @@ function sameFramePublishedTileLocalRefStatsReadback(
     return readback as TileLocalRefStatsReadback;
   }
   return undefined;
+}
+
+function latestPublishedTileLocalRefStatsReadback(
+  smoke: Record<string, unknown> | undefined
+): TileLocalRefStatsReadback | undefined {
+  if (!smoke || typeof smoke !== "object") {
+    return undefined;
+  }
+  const tileLocal = smoke.tileLocal && typeof smoke.tileLocal === "object"
+    ? smoke.tileLocal as Record<string, unknown>
+    : undefined;
+  const readback = tileLocal?.refStatsReadback && typeof tileLocal.refStatsReadback === "object"
+    ? tileLocal.refStatsReadback as Partial<TileLocalRefStatsReadback>
+    : undefined;
+  if (readback?.source === "gpu-scatter-cursor-readback" && readback.status === "present") {
+    return readback as TileLocalRefStatsReadback;
+  }
+  return undefined;
+}
+
+function overlayTileLocalRefStatsReadback(
+  state: TileLocalSceneState,
+  smoke: Record<string, unknown> | undefined
+): TileLocalRefStatsReadback | undefined {
+  if (state.refStatsReadback?.status === "present") {
+    return state.refStatsReadback;
+  }
+  return latestPublishedTileLocalRefStatsReadback(smoke);
 }
 
 function readCompositorInputAnchor({
@@ -5817,6 +5851,91 @@ function estimatedGpuLiveBudgetDiagnostics(
         retainedRefBufferBytes: plan.tileRefBytes,
         coverageWeightBufferBytes: plan.tileCoverageWeightBytes,
         alphaParamBufferBytes: plan.alphaParamBytes,
+      },
+    },
+  };
+}
+
+function runtimeBudgetDiagnosticsForRefStatsReadback(
+  base: TileLocalPrepassBudgetDiagnostics,
+  plan: GpuTileCoveragePlan,
+  readback: TileLocalRefStatsReadback
+): TileLocalPrepassBudgetDiagnostics {
+  if (readback.status !== "present") {
+    return base;
+  }
+  const projectedRefs = readback.projectedScatterRefs;
+  const retainedRefs = readback.retainedRefs;
+  const droppedRefs = readback.droppedRefs;
+  const saturatedTileCount = readback.saturatedTiles;
+  const maxRefsPerTile = readback.maxRefsPerTile;
+  const overflowReasons = droppedRefs > 0
+    ? [
+        ...base.overflowReasons.filter((reason) => reason.reason !== "per-tile-ref-cap"),
+        {
+          reason: "per-tile-ref-cap" as const,
+          projectedRefs,
+          retainedRefs,
+          droppedRefs,
+          cappedTileCount: saturatedTileCount,
+          maxRefsPerTile,
+        },
+      ]
+    : base.overflowReasons.filter((reason) => reason.reason !== "per-tile-ref-cap");
+  return {
+    ...base,
+    arenaRefs: {
+      ...base.arenaRefs,
+      projected: projectedRefs,
+      retained: retainedRefs,
+      dropped: droppedRefs,
+      cappedTileCount: saturatedTileCount,
+      saturatedRetainedTileCount: saturatedTileCount,
+      maxProjectedRefsPerTile: maxRefsPerTile,
+      maxRetainedRefsPerTile: maxRefsPerTile,
+    },
+    overflowReasons,
+    capPressure: {
+      ...base.capPressure,
+      classification: droppedRefs > 0 ? "over-cap" : "within-cap",
+      refs: {
+        projected: projectedRefs,
+        retained: retainedRefs,
+        dropped: droppedRefs,
+        maxRefsPerTile,
+        tileCount: readback.tileCount,
+      },
+      overflowReasons: droppedRefs > 0
+        ? {
+            ...base.capPressure.overflowReasons,
+            perTileRetainedCap: droppedRefs,
+          }
+        : base.capPressure.overflowReasons,
+      policyHooks: droppedRefs > 0 && base.capPressure.policyHooks.length === 0
+        ? [
+            {
+              kind: "tile-local-lod",
+              reason: "compress dense same-tile contributors before the retained-ref cap rather than raising it",
+              raisesCap: false,
+            },
+            {
+              kind: "tile-local-aggregation",
+              reason: "aggregate low-priority dropped contributors into explicit evidence instead of hiding loss",
+              raisesCap: false,
+            },
+          ]
+        : base.capPressure.policyHooks,
+    },
+    heat: {
+      cpu: {
+        ...base.heat.cpu,
+        projectedRefs,
+        projectedRefsPerTile: plan.tileCount > 0 ? projectedRefs / plan.tileCount : 0,
+        projectedToRetainedRatio: retainedRefs > 0 ? projectedRefs / retainedRefs : 0,
+      },
+      gpu: {
+        ...base.heat.gpu,
+        retainedRefs,
       },
     },
   };
@@ -6384,6 +6503,21 @@ function tileLocalRefAccounting(
     tileCount: state.plan.tileCount,
     tileCapacity,
   };
+}
+
+function refreshStatsOverlayTileLocalRefAccounting(
+  state: TileLocalSceneState,
+  refAccounting: ReturnType<typeof tileLocalRefAccounting>
+): void {
+  const currentText = statsEl.textContent ?? "";
+  if (!currentText.includes("tile-local:")) {
+    return;
+  }
+  const liveTileRefText = `tile-local: ${state.plan.tileColumns}x${state.plan.tileRows} tiles/${refAccounting.retainedRefs.toLocaleString()} refs`;
+  const updatedText = currentText.replace(/tile-local: \d+x\d+ tiles\/[\d,]+ refs/, liveTileRefText);
+  statsEl.textContent = updatedText.includes("tile-local live refs:")
+    ? updatedText
+    : `${updatedText} | tile-local live refs: ${refAccounting.source}`;
 }
 
 function traceCapacityEvidenceFromState(

@@ -220,7 +220,7 @@ test("direct GPU live route reports retained refs from scatter cursors instead o
   assert.match(source, /pending\.frameId\s*===\s*state\.lastCompositedFrame/);
   assert.match(source, /const stateRefStatsReadback = tileLocalState\?\.refStatsReadback\?\.frameId === evidenceFrameId/);
   assert.match(source, /const refStatsReadback = stateRefStatsReadback \?\? publishedRefStatsReadback/);
-  assert.match(source, /const diagnostics = refreshTileLocalDiagnostics\(state\)/);
+  assert.match(source, /const diagnostics = refreshTileLocalDiagnostics\(state,\s*\[\],\s*readback\)/);
   assert.match(source, /tileLocalRefAccounting\(state,\s*diagnostics,\s*readback\)/);
   assert.match(source, /scene\.tileLocalState\.lastCompositedFrame/);
 });

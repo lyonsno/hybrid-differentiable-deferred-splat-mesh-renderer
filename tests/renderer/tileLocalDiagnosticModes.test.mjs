@@ -170,8 +170,59 @@ test("tile-local diagnostic summary trusts live GPU ref readback when CPU tile a
   assert.equal(summary.tileRefs.maxPerTile, 256);
   assert.equal(summary.runtimeRefBudget.runtimeRetainedRefs, 627_643);
   assert.equal(summary.runtimeRefBudget.effectiveRefsPerTile > 0, true);
+  assert.equal(summary.runtimeRefBudget.frameHeaderAccounting.evictedTileEntryCount, 206_284);
+  assert.equal(summary.runtimeRefBudget.frameHeaderAccounting.saturatedRetainedTileCount, 110);
   assert.equal(summary.presentationFootprint.classification, "frame-footprint-present");
   assert.equal(summary.presentationFootprint.retainedRefCount, 627_643);
+});
+
+test("tile-local diagnostic summary refuses source-frontier zero placeholders over live loss readback", () => {
+  const summary = summarizeTileLocalDiagnostics({
+    debugMode: "final-color",
+    plan: {
+      tileColumns: 80,
+      tileRows: 45,
+      tileSizePx: 16,
+      maxTileRefs: 921_600,
+    },
+    tileEntryCount: 0,
+    tileHeaders: new Uint32Array(80 * 45 * 4),
+    tileRefCustody: {
+      projectedTileEntryCount: 0,
+      retainedTileEntryCount: 0,
+      evictedTileEntryCount: 0,
+      cappedTileCount: 0,
+      saturatedRetainedTileCount: 0,
+      maxProjectedRefsPerTile: 0,
+      maxRetainedRefsPerTile: 0,
+      headerRefCount: 0,
+      headerAccountingMatches: false,
+    },
+    tileCoverageWeights: new Float32Array(0),
+    alphaParamData: new Float32Array(8),
+    runtimeRefStatsReadback: {
+      status: "present",
+      source: "gpu-scatter-cursor-readback",
+      frameId: 1,
+      tileCount: 3_600,
+      tileCapacity: 256,
+      allocatedRefs: 921_600,
+      projectedScatterRefs: 503_235,
+      retainedRefs: 37_590,
+      droppedRefs: 465_645,
+      nonEmptyTiles: 177,
+      saturatedTiles: 131,
+      maxRefsPerTile: 256,
+    },
+  });
+
+  assert.equal(summary.tileRefCustody.projectedTileEntryCount, 503_235);
+  assert.equal(summary.tileRefCustody.retainedTileEntryCount, 37_590);
+  assert.equal(summary.tileRefCustody.evictedTileEntryCount, 465_645);
+  assert.equal(summary.tileRefCustody.saturatedRetainedTileCount, 131);
+  assert.equal(summary.runtimeRefBudget.frameHeaderAccounting.evictedTileEntryCount, 465_645);
+  assert.equal(summary.runtimeRefBudget.frameHeaderAccounting.saturatedRetainedTileCount, 131);
+  assert.equal(summary.presentationFootprint.classification, "frame-footprint-present");
 });
 
 test("tile-local diagnostic summary classifies GPU runtime budget below trace retained contributors", () => {

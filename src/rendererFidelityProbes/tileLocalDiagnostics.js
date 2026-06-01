@@ -187,29 +187,27 @@ function normalizeTraceCapacityAnchors(anchors) {
 }
 
 function normalizeFrameHeaderAccounting(tileRefCustody, runtimeRefStats) {
+  const runtimeProjectedRefs = runtimePreferredStat(runtimeRefStats?.projectedScatterRefs, tileRefCustody?.projectedTileEntryCount);
+  const runtimeRetainedRefs = runtimePreferredStat(runtimeRefStats?.retainedRefs, tileRefCustody?.retainedTileEntryCount);
+  const runtimeDroppedRefs = runtimePreferredStat(runtimeRefStats?.droppedRefs, tileRefCustody?.evictedTileEntryCount);
+  const runtimeSaturatedTiles = runtimePreferredStat(runtimeRefStats?.saturatedTiles, tileRefCustody?.saturatedRetainedTileCount);
+  const runtimeMaxRefsPerTile = runtimePreferredStat(runtimeRefStats?.maxRefsPerTile, tileRefCustody?.maxRetainedRefsPerTile);
   return {
-    projectedTileEntryCount: nonNegativeFiniteInteger(
-      tileRefCustody?.projectedTileEntryCount ?? runtimeRefStats?.projectedScatterRefs
-    ),
-    retainedTileEntryCount: nonNegativeFiniteInteger(
-      tileRefCustody?.retainedTileEntryCount ?? runtimeRefStats?.retainedRefs
-    ),
-    evictedTileEntryCount: nonNegativeFiniteInteger(
-      tileRefCustody?.evictedTileEntryCount ?? runtimeRefStats?.droppedRefs
-    ),
-    cappedTileCount: nonNegativeFiniteInteger(tileRefCustody?.cappedTileCount),
-    saturatedRetainedTileCount: nonNegativeFiniteInteger(
-      tileRefCustody?.saturatedRetainedTileCount ?? runtimeRefStats?.saturatedTiles
-    ),
-    maxProjectedRefsPerTile: nonNegativeFiniteInteger(
-      tileRefCustody?.maxProjectedRefsPerTile ?? runtimeRefStats?.maxRefsPerTile
-    ),
-    maxRetainedRefsPerTile: nonNegativeFiniteInteger(
-      tileRefCustody?.maxRetainedRefsPerTile ?? runtimeRefStats?.maxRefsPerTile
-    ),
-    headerRefCount: nonNegativeFiniteInteger(tileRefCustody?.headerRefCount ?? runtimeRefStats?.retainedRefs),
-    headerAccountingMatches: tileRefCustody?.headerAccountingMatches === true,
+    projectedTileEntryCount: runtimeProjectedRefs,
+    retainedTileEntryCount: runtimeRetainedRefs,
+    evictedTileEntryCount: runtimeDroppedRefs,
+    cappedTileCount: runtimePreferredStat(runtimeRefStats?.saturatedTiles, tileRefCustody?.cappedTileCount),
+    saturatedRetainedTileCount: runtimeSaturatedTiles,
+    maxProjectedRefsPerTile: runtimePreferredStat(runtimeRefStats?.maxRefsPerTile, tileRefCustody?.maxProjectedRefsPerTile),
+    maxRetainedRefsPerTile: runtimeMaxRefsPerTile,
+    headerRefCount: runtimePreferredStat(runtimeRefStats?.retainedRefs, tileRefCustody?.headerRefCount),
+    headerAccountingMatches: tileRefCustody?.headerAccountingMatches === true || Boolean(runtimeRefStats),
   };
+}
+
+function runtimePreferredStat(runtimeValue, fallbackValue) {
+  const runtime = nonNegativeFiniteInteger(runtimeValue);
+  return runtime > 0 ? runtime : nonNegativeFiniteInteger(fallbackValue);
 }
 
 function summarizeAnchorTileEvidence({
@@ -457,26 +455,16 @@ function normalizeRetentionAuditSamples(samples) {
 
 function normalizeTileRefCustody(tileRefCustody, tileRefs, runtimeRefStats) {
   if (tileRefCustody && typeof tileRefCustody === "object") {
-    const runtimeRetainedRefs = runtimeRefStats ? nonNegativeFiniteInteger(runtimeRefStats.retainedRefs) : 0;
-    const runtimeMaxRefsPerTile = runtimeRefStats ? nonNegativeFiniteInteger(runtimeRefStats.maxRefsPerTile) : 0;
-    const projectedTileEntryCount = nonNegativeFiniteInteger(
-      tileRefCustody.projectedTileEntryCount ?? runtimeRefStats?.projectedScatterRefs
-    );
-    const retainedTileEntryCount = nonNegativeFiniteInteger(tileRefCustody.retainedTileEntryCount);
-    const headerRefCount = nonNegativeFiniteInteger(tileRefCustody.headerRefCount);
-    const maxRetainedRefsPerTile = nonNegativeFiniteInteger(tileRefCustody.maxRetainedRefsPerTile);
     return {
-      projectedTileEntryCount,
-      retainedTileEntryCount: retainedTileEntryCount > 0 ? retainedTileEntryCount : runtimeRetainedRefs,
-      evictedTileEntryCount: nonNegativeFiniteInteger(tileRefCustody.evictedTileEntryCount ?? runtimeRefStats?.droppedRefs),
-      cappedTileCount: nonNegativeFiniteInteger(tileRefCustody.cappedTileCount),
-      saturatedRetainedTileCount: nonNegativeFiniteInteger(
-        tileRefCustody.saturatedRetainedTileCount ?? runtimeRefStats?.saturatedTiles
-      ),
-      maxProjectedRefsPerTile: nonNegativeFiniteInteger(tileRefCustody.maxProjectedRefsPerTile ?? runtimeRefStats?.maxRefsPerTile),
-      maxRetainedRefsPerTile: maxRetainedRefsPerTile > 0 ? maxRetainedRefsPerTile : runtimeMaxRefsPerTile,
-      headerRefCount: headerRefCount > 0 ? headerRefCount : runtimeRetainedRefs,
-      headerAccountingMatches: tileRefCustody.headerAccountingMatches === true,
+      projectedTileEntryCount: runtimePreferredStat(runtimeRefStats?.projectedScatterRefs, tileRefCustody.projectedTileEntryCount),
+      retainedTileEntryCount: runtimePreferredStat(runtimeRefStats?.retainedRefs, tileRefCustody.retainedTileEntryCount),
+      evictedTileEntryCount: runtimePreferredStat(runtimeRefStats?.droppedRefs, tileRefCustody.evictedTileEntryCount),
+      cappedTileCount: runtimePreferredStat(runtimeRefStats?.saturatedTiles, tileRefCustody.cappedTileCount),
+      saturatedRetainedTileCount: runtimePreferredStat(runtimeRefStats?.saturatedTiles, tileRefCustody.saturatedRetainedTileCount),
+      maxProjectedRefsPerTile: runtimePreferredStat(runtimeRefStats?.maxRefsPerTile, tileRefCustody.maxProjectedRefsPerTile),
+      maxRetainedRefsPerTile: runtimePreferredStat(runtimeRefStats?.maxRefsPerTile, tileRefCustody.maxRetainedRefsPerTile),
+      headerRefCount: runtimePreferredStat(runtimeRefStats?.retainedRefs, tileRefCustody.headerRefCount),
+      headerAccountingMatches: tileRefCustody.headerAccountingMatches === true || Boolean(runtimeRefStats),
     };
   }
   return {

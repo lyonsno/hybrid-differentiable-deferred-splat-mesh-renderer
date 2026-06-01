@@ -411,8 +411,13 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     refStatsPublisherSource,
-    /const diagnostics = refreshTileLocalDiagnostics\(state\)/,
+    /const diagnostics = refreshTileLocalDiagnostics\(state,\s*\[\],\s*readback\)/,
     "source-frontier readback publication must refresh diagnostics after installing live GPU ref stats",
+  );
+  assert.match(
+    refStatsPublisherSource,
+    /refreshStatsOverlayTileLocalRefAccounting\(state,\s*refAccounting\)/,
+    "source-frontier readback publication must update the visible overlay instead of leaving stale zero refs",
   );
   assert.match(
     refStatsPublisherSource,
@@ -425,11 +430,21 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
     "source-frontier readback publication must update the standalone diagnostics evidence surface",
   );
   assert.match(
+    refStatsPublisherSource,
+    /runtimeBudgetDiagnosticsForRefStatsReadback\(state\.budgetDiagnostics,\s*state\.plan,\s*readback\)/,
+    "source-frontier readback publication must update budget diagnostics from live dropped/saturated ref stats",
+  );
+  assert.match(
     compositorInputReadbackSource,
     /tileCapacity:\s*gpuLiveEffectiveRefsPerTile\(pending\.plan\)/,
     "source-frontier compositor-input readback must report the effective plan cap rather than a hardcoded requested cap",
   );
   assert.match(renderLoopSource, /else \{\s*tileLocalState\.pipeline\.dispatch\(tileLocalComputePass,\s*tileLocalState\.bindGroup,\s*tileLocalState\.plan\);/);
+  assert.match(
+    mainSource,
+    /overlayTileLocalRefStatsReadback\(scene\.tileLocalState,\s*runtimeWindow\.__MESH_SPLAT_SMOKE__\)/,
+    "operator overlay must prefer live/published ref stats over pending zero placeholders",
+  );
 });
 
 function extractFunctionSource(source, name) {
