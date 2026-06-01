@@ -345,6 +345,15 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   const refStatsPublisherSource = extractFunctionSource(mainSource, "publishTileLocalRefStatsReadback");
   const budgetReadbackSource = extractFunctionSource(mainSource, "runtimeBudgetDiagnosticsForRefStatsReadback");
   const retainedSourceRefreshSource = extractFunctionSource(mainSource, "refreshWgslSourceFrontierRetainedSourceConstructionEvidence");
+  const retainedRowsSummarySource = extractFunctionSource(
+    mainSource,
+    "summarizeWgslSourceFrontierRetainedRowsFromCompositorInputReadback",
+  );
+  const retainedRowsRefreshSource = extractFunctionSource(
+    mainSource,
+    "refreshWgslSourceFrontierRetainedRowsEvidence",
+  );
+  const tileRefPayloadEncodingSource = extractFunctionSource(mainSource, "tileRefPayloadEncodingForState");
 
   assert.match(modeSource, /"source-frontier"/);
   assert.match(modeSource, /requested === "source"/);
@@ -404,8 +413,18 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     enqueueCompositorInputReadbackSource,
-    /tileRefPayloadEncoding:\s*state\.wgslProjectedRefStream\?\.sourceRole === "visible-source-frontier-gpu-retention-election"\s*\?\s*"source-frontier-score"\s*:\s*"legacy-identity"/,
-    "compositor-input readback must label source-frontier tile refs as score-packed rather than legacy identity payloads",
+    /tileRefPayloadEncoding:\s*tileRefPayloadEncodingForState\(state\)/,
+    "compositor-input readback must route payload decoding through the effective retained-source backend",
+  );
+  assert.match(
+    tileRefPayloadEncodingSource,
+    /state\.wgslProjectedRefStream\?\.sourceRole === "visible-source-frontier-gpu-retention-election"/,
+    "sidecar stream identity must still label source-frontier tile refs as score-packed",
+  );
+  assert.match(
+    tileRefPayloadEncodingSource,
+    /state\.retainedSourceConstruction\?\.effectiveSourceBackend === "wgsl-projected-ref-stream-source-frontier"/,
+    "source-frontier live composition has no sidecar stream object, so retained-source construction must also label score-packed refs",
   );
   assert.match(
     readCompositorInputAnchorSource,
@@ -451,6 +470,46 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
     retainedSourceRefreshSource,
     /droppedRefs:\s*readback\.droppedRefs/,
     "source-frontier retained-source evidence must refresh dropped refs from live GPU scatter-cursor readback",
+  );
+  assert.match(
+    retainedSourceEvidence,
+    /retainedRows:\s*pendingWgslSourceFrontierRetainedRowsEvidence\(plan\)/,
+    "source-frontier retained-source evidence must start with an explicit pending retained-row witness instead of only ref-stat counters",
+  );
+  assert.match(
+    retainedRowsSummarySource,
+    /payloadEncoding:\s*"source-frontier-score"/,
+    "source-frontier retained-row witness must preserve that tile refs carry score-packed payloads",
+  );
+  assert.match(
+    retainedRowsSummarySource,
+    /source:\s*"gpu-compositor-input-readback"/,
+    "source-frontier retained-row witness must be derived from live compositor-input buffers",
+  );
+  assert.match(
+    retainedRowsSummarySource,
+    /falseClosureGuard:\s*"source-frontier-retained-row-readback-is-not-production-gpu-prefix-scatter"/,
+    "source-frontier retained-row witness must not claim production GPU prefix/scatter completion",
+  );
+  assert.match(
+    compositorInputReadbackSource,
+    /summarizeWgslSourceFrontierRetainedRowsFromCompositorInputReadback\(/,
+    "source-frontier compositor-input readback must summarize retained rows from the live GPU buffers",
+  );
+  assert.match(
+    compositorInputReadbackSource,
+    /refreshWgslSourceFrontierRetainedRowsEvidence\(state,\s*retainedRowsReadback\)/,
+    "source-frontier compositor-input readback must install retained-row evidence on the retained-source construction surface",
+  );
+  assert.match(
+    retainedRowsRefreshSource,
+    /nextGpuOffloadStage:\s*"gpu-retained-source-prefix-scatter"/,
+    "retained-row evidence must keep the next frontier pointed at production GPU prefix/scatter",
+  );
+  assert.match(
+    retainedRowsRefreshSource,
+    /retainedRowsReadback\.status !== "present"[\s\S]*retainedRows:\s*retainedRowsReadback[\s\S]*return/,
+    "blocked or pending retained-row evidence must not overwrite already-live top-level retained/dropped ref accounting",
   );
   assert.match(
     refStatsPublisherSource,

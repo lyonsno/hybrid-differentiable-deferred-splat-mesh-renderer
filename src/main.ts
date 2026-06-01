@@ -582,6 +582,28 @@ interface RetainedSourceConstructionEvidence {
   readonly droppedRefs: number;
   readonly retainedBudgetRefs?: number;
   readonly maxRefsPerTile?: number;
+  readonly retainedRows?: SourceFrontierRetainedRowsEvidence;
+}
+
+interface SourceFrontierRetainedRowsEvidence {
+  readonly status: "pending" | "present" | "blocked";
+  readonly source: "gpu-compositor-input-readback";
+  readonly payloadEncoding: "source-frontier-score";
+  readonly falseClosureGuard: "source-frontier-retained-row-readback-is-not-production-gpu-prefix-scatter";
+  readonly rowFields: readonly string[];
+  readonly tileCount: number;
+  readonly retainedBudgetRefs: number;
+  readonly maxRefsPerTile: number;
+  readonly frameId?: number;
+  readonly projectedRows: number;
+  readonly retainedRows: number;
+  readonly droppedRows: number;
+  readonly nonEmptyTiles: number;
+  readonly saturatedTiles: number;
+  readonly maxRowsPerTile: number;
+  readonly scorePackedRows: number;
+  readonly maxRetentionScore: number;
+  readonly blockedReason?: string;
 }
 
 interface SortSettleState {
@@ -2659,12 +2681,146 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
     droppedRefs: 0,
     retainedBudgetRefs: plan.maxTileRefs,
     maxRefsPerTile: gpuLiveEffectiveRefsPerTile(plan),
+    retainedRows: pendingWgslSourceFrontierRetainedRowsEvidence(plan),
     frontierBlockedStages: [
       compactSourceStreamRetentionBlockedStage,
       "compact-source-pixel-traces",
       "production-retention-election",
     ],
   };
+}
+
+function pendingWgslSourceFrontierRetainedRowsEvidence(
+  plan: GpuTileCoveragePlan,
+): SourceFrontierRetainedRowsEvidence {
+  return {
+    status: "pending",
+    source: "gpu-compositor-input-readback",
+    payloadEncoding: "source-frontier-score",
+    falseClosureGuard: "source-frontier-retained-row-readback-is-not-production-gpu-prefix-scatter",
+    rowFields: sourceFrontierRetainedRowFields(),
+    tileCount: plan.tileCount,
+    retainedBudgetRefs: plan.maxTileRefs,
+    maxRefsPerTile: gpuLiveEffectiveRefsPerTile(plan),
+    projectedRows: 0,
+    retainedRows: 0,
+    droppedRows: 0,
+    nonEmptyTiles: 0,
+    saturatedTiles: 0,
+    maxRowsPerTile: 0,
+    scorePackedRows: 0,
+    maxRetentionScore: 0,
+  };
+}
+
+function blockedWgslSourceFrontierRetainedRowsEvidence({
+  frameId,
+  plan,
+  blockedReason,
+}: {
+  readonly frameId: number;
+  readonly plan: GpuTileCoveragePlan;
+  readonly blockedReason: string;
+}): SourceFrontierRetainedRowsEvidence {
+  return {
+    ...pendingWgslSourceFrontierRetainedRowsEvidence(plan),
+    status: "blocked",
+    frameId,
+    blockedReason,
+  };
+}
+
+function summarizeWgslSourceFrontierRetainedRowsFromCompositorInputReadback({
+  frameId,
+  plan,
+  tileHeaders,
+  tileRefs,
+  tileCoverageWeights,
+  tileScatterCursors,
+}: {
+  readonly frameId: number;
+  readonly plan: GpuTileCoveragePlan;
+  readonly tileHeaders: Uint32Array;
+  readonly tileRefs: Uint32Array;
+  readonly tileCoverageWeights: Float32Array;
+  readonly tileScatterCursors: Uint32Array;
+}): SourceFrontierRetainedRowsEvidence {
+  const tileCapacity = gpuLiveEffectiveRefsPerTile(plan);
+  const headerStride = GPU_TILE_COVERAGE_TILE_HEADER_BYTES / Uint32Array.BYTES_PER_ELEMENT;
+  const refStride = GPU_TILE_COVERAGE_TILE_REF_BYTES / Uint32Array.BYTES_PER_ELEMENT;
+  let projectedRows = 0;
+  let retainedRows = 0;
+  let droppedRows = 0;
+  let nonEmptyTiles = 0;
+  let saturatedTiles = 0;
+  let maxRowsPerTile = 0;
+  let scorePackedRows = 0;
+  let maxRetentionScore = 0;
+
+  for (let tileIndex = 0; tileIndex < plan.tileCount; tileIndex += 1) {
+    const headerBase = tileIndex * headerStride;
+    const firstRefIndex = tileHeaders[headerBase] ?? tileIndex * tileCapacity;
+    const projectedTileRows = tileScatterCursors[tileIndex] ?? 0;
+    const retainedTileRows = Math.min(
+      projectedTileRows,
+      tileCapacity,
+      Math.max(0, plan.maxTileRefs - firstRefIndex),
+    );
+    projectedRows += projectedTileRows;
+    retainedRows += retainedTileRows;
+    droppedRows += Math.max(0, projectedTileRows - retainedTileRows);
+    maxRowsPerTile = Math.max(maxRowsPerTile, retainedTileRows);
+    if (projectedTileRows > 0) {
+      nonEmptyTiles += 1;
+    }
+    if (projectedTileRows >= tileCapacity) {
+      saturatedTiles += 1;
+    }
+    for (let layer = 0; layer < retainedTileRows; layer += 1) {
+      const refIndex = firstRefIndex + layer;
+      if (refIndex >= plan.maxTileRefs) {
+        break;
+      }
+      const refBase = refIndex * refStride;
+      const splatIndex = tileRefs[refBase] ?? plan.splatCount;
+      const retentionScore = tileRefs[refBase + 1] ?? 0;
+      const tileCoverageWeight = tileCoverageWeights[refIndex] ?? 0;
+      if (splatIndex < plan.splatCount && (retentionScore > 0 || tileCoverageWeight > 0)) {
+        scorePackedRows += 1;
+        maxRetentionScore = Math.max(maxRetentionScore, retentionScore);
+      }
+    }
+  }
+
+  return {
+    status: "present",
+    source: "gpu-compositor-input-readback",
+    payloadEncoding: "source-frontier-score",
+    falseClosureGuard: "source-frontier-retained-row-readback-is-not-production-gpu-prefix-scatter",
+    rowFields: sourceFrontierRetainedRowFields(),
+    frameId,
+    tileCount: plan.tileCount,
+    retainedBudgetRefs: plan.maxTileRefs,
+    maxRefsPerTile: tileCapacity,
+    projectedRows,
+    retainedRows,
+    droppedRows,
+    nonEmptyTiles,
+    saturatedTiles,
+    maxRowsPerTile,
+    scorePackedRows,
+    maxRetentionScore,
+  };
+}
+
+function sourceFrontierRetainedRowFields(): readonly string[] {
+  return [
+    "splatIndex",
+    "retentionScore",
+    "tileIndex",
+    "alphaParamIndex",
+    "coverageWeight",
+  ];
 }
 
 function refreshWgslSourceFrontierRetainedSourceConstructionEvidence(
@@ -2704,6 +2860,36 @@ function refreshWgslSourceFrontierRetainedSourceConstructionEvidence(
     droppedRefs: readback.droppedRefs,
     retainedBudgetRefs: readback.allocatedRefs,
     maxRefsPerTile: readback.tileCapacity,
+  };
+}
+
+function refreshWgslSourceFrontierRetainedRowsEvidence(
+  state: TileLocalSceneState,
+  retainedRowsReadback: SourceFrontierRetainedRowsEvidence,
+): void {
+  const retainedSourceConstruction = state.retainedSourceConstruction;
+  if (
+    !retainedSourceConstruction ||
+    retainedSourceConstruction.effectiveSourceBackend !== "wgsl-projected-ref-stream-source-frontier"
+  ) {
+    return;
+  }
+  if (retainedRowsReadback.status !== "present") {
+    state.retainedSourceConstruction = {
+      ...retainedSourceConstruction,
+      retainedRows: retainedRowsReadback,
+      nextGpuOffloadStage: "gpu-retained-source-prefix-scatter",
+    };
+    return;
+  }
+  state.retainedSourceConstruction = {
+    ...retainedSourceConstruction,
+    retainedRows: retainedRowsReadback,
+    retainedRefs: retainedRowsReadback.retainedRows,
+    droppedRefs: retainedRowsReadback.droppedRows,
+    retainedBudgetRefs: retainedRowsReadback.retainedBudgetRefs,
+    maxRefsPerTile: retainedRowsReadback.maxRefsPerTile,
+    nextGpuOffloadStage: "gpu-retained-source-prefix-scatter",
   };
 }
 
@@ -4841,9 +5027,7 @@ function enqueueTileLocalCompositorInputReadback(
   state.pendingCompositorInputReadback = {
     frameId,
     plan: state.plan,
-    tileRefPayloadEncoding: state.wgslProjectedRefStream?.sourceRole === "visible-source-frontier-gpu-retention-election"
-      ? "source-frontier-score"
-      : "legacy-identity",
+    tileRefPayloadEncoding: tileRefPayloadEncodingForState(state),
     sourceColors,
     sourceViewDepths: state.sourceViewDepths,
     anchors,
@@ -4895,6 +5079,16 @@ function resolveTileLocalCompositorInputReadback(state: TileLocalSceneState): vo
         },
         tileScatterCursors
       );
+      const retainedRowsReadback = pending.tileRefPayloadEncoding === "source-frontier-score"
+        ? summarizeWgslSourceFrontierRetainedRowsFromCompositorInputReadback({
+            frameId: pending.frameId,
+            plan: pending.plan,
+            tileHeaders,
+            tileRefs,
+            tileCoverageWeights,
+            tileScatterCursors,
+          })
+        : undefined;
       const compositorInputReadback: TileLocalCompositorInputReadback = {
         status: "present",
         source: "gpu-buffer-readback",
@@ -4915,8 +5109,11 @@ function resolveTileLocalCompositorInputReadback(state: TileLocalSceneState): vo
       if (tileLocalCompositorInputReadbackCanPublish(state, pending)) {
         state.refStatsReadback = refStatsReadback;
         state.compositorInputReadback = compositorInputReadback;
+        if (retainedRowsReadback) {
+          refreshWgslSourceFrontierRetainedRowsEvidence(state, retainedRowsReadback);
+        }
         publishTileLocalRefStatsReadback(state, refStatsReadback);
-        publishTileLocalCompositorInputReadback(compositorInputReadback);
+        publishTileLocalCompositorInputReadback(state, compositorInputReadback);
       }
       destroyMappedReadbackBuffers(buffers);
     })
@@ -4930,10 +5127,29 @@ function resolveTileLocalCompositorInputReadback(state: TileLocalSceneState): vo
       };
       if (tileLocalCompositorInputReadbackCanPublish(state, pending)) {
         state.compositorInputReadback = compositorInputReadback;
-        publishTileLocalCompositorInputReadback(compositorInputReadback);
+        if (pending.tileRefPayloadEncoding === "source-frontier-score") {
+          refreshWgslSourceFrontierRetainedRowsEvidence(state, blockedWgslSourceFrontierRetainedRowsEvidence({
+            frameId: pending.frameId,
+            plan: pending.plan,
+            blockedReason: errorMessage(error),
+          }));
+        }
+        publishTileLocalCompositorInputReadback(state, compositorInputReadback);
       }
       destroyReadbackBuffers(buffers);
     });
+}
+
+function tileRefPayloadEncodingForState(
+  state: TileLocalSceneState,
+): "legacy-identity" | "source-frontier-score" {
+  if (state.wgslProjectedRefStream?.sourceRole === "visible-source-frontier-gpu-retention-election") {
+    return "source-frontier-score";
+  }
+  if (state.retainedSourceConstruction?.effectiveSourceBackend === "wgsl-projected-ref-stream-source-frontier") {
+    return "source-frontier-score";
+  }
+  return "legacy-identity";
 }
 
 function tileLocalCompositorInputReadbackCanPublish(
@@ -4947,7 +5163,10 @@ function tileLocalCompositorInputReadbackCanPublish(
   );
 }
 
-function publishTileLocalCompositorInputReadback(readback: TileLocalCompositorInputReadback): void {
+function publishTileLocalCompositorInputReadback(
+  state: TileLocalSceneState,
+  readback: TileLocalCompositorInputReadback,
+): void {
   const runtimeWindow = window as unknown as { __MESH_SPLAT_SMOKE__?: Record<string, unknown> };
   const smoke = runtimeWindow.__MESH_SPLAT_SMOKE__;
   if (!smoke || typeof smoke !== "object") {
@@ -4956,10 +5175,20 @@ function publishTileLocalCompositorInputReadback(readback: TileLocalCompositorIn
   const tileLocal = smoke.tileLocal && typeof smoke.tileLocal === "object"
     ? smoke.tileLocal as Record<string, unknown>
     : {};
+  const arenaRuntime = smoke.arenaRuntime && typeof smoke.arenaRuntime === "object"
+    ? smoke.arenaRuntime as Record<string, unknown>
+    : null;
   smoke.tileLocal = {
     ...tileLocal,
     compositorInputReadback: readback,
+    retainedSourceConstruction: state.retainedSourceConstruction,
   };
+  if (arenaRuntime) {
+    smoke.arenaRuntime = {
+      ...arenaRuntime,
+      retainedSourceConstruction: state.retainedSourceConstruction,
+    };
+  }
 }
 
 function ensureCpuReferenceCompositorInputReadback(
