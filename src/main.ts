@@ -574,7 +574,8 @@ interface RetainedSourceConstructionEvidence {
   readonly falseClosureGuard: string;
   readonly cpuOwnedStages: readonly string[];
   readonly gpuReadyStages: readonly string[];
-  readonly nextGpuOffloadStage: "wgsl-projected-ref-stream" | "gpu-retention-election";
+  readonly nextGpuOffloadStage: "wgsl-projected-ref-stream" | "gpu-retention-election" | "gpu-retained-source-prefix-scatter";
+  readonly accountingSource?: "cpu-compact-source" | "gpu-ref-stats-readback-pending" | "gpu-ref-stats-readback-present" | "gpu-ref-stats-readback-blocked";
   readonly frontierBlockedStages?: readonly string[];
   readonly projectedRefs: number;
   readonly retainedRefs: number;
@@ -2622,6 +2623,7 @@ function buildGpuArenaRetainedSourceConstructionEvidence(
       "gpu-contributor-arena-legacy-compositor-consumer",
     ],
     nextGpuOffloadStage: "wgsl-projected-ref-stream",
+    accountingSource: "cpu-compact-source",
     projectedRefs: compactSource.projectedContributorCount,
     retainedRefs: compactSource.retainedContributorCount,
     droppedRefs: compactSource.droppedContributorCount,
@@ -2650,7 +2652,8 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
       "wgsl-score-bucket-retention-election",
       "tile-local-visible-gaussian-compositor",
     ],
-    nextGpuOffloadStage: "gpu-retention-election",
+    nextGpuOffloadStage: "gpu-retained-source-prefix-scatter",
+    accountingSource: "gpu-ref-stats-readback-pending",
     projectedRefs: frontierSource.projectedRefEstimate,
     retainedRefs: 0,
     droppedRefs: 0,
@@ -2661,6 +2664,46 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
       "compact-source-pixel-traces",
       "production-retention-election",
     ],
+  };
+}
+
+function refreshWgslSourceFrontierRetainedSourceConstructionEvidence(
+  state: TileLocalSceneState,
+  readback: TileLocalRefStatsReadback
+): void {
+  const retainedSourceConstruction = state.retainedSourceConstruction;
+  if (
+    !retainedSourceConstruction ||
+    retainedSourceConstruction.effectiveSourceBackend !== "wgsl-projected-ref-stream-source-frontier"
+  ) {
+    return;
+  }
+  if (readback.status === "blocked") {
+    state.retainedSourceConstruction = {
+      ...retainedSourceConstruction,
+      accountingSource: "gpu-ref-stats-readback-blocked",
+      retainedBudgetRefs: readback.allocatedRefs,
+      maxRefsPerTile: readback.tileCapacity,
+    };
+    return;
+  }
+  if (readback.status !== "present") {
+    state.retainedSourceConstruction = {
+      ...retainedSourceConstruction,
+      accountingSource: "gpu-ref-stats-readback-pending",
+      retainedBudgetRefs: readback.allocatedRefs,
+      maxRefsPerTile: readback.tileCapacity,
+    };
+    return;
+  }
+  state.retainedSourceConstruction = {
+    ...retainedSourceConstruction,
+    accountingSource: "gpu-ref-stats-readback-present",
+    projectedRefs: readback.projectedScatterRefs,
+    retainedRefs: readback.retainedRefs,
+    droppedRefs: readback.droppedRefs,
+    retainedBudgetRefs: readback.allocatedRefs,
+    maxRefsPerTile: readback.tileCapacity,
   };
 }
 
@@ -5138,8 +5181,12 @@ function publishTileLocalRefStatsReadback(
   const tileLocal = smoke.tileLocal && typeof smoke.tileLocal === "object"
     ? smoke.tileLocal as Record<string, unknown>
     : {};
+  const arenaRuntime = smoke.arenaRuntime && typeof smoke.arenaRuntime === "object"
+    ? smoke.arenaRuntime as Record<string, unknown>
+    : null;
   const budgetDiagnostics = runtimeBudgetDiagnosticsForRefStatsReadback(state.budgetDiagnostics, state.plan, readback);
   state.budgetDiagnostics = budgetDiagnostics;
+  refreshWgslSourceFrontierRetainedSourceConstructionEvidence(state, readback);
   const diagnostics = refreshTileLocalDiagnostics(state, [], readback);
   const refAccounting = tileLocalRefAccounting(state, diagnostics, readback);
   refreshStatsOverlayTileLocalRefAccounting(state, refAccounting);
@@ -5151,7 +5198,14 @@ function publishTileLocalRefStatsReadback(
     refStatsReadback: readback,
     budgetDiagnostics,
     diagnostics,
+    retainedSourceConstruction: state.retainedSourceConstruction,
   };
+  if (arenaRuntime) {
+    smoke.arenaRuntime = {
+      ...arenaRuntime,
+      retainedSourceConstruction: state.retainedSourceConstruction,
+    };
+  }
   runtimeWindow.__MESH_SPLAT_TILE_LOCAL_DIAGNOSTICS__ = diagnostics;
 }
 

@@ -344,6 +344,7 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   const readCompositorInputAnchorSource = extractFunctionSource(mainSource, "readCompositorInputAnchor");
   const refStatsPublisherSource = extractFunctionSource(mainSource, "publishTileLocalRefStatsReadback");
   const budgetReadbackSource = extractFunctionSource(mainSource, "runtimeBudgetDiagnosticsForRefStatsReadback");
+  const retainedSourceRefreshSource = extractFunctionSource(mainSource, "refreshWgslSourceFrontierRetainedSourceConstructionEvidence");
 
   assert.match(modeSource, /"source-frontier"/);
   assert.match(modeSource, /requested === "source"/);
@@ -425,6 +426,46 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
     retainedSourceEvidence,
     /maxRefsPerTile:\s*gpuLiveEffectiveRefsPerTile\(plan\)/,
     "source-frontier retained-source evidence must report the effective hardware-aware per-tile cap",
+  );
+  assert.match(
+    retainedSourceEvidence,
+    /accountingSource:\s*"gpu-ref-stats-readback-pending"/,
+    "source-frontier retained-source evidence must mark retained/dropped counts as pending until live GPU ref stats arrive",
+  );
+  assert.match(
+    retainedSourceEvidence,
+    /nextGpuOffloadStage:\s*"gpu-retained-source-prefix-scatter"/,
+    "after GPU retention election, the next retained-source frontier must be prefix/scatter construction rather than election itself",
+  );
+  assert.match(
+    retainedSourceRefreshSource,
+    /projectedRefs:\s*readback\.projectedScatterRefs/,
+    "source-frontier retained-source evidence must refresh projected refs from live GPU scatter-cursor readback",
+  );
+  assert.match(
+    retainedSourceRefreshSource,
+    /retainedRefs:\s*readback\.retainedRefs/,
+    "source-frontier retained-source evidence must refresh retained refs from live GPU scatter-cursor readback",
+  );
+  assert.match(
+    retainedSourceRefreshSource,
+    /droppedRefs:\s*readback\.droppedRefs/,
+    "source-frontier retained-source evidence must refresh dropped refs from live GPU scatter-cursor readback",
+  );
+  assert.match(
+    refStatsPublisherSource,
+    /refreshWgslSourceFrontierRetainedSourceConstructionEvidence\(state,\s*readback\)/,
+    "source-frontier live ref-stat publication must update retained-source construction evidence before exposing smoke state",
+  );
+  assert.match(
+    refStatsPublisherSource,
+    /retainedSourceConstruction:\s*state\.retainedSourceConstruction/,
+    "source-frontier live ref-stat publication must republish retained-source construction evidence into the same smoke snapshot",
+  );
+  assert.match(
+    refStatsPublisherSource,
+    /smoke\.arenaRuntime = \{[\s\S]*retainedSourceConstruction:\s*state\.retainedSourceConstruction/,
+    "source-frontier live ref-stat publication must keep arena-runtime retained-source evidence in sync when that surface exists",
   );
   assert.match(retainedSourceEvidence, /"compact-source-stream-retention"[\s\S]*frontierBlockedStages/);
   assert.match(streamEvidenceSource, /"wgsl-projected-ref-stream-source-frontier"/);
