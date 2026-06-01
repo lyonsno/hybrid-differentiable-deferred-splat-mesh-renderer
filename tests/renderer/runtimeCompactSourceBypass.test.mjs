@@ -339,6 +339,11 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   const retainedSourceEvidence = extractFunctionSource(mainSource, "buildWgslProjectedSourceFrontierConstructionEvidence");
   const streamEvidenceSource = extractFunctionSource(mainSource, "buildWgslProjectedRefStreamEvidence");
   const runtimeEvidenceSource = extractFunctionSource(mainSource, "exposeTileLocalRuntimeEvidence");
+  const retentionScoreSource = extractSourceBetween(
+    shaderSource,
+    "fn gpu_live_retention_election_score(",
+    "fn gpu_live_overflow_election_slot",
+  );
   const enqueueCompositorInputReadbackSource = extractFunctionSource(mainSource, "enqueueTileLocalCompositorInputReadback");
   const compositorInputReadbackSource = extractFunctionSource(mainSource, "resolveTileLocalCompositorInputReadback");
   const readCompositorInputAnchorSource = extractFunctionSource(mainSource, "readCompositorInputAnchor");
@@ -397,6 +402,11 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   assert.match(retainedSourceEvidence, /effectiveSourceBackend:\s*"wgsl-projected-ref-stream-source-frontier"/);
   assert.match(retainedSourceEvidence, /sourceHandoff:\s*"wgsl-projected-ref-stream-gpu-buffers"/);
   assert.match(
+    retainedSourceEvidence,
+    /"wgsl-source-frontier-depth-aware-retention-election"/,
+    "source-frontier retained-source evidence must advertise the depth-aware GPU retention election stage",
+  );
+  assert.match(
     shaderSource,
     /var<storage, read_write> tileRefs: array<atomic<u32>>[\s\S]*atomicCompareExchangeWeak\(&tileRefs\[scoreIndex\]/,
     "source-frontier visible input must use score-based GPU retention election inside the existing tile-ref buffer, not only first-arrival scatter slots",
@@ -405,6 +415,21 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
     shaderSource,
     /RETENTION_SCORE_LOCK_BIT[\s\S]*atomicCompareExchangeWeak\(&tileRefs\[scoreIndex\],\s*previous,\s*lockedScore\)[\s\S]*atomicStore\(&tileRefs\[scoreIndex\],\s*score\)/,
     "source-frontier score election must lock the slot while publishing payload so a losing invocation cannot overwrite the final winning record",
+  );
+  assert.match(
+    shaderSource,
+    /fn gpu_live_retention_election_score\([\s\S]*sourceDepthNdc:\s*f32[\s\S]*depthBucket[\s\S]*coverageBucket[\s\S]*depthBucket/,
+    "source-frontier GPU retention election must include projected depth/frontness, not only coverage and opacity",
+  );
+  assert.doesNotMatch(
+    retentionScoreSource,
+    /sourceOrdinal:\s*u32/,
+    "source-frontier retention score must not retain a dead sourceOrdinal parameter after depth-aware tie-breaking switched to splat identity",
+  );
+  assert.match(
+    shaderSource,
+    /let sourceDepthNdc = centerClip\.z \/ max\(centerClip\.w, 0\.000001\)[\s\S]*gpu_live_retention_election_score\([\s\S]*sourceDepthNdc/,
+    "source-frontier build must pass the current projected depth into the retained-ref election score",
   );
   assert.doesNotMatch(
     shaderSource,

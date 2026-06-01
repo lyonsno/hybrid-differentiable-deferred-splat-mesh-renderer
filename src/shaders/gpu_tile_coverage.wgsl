@@ -226,14 +226,15 @@ fn gpu_live_tile_coverage_weight(conic: GpuLiveConic, tileCenterPx: vec2f) -> f3
 fn gpu_live_retention_election_score(
   tileCoverageWeight: f32,
   sourceOpacity: f32,
-  sourceOrdinal: u32,
+  sourceDepthNdc: f32,
   splatId: u32,
 ) -> u32 {
   let weightedCoverage = clamp(tileCoverageWeight * max(sourceOpacity, 0.000001), 0.0, 1.0);
-  let coverageBucket = min(u32(weightedCoverage * 32767.0), 32767u);
-  let sourceTie = 255u - min(sourceOrdinal & 255u, 255u);
+  let coverageBucket = min(u32(weightedCoverage * 4095.0), 4095u);
+  let frontness = clamp(1.0 - sourceDepthNdc, 0.0, 1.0);
+  let depthBucket = min(u32(frontness * 2047.0), 2047u);
   let splatTie = 255u - min(splatId & 255u, 255u);
-  return max((coverageBucket << 16u) | (sourceTie << 8u) | splatTie, 1u);
+  return max((coverageBucket << 19u) | (depthBucket << 8u) | splatTie, 1u);
 }
 
 fn gpu_live_overflow_election_slot(tileId: u32, splatId: u32, tileCapacity: u32) -> u32 {
@@ -450,10 +451,11 @@ fn debug_heatmap_color(
         gpu_live_tile_center_px(tileX, tileY, tileSizePx)
       );
       let sourceOpacity = clamp(opacities[splatId], 0.0, 0.999);
+      let sourceDepthNdc = centerClip.z / max(centerClip.w, 0.000001);
       let retentionScore = gpu_live_retention_election_score(
         tileCoverageWeight,
         sourceOpacity,
-        sourceOrdinal,
+        sourceDepthNdc,
         orderingKey
       );
       gpu_live_try_commit_retained_ref(
