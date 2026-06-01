@@ -7,6 +7,8 @@ export const GPU_TILE_COVERAGE_PROJECTED_BOUNDS_BYTES = 16;
 export const GPU_TILE_COVERAGE_TILE_HEADER_BYTES = 16;
 export const GPU_TILE_COVERAGE_TILE_REF_BYTES = 16;
 export const GPU_TILE_COVERAGE_ALPHA_PARAM_FLOATS_PER_REF = 8;
+export const GPU_TILE_COVERAGE_COMPACT_FOOTPRINT_SIGMA_RADIUS = 3;
+export const GPU_TILE_COVERAGE_COMPACT_FOOTPRINT_EPSILON = 1e-9;
 export const GPU_TILE_CONTRIBUTOR_ARENA_HEADER_UINT32_STRIDE = 8;
 export const GPU_TILE_CONTRIBUTOR_ARENA_HEADER_FLOAT32_STRIDE = 4;
 export const GPU_TILE_CONTRIBUTOR_ARENA_RECORD_UINT32_STRIDE = 8;
@@ -91,6 +93,27 @@ export interface GpuLiveFootprintPolicyResult {
   readonly scale: number;
   readonly areaCapPx: number;
   readonly majorRadiusCapPx: number;
+}
+
+export interface GpuTileCoverageCompactFootprintBoundsInput {
+  readonly centerPx: readonly [number, number];
+  readonly covariancePx: {
+    readonly xx: number;
+    readonly xy?: number;
+    readonly yy: number;
+  };
+  readonly viewportWidth: number;
+  readonly viewportHeight: number;
+  readonly tileSizePx: number;
+  readonly maxTilesPerSplat?: number | null;
+}
+
+export interface GpuTileCoverageCompactFootprintTileBounds {
+  readonly minTileX: number;
+  readonly minTileY: number;
+  readonly maxTileX: number;
+  readonly maxTileY: number;
+  readonly tileCount: number;
 }
 
 export interface GpuTileCoverageDispatch {
@@ -576,12 +599,113 @@ export function resolveGpuLiveFootprintPolicy(input: GpuLiveFootprintPolicyInput
   };
 }
 
+export function resolveGpuTileCoverageCompactFootprintTileBounds(
+  input: GpuTileCoverageCompactFootprintBoundsInput,
+): GpuTileCoverageCompactFootprintTileBounds {
+  const viewportWidth = finitePositiveOrDefault(input.viewportWidth, 1);
+  const viewportHeight = finitePositiveOrDefault(input.viewportHeight, 1);
+  const tileSizePx = finitePositiveOrDefault(input.tileSizePx, 1);
+  const tileColumns = Math.max(1, Math.ceil(viewportWidth / tileSizePx));
+  const tileRows = Math.max(1, Math.ceil(viewportHeight / tileSizePx));
+  const centerX = finiteOrDefault(input.centerPx[0], 0);
+  const centerY = finiteOrDefault(input.centerPx[1], 0);
+  const covarianceXx = Math.max(finiteOrDefault(input.covariancePx.xx, 0), 0);
+  const covarianceYy = Math.max(finiteOrDefault(input.covariancePx.yy, 0), 0);
+  const radiusX = GPU_TILE_COVERAGE_COMPACT_FOOTPRINT_SIGMA_RADIUS * Math.sqrt(covarianceXx);
+  const radiusY = GPU_TILE_COVERAGE_COMPACT_FOOTPRINT_SIGMA_RADIUS * Math.sqrt(covarianceYy);
+  const minCenterX = clampNumber(centerX - radiusX, 0, viewportWidth);
+  const minCenterY = clampNumber(centerY - radiusY, 0, viewportHeight);
+  const maxCenterX = clampNumber(centerX + radiusX, 0, viewportWidth);
+  const maxCenterY = clampNumber(centerY + radiusY, 0, viewportHeight);
+  let minTileX = clampInteger(Math.floor(minCenterX / tileSizePx), 0, tileColumns - 1);
+  let minTileY = clampInteger(Math.floor(minCenterY / tileSizePx), 0, tileRows - 1);
+  let maxTileX = clampInteger(
+    Math.floor(Math.max(maxCenterX - GPU_TILE_COVERAGE_COMPACT_FOOTPRINT_EPSILON, 0) / tileSizePx),
+    0,
+    tileColumns - 1,
+  );
+  let maxTileY = clampInteger(
+    Math.floor(Math.max(maxCenterY - GPU_TILE_COVERAGE_COMPACT_FOOTPRINT_EPSILON, 0) / tileSizePx),
+    0,
+    tileRows - 1,
+  );
+
+  if (input.maxTilesPerSplat !== undefined && input.maxTilesPerSplat !== null && input.maxTilesPerSplat > 0) {
+    const capped = resolveGpuTileCoverageMaxTilesPerSplatBounds({
+      centerPx: [centerX, centerY],
+      tileSizePx,
+      minTileX,
+      minTileY,
+      maxTileX,
+      maxTileY,
+      maxTilesPerSplat: input.maxTilesPerSplat,
+    });
+    minTileX = capped.minTileX;
+    minTileY = capped.minTileY;
+    maxTileX = capped.maxTileX;
+    maxTileY = capped.maxTileY;
+  }
+
+  return {
+    minTileX,
+    minTileY,
+    maxTileX,
+    maxTileY,
+    tileCount: Math.max(0, maxTileX - minTileX + 1) * Math.max(0, maxTileY - minTileY + 1),
+  };
+}
+
+function resolveGpuTileCoverageMaxTilesPerSplatBounds(input: {
+  readonly centerPx: readonly [number, number];
+  readonly tileSizePx: number;
+  readonly minTileX: number;
+  readonly minTileY: number;
+  readonly maxTileX: number;
+  readonly maxTileY: number;
+  readonly maxTilesPerSplat: number;
+}): GpuTileCoverageCompactFootprintTileBounds {
+  const radiusTiles = Math.max(Math.floor((Math.sqrt(input.maxTilesPerSplat) - 1) / 2), 0);
+  const footprintCapTileX = clampInteger(
+    Math.floor(finiteOrDefault(input.centerPx[0], 0) / input.tileSizePx),
+    input.minTileX,
+    input.maxTileX,
+  );
+  const footprintCapTileY = clampInteger(
+    Math.floor(finiteOrDefault(input.centerPx[1], 0) / input.tileSizePx),
+    input.minTileY,
+    input.maxTileY,
+  );
+  const minTileX = Math.max(input.minTileX, footprintCapTileX - Math.min(footprintCapTileX, radiusTiles));
+  const minTileY = Math.max(input.minTileY, footprintCapTileY - Math.min(footprintCapTileY, radiusTiles));
+  const maxTileX = Math.min(input.maxTileX, footprintCapTileX + radiusTiles);
+  const maxTileY = Math.min(input.maxTileY, footprintCapTileY + radiusTiles);
+  return {
+    minTileX,
+    minTileY,
+    maxTileX,
+    maxTileY,
+    tileCount: Math.max(0, maxTileX - minTileX + 1) * Math.max(0, maxTileY - minTileY + 1),
+  };
+}
+
 function finiteNonNegativeOrDefault(value: number | undefined, fallback: number): number {
   return value !== undefined && Number.isFinite(value) && value >= 0 ? value : fallback;
 }
 
+function finiteOrDefault(value: number, fallback: number): number {
+  return Number.isFinite(value) ? value : fallback;
+}
+
 function finitePositiveOrDefault(value: number, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function clampNumber(value: number, minValue: number, maxValue: number): number {
+  return Math.min(Math.max(value, minValue), maxValue);
+}
+
+function clampInteger(value: number, minValue: number, maxValue: number): number {
+  return Math.trunc(clampNumber(value, minValue, maxValue));
 }
 
 function linearDispatch(count: number): GpuTileCoverageDispatch {

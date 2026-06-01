@@ -15,6 +15,7 @@ import {
   createGpuTileCoveragePlan,
   createGpuTileContributorArenaLayout,
   resolveGpuLiveFootprintPolicy,
+  resolveGpuTileCoverageCompactFootprintTileBounds,
   getGpuTileContributorArenaDispatchPlan,
   assertGpuTileContributorArenaCompatibility,
   GPU_TILE_CONTRIBUTOR_ARENA_HEADER_FLOAT32_STRIDE,
@@ -190,6 +191,54 @@ test("GPU live footprint policy caps pathological projected conic energy without
   });
   assert.ok(longThin.majorRadiusPx <= longThin.majorRadiusCapPx + 1e-6);
   assert.ok(longThin.minorRadiusPx >= 1.5);
+});
+
+test("WGSL compact candidate footprints use axis-aligned compact bounds before per-splat tile caps", () => {
+  const small = resolveGpuTileCoverageCompactFootprintTileBounds({
+    centerPx: [40, 40],
+    covariancePx: { xx: 2.25, xy: 0, yy: 2.25 },
+    viewportWidth: 128,
+    viewportHeight: 128,
+    tileSizePx: 16,
+    maxTilesPerSplat: 9,
+  });
+
+  assert.deepEqual(small, {
+    minTileX: 2,
+    minTileY: 2,
+    maxTileX: 2,
+    maxTileY: 2,
+    tileCount: 1,
+  });
+
+  const longThin = resolveGpuTileCoverageCompactFootprintTileBounds({
+    centerPx: [40, 40],
+    covariancePx: { xx: 100, xy: 0, yy: 4 },
+    viewportWidth: 128,
+    viewportHeight: 128,
+    tileSizePx: 16,
+    maxTilesPerSplat: 9,
+  });
+
+  assert.deepEqual(longThin, {
+    minTileX: 1,
+    minTileY: 2,
+    maxTileX: 3,
+    maxTileY: 2,
+    tileCount: 3,
+  });
+});
+
+test("WGSL compact candidate shader does not inflate footprint bounds through scalar support radius", () => {
+  const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
+  const buildTileRefs = shader.slice(shader.indexOf("fn build_tile_refs"), shader.indexOf("@compute @workgroup_size(8, 8, 1) fn composite_tiles"));
+
+  assert.match(shader, /fn gpu_live_compact_footprint_bounds/);
+  assert.doesNotMatch(shader, /fn gpu_live_support_radius_px/);
+  assert.match(buildTileRefs, /let tileBounds = gpu_live_compact_footprint_bounds\(conic, centerPx, tileSizePx\)/);
+  assert.doesNotMatch(buildTileRefs, /gpu_live_support_radius_px/);
+  assert.match(buildTileRefs, /minTileX = tileBounds\.x/);
+  assert.match(buildTileRefs, /maxTileY = tileBounds\.w/);
 });
 
 test("GPU contributor arena layout extends the legacy flat tile-ref buffers without replacing them", () => {

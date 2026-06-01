@@ -35,6 +35,8 @@ const DEBUG_MODE_CONIC_SHAPE = 5.0;
 const MIN_SPLAT_CLIP_W = 0.0001;
 const MAX_ANISOTROPIC_MINOR_RADIUS_INFLATION = 4.0;
 const MIN_ANISOTROPIC_MINOR_RADIUS_FRACTION = 0.015625;
+const COMPACT_FOOTPRINT_SIGMA_RADIUS = 3.0;
+const COMPACT_FOOTPRINT_EPSILON = 0.000000001;
 
 struct SplatShape {
   axis0: vec3f,
@@ -164,8 +166,25 @@ fn gpu_live_projected_conic(splatId: u32, centerClip: vec4f, centerPx: vec2f) ->
   return GpuLiveConic(centerPx, vec3f(inverseXX, inverseXY, inverseYY), majorRadiusPx, minorRadiusPx);
 }
 
-fn gpu_live_support_radius_px(majorRadiusPx: f32, minorRadiusPx: f32) -> f32 {
-  return max(max(majorRadiusPx, minorRadiusPx) * 3.0, frame.tileSizePx * 0.5);
+fn gpu_live_compact_footprint_bounds(conic: GpuLiveConic, centerPx: vec2f, tileSizePx: u32) -> vec4u {
+  let inverseConic = conic.inverseConic;
+  let determinant = max(inverseConic.x * inverseConic.z - inverseConic.y * inverseConic.y, COMPACT_FOOTPRINT_EPSILON);
+  let covarianceXx = max(inverseConic.z / determinant, 0.0);
+  let covarianceYy = max(inverseConic.x / determinant, 0.0);
+  let radius = vec2f(
+    COMPACT_FOOTPRINT_SIGMA_RADIUS * sqrt(covarianceXx),
+    COMPACT_FOOTPRINT_SIGMA_RADIUS * sqrt(covarianceYy),
+  );
+  let viewportMax = max(frame.viewport, vec2f(0.0, 0.0));
+  let minCenterPx = clamp(centerPx - radius, vec2f(0.0, 0.0), viewportMax);
+  let maxCenterPx = clamp(centerPx + radius, vec2f(0.0, 0.0), viewportMax);
+  let maxTile = max(frame.tileGrid, vec2u(1u, 1u)) - vec2u(1u, 1u);
+  let tileSize = max(f32(tileSizePx), 1.0);
+  let minTileX = min(u32(floor(minCenterPx.x / tileSize)), maxTile.x);
+  let minTileY = min(u32(floor(minCenterPx.y / tileSize)), maxTile.y);
+  let maxTileX = min(u32(floor(max((maxCenterPx.x - COMPACT_FOOTPRINT_EPSILON) / tileSize, 0.0))), maxTile.x);
+  let maxTileY = min(u32(floor(max((maxCenterPx.y - COMPACT_FOOTPRINT_EPSILON) / tileSize, 0.0))), maxTile.y);
+  return vec4u(minTileX, minTileY, maxTileX, maxTileY);
 }
 
 fn gpu_live_tile_center_px(tileX: u32, tileY: u32, tileSizePx: u32) -> vec2f {
@@ -300,19 +319,15 @@ fn debug_heatmap_color(
   if (centerClip.w <= 0.0) {
     return;
   }
-  let maxTile = max(frame.tileGrid, vec2u(1u)) - vec2u(1u, 1u);
   let centerPx = projected_center_px(splatId);
   let conic = gpu_live_projected_conic(splatId, centerClip, centerPx);
   let tileSizePx = max(u32(frame.tileSizePx), 1u);
   let tileCapacity = tile_ref_capacity_per_tile();
-  let support = gpu_live_support_radius_px(conic.majorRadiusPx, conic.minorRadiusPx);
-  let viewportMax = max(frame.viewport - vec2f(1.0, 1.0), vec2f(0.0, 0.0));
-  let minCenterPx = clamp(centerPx - vec2f(support, support), vec2f(0.0, 0.0), viewportMax);
-  let maxCenterPx = clamp(centerPx + vec2f(support, support), vec2f(0.0, 0.0), viewportMax);
-  var minTileX = min(u32(minCenterPx.x) / tileSizePx, maxTile.x);
-  var maxTileX = min(u32(maxCenterPx.x) / tileSizePx, maxTile.x);
-  var minTileY = min(u32(minCenterPx.y) / tileSizePx, maxTile.y);
-  var maxTileY = min(u32(maxCenterPx.y) / tileSizePx, maxTile.y);
+  let tileBounds = gpu_live_compact_footprint_bounds(conic, centerPx, tileSizePx);
+  var minTileX = tileBounds.x;
+  var minTileY = tileBounds.y;
+  var maxTileX = tileBounds.z;
+  var maxTileY = tileBounds.w;
   if (frame.maxTilesPerSplat > 0u) {
     let radiusTiles = u32(max(floor((sqrt(f32(frame.maxTilesPerSplat)) - 1.0) / 2.0), 0.0));
     let footprintCapTileX = clamp(u32(centerPx.x) / tileSizePx, minTileX, maxTileX);

@@ -51,5 +51,5 @@ test("tile-local visible conic coverage keeps adaptive anisotropic falloff witho
   assert.match(shader, /exp\(-conic_falloff_scale\(\) \* mahalanobis2\)/);
   assert.doesNotMatch(shader, /exp\(-0\.5 \* mahalanobis2\)/);
   assert.match(shader, /fn gpu_live_projected_conic/);
-  assert.match(shader, /fn gpu_live_support_radius_px\(majorRadiusPx: f32, minorRadiusPx: f32\) -> f32/);
+  assert.match(shader, /fn gpu_live_compact_footprint_bounds\(conic: GpuLiveConic, centerPx: vec2f, tileSizePx: u32\) -> vec4u/);
 });
