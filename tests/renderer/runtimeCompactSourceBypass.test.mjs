@@ -326,6 +326,38 @@ test("WGSL projected-ref stream consumes compact source candidates and footprint
   assert.match(shaderSource, /frame\.maxTilesPerSplat > 0u/);
 });
 
+test("WGSL projected source-frontier route skips CPU streaming retention and visibly owns source construction", () => {
+  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const renderLoopStart = mainSource.indexOf("const tileLocalComputePass = encoder.beginComputePass");
+  const renderLoopEnd = mainSource.indexOf("tileLocalComputePass.end()", renderLoopStart);
+  const renderLoopSource = mainSource.slice(renderLoopStart, renderLoopEnd);
+  const gpuFactorySource = extractFunctionSource(mainSource, "createGpuArenaTileLocalSceneState");
+  const frontierFactorySource = extractFunctionSource(mainSource, "createWgslProjectedSourceFrontierTileLocalSceneState");
+  const modeSource = extractFunctionSource(mainSource, "selectedWgslProjectedRefStreamMode");
+  const retainedSourceEvidence = extractFunctionSource(mainSource, "buildWgslProjectedSourceFrontierConstructionEvidence");
+  const streamEvidenceSource = extractFunctionSource(mainSource, "buildWgslProjectedRefStreamEvidence");
+
+  assert.match(modeSource, /"source-frontier"/);
+  assert.match(modeSource, /requested === "source"/);
+  assert.match(gpuFactorySource, /WGSL_PROJECTED_REF_STREAM_MODE === "source-frontier"/);
+  assert.match(gpuFactorySource, /createWgslProjectedSourceFrontierTileLocalSceneState/);
+  assert.doesNotMatch(
+    frontierFactorySource,
+    /buildCompactRetainedSourceForRuntime/,
+    "source-frontier route must not synchronously enter CPU compact retained-source streaming",
+  );
+  assert.match(frontierFactorySource, /projectRuntimeSplatsForCompactSource/);
+  assert.match(frontierFactorySource, /estimateCompactProjectedTileRefCount/);
+  assert.match(frontierFactorySource, /createTileHeaderStorageBuffer\([\s\S]*frontierSource\.candidateSplatIndexes/);
+  assert.match(frontierFactorySource, /gpuArenaRuntime:\s*null/);
+  assert.match(frontierFactorySource, /arenaBackend:\s*"gpu"/);
+  assert.match(retainedSourceEvidence, /effectiveSourceBackend:\s*"wgsl-projected-ref-stream-source-frontier"/);
+  assert.match(retainedSourceEvidence, /sourceHandoff:\s*"wgsl-projected-ref-stream-gpu-buffers"/);
+  assert.match(retainedSourceEvidence, /"compact-source-stream-retention"[\s\S]*frontierBlockedStages/);
+  assert.match(streamEvidenceSource, /"wgsl-projected-ref-stream-source-frontier"/);
+  assert.match(renderLoopSource, /else \{\s*tileLocalState\.pipeline\.dispatch\(tileLocalComputePass,\s*tileLocalState\.bindGroup,\s*tileLocalState\.plan\);/);
+});
+
 function extractFunctionSource(source, name) {
   const start = source.indexOf(`function ${name}`);
   assert.ok(start >= 0, `${name} should exist`);

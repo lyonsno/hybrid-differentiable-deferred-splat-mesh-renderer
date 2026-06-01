@@ -163,7 +163,8 @@ const TILE_LOCAL_PRESENTATION_SCOPE = selectedTileLocalPresentationScope();
 const TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES = 1;
 const TILE_LOCAL_PROVISIONAL_MAX_SPLATS = 150_000;
 const TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES = 20_000_000;
-const WGSL_PROJECTED_REF_STREAM_ENABLED = selectedWgslProjectedRefStreamEnabled();
+const WGSL_PROJECTED_REF_STREAM_MODE = selectedWgslProjectedRefStreamMode();
+const WGSL_PROJECTED_REF_STREAM_ENABLED = WGSL_PROJECTED_REF_STREAM_MODE !== "disabled";
 const COMPACT_SOURCE_SIGMA_RADIUS = 3;
 const COMPACT_SOURCE_ANCHOR_TILE_NEIGHBORHOOD_RADIUS = 2;
 const COMPACT_SOURCE_PRESENTATION_TILE_NEIGHBORHOOD_RADIUS = 5;
@@ -270,6 +271,7 @@ interface ArenaRuntimeEvidence {
 }
 
 type RendererMode = "plate" | "tile-local" | "tile-local-visible";
+type WgslProjectedRefStreamMode = "disabled" | "sidecar" | "source-frontier";
 
 interface RuntimeFootprintParams {
   readonly splatScale: number;
@@ -279,8 +281,8 @@ interface RuntimeFootprintParams {
 
 interface WgslProjectedRefStreamState {
   readonly requestedBackend: "wgsl-projected-ref-stream";
-  readonly effectiveBackend: "wgsl-projected-ref-stream-sidecar";
-  readonly sourceRole: "diagnostic-sidecar-not-retention-source";
+  readonly effectiveBackend: "wgsl-projected-ref-stream-sidecar" | "wgsl-projected-ref-stream-source-frontier";
+  readonly sourceRole: "diagnostic-sidecar-not-retention-source" | "visible-source-frontier-not-retention-election";
   readonly plan: GpuTileCoveragePlan;
   readonly bindGroup: GPUBindGroup;
   readonly frameUniformBuffer: GPUBuffer;
@@ -300,10 +302,10 @@ interface WgslProjectedRefStreamState {
 
 interface WgslProjectedRefStreamEvidence {
   readonly requestedBackend: "wgsl-projected-ref-stream";
-  readonly effectiveBackend: "wgsl-projected-ref-stream-sidecar" | "disabled" | "unavailable";
-  readonly sourceRole: "diagnostic-sidecar-not-retention-source";
-  readonly runtimeConsumerBackend: "none";
-  readonly falseClosureGuard: "wgsl-projected-ref-stream-sidecar-does-not-feed-retention-or-compositor";
+  readonly effectiveBackend: "wgsl-projected-ref-stream-sidecar" | "wgsl-projected-ref-stream-source-frontier" | "disabled" | "unavailable";
+  readonly sourceRole: "diagnostic-sidecar-not-retention-source" | "visible-source-frontier-not-retention-election";
+  readonly runtimeConsumerBackend: "none" | "tile-local-visible-gaussian-compositor";
+  readonly falseClosureGuard: string;
   readonly compactSourceProjectedRefs: number;
   readonly compactSourceRetainedRefs: number;
   readonly sourceSplatCount: number;
@@ -509,6 +511,28 @@ interface CompactRetainedSourceForRuntime {
   readonly perPixelRetainedContributors: TileLocalPrepassBridge["perPixelRetainedContributors"];
 }
 
+interface WgslProjectedSourceFrontierSource {
+  readonly splats: RuntimeCompactTileCoverage["splats"];
+  readonly candidateSplatIndexes: Uint32Array;
+  readonly projectedRefEstimate: number;
+  readonly maxTilesPerSplat: number | null;
+  readonly tileCount: number;
+}
+
+interface WgslProjectedSourceFrontierTileLocalSceneStateInput {
+  readonly device: GPUDevice;
+  readonly attributes: SplatAttributes;
+  readonly buffers: SplatGpuBuffers;
+  readonly effectiveOpacities: Float32Array;
+  readonly viewMatrix: Float32Array;
+  readonly viewProj: Float32Array;
+  readonly viewportWidth: number;
+  readonly viewportHeight: number;
+  readonly footprintParams: RuntimeFootprintParams;
+  readonly prepassSignature: string;
+  readonly frameTiming?: FrameTimingDraft;
+}
+
 interface CompactSourceConstructionEvidence {
   readonly classification: string;
   readonly prestreamClassification: string;
@@ -541,14 +565,15 @@ interface CompactSourceConstructionEvidence {
 
 interface RetainedSourceConstructionEvidence {
   readonly requestedSourceBackend: "gpu-retained-source-substrate";
-  readonly effectiveSourceBackend: "deterministic-gpu-retention-carrier";
+  readonly effectiveSourceBackend: "deterministic-gpu-retention-carrier" | "wgsl-projected-ref-stream-source-frontier";
   readonly oracleBackend: "cpu-reference";
-  readonly runtimeConsumerBackend: "gpu-contributor-arena-runtime";
-  readonly sourceHandoff: "cpu-projected-candidate-records";
-  readonly falseClosureGuard: "gpu-retention-carrier-does-not-imply-wgsl-source-construction";
+  readonly runtimeConsumerBackend: "gpu-contributor-arena-runtime" | "tile-local-visible-gaussian-compositor";
+  readonly sourceHandoff: "cpu-projected-candidate-records" | "wgsl-projected-ref-stream-gpu-buffers";
+  readonly falseClosureGuard: string;
   readonly cpuOwnedStages: readonly string[];
   readonly gpuReadyStages: readonly string[];
-  readonly nextGpuOffloadStage: "wgsl-projected-ref-stream";
+  readonly nextGpuOffloadStage: "wgsl-projected-ref-stream" | "gpu-retention-election";
+  readonly frontierBlockedStages?: readonly string[];
   readonly projectedRefs: number;
   readonly retainedRefs: number;
   readonly droppedRefs: number;
@@ -1497,6 +1522,21 @@ function createGpuArenaTileLocalSceneState(
     maxTileEntries: TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES,
     nearFadeEndNdc: footprintParams.nearFadeEndNdc,
   });
+  if (WGSL_PROJECTED_REF_STREAM_MODE === "source-frontier") {
+    return createWgslProjectedSourceFrontierTileLocalSceneState({
+      device,
+      attributes,
+      buffers,
+      effectiveOpacities,
+      viewMatrix,
+      viewProj,
+      viewportWidth,
+      viewportHeight,
+      footprintParams,
+      prepassSignature,
+      frameTiming,
+    });
+  }
   const compactSource = buildCompactRetainedSourceForRuntime({
     attributes,
     effectiveOpacities,
@@ -1671,6 +1711,289 @@ function createGpuArenaTileLocalSceneState(
       viewportHeight,
     }),
     disposed: false,
+  };
+}
+
+function createWgslProjectedSourceFrontierTileLocalSceneState(
+  input: WgslProjectedSourceFrontierTileLocalSceneStateInput,
+): TileLocalSceneState {
+  const {
+    device,
+    attributes,
+    buffers,
+    effectiveOpacities,
+    viewMatrix,
+    viewProj,
+    viewportWidth,
+    viewportHeight,
+    footprintParams,
+    prepassSignature,
+    frameTiming,
+  } = input;
+  const tileSizePx = TILE_LOCAL_PROVISIONAL_TILE_SIZE_PX;
+  const tileColumns = tileColumnsForViewport(viewportWidth);
+  const tileRows = tileRowsForViewport(viewportHeight);
+  const tileCount = tileColumns * tileRows;
+  const maxTilesPerSplat = COMPACT_SOURCE_FULL_SCENE_MAX_TILES_PER_SPLAT;
+  const splats = timeOptionalFrameStage(frameTiming, "wgsl-source-frontier-project-splats", () => projectRuntimeSplatsForCompactSource({
+    attributes,
+    viewProj,
+    viewportWidth,
+    viewportHeight,
+    splatScale: footprintParams.splatScale,
+    minRadiusPx: footprintParams.minRadiusPx,
+    nearFadeEndNdc: footprintParams.nearFadeEndNdc,
+    tileSizePx,
+    tileColumns,
+    tileRows,
+  }));
+  const projectedRefEstimate = timeOptionalFrameStage(frameTiming, "wgsl-source-frontier-estimate-ref-budget", () => estimateCompactProjectedTileRefCount({
+    splats,
+    viewportWidth,
+    viewportHeight,
+    tileSizePx,
+    maxTileEntries: TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES,
+    maxTilesPerSplat,
+  }));
+  const frontierSource: WgslProjectedSourceFrontierSource = {
+    splats,
+    candidateSplatIndexes: new Uint32Array(splats.map((splat) => splat.splatIndex)),
+    projectedRefEstimate,
+    maxTilesPerSplat,
+    tileCount,
+  };
+  const plan = createGpuTileCoveragePlan({
+    viewportWidth,
+    viewportHeight,
+    tileSizePx,
+    splatCount: attributes.count,
+    sourceSplatCount: frontierSource.candidateSplatIndexes.length,
+    maxTileRefs: Math.max(
+      frontierSource.projectedRefEstimate,
+      frontierSource.candidateSplatIndexes.length,
+      1,
+    ),
+    maxTilesPerSplat: frontierSource.maxTilesPerSplat,
+  });
+  const bufferBlocker = gpuTileCoverageBufferUnavailableReason(device, plan);
+  if (bufferBlocker) {
+    throw new Error(bufferBlocker);
+  }
+  const pipeline = createGpuTileCoveragePipelineSkeleton(device, "rgba16float");
+  const frameUniformBuffer = createUniformBuffer(
+    device,
+    GPU_TILE_COVERAGE_FRAME_UNIFORM_BYTES,
+    "wgsl_source_frontier_frame_uniforms"
+  );
+  const frameUniformData = new Float32Array(GPU_TILE_COVERAGE_FRAME_UNIFORM_BYTES / Float32Array.BYTES_PER_ELEMENT);
+  const tileHeaderBuffer = createTileHeaderStorageBuffer(
+    device,
+    plan,
+    frontierSource.candidateSplatIndexes,
+    "wgsl_source_frontier_tile_headers"
+  );
+  const tileRefBuffer = createEmptyStorageBuffer(device, plan.tileRefBytes, "wgsl_source_frontier_tile_refs");
+  const tileCoverageWeightBuffer = createEmptyStorageBuffer(
+    device,
+    plan.tileCoverageWeightBytes,
+    "wgsl_source_frontier_tile_coverage_weights"
+  );
+  const tileBuildCountBuffer = createEmptyStorageBuffer(
+    device,
+    Math.max(16, plan.tileCount * Uint32Array.BYTES_PER_ELEMENT),
+    "wgsl_source_frontier_tile_build_counts"
+  );
+  const tileScatterCursorBuffer = createEmptyStorageBuffer(
+    device,
+    Math.max(16, plan.tileCount * Uint32Array.BYTES_PER_ELEMENT),
+    "wgsl_source_frontier_scatter_cursors"
+  );
+  const alphaParamBuffer = createEmptyStorageBuffer(device, plan.alphaParamBytes, "wgsl_source_frontier_alpha_params");
+  const outputTexture = createTexture2D(
+    device,
+    viewportWidth,
+    viewportHeight,
+    "rgba16float",
+    GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.TEXTURE_BINDING,
+    "tile_local_output"
+  );
+  const outputView = outputTexture.createView();
+  const bindGroup = pipeline.createBindGroup({
+    frameUniformBuffer,
+    positionBuffer: buffers.positionBuffer,
+    colorBuffer: buffers.colorBuffer,
+    opacityBuffer: buffers.opacityBuffer,
+    scaleBuffer: buffers.scaleBuffer,
+    rotationBuffer: buffers.rotationBuffer,
+    tileHeaderBuffer,
+    tileRefBuffer,
+    tileCoverageWeightBuffer,
+    tileScatterCursorBuffer,
+    alphaParamBuffer,
+    outputColorView: outputView,
+  });
+  const compactSourceConstruction = buildWgslProjectedSourceFrontierCompactSourceConstruction(
+    frontierSource,
+    plan
+  );
+  const compactSource = compactRetainedSourceForWgslProjectedSourceFrontier(
+    frontierSource,
+    compactSourceConstruction,
+    plan
+  );
+  const tileRefCustody = compactSource.tileRefCustody;
+  const retentionAudit = estimatedGpuLiveRetentionAudit(tileRefCustody, plan.tileCount);
+  const budgetDiagnostics = compactRetainedSourceBudgetDiagnostics(plan, compactSource);
+  const alphaParamData = new Float32Array(Math.max(plan.alphaParamBytes / Float32Array.BYTES_PER_ELEMENT, 8));
+  const tileRefData = new Uint32Array(Math.max(plan.maxTileRefs * 4, 4));
+  const tileCoverageWeightData = new Float32Array(Math.max(plan.maxTileRefs, 1));
+  const tileRefShapeParams = new Float32Array(Math.max(plan.maxTileRefs * 8, 8));
+  const tileRefSplatIds = new Uint32Array(Math.max(plan.maxTileRefs, 1));
+  const sourceDepthEvidence = compactSourceBackToFrontDepthEvidence(attributes, viewMatrix);
+  const diagnostics = summarizeTileLocalDiagnostics({
+    debugMode: TILE_LOCAL_DEBUG_MODE,
+    plan,
+    tileEntryCount: 0,
+    tileHeaders: new Uint32Array(Math.max(plan.tileCount * 4, 4)),
+    tileRefCustody,
+    retentionAudit,
+    tileCoverageWeights: tileCoverageWeightData,
+    alphaParamData,
+    sourceOpacities: effectiveOpacities,
+  });
+  const retainedSourceConstruction = buildWgslProjectedSourceFrontierConstructionEvidence(frontierSource);
+  const wgslProjectedRefStreamEvidence = buildWgslProjectedRefStreamEvidence(compactSource, null);
+
+  return {
+    viewportWidth,
+    viewportHeight,
+    plan,
+    pipeline,
+    bindGroup,
+    frameUniformBuffer,
+    frameUniformData,
+    projectedBoundsBuffer: null,
+    tileHeaderBuffer,
+    tileHeaderData: new Uint32Array(Math.max(plan.tileCount * 4, 4)),
+    tileRefBuffer,
+    tileRefData,
+    tileCoverageWeightBuffer,
+    tileCoverageWeightData,
+    tileBuildCountBuffer,
+    tileScatterCursorBuffer,
+    alphaParamBuffer,
+    alphaParamData,
+    sourceViewDepths: sourceDepthEvidence.depths,
+    sourceOpacities: effectiveOpacities,
+    tileRefShapeParams,
+    outputTexture,
+    outputView,
+    tileEntryCount: 0,
+    tileRefCustody,
+    retentionAudit,
+    budgetDiagnostics,
+    compactSourceConstruction,
+    retainedSourceConstruction,
+    wgslProjectedRefStream: null,
+    wgslProjectedRefStreamEvidence,
+    tileRefSplatIds,
+    prepassSignature,
+    debugMode: TILE_LOCAL_DEBUG_MODE,
+    diagnostics,
+    arenaBackend: "gpu",
+    gpuArenaRuntime: null,
+    gpuArenaProjectedContributors: [],
+    presentationAnchors: TILE_LOCAL_PRESENTATION_ANCHORS,
+    presentationScope: TILE_LOCAL_PRESENTATION_SCOPE,
+    traceAnchors: TILE_LOCAL_TRACE_ANCHORS,
+    perPixelProjectedContributors: [],
+    perPixelRetainedContributors: [],
+    arenaUnavailableReason: undefined,
+    gpuDispatchEnqueueDurationMs: undefined,
+    needsDispatch: true,
+    lastCompositedAtMs: 0,
+    lastCompositedFrame: -1,
+    lastCompositedSignature: prepassSignature,
+    bandDispatchCacheTrace: buildBandDispatchCacheTrace({
+      tileColumns: plan.tileColumns,
+      tileRows: plan.tileRows,
+      tileSizePx: plan.tileSizePx,
+      viewportWidth,
+      viewportHeight,
+    }),
+    disposed: false,
+  };
+}
+
+function buildWgslProjectedSourceFrontierCompactSourceConstruction(
+  frontierSource: WgslProjectedSourceFrontierSource,
+  plan: GpuTileCoveragePlan,
+): CompactSourceConstructionEvidence {
+  return {
+    classification: "wgsl-projected-source-frontier",
+    prestreamClassification: "wgsl-projected-source-frontier",
+    guardedQuantity: "wgsl-projected-source-frontier",
+    presentationScope: TILE_LOCAL_PRESENTATION_SCOPE,
+    forceAnchorOnly: false,
+    allowAnchorOnlyBudgetFallback: false,
+    shouldRestrictToAnchorTiles: false,
+    shouldBoundSplatTileFootprints: true,
+    projectedOverflow: frontierSource.projectedRefEstimate > TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES,
+    retainedBudgetWithinProjectedLimit: null,
+    tileCount: frontierSource.tileCount,
+    sourceTileCount: frontierSource.tileCount,
+    traceTileCount: 0,
+    candidateSplatCount: frontierSource.candidateSplatIndexes.length,
+    projectedSplatCount: frontierSource.splats.length,
+    fullSceneConstructionRefUpperBound: frontierSource.splats.length * frontierSource.tileCount,
+    projectedRefEstimate: frontierSource.projectedRefEstimate,
+    streamedProjectedRefs: 0,
+    projectedRefs: frontierSource.projectedRefEstimate,
+    retainedRefs: 0,
+    droppedRefs: 0,
+    maxProjectedRefs: TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES,
+    retainedBudgetRefs: plan.tileCount * TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
+    maxRefsPerTile: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
+    maxTilesPerSplat: frontierSource.maxTilesPerSplat,
+    effectiveMaxTilesPerSplat: frontierSource.maxTilesPerSplat,
+    footprintComparisonClass: "wgsl-source-frontier-bounded-full-scene",
+  };
+}
+
+function compactRetainedSourceForWgslProjectedSourceFrontier(
+  frontierSource: WgslProjectedSourceFrontierSource,
+  compactSourceConstruction: CompactSourceConstructionEvidence,
+  plan: GpuTileCoveragePlan,
+): CompactRetainedSourceForRuntime {
+  return {
+    projectedRecords: [],
+    retainedRecords: [],
+    droppedRecords: [],
+    candidateSplatIndexes: frontierSource.candidateSplatIndexes,
+    projectedContributorCount: frontierSource.projectedRefEstimate,
+    retainedContributorCount: 0,
+    droppedContributorCount: 0,
+    projectedRefBudgetOverflow: frontierSource.projectedRefEstimate > TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES
+      ? {
+          projectedRefs: frontierSource.projectedRefEstimate,
+          maxProjectedRefs: TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES,
+          mode: "wgsl-projected-source-frontier",
+        }
+      : null,
+    compactSourceConstruction,
+    tileRefCustody: {
+      projectedTileEntryCount: frontierSource.projectedRefEstimate,
+      retainedTileEntryCount: 0,
+      evictedTileEntryCount: 0,
+      cappedTileCount: 0,
+      saturatedRetainedTileCount: 0,
+      maxProjectedRefsPerTile: gpuLiveEffectiveRefsPerTile(plan),
+      maxRetainedRefsPerTile: 0,
+      headerRefCount: 0,
+      headerAccountingMatches: true,
+    },
+    perPixelProjectedContributors: [],
+    perPixelRetainedContributors: [],
   };
 }
 
@@ -2294,11 +2617,62 @@ function buildGpuArenaRetainedSourceConstructionEvidence(
   };
 }
 
+function buildWgslProjectedSourceFrontierConstructionEvidence(
+  frontierSource: WgslProjectedSourceFrontierSource,
+): RetainedSourceConstructionEvidence {
+  const compactSourceStreamRetentionBlockedStage = "compact-source-stream-retention";
+  return {
+    requestedSourceBackend: "gpu-retained-source-substrate",
+    effectiveSourceBackend: "wgsl-projected-ref-stream-source-frontier",
+    oracleBackend: "cpu-reference",
+    runtimeConsumerBackend: "tile-local-visible-gaussian-compositor",
+    sourceHandoff: "wgsl-projected-ref-stream-gpu-buffers",
+    falseClosureGuard: "wgsl-source-frontier-feeds-visible-compositor-but-does-not-perform-retention-election",
+    cpuOwnedStages: [
+      "wgsl-source-frontier-project-splats",
+      "wgsl-source-frontier-estimate-ref-budget",
+    ],
+    gpuReadyStages: [
+      "wgsl-projected-ref-stream-source-table",
+      "wgsl-projected-ref-stream-build-tile-refs",
+      "tile-local-visible-gaussian-compositor",
+    ],
+    nextGpuOffloadStage: "gpu-retention-election",
+    projectedRefs: frontierSource.projectedRefEstimate,
+    retainedRefs: 0,
+    droppedRefs: 0,
+    frontierBlockedStages: [
+      compactSourceStreamRetentionBlockedStage,
+      "compact-source-pixel-traces",
+      "gpu-retention-election",
+    ],
+  };
+}
+
 function buildWgslProjectedRefStreamEvidence(
   compactSource: CompactRetainedSourceForRuntime,
   stream: WgslProjectedRefStreamState | null | undefined,
   unavailableReason?: string,
 ): WgslProjectedRefStreamEvidence {
+  if (WGSL_PROJECTED_REF_STREAM_MODE === "source-frontier") {
+    return {
+      requestedBackend: "wgsl-projected-ref-stream",
+      effectiveBackend: "wgsl-projected-ref-stream-source-frontier",
+      sourceRole: "visible-source-frontier-not-retention-election",
+      runtimeConsumerBackend: "tile-local-visible-gaussian-compositor",
+      falseClosureGuard: "wgsl-source-frontier-feeds-compositor-but-is-not-exact-parity-or-production-retention",
+      compactSourceProjectedRefs: compactSource.projectedContributorCount,
+      compactSourceRetainedRefs: compactSource.retainedContributorCount,
+      sourceSplatCount: compactSource.candidateSplatIndexes.length,
+      maxTilesPerSplat: compactSource.compactSourceConstruction?.effectiveMaxTilesPerSplat ?? null,
+      allocatedProjectedRefs: compactSource.projectedContributorCount,
+      tileCount: compactSource.compactSourceConstruction?.tileCount ?? 0,
+      maxRefsPerTile: compactSource.compactSourceConstruction?.maxRefsPerTile ?? 0,
+      dispatchEnqueueDurationMs: stream?.dispatchEnqueueDurationMs,
+      readback: stream?.readback,
+      unavailableReason,
+    };
+  }
   return {
     requestedBackend: "wgsl-projected-ref-stream",
     effectiveBackend: stream
@@ -5790,10 +6164,16 @@ function selectedArenaBackend(): "cpu" | "gpu" {
   return requested === "gpu" ? "gpu" : "cpu";
 }
 
-function selectedWgslProjectedRefStreamEnabled(): boolean {
+function selectedWgslProjectedRefStreamMode(): WgslProjectedRefStreamMode {
   const params = new URLSearchParams(window.location.search);
   const requested = params.get("wgslProjectedRefStream") ?? params.get("projectedRefStream");
-  return requested === "on" || requested === "enabled" || requested === "1";
+  if (requested === "source-frontier" || requested === "source" || requested === "frontier") {
+    return "source-frontier";
+  }
+  if (requested === "on" || requested === "enabled" || requested === "1" || requested === "sidecar") {
+    return "sidecar";
+  }
+  return "disabled";
 }
 
 function selectedRendererMode(): RendererMode {
