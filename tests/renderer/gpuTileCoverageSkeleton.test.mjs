@@ -317,6 +317,8 @@ test("GPU tile coverage WGSL is a separate skeleton and does not mutate the live
   assert.match(shader, /var<storage, read_write> tileCoverageWeights/);
   assert.match(shader, /var<storage, read_write> alphaParams/);
   assert.match(shader, /var<storage, read_write> tileScatterCursors: array<atomic<u32>>/);
+  assert.match(shader, /var<storage, read_write> tileRefs: array<atomic<u32>>/);
+  assert.match(shader, /atomicCompareExchangeWeak\(&tileRefs\[scoreIndex\]/);
   assert.match(shader, /fn conic_pixel_weight/);
   assert.match(shader, /alphaParams\[alphaParamIndex \+ frame\.maxTileRefs\]/);
   assert.match(shader, /var<storage, read> scales/);

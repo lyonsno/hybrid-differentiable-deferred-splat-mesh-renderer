@@ -28,7 +28,7 @@ test("tile-local visible shader composites ordered tile refs with sample-local c
   assert.match(shader, /textureDimensions\(outputColor\)/);
   assert.match(shader, /var<storage, read> colors/);
   assert.match(shader, /tileHeaders\[tileId\]/);
-  assert.match(shader, /tileRefs\[refIndex\]/);
+  assert.match(shader, /load_tile_ref\(refIndex\)/);
   assert.match(shader, /var<storage, read> opacities/);
   assert.match(shader, /let alphaParam = alphaParams\[alphaParamIndex\]/);
   assert.match(shader, /let conicParam = alphaParams\[alphaParamIndex \+ frame\.maxTileRefs\]/);

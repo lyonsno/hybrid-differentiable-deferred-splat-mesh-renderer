@@ -282,7 +282,7 @@ interface RuntimeFootprintParams {
 interface WgslProjectedRefStreamState {
   readonly requestedBackend: "wgsl-projected-ref-stream";
   readonly effectiveBackend: "wgsl-projected-ref-stream-sidecar" | "wgsl-projected-ref-stream-source-frontier";
-  readonly sourceRole: "diagnostic-sidecar-not-retention-source" | "visible-source-frontier-not-retention-election";
+  readonly sourceRole: "diagnostic-sidecar-not-retention-source" | "visible-source-frontier-gpu-retention-election";
   readonly plan: GpuTileCoveragePlan;
   readonly bindGroup: GPUBindGroup;
   readonly frameUniformBuffer: GPUBuffer;
@@ -303,7 +303,7 @@ interface WgslProjectedRefStreamState {
 interface WgslProjectedRefStreamEvidence {
   readonly requestedBackend: "wgsl-projected-ref-stream";
   readonly effectiveBackend: "wgsl-projected-ref-stream-sidecar" | "wgsl-projected-ref-stream-source-frontier" | "disabled" | "unavailable";
-  readonly sourceRole: "diagnostic-sidecar-not-retention-source" | "visible-source-frontier-not-retention-election";
+  readonly sourceRole: "diagnostic-sidecar-not-retention-source" | "visible-source-frontier-gpu-retention-election";
   readonly runtimeConsumerBackend: "none" | "tile-local-visible-gaussian-compositor";
   readonly falseClosureGuard: string;
   readonly compactSourceProjectedRefs: number;
@@ -432,6 +432,7 @@ interface TileLocalCompositorInputReadback {
       readonly originalId: number;
       readonly tileIndex: number;
       readonly viewRank: number;
+      readonly retentionScore?: number;
       readonly viewDepth: number;
       readonly alphaParamIndex: number;
       readonly centerPx: readonly [number, number];
@@ -455,6 +456,7 @@ interface TileLocalCompositorInputReadback {
 interface PendingTileLocalCompositorInputReadback {
   readonly frameId: number;
   readonly plan: GpuTileCoveragePlan;
+  readonly tileRefPayloadEncoding: "legacy-identity" | "source-frontier-score";
   readonly sourceColors: Float32Array;
   readonly sourceViewDepths: Float32Array;
   readonly anchors: readonly PixelTraceAnchor[];
@@ -2637,7 +2639,7 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
     oracleBackend: "cpu-reference",
     runtimeConsumerBackend: "tile-local-visible-gaussian-compositor",
     sourceHandoff: "wgsl-projected-ref-stream-gpu-buffers",
-    falseClosureGuard: "wgsl-source-frontier-feeds-visible-compositor-but-does-not-perform-retention-election",
+    falseClosureGuard: "wgsl-source-frontier-gpu-retention-election-is-not-exact-plate-parity-or-production-retention",
     cpuOwnedStages: [
       "wgsl-source-frontier-project-splats",
       "wgsl-source-frontier-estimate-ref-budget",
@@ -2645,6 +2647,7 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
     gpuReadyStages: [
       "wgsl-projected-ref-stream-source-table",
       "wgsl-projected-ref-stream-build-tile-refs",
+      "wgsl-score-bucket-retention-election",
       "tile-local-visible-gaussian-compositor",
     ],
     nextGpuOffloadStage: "gpu-retention-election",
@@ -2656,7 +2659,7 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
     frontierBlockedStages: [
       compactSourceStreamRetentionBlockedStage,
       "compact-source-pixel-traces",
-      "gpu-retention-election",
+      "production-retention-election",
     ],
   };
 }
@@ -2670,9 +2673,9 @@ function buildWgslProjectedRefStreamEvidence(
     return {
       requestedBackend: "wgsl-projected-ref-stream",
       effectiveBackend: "wgsl-projected-ref-stream-source-frontier",
-      sourceRole: "visible-source-frontier-not-retention-election",
+      sourceRole: "visible-source-frontier-gpu-retention-election",
       runtimeConsumerBackend: "tile-local-visible-gaussian-compositor",
-      falseClosureGuard: "wgsl-source-frontier-feeds-compositor-but-is-not-exact-parity-or-production-retention",
+      falseClosureGuard: "wgsl-source-frontier-gpu-retention-election-is-score-bucketed-not-exact-parity-or-production-retention",
       compactSourceProjectedRefs: compactSource.projectedContributorCount,
       compactSourceRetainedRefs: compactSource.retainedContributorCount,
       sourceSplatCount: compactSource.candidateSplatIndexes.length,
@@ -4795,6 +4798,9 @@ function enqueueTileLocalCompositorInputReadback(
   state.pendingCompositorInputReadback = {
     frameId,
     plan: state.plan,
+    tileRefPayloadEncoding: state.wgslProjectedRefStream?.sourceRole === "visible-source-frontier-gpu-retention-election"
+      ? "source-frontier-score"
+      : "legacy-identity",
     sourceColors,
     sourceViewDepths: state.sourceViewDepths,
     anchors,
@@ -4853,6 +4859,7 @@ function resolveTileLocalCompositorInputReadback(state: TileLocalSceneState): vo
         anchors: pending.anchors.map((anchor) => readCompositorInputAnchor({
           anchor,
           plan: pending.plan,
+          tileRefPayloadEncoding: pending.tileRefPayloadEncoding,
           sourceColors: pending.sourceColors,
           sourceViewDepths: pending.sourceViewDepths,
           tileHeaders,
@@ -4949,6 +4956,7 @@ function ensureCpuReferenceCompositorInputReadback(
     anchors: anchors.map((anchor) => readCompositorInputAnchor({
       anchor,
       plan: state.plan,
+      tileRefPayloadEncoding: "legacy-identity",
       sourceColors,
       sourceViewDepths: state.sourceViewDepths,
       tileHeaders: state.tileHeaderData,
@@ -5410,6 +5418,7 @@ function overlayTileLocalRefStatsReadback(
 function readCompositorInputAnchor({
   anchor,
   plan,
+  tileRefPayloadEncoding,
   sourceColors,
   sourceViewDepths,
   tileHeaders,
@@ -5420,6 +5429,7 @@ function readCompositorInputAnchor({
 }: {
   readonly anchor: PixelTraceAnchor;
   readonly plan: GpuTileCoveragePlan;
+  readonly tileRefPayloadEncoding: "legacy-identity" | "source-frontier-score";
   readonly sourceColors: Float32Array;
   readonly sourceViewDepths: Float32Array;
   readonly tileHeaders: Uint32Array;
@@ -5450,11 +5460,14 @@ function readCompositorInputAnchor({
     }
     const tileRefBase = refIndex * (GPU_TILE_COVERAGE_TILE_REF_BYTES / Uint32Array.BYTES_PER_ELEMENT);
     const splatIndex = tileRefs[tileRefBase] ?? plan.splatCount;
-    const originalId = tileRefs[tileRefBase + 1] ?? splatIndex;
+    const tileRefAux = tileRefs[tileRefBase + 1] ?? splatIndex;
+    const originalId = tileRefPayloadEncoding === "source-frontier-score" ? splatIndex : tileRefAux;
     const tileIndex = tileRefs[tileRefBase + 2] ?? tileAddress.tileIndex;
     const alphaParamIndex = Math.min(tileRefs[tileRefBase + 3] ?? refIndex, plan.maxTileRefs - 1);
     const alphaParam = readVec4(alphaParams, alphaParamIndex);
-    const viewRank = Number.isFinite(alphaParam[3]) ? Math.trunc(alphaParam[3]) : -1;
+    const alphaViewRank = Number.isFinite(alphaParam[3]) ? Math.trunc(alphaParam[3]) : -1;
+    const viewRank = tileRefPayloadEncoding === "source-frontier-score" ? splatIndex : alphaViewRank;
+    const retentionScore = tileRefPayloadEncoding === "source-frontier-score" ? tileRefAux : undefined;
     const viewDepth = sourceViewDepths[splatIndex] ?? 0;
     if (splatIndex >= plan.splatCount) {
       contributors.push({
@@ -5464,6 +5477,7 @@ function readCompositorInputAnchor({
         originalId,
         tileIndex,
         viewRank,
+        retentionScore,
         viewDepth: roundColorChannel(viewDepth),
         alphaParamIndex,
         centerPx: [0, 0],
@@ -5528,6 +5542,7 @@ function readCompositorInputAnchor({
       originalId,
       tileIndex,
       viewRank,
+      retentionScore,
       viewDepth: roundColorChannel(viewDepth),
       alphaParamIndex,
       centerPx: [roundColorChannel(alphaParam[1]), roundColorChannel(alphaParam[2])],

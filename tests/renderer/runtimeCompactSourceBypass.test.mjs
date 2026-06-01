@@ -328,6 +328,7 @@ test("WGSL projected-ref stream consumes compact source candidates and footprint
 
 test("WGSL projected source-frontier route skips CPU streaming retention and visibly owns source construction", () => {
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const shaderSource = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
   const renderLoopStart = mainSource.indexOf("const tileLocalComputePass = encoder.beginComputePass");
   const renderLoopEnd = mainSource.indexOf("tileLocalComputePass.end()", renderLoopStart);
   const renderLoopSource = mainSource.slice(renderLoopStart, renderLoopEnd);
@@ -338,7 +339,9 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   const retainedSourceEvidence = extractFunctionSource(mainSource, "buildWgslProjectedSourceFrontierConstructionEvidence");
   const streamEvidenceSource = extractFunctionSource(mainSource, "buildWgslProjectedRefStreamEvidence");
   const runtimeEvidenceSource = extractFunctionSource(mainSource, "exposeTileLocalRuntimeEvidence");
+  const enqueueCompositorInputReadbackSource = extractFunctionSource(mainSource, "enqueueTileLocalCompositorInputReadback");
   const compositorInputReadbackSource = extractFunctionSource(mainSource, "resolveTileLocalCompositorInputReadback");
+  const readCompositorInputAnchorSource = extractFunctionSource(mainSource, "readCompositorInputAnchor");
   const refStatsPublisherSource = extractFunctionSource(mainSource, "publishTileLocalRefStatsReadback");
   const budgetReadbackSource = extractFunctionSource(mainSource, "runtimeBudgetDiagnosticsForRefStatsReadback");
 
@@ -383,6 +386,36 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(retainedSourceEvidence, /effectiveSourceBackend:\s*"wgsl-projected-ref-stream-source-frontier"/);
   assert.match(retainedSourceEvidence, /sourceHandoff:\s*"wgsl-projected-ref-stream-gpu-buffers"/);
+  assert.match(
+    shaderSource,
+    /var<storage, read_write> tileRefs: array<atomic<u32>>[\s\S]*atomicCompareExchangeWeak\(&tileRefs\[scoreIndex\]/,
+    "source-frontier visible input must use score-based GPU retention election inside the existing tile-ref buffer, not only first-arrival scatter slots",
+  );
+  assert.match(
+    shaderSource,
+    /RETENTION_SCORE_LOCK_BIT[\s\S]*atomicCompareExchangeWeak\(&tileRefs\[scoreIndex\],\s*previous,\s*lockedScore\)[\s\S]*atomicStore\(&tileRefs\[scoreIndex\],\s*score\)/,
+    "source-frontier score election must lock the slot while publishing payload so a losing invocation cannot overwrite the final winning record",
+  );
+  assert.doesNotMatch(
+    shaderSource,
+    /let slot = atomicAdd\(&tileScatterCursors\[tileId\], 1u\);\s*if \(slot >= tileCapacity\) \{\s*continue;\s*\}/,
+    "source-frontier must not silently drop overflow candidates before they can compete with weaker retained refs",
+  );
+  assert.match(
+    enqueueCompositorInputReadbackSource,
+    /tileRefPayloadEncoding:\s*state\.wgslProjectedRefStream\?\.sourceRole === "visible-source-frontier-gpu-retention-election"\s*\?\s*"source-frontier-score"\s*:\s*"legacy-identity"/,
+    "compositor-input readback must label source-frontier tile refs as score-packed rather than legacy identity payloads",
+  );
+  assert.match(
+    readCompositorInputAnchorSource,
+    /tileRefPayloadEncoding === "source-frontier-score"[\s\S]*retentionScore/,
+    "source-frontier readback must expose packed retention score under score metadata",
+  );
+  assert.doesNotMatch(
+    readCompositorInputAnchorSource,
+    /const originalId = tileRefs\[tileRefBase \+ 1\] \?\? splatIndex;/,
+    "source-frontier readback must not expose the packed score word as originalId",
+  );
   assert.match(
     retainedSourceEvidence,
     /retainedBudgetRefs:\s*plan\.maxTileRefs/,

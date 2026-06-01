@@ -25,13 +25,16 @@ const DEBUG_MODE_CONIC_SHAPE = 5.0;
 @group(0) @binding(3) var<storage, read> scales: array<f32>;
 @group(0) @binding(4) var<storage, read> rotations: array<f32>;
 @group(0) @binding(5) var<storage, read_write> tileHeaders: array<vec4u>;
-@group(0) @binding(6) var<storage, read_write> tileRefs: array<vec4u>;
+@group(0) @binding(6) var<storage, read_write> tileRefs: array<atomic<u32>>;
 @group(0) @binding(7) var<storage, read_write> tileCoverageWeights: array<f32>;
 @group(0) @binding(8) var<storage, read_write> alphaParams: array<vec4f>;
 @group(0) @binding(9) var outputColor: texture_storage_2d<rgba16float, write>;
 @group(0) @binding(11) var<storage, read_write> tileScatterCursors: array<atomic<u32>>;
 @group(0) @binding(12) var<storage, read> opacities: array<f32>;
 
+const TILE_REF_SENTINEL = 0xffffffffu;
+const RETENTION_SCORE_LOCK_BIT = 0x80000000u;
+const RETENTION_SCORE_VALUE_MASK = 0x7fffffffu;
 const MIN_SPLAT_CLIP_W = 0.0001;
 const MAX_ANISOTROPIC_MINOR_RADIUS_INFLATION = 4.0;
 const MIN_ANISOTROPIC_MINOR_RADIUS_FRACTION = 0.015625;
@@ -57,6 +60,26 @@ fn tile_count() -> u32 {
 
 fn tile_ref_capacity_per_tile() -> u32 {
   return max(frame.maxTileRefs / tile_count(), 1u);
+}
+
+fn tile_ref_word_index(refIndex: u32, component: u32) -> u32 {
+  return refIndex * 4u + component;
+}
+
+fn load_tile_ref(refIndex: u32) -> vec4u {
+  return vec4u(
+    atomicLoad(&tileRefs[tile_ref_word_index(refIndex, 0u)]),
+    atomicLoad(&tileRefs[tile_ref_word_index(refIndex, 1u)]),
+    atomicLoad(&tileRefs[tile_ref_word_index(refIndex, 2u)]),
+    atomicLoad(&tileRefs[tile_ref_word_index(refIndex, 3u)]),
+  );
+}
+
+fn clear_tile_ref(refIndex: u32, tileId: u32) {
+  atomicStore(&tileRefs[tile_ref_word_index(refIndex, 0u)], TILE_REF_SENTINEL);
+  atomicStore(&tileRefs[tile_ref_word_index(refIndex, 1u)], 0u);
+  atomicStore(&tileRefs[tile_ref_word_index(refIndex, 2u)], tileId);
+  atomicStore(&tileRefs[tile_ref_word_index(refIndex, 3u)], refIndex);
 }
 
 fn projected_center_px(splatId: u32) -> vec2f {
@@ -200,6 +223,68 @@ fn gpu_live_tile_coverage_weight(conic: GpuLiveConic, tileCenterPx: vec2f) -> f3
   return exp(-0.5 * tileMahalanobis2);
 }
 
+fn gpu_live_retention_election_score(
+  tileCoverageWeight: f32,
+  sourceOpacity: f32,
+  sourceOrdinal: u32,
+  splatId: u32,
+) -> u32 {
+  let weightedCoverage = clamp(tileCoverageWeight * max(sourceOpacity, 0.000001), 0.0, 1.0);
+  let coverageBucket = min(u32(weightedCoverage * 32767.0), 32767u);
+  let sourceTie = 255u - min(sourceOrdinal & 255u, 255u);
+  let splatTie = 255u - min(splatId & 255u, 255u);
+  return max((coverageBucket << 16u) | (sourceTie << 8u) | splatTie, 1u);
+}
+
+fn gpu_live_overflow_election_slot(tileId: u32, splatId: u32, tileCapacity: u32) -> u32 {
+  let hashed = splatId * 747796405u + tileId * 2891336453u + 277803737u;
+  return hashed % max(tileCapacity, 1u);
+}
+
+fn gpu_live_retention_election_slot(projectedSlot: u32, tileId: u32, splatId: u32, tileCapacity: u32) -> u32 {
+  if (projectedSlot < tileCapacity) {
+    return projectedSlot;
+  }
+  return gpu_live_overflow_election_slot(tileId, splatId, tileCapacity);
+}
+
+fn gpu_live_try_commit_retained_ref(
+  refIndex: u32,
+  score: u32,
+  splatId: u32,
+  tileId: u32,
+  tileCoverageWeight: f32,
+  sourceOpacity: f32,
+  centerPx: vec2f,
+  inverseConic: vec3f,
+) {
+  let scoreIndex = tile_ref_word_index(refIndex, 1u);
+  var previous = atomicLoad(&tileRefs[scoreIndex]);
+  loop {
+    let previousScore = previous & RETENTION_SCORE_VALUE_MASK;
+    if (score <= previousScore) {
+      break;
+    }
+    if ((previous & RETENTION_SCORE_LOCK_BIT) != 0u) {
+      previous = atomicLoad(&tileRefs[scoreIndex]);
+      continue;
+    }
+    let lockedScore = score | RETENTION_SCORE_LOCK_BIT;
+    let exchange = atomicCompareExchangeWeak(&tileRefs[scoreIndex], previous, lockedScore);
+    if (exchange.exchanged) {
+      atomicStore(&tileRefs[tile_ref_word_index(refIndex, 0u)], splatId);
+      atomicStore(&tileRefs[tile_ref_word_index(refIndex, 2u)], tileId);
+      atomicStore(&tileRefs[tile_ref_word_index(refIndex, 3u)], refIndex);
+      tileCoverageWeights[refIndex] = tileCoverageWeight;
+      alphaParams[refIndex] = vec4f(sourceOpacity, centerPx.x, centerPx.y, f32(splatId));
+      alphaParams[refIndex + frame.maxTileRefs] = vec4f(inverseConic, 0.0);
+      atomicStore(&tileRefs[scoreIndex], score);
+      break;
+    }
+    previous = exchange.old_value;
+  }
+}
+
 fn conic_falloff_scale() -> f32 {
   return 2.0;
 }
@@ -295,6 +380,16 @@ fn debug_heatmap_color(
   let tileCapacity = tile_ref_capacity_per_tile();
   atomicStore(&tileScatterCursors[tileId], 0u);
   tileHeaders[tileId] = vec4u(tileId * tileCapacity, 0u, 0u, 0u);
+  for (var slot = 0u; slot < tileCapacity; slot = slot + 1u) {
+    let refIndex = tileId * tileCapacity + slot;
+    if (refIndex >= frame.maxTileRefs) {
+      break;
+    }
+    clear_tile_ref(refIndex, tileId);
+    tileCoverageWeights[refIndex] = 0.0;
+    alphaParams[refIndex] = vec4f(0.0, 0.0, 0.0, 0.0);
+    alphaParams[refIndex + frame.maxTileRefs] = vec4f(0.0, 0.0, 0.0, 0.0);
+  }
 }
 
 @compute @workgroup_size(64) fn build_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
@@ -344,22 +439,33 @@ fn debug_heatmap_color(
       if (tileId >= tile_count()) {
         continue;
       }
-      let slot = atomicAdd(&tileScatterCursors[tileId], 1u);
-      if (slot >= tileCapacity) {
-        continue;
-      }
+      let projectedSlot = atomicAdd(&tileScatterCursors[tileId], 1u);
+      let slot = gpu_live_retention_election_slot(projectedSlot, tileId, splatId, tileCapacity);
       let refIndex = tileId * tileCapacity + slot;
       if (refIndex >= frame.maxTileRefs) {
         continue;
       }
-      tileRefs[refIndex] = vec4u(splatId, splatId, tileId, refIndex);
-      tileCoverageWeights[refIndex] = gpu_live_tile_coverage_weight(
+      let tileCoverageWeight = gpu_live_tile_coverage_weight(
         conic,
         gpu_live_tile_center_px(tileX, tileY, tileSizePx)
       );
       let sourceOpacity = clamp(opacities[splatId], 0.0, 0.999);
-      alphaParams[refIndex] = vec4f(sourceOpacity, centerPx.x, centerPx.y, f32(orderingKey));
-      alphaParams[refIndex + frame.maxTileRefs] = vec4f(conic.inverseConic, 0.0);
+      let retentionScore = gpu_live_retention_election_score(
+        tileCoverageWeight,
+        sourceOpacity,
+        sourceOrdinal,
+        orderingKey
+      );
+      gpu_live_try_commit_retained_ref(
+        refIndex,
+        retentionScore,
+        splatId,
+        tileId,
+        tileCoverageWeight,
+        sourceOpacity,
+        centerPx,
+        conic.inverseConic
+      );
     }
   }
 }
@@ -392,7 +498,7 @@ fn debug_heatmap_color(
     if (refIndex >= frame.maxTileRefs) {
       break;
     }
-    let tileRef = tileRefs[refIndex];
+    let tileRef = load_tile_ref(refIndex);
     if (tileRef.x >= frame.splatCount) {
       continue;
     }
