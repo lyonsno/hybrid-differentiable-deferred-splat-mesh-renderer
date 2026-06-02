@@ -271,12 +271,13 @@ fn gpu_live_retention_election_score(
 ) -> u32 {
   let retentionSignal = clamp(tileCoverageWeight * max(sourceOpacity, 0.000001) * max(sourceLuminance, 0.000001), 0.0, 1.0);
   let occlusionSignal = clamp(tileCoverageWeight * max(sourceOpacity, 0.000001), 0.0, 1.0);
-  let retentionBucket = min(u32(retentionSignal * 2047.0), 2047u);
-  let occlusionBucket = min(u32(occlusionSignal * 1023.0), 1023u);
+  let occlusionDensityBucket = min(u32(clamp(sourceOpacity, 0.0, 1.0) * 255.0), 255u);
+  let occlusionWeightBucket = min(u32(occlusionSignal * 255.0), 255u);
+  let retentionBucket = min(u32(retentionSignal * 255.0), 255u);
   let frontness = clamp(1.0 - sourceDepthNdc, 0.0, 1.0);
-  let depthBucket = min(u32(frontness * 255.0), 255u);
+  let depthBucket = min(u32(frontness * 31.0), 31u);
   let splatTie = 3u - min(splatId & 3u, 3u);
-  return max((retentionBucket << 20u) | (occlusionBucket << 10u) | (depthBucket << 2u) | splatTie, 1u);
+  return max((occlusionDensityBucket << 23u) | (occlusionWeightBucket << 15u) | (retentionBucket << 7u) | (depthBucket << 2u) | splatTie, 1u);
 }
 
 fn gpu_live_overflow_election_slot(tileId: u32, splatId: u32, tileCapacity: u32) -> u32 {

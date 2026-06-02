@@ -2678,6 +2678,7 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
       "wgsl-projected-ref-stream-build-tile-refs",
       "wgsl-source-frontier-depth-aware-retention-election",
       "wgsl-source-frontier-production-weighted-retention-score",
+      "wgsl-source-frontier-occlusion-density-retention-score",
       "wgsl-source-frontier-depth-bucket-compositor-order",
       "wgsl-source-frontier-retained-row-prefix-scatter",
       "tile-local-visible-gaussian-compositor",

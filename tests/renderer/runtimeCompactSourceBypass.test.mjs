@@ -426,7 +426,7 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     shaderSource,
-    /fn gpu_live_retention_election_score\([\s\S]*sourceDepthNdc:\s*f32[\s\S]*retentionBucket[\s\S]*occlusionBucket[\s\S]*depthBucket/,
+    /fn gpu_live_retention_election_score\([\s\S]*sourceDepthNdc:\s*f32[\s\S]*occlusionDensityBucket[\s\S]*occlusionWeightBucket[\s\S]*retentionBucket[\s\S]*depthBucket/,
     "source-frontier GPU retention election must include projected depth/frontness, not only coverage and opacity",
   );
   assert.match(
@@ -436,8 +436,13 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     shaderSource,
-    /fn gpu_live_retention_election_score\([\s\S]*sourceLuminance:\s*f32[\s\S]*retentionSignal[\s\S]*tileCoverageWeight \* max\(sourceOpacity[\s\S]*max\(sourceLuminance[\s\S]*occlusionSignal[\s\S]*tileCoverageWeight \* max\(sourceOpacity[\s\S]*retentionBucket[\s\S]*occlusionBucket/,
+    /fn gpu_live_retention_election_score\([\s\S]*sourceLuminance:\s*f32[\s\S]*retentionSignal[\s\S]*tileCoverageWeight \* max\(sourceOpacity[\s\S]*max\(sourceLuminance[\s\S]*occlusionSignal[\s\S]*tileCoverageWeight \* max\(sourceOpacity[\s\S]*retentionBucket[\s\S]*occlusionWeightBucket/,
     "source-frontier GPU retention election must carry production-like retention and occlusion score channels before depth tie-breaking",
+  );
+  assert.match(
+    shaderSource,
+    /fn gpu_live_retention_election_score\([\s\S]*occlusionDensityBucket[\s\S]*clamp\(sourceOpacity[\s\S]*occlusionWeightBucket[\s\S]*occlusionSignal[\s\S]*retentionBucket[\s\S]*retentionSignal[\s\S]*occlusionDensityBucket << 23u[\s\S]*occlusionWeightBucket << 15u[\s\S]*retentionBucket << 7u/,
+    "source-frontier GPU retention election must mirror production occlusion priority by packing opacity/density ahead of occlusion weight and retention weight",
   );
   assert.doesNotMatch(
     retentionScoreSource,
@@ -493,6 +498,11 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
     retainedSourceEvidence,
     /"wgsl-source-frontier-production-weighted-retention-score"/,
     "source-frontier retained-source evidence must advertise that live GPU election now uses retention/occlusion-like production score channels",
+  );
+  assert.match(
+    retainedSourceEvidence,
+    /"wgsl-source-frontier-occlusion-density-retention-score"/,
+    "source-frontier retained-source evidence must advertise that live GPU election now carries production-style occlusion-density priority",
   );
   assert.doesNotMatch(
     shaderSource,
