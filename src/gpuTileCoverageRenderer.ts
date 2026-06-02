@@ -18,6 +18,8 @@ export interface GpuTileCoverageBuffers {
   readonly tileCoverageWeightBuffer: GPUBuffer;
   readonly tileScatterCursorBuffer: GPUBuffer;
   readonly alphaParamBuffer: GPUBuffer;
+  readonly candidateSourceRecordsBuffer: GPUBuffer;
+  readonly candidateSourceGroupsBuffer: GPUBuffer;
   readonly outputColorView: GPUTextureView;
 }
 
@@ -60,6 +62,8 @@ export function createGpuTileCoveragePipelineSkeleton(
       storageEntry(GPU_TILE_COVERAGE_BINDINGS.tileCoverageWeights, "storage"),
       storageEntry(GPU_TILE_COVERAGE_BINDINGS.alphaParams, "storage"),
       storageEntry(GPU_TILE_COVERAGE_BINDINGS.opacities, "read-only-storage"),
+      storageEntry(GPU_TILE_COVERAGE_BINDINGS.candidateSourceRecords, "read-only-storage"),
+      storageEntry(GPU_TILE_COVERAGE_BINDINGS.candidateSourceGroups, "read-only-storage"),
       {
         binding: GPU_TILE_COVERAGE_BINDINGS.outputColor,
         visibility: GPUShaderStage.COMPUTE,
@@ -103,6 +107,8 @@ export function createGpuTileCoveragePipelineSkeleton(
           { binding: GPU_TILE_COVERAGE_BINDINGS.tileRefs, resource: { buffer: buffers.tileRefBuffer } },
           { binding: GPU_TILE_COVERAGE_BINDINGS.tileCoverageWeights, resource: { buffer: buffers.tileCoverageWeightBuffer } },
           { binding: GPU_TILE_COVERAGE_BINDINGS.alphaParams, resource: { buffer: buffers.alphaParamBuffer } },
+          { binding: GPU_TILE_COVERAGE_BINDINGS.candidateSourceRecords, resource: { buffer: buffers.candidateSourceRecordsBuffer } },
+          { binding: GPU_TILE_COVERAGE_BINDINGS.candidateSourceGroups, resource: { buffer: buffers.candidateSourceGroupsBuffer } },
           { binding: GPU_TILE_COVERAGE_BINDINGS.outputColor, resource: buffers.outputColorView },
           { binding: GPU_TILE_COVERAGE_BINDINGS.tileScatterCursors, resource: { buffer: buffers.tileScatterCursorBuffer } },
         ],

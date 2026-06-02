@@ -31,6 +31,8 @@ const DEBUG_MODE_CONIC_SHAPE = 5.0;
 @group(0) @binding(9) var outputColor: texture_storage_2d<rgba16float, write>;
 @group(0) @binding(11) var<storage, read_write> tileScatterCursors: array<atomic<u32>>;
 @group(0) @binding(12) var<storage, read> opacities: array<f32>;
+@group(0) @binding(13) var<storage, read> candidateSourceRecords: array<vec4u>;
+@group(0) @binding(14) var<storage, read> candidateSourceGroups: array<vec4u>;
 
 const TILE_REF_SENTINEL = 0xffffffffu;
 const RETENTION_SCORE_LOCK_BIT = 0x80000000u;

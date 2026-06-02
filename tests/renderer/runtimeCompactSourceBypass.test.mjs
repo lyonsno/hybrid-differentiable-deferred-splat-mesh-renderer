@@ -556,23 +556,58 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     retainedSourceEvidence,
-    /nextGpuOffloadStage:\s*"production-candidate-source-pool-identity"/,
-    "after bounded WGSL pool seats land, the next retained-source frontier must be production candidate-source identity rather than prefix/scatter itself",
+    /nextGpuOffloadStage:\s*"production-candidate-source-election-consumption"/,
+    "after class-tagged WGSL candidate-source inputs land, the next retained-source frontier must be election consumption rather than input identity",
   );
   assert.match(
     retainedSourceEvidence,
-    /candidateSourceIdentity:\s*sourceFrontierCandidateSourceIdentityEvidence\(\)/,
-    "source-frontier retained-source evidence must expose the exact missing candidate-source identity contract",
+    /candidateSourceIdentity:\s*sourceFrontierCandidateSourceIdentityEvidence\([\s\S]*candidateSourceInputs/,
+    "source-frontier retained-source evidence must be driven by actual candidate-source input substrate",
   );
   assert.match(
     mainSource,
-    /function sourceFrontierCandidateSourceIdentityEvidence\(\)[\s\S]*status:\s*"blocked-missing-wgsl-candidate-source-inputs"[\s\S]*availableIdentity:\s*"selected-slot-pool-only"/,
-    "bounded pool seats must not be laundered into production candidate-source identity",
+    /function sourceFrontierCandidateSourceIdentityEvidence\(\s*candidateSourceInputs[\s\S]*status:\s*"present-not-consumed"[\s\S]*availableIdentity:\s*"class-tagged-wgsl-candidate-source-inputs"/,
+    "candidate-source evidence must distinguish present class-tagged input substrate from consumed production election",
   );
   assert.match(
     mainSource,
-    /requiredWgslInputs:[\s\S]*"retention-candidate-records"[\s\S]*"occlusion-candidate-records"[\s\S]*"coverage-candidate-records"[\s\S]*"support-sample-record-groups"/,
-    "candidate-source identity evidence must name the missing class-tagged WGSL inputs",
+    /presentWgslInputs:[\s\S]*"retention-candidate-records"[\s\S]*"occlusion-candidate-records"[\s\S]*"coverage-candidate-records"[\s\S]*"support-sample-record-groups"/,
+    "candidate-source identity evidence must name the seated class-tagged WGSL inputs",
+  );
+  assert.match(
+    coverageRendererSource,
+    /candidateSourceRecordsBuffer:\s*GPUBuffer/,
+    "source-frontier bind groups must expose a class-tagged candidate-source records buffer",
+  );
+  assert.match(
+    coverageRendererSource,
+    /candidateSourceGroupsBuffer:\s*GPUBuffer/,
+    "source-frontier bind groups must expose support-sample group ranges as GPU input substrate",
+  );
+  assert.match(
+    coverageRendererSource,
+    /GPU_TILE_COVERAGE_BINDINGS\.candidateSourceRecords/,
+    "candidate-source records need a stable WGSL binding instead of evidence-only prose",
+  );
+  assert.match(
+    shaderSource,
+    /@binding\(13\)\s*var<storage,\s*read>\s+candidateSourceRecords/,
+    "WGSL must receive class-tagged candidate-source records even before the election consumes them",
+  );
+  assert.match(
+    shaderSource,
+    /@binding\(14\)\s*var<storage,\s*read>\s+candidateSourceGroups/,
+    "WGSL must receive support-sample group ranges even before the election consumes them",
+  );
+  assert.match(
+    retainedSourceEvidence,
+    /candidateSourceIdentity:\s*sourceFrontierCandidateSourceIdentityEvidence\([\s\S]*candidateSourceInputs/,
+    "source-frontier evidence must be driven by actual candidate-source input substrate, not a hardcoded missing-input claim",
+  );
+  assert.match(
+    retainedSourceEvidence,
+    /nextGpuOffloadStage:\s*"production-candidate-source-election-consumption"/,
+    "once candidate-source input substrate exists, the next frontier is election consumption rather than input identity",
   );
   assert.match(
     shaderSource,
@@ -716,8 +751,8 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     retainedRowsRefreshSource,
-    /nextGpuOffloadStage:\s*"production-candidate-source-pool-identity"/,
-    "retained-row evidence must keep the next frontier pointed at candidate-source pool identity after bounded WGSL pool seats are live",
+    /nextGpuOffloadStage:\s*"production-candidate-source-election-consumption"/,
+    "retained-row evidence must keep the next frontier pointed at candidate-source election consumption after input substrate is live",
   );
   assert.match(
     retainedRowsRefreshSource,

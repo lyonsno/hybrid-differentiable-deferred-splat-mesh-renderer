@@ -157,6 +157,8 @@ test("GPU tile coverage bindings carry the live tile buffers inside WebGPU stora
     outputColor: 9,
     tileScatterCursors: 11,
     opacities: 12,
+    candidateSourceRecords: 13,
+    candidateSourceGroups: 14,
   });
 });
 

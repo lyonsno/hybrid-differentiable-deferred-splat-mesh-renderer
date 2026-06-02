@@ -50,6 +50,8 @@ export const GPU_TILE_COVERAGE_BINDINGS = {
   outputColor: 9,
   tileScatterCursors: 11,
   opacities: 12,
+  candidateSourceRecords: 13,
+  candidateSourceGroups: 14,
 } as const;
 
 export interface GpuTileCoveragePlanInput {
@@ -203,6 +205,125 @@ export interface GpuProjectionRetentionCandidateSources {
   readonly occlusionRecords?: readonly GpuTileContributorArenaProjectedContributor[];
   readonly supportSampleRecords?: readonly GpuTileContributorArenaProjectedContributor[];
   readonly supportSampleRecordGroups?: readonly (readonly GpuTileContributorArenaProjectedContributor[])[];
+}
+
+export const GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_CODES = {
+  retention: 1,
+  occlusion: 2,
+  coverage: 3,
+  support: 4,
+} as const;
+
+export type GpuProjectionRetentionCandidateSourceClass =
+  keyof typeof GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_CODES;
+
+export interface GpuProjectionRetentionCandidateSourceInputs {
+  readonly recordU32: Uint32Array;
+  readonly groupU32: Uint32Array;
+  readonly recordCount: number;
+  readonly groupCount: number;
+  readonly classesPresent: readonly GpuProjectionRetentionCandidateSourceClass[];
+}
+
+export function buildGpuProjectionRetentionCandidateSourceInputs(
+  candidateSources: GpuProjectionRetentionCandidateSources = {},
+): GpuProjectionRetentionCandidateSourceInputs {
+  const recordWords: number[] = [];
+  const groupWords: number[] = [];
+  const classesPresent = new Set<GpuProjectionRetentionCandidateSourceClass>();
+
+  const appendRecords = (
+    records: readonly GpuTileContributorArenaProjectedContributor[] | undefined,
+    className: GpuProjectionRetentionCandidateSourceClass,
+  ): void => {
+    for (const record of records ?? []) {
+      const validated = validateProjectedContributor(record);
+      recordWords.push(
+        validated.tileIndex,
+        validated.splatIndex,
+        validated.originalId,
+        GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_CODES[className],
+      );
+      classesPresent.add(className);
+    }
+  };
+
+  const appendSupportGroup = (
+    records: readonly GpuTileContributorArenaProjectedContributor[] | undefined,
+  ): void => {
+    const validRecords = (records ?? []).map(validateProjectedContributor);
+    if (validRecords.length === 0) {
+      return;
+    }
+    const recordsByTile = new Map<number, GpuTileContributorArenaProjectedContributor[]>();
+    for (const record of validRecords) {
+      const tileRecords = recordsByTile.get(record.tileIndex);
+      if (tileRecords) {
+        tileRecords.push(record);
+      } else {
+        recordsByTile.set(record.tileIndex, [record]);
+      }
+    }
+    for (const [tileIndex, tileRecords] of recordsByTile) {
+      const firstRecord = recordWords.length / 4;
+      for (const record of tileRecords) {
+        recordWords.push(
+          record.tileIndex,
+          record.splatIndex,
+          record.originalId,
+          GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_CODES.support,
+        );
+      }
+      groupWords.push(
+        tileIndex,
+        firstRecord,
+        tileRecords.length,
+        GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_CODES.support,
+      );
+    }
+    classesPresent.add("support");
+  };
+
+  appendRecords(candidateSources.retentionRecords, "retention");
+  appendRecords(candidateSources.occlusionRecords, "occlusion");
+  appendRecords(candidateSources.coverageRecords, "coverage");
+
+  if (candidateSources.supportSampleRecordGroups?.length) {
+    for (const supportGroup of candidateSources.supportSampleRecordGroups) {
+      appendSupportGroup(supportGroup);
+    }
+  } else {
+    appendSupportGroup(candidateSources.supportSampleRecords);
+  }
+
+  return {
+    recordU32: candidateSourceU32Buffer(recordWords),
+    groupU32: candidateSourceU32Buffer(groupWords),
+    recordCount: recordWords.length / 4,
+    groupCount: groupWords.length / 4,
+    classesPresent: (["retention", "occlusion", "coverage", "support"] as const).filter((className) =>
+      classesPresent.has(className)
+    ),
+  };
+}
+
+function candidateSourceU32Buffer(words: readonly number[]): Uint32Array {
+  const buffer = new Uint32Array(Math.max(words.length, 4));
+  buffer.set(words);
+  return buffer;
+}
+
+export function gpuProjectionRetentionCandidateSourceBufferUnavailableReason(
+  inputs: GpuProjectionRetentionCandidateSourceInputs,
+  maxStorageBindingBytes: number,
+): string | undefined {
+  if (inputs.recordU32.byteLength > maxStorageBindingBytes) {
+    return `gpu candidate-source records buffer exceeds max storage binding: ${inputs.recordU32.byteLength} > ${maxStorageBindingBytes}`;
+  }
+  if (inputs.groupU32.byteLength > maxStorageBindingBytes) {
+    return `gpu candidate-source groups buffer exceeds max storage binding: ${inputs.groupU32.byteLength} > ${maxStorageBindingBytes}`;
+  }
+  return undefined;
 }
 
 export interface GpuTileProjectionRetentionArenaBuildInput extends GpuTileContributorArenaBuildInput {

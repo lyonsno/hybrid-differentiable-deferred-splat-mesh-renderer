@@ -10,8 +10,11 @@ import {
   GPU_TILE_CONTRIBUTOR_ARENA_RECORD_BYTES,
   buildDeterministicGpuTileContributorArena,
   buildDeterministicGpuTileProjectionRetentionArena,
+  buildGpuProjectionRetentionCandidateSourceInputs,
   createGpuTileCoveragePlan,
   createGpuTileContributorArenaLayout,
+  GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_CODES,
+  gpuProjectionRetentionCandidateSourceBufferUnavailableReason,
   inspectWgslSourceFrontierProductionPoolSeatGap,
 } from "../../node_modules/.cache/renderer-tests/src/gpuTileCoverage.js";
 import {
@@ -204,6 +207,82 @@ test("GPU-owned projection retention honors compact support-sample quotas and ca
   assert.ok(supportRetainedCount <= 4, "support candidates must not exceed the 25% final support quota");
   assert.ok(arena.retainedRecords.some((record) => record.originalId >= 100 && record.originalId < 200));
   assert.ok(arena.retainedRecords.some((record) => record.originalId >= 300 && record.originalId < 400));
+});
+
+test("candidate-source input substrate packs class-tagged records and support groups for WGSL consumption", () => {
+  const retention = contributor({ splatIndex: 11, originalId: 111, tileIndex: 0, retentionWeight: 90 });
+  const occlusion = contributor({ splatIndex: 12, originalId: 112, tileIndex: 0, occlusionWeight: 80 });
+  const coverage = contributor({ splatIndex: 13, originalId: 113, tileIndex: 1, coverageWeight: 70 });
+  const supportA = contributor({ splatIndex: 14, originalId: 114, tileIndex: 1, supportSampleRetentionWeight: 60 });
+  const supportB = contributor({ splatIndex: 15, originalId: 115, tileIndex: 1, supportSampleRetentionWeight: 50 });
+  const inputs = buildGpuProjectionRetentionCandidateSourceInputs({
+    retentionRecords: [retention],
+    occlusionRecords: [occlusion],
+    coverageRecords: [coverage],
+    supportSampleRecordGroups: [[supportA, supportB]],
+  });
+
+  assert.deepEqual(GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_CODES, {
+    retention: 1,
+    occlusion: 2,
+    coverage: 3,
+    support: 4,
+  });
+  assert.deepEqual([...inputs.recordU32.slice(0, 4 * 4)], [
+    0, retention.splatIndex, retention.originalId, 1,
+    0, occlusion.splatIndex, occlusion.originalId, 2,
+    1, coverage.splatIndex, coverage.originalId, 3,
+    1, supportA.splatIndex, supportA.originalId, 4,
+  ]);
+  assert.deepEqual([...inputs.groupU32.slice(0, 4)], [1, 3, 2, 4]);
+  assert.equal(inputs.recordCount, 5);
+  assert.equal(inputs.groupCount, 1);
+  assert.deepEqual(inputs.classesPresent, ["retention", "occlusion", "coverage", "support"]);
+});
+
+test("candidate-source support groups split mixed-tile ranges for WGSL consumption", () => {
+  const supportTile0 = contributor({ splatIndex: 21, originalId: 121, tileIndex: 0, supportSampleRetentionWeight: 90 });
+  const supportTile1 = contributor({ splatIndex: 22, originalId: 122, tileIndex: 1, supportSampleRetentionWeight: 80 });
+  const supportTile0b = contributor({ splatIndex: 23, originalId: 123, tileIndex: 0, supportSampleRetentionWeight: 70 });
+  const inputs = buildGpuProjectionRetentionCandidateSourceInputs({
+    supportSampleRecordGroups: [[supportTile0, supportTile1, supportTile0b]],
+  });
+
+  assert.equal(inputs.recordCount, 3);
+  assert.equal(inputs.groupCount, 2);
+  assert.deepEqual([...inputs.recordU32.slice(0, 12)], [
+    0, supportTile0.splatIndex, supportTile0.originalId, 4,
+    0, supportTile0b.splatIndex, supportTile0b.originalId, 4,
+    1, supportTile1.splatIndex, supportTile1.originalId, 4,
+  ]);
+  assert.deepEqual([...inputs.groupU32.slice(0, 8)], [
+    0, 0, 2, 4,
+    1, 2, 1, 4,
+  ]);
+});
+
+test("candidate-source buffer preflight rejects records/groups beyond the storage binding limit", () => {
+  const inputs = buildGpuProjectionRetentionCandidateSourceInputs({
+    retentionRecords: Array.from({ length: 2 }, (_, index) =>
+      contributor({ splatIndex: 30 + index, originalId: 130 + index, tileIndex: index, retentionWeight: 100 - index })
+    ),
+  });
+
+  assert.equal(
+    gpuProjectionRetentionCandidateSourceBufferUnavailableReason(inputs, inputs.recordU32.byteLength - 1),
+    `gpu candidate-source records buffer exceeds max storage binding: ${inputs.recordU32.byteLength} > ${inputs.recordU32.byteLength - 1}`,
+  );
+  assert.equal(
+    gpuProjectionRetentionCandidateSourceBufferUnavailableReason(
+      { ...inputs, recordU32: new Uint32Array(4), groupU32: new Uint32Array(8) },
+      new Uint32Array(4).byteLength,
+    ),
+    `gpu candidate-source groups buffer exceeds max storage binding: ${new Uint32Array(8).byteLength} > ${new Uint32Array(4).byteLength}`,
+  );
+  assert.equal(
+    gpuProjectionRetentionCandidateSourceBufferUnavailableReason(inputs, inputs.recordU32.byteLength),
+    undefined,
+  );
 });
 
 test("WGSL source-frontier witness names missing production pool seats without claiming exact plate parity", () => {

@@ -18,13 +18,17 @@ import { handleDoubleClickPivot } from "./clickToPivot.js";
 import { createStorageBuffer, createTexture2D, createUniformBuffer } from "./buffers.js";
 import {
   buildDeterministicGpuTileProjectionRetentionArena,
+  buildGpuProjectionRetentionCandidateSourceInputs,
   createGpuTileCoveragePlan,
   GPU_TILE_COVERAGE_ALPHA_PARAM_FLOATS_PER_REF,
   GPU_TILE_COVERAGE_FRAME_UNIFORM_BYTES,
   GPU_TILE_COVERAGE_TILE_HEADER_BYTES,
   GPU_TILE_COVERAGE_TILE_REF_BYTES,
+  gpuProjectionRetentionCandidateSourceBufferUnavailableReason,
   writeGpuTileCoverageFrameUniforms,
   writeGpuTileCoverageSourceIndexTable,
+  type GpuProjectionRetentionCandidateSourceInputs,
+  type GpuProjectionRetentionCandidateSources,
   type GpuTileContributorArenaProjectedContributor,
   type GpuTileCoverageDebugMode,
   type GpuTileCoveragePlan,
@@ -177,6 +181,12 @@ const TILE_LOCAL_UNSAFE = selectedTileLocalUnsafeMode();
 const GPU_LIVE_POINT_SIGMA_PX = 10;
 const GPU_LIVE_POINT_SUPPORT_RADIUS_PX = GPU_LIVE_POINT_SIGMA_PX * 3;
 
+interface CandidateSourceInputBuffers {
+  readonly candidateSourceInputs: GpuProjectionRetentionCandidateSourceInputs;
+  readonly candidateSourceRecordsBuffer: GPUBuffer;
+  readonly candidateSourceGroupsBuffer: GPUBuffer;
+}
+
 interface ActiveSplatScene {
   attributes: SplatAttributes;
   buffers: SplatGpuBuffers;
@@ -215,7 +225,10 @@ interface TileLocalSceneState {
   tileBuildCountBuffer: GPUBuffer;
   tileScatterCursorBuffer: GPUBuffer;
   alphaParamBuffer: GPUBuffer;
+  candidateSourceRecordsBuffer: GPUBuffer;
+  candidateSourceGroupsBuffer: GPUBuffer;
   alphaParamData: Float32Array;
+  candidateSourceInputs: GpuProjectionRetentionCandidateSourceInputs;
   sourceViewDepths: Float32Array;
   sourceOpacities: Float32Array;
   tileRefShapeParams: Float32Array;
@@ -292,6 +305,9 @@ interface WgslProjectedRefStreamState {
   readonly tileCoverageWeightBuffer: GPUBuffer;
   readonly tileScatterCursorBuffer: GPUBuffer;
   readonly alphaParamBuffer: GPUBuffer;
+  readonly candidateSourceRecordsBuffer: GPUBuffer;
+  readonly candidateSourceGroupsBuffer: GPUBuffer;
+  readonly candidateSourceInputs: GpuProjectionRetentionCandidateSourceInputs;
   readonly compactSourceProjectedRefs: number;
   readonly compactSourceRetainedRefs: number;
   readonly sourceSplatCount: number;
@@ -577,7 +593,8 @@ interface RetainedSourceConstructionEvidence {
   readonly gpuReadyStages: readonly string[];
   readonly nextGpuOffloadStage:
     | "wgsl-projected-ref-stream"
-    | "production-candidate-source-pool-identity";
+    | "production-candidate-source-pool-identity"
+    | "production-candidate-source-election-consumption";
   readonly accountingSource?: "cpu-compact-source" | "gpu-ref-stats-readback-pending" | "gpu-ref-stats-readback-present" | "gpu-ref-stats-readback-blocked";
   readonly frontierBlockedStages?: readonly string[];
   readonly projectedRefs: number;
@@ -590,10 +607,14 @@ interface RetainedSourceConstructionEvidence {
 }
 
 interface SourceFrontierCandidateSourceIdentityEvidence {
-  readonly status: "blocked-missing-wgsl-candidate-source-inputs";
+  readonly status: "blocked-missing-wgsl-candidate-source-inputs" | "present-not-consumed";
   readonly source: "wgsl-source-frontier-candidate-source-identity-contract";
-  readonly availableIdentity: "selected-slot-pool-only";
+  readonly availableIdentity: "selected-slot-pool-only" | "class-tagged-wgsl-candidate-source-inputs";
   readonly requiredWgslInputs: readonly string[];
+  readonly presentWgslInputs?: readonly string[];
+  readonly recordCount?: number;
+  readonly groupCount?: number;
+  readonly classesPresent?: readonly string[];
   readonly falseClosureGuard: "bounded-pool-seats-are-not-production-candidate-source-identity";
 }
 
@@ -1662,6 +1683,7 @@ function createGpuArenaTileLocalSceneState(
   const wgslProjectedRefStream = wgslProjectedRefStreamResult.state;
   const alphaParamData = new Float32Array(Math.max(plan.alphaParamBytes / Float32Array.BYTES_PER_ELEMENT, 8));
   alphaParamData.set(legacyProjection.alphaParamData.slice(0, alphaParamData.length));
+  const candidateSourceBuffers = createCandidateSourceInputBuffers(device, undefined, "gpu_arena_legacy");
   const bindGroup = pipeline.createBindGroup({
     frameUniformBuffer,
     positionBuffer: buffers.positionBuffer,
@@ -1674,6 +1696,8 @@ function createGpuArenaTileLocalSceneState(
     tileCoverageWeightBuffer: gpuArenaRuntime.buffers.legacyTileCoverageWeightBuffer,
     tileScatterCursorBuffer,
     alphaParamBuffer: gpuArenaRuntime.buffers.legacyAlphaParamBuffer,
+    candidateSourceRecordsBuffer: candidateSourceBuffers.candidateSourceRecordsBuffer,
+    candidateSourceGroupsBuffer: candidateSourceBuffers.candidateSourceGroupsBuffer,
     outputColorView: outputView,
   });
   const retentionAudit = estimatedGpuLiveRetentionAudit(compactSource.tileRefCustody, plan.tileCount);
@@ -1714,7 +1738,10 @@ function createGpuArenaTileLocalSceneState(
     tileBuildCountBuffer,
     tileScatterCursorBuffer,
     alphaParamBuffer: gpuArenaRuntime.buffers.legacyAlphaParamBuffer,
+    candidateSourceRecordsBuffer: candidateSourceBuffers.candidateSourceRecordsBuffer,
+    candidateSourceGroupsBuffer: candidateSourceBuffers.candidateSourceGroupsBuffer,
     alphaParamData,
+    candidateSourceInputs: candidateSourceBuffers.candidateSourceInputs,
     sourceViewDepths: sourceDepthEvidence.depths,
     sourceOpacities: effectiveOpacities,
     tileRefShapeParams: legacyProjection.tileRefShapeParams,
@@ -1866,6 +1893,29 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     "tile_local_output"
   );
   const outputView = outputTexture.createView();
+  const compactSourceConstruction = buildWgslProjectedSourceFrontierCompactSourceConstruction(
+    frontierSource,
+    plan
+  );
+  const compactSource = compactRetainedSourceForWgslProjectedSourceFrontier(
+    frontierSource,
+    compactSourceConstruction,
+    plan
+  );
+  const candidateSources = timeOptionalFrameStage(frameTiming, "wgsl-source-frontier-pack-candidate-source-inputs", () =>
+    buildWgslSourceFrontierCandidateSources({
+      frontierSource,
+      attributes,
+      effectiveOpacities,
+      viewMatrix,
+      viewportWidth,
+      viewportHeight,
+      tileSizePx,
+      tileColumns,
+      maxRefsPerTile: gpuLiveEffectiveRefsPerTile(plan),
+    })
+  );
+  const candidateSourceBuffers = createCandidateSourceInputBuffers(device, candidateSources, "wgsl_source_frontier");
   const bindGroup = pipeline.createBindGroup({
     frameUniformBuffer,
     positionBuffer: buffers.positionBuffer,
@@ -1878,17 +1928,10 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     tileCoverageWeightBuffer,
     tileScatterCursorBuffer,
     alphaParamBuffer,
+    candidateSourceRecordsBuffer: candidateSourceBuffers.candidateSourceRecordsBuffer,
+    candidateSourceGroupsBuffer: candidateSourceBuffers.candidateSourceGroupsBuffer,
     outputColorView: outputView,
   });
-  const compactSourceConstruction = buildWgslProjectedSourceFrontierCompactSourceConstruction(
-    frontierSource,
-    plan
-  );
-  const compactSource = compactRetainedSourceForWgslProjectedSourceFrontier(
-    frontierSource,
-    compactSourceConstruction,
-    plan
-  );
   const tileRefCustody = compactSource.tileRefCustody;
   const retentionAudit = estimatedGpuLiveRetentionAudit(tileRefCustody, plan.tileCount);
   const budgetDiagnostics = compactRetainedSourceBudgetDiagnostics(plan, compactSource);
@@ -1909,7 +1952,11 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     alphaParamData,
     sourceOpacities: effectiveOpacities,
   });
-  const retainedSourceConstruction = buildWgslProjectedSourceFrontierConstructionEvidence(frontierSource, plan);
+  const retainedSourceConstruction = buildWgslProjectedSourceFrontierConstructionEvidence(
+    frontierSource,
+    plan,
+    candidateSourceBuffers.candidateSourceInputs,
+  );
   const wgslProjectedRefStreamEvidence = buildWgslProjectedRefStreamEvidence(compactSource, null);
 
   return {
@@ -1930,7 +1977,10 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     tileBuildCountBuffer,
     tileScatterCursorBuffer,
     alphaParamBuffer,
+    candidateSourceRecordsBuffer: candidateSourceBuffers.candidateSourceRecordsBuffer,
+    candidateSourceGroupsBuffer: candidateSourceBuffers.candidateSourceGroupsBuffer,
     alphaParamData,
+    candidateSourceInputs: candidateSourceBuffers.candidateSourceInputs,
     sourceViewDepths: sourceDepthEvidence.depths,
     sourceOpacities: effectiveOpacities,
     tileRefShapeParams,
@@ -2045,6 +2095,99 @@ function compactRetainedSourceForWgslProjectedSourceFrontier(
   };
 }
 
+function buildWgslSourceFrontierCandidateSources({
+  frontierSource,
+  attributes,
+  effectiveOpacities,
+  viewMatrix,
+  viewportWidth,
+  viewportHeight,
+  tileSizePx,
+  tileColumns,
+  maxRefsPerTile,
+}: {
+  readonly frontierSource: WgslProjectedSourceFrontierSource;
+  readonly attributes: SplatAttributes;
+  readonly effectiveOpacities: Float32Array;
+  readonly viewMatrix: Float32Array;
+  readonly viewportWidth: number;
+  readonly viewportHeight: number;
+  readonly tileSizePx: number;
+  readonly tileColumns: number;
+  readonly maxRefsPerTile: number;
+}): GpuProjectionRetentionCandidateSources {
+  const buckets = new Map<number, CompactStreamingTileBucket>();
+  const { ranks, depths } = compactSourceBackToFrontDepthEvidence(attributes, viewMatrix);
+  const splatsByIndex = new Map(frontierSource.splats.map((splat) => [splat.splatIndex, splat]));
+  let projectedIndex = 0;
+
+  streamCompactProjectedTileRefs({
+    splats: frontierSource.splats,
+    viewportWidth,
+    viewportHeight,
+    tileSizePx,
+    tileColumns,
+    samplesPerAxis: TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES,
+    maxTilesPerSplat: frontierSource.maxTilesPerSplat,
+    onEntry({ splat, tileIndex, tileX, tileY, coverageWeight, localSupportWeight }) {
+      const record = compactCoverageEntryToRuntimeContributor({
+        entry: {
+          tileIndex,
+          tileX,
+          tileY,
+          splatIndex: splat.splatIndex,
+          originalId: splat.originalId,
+          coverageWeight,
+          localSupportWeight,
+        },
+        projectedIndex,
+        splatsByIndex,
+        ranks,
+        depths,
+        attributes,
+        effectiveOpacities,
+      });
+      projectedIndex += 1;
+
+      const bucket = compactStreamingTileBucket(buckets, tileIndex);
+      compactRetainTopRecord(bucket.coverageRecords, record, maxRefsPerTile, compareCompactProjectionRetentionCoverageOrder);
+      compactRetainTopRecord(bucket.retentionRecords, record, Math.max(1, Math.floor(maxRefsPerTile / 2)), compareCompactProjectionRetentionPriority);
+      compactRetainTopRecord(bucket.occlusionRecords, record, Math.max(1, Math.floor(maxRefsPerTile / 2)), compareCompactProjectionOcclusionPriority);
+      compactRetainSupportSampleRecords({
+        bucket,
+        record,
+        tileMinX: tileX * tileSizePx,
+        tileMinY: tileY * tileSizePx,
+        tileMaxX: Math.min(viewportWidth, (tileX + 1) * tileSizePx),
+        tileMaxY: Math.min(viewportHeight, (tileY + 1) * tileSizePx),
+        maxRefsPerTile,
+      });
+    },
+  });
+
+  const coverageRecords: GpuTileContributorArenaProjectedContributor[] = [];
+  const retentionRecords: GpuTileContributorArenaProjectedContributor[] = [];
+  const occlusionRecords: GpuTileContributorArenaProjectedContributor[] = [];
+  const supportSampleRecords: GpuTileContributorArenaProjectedContributor[] = [];
+  const supportSampleRecordGroups: (readonly GpuTileContributorArenaProjectedContributor[])[] = [];
+
+  for (const bucket of buckets.values()) {
+    coverageRecords.push(...bucket.coverageRecords.records);
+    retentionRecords.push(...bucket.retentionRecords.records);
+    occlusionRecords.push(...bucket.occlusionRecords.records);
+    supportSampleRecords.push(...compactSupportSampleCandidateRecords(bucket));
+    supportSampleRecordGroups.push(...compactSupportSampleCandidateRecordGroups(bucket));
+  }
+
+  return {
+    coverageRecords,
+    retentionRecords,
+    occlusionRecords,
+    supportSampleRecords,
+    supportSampleRecordGroups,
+  };
+}
+
 function createWgslProjectedRefStreamState({
   device,
   pipeline,
@@ -2111,6 +2254,7 @@ function createWgslProjectedRefStreamState({
     "wgsl_projected_ref_stream_scatter_cursors"
   );
   const alphaParamBuffer = createEmptyStorageBuffer(device, plan.alphaParamBytes, "wgsl_projected_ref_stream_alpha_params");
+  const candidateSourceBuffers = createCandidateSourceInputBuffers(device, undefined, "wgsl_projected_ref_stream");
   const bindGroup = pipeline.createBindGroup({
     frameUniformBuffer,
     positionBuffer: buffers.positionBuffer,
@@ -2123,6 +2267,8 @@ function createWgslProjectedRefStreamState({
     tileCoverageWeightBuffer,
     tileScatterCursorBuffer,
     alphaParamBuffer,
+    candidateSourceRecordsBuffer: candidateSourceBuffers.candidateSourceRecordsBuffer,
+    candidateSourceGroupsBuffer: candidateSourceBuffers.candidateSourceGroupsBuffer,
     outputColorView: outputView,
   });
   return {
@@ -2139,6 +2285,9 @@ function createWgslProjectedRefStreamState({
       tileCoverageWeightBuffer,
       tileScatterCursorBuffer,
       alphaParamBuffer,
+      candidateSourceRecordsBuffer: candidateSourceBuffers.candidateSourceRecordsBuffer,
+      candidateSourceGroupsBuffer: candidateSourceBuffers.candidateSourceGroupsBuffer,
+      candidateSourceInputs: candidateSourceBuffers.candidateSourceInputs,
       compactSourceProjectedRefs: compactSource.projectedContributorCount,
       compactSourceRetainedRefs: compactSource.retainedContributorCount,
       sourceSplatCount: compactSource.candidateSplatIndexes.length,
@@ -2669,6 +2818,7 @@ function buildGpuArenaRetainedSourceConstructionEvidence(
 function buildWgslProjectedSourceFrontierConstructionEvidence(
   frontierSource: WgslProjectedSourceFrontierSource,
   plan: GpuTileCoveragePlan,
+  candidateSourceInputs: GpuProjectionRetentionCandidateSourceInputs,
 ): RetainedSourceConstructionEvidence {
   const compactSourceStreamRetentionBlockedStage = "compact-source-stream-retention";
   return {
@@ -2681,6 +2831,7 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
     cpuOwnedStages: [
       "wgsl-source-frontier-project-splats",
       "wgsl-source-frontier-estimate-ref-budget",
+      "wgsl-source-frontier-pack-candidate-source-inputs",
     ],
     gpuReadyStages: [
       "wgsl-projected-ref-stream-source-table",
@@ -2689,11 +2840,12 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
       "wgsl-source-frontier-production-weighted-retention-score",
       "wgsl-source-frontier-occlusion-density-retention-score",
       "wgsl-source-frontier-bounded-pool-seat-election",
+      "wgsl-source-frontier-candidate-source-input-buffers",
       "wgsl-source-frontier-depth-bucket-compositor-order",
       "wgsl-source-frontier-retained-row-prefix-scatter",
       "tile-local-visible-gaussian-compositor",
     ],
-    nextGpuOffloadStage: "production-candidate-source-pool-identity",
+    nextGpuOffloadStage: "production-candidate-source-election-consumption",
     accountingSource: "gpu-ref-stats-readback-pending",
     projectedRefs: frontierSource.projectedRefEstimate,
     retainedRefs: 0,
@@ -2701,16 +2853,36 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
     retainedBudgetRefs: plan.maxTileRefs,
     maxRefsPerTile: gpuLiveEffectiveRefsPerTile(plan),
     retainedRows: pendingWgslSourceFrontierRetainedRowsEvidence(plan),
-    candidateSourceIdentity: sourceFrontierCandidateSourceIdentityEvidence(),
+    candidateSourceIdentity: sourceFrontierCandidateSourceIdentityEvidence(candidateSourceInputs),
     frontierBlockedStages: [
       compactSourceStreamRetentionBlockedStage,
       "compact-source-pixel-traces",
-      "production-candidate-source-pool-identity",
+      "production-candidate-source-election-consumption",
     ],
   };
 }
 
-function sourceFrontierCandidateSourceIdentityEvidence(): SourceFrontierCandidateSourceIdentityEvidence {
+function sourceFrontierCandidateSourceIdentityEvidence(
+  candidateSourceInputs?: GpuProjectionRetentionCandidateSourceInputs,
+): SourceFrontierCandidateSourceIdentityEvidence {
+  if (candidateSourceInputs && candidateSourceInputs.recordCount > 0) {
+    return {
+      status: "present-not-consumed",
+      source: "wgsl-source-frontier-candidate-source-identity-contract",
+      availableIdentity: "class-tagged-wgsl-candidate-source-inputs",
+      requiredWgslInputs: [],
+      presentWgslInputs: [
+        "retention-candidate-records",
+        "occlusion-candidate-records",
+        "coverage-candidate-records",
+        "support-sample-record-groups",
+      ],
+      recordCount: candidateSourceInputs.recordCount,
+      groupCount: candidateSourceInputs.groupCount,
+      classesPresent: candidateSourceInputs.classesPresent,
+      falseClosureGuard: "bounded-pool-seats-are-not-production-candidate-source-identity",
+    };
+  }
   return {
     status: "blocked-missing-wgsl-candidate-source-inputs",
     source: "wgsl-source-frontier-candidate-source-identity-contract",
@@ -2963,7 +3135,7 @@ function refreshWgslSourceFrontierRetainedRowsEvidence(
     state.retainedSourceConstruction = {
       ...retainedSourceConstruction,
       retainedRows: retainedRowsReadback,
-      nextGpuOffloadStage: "production-candidate-source-pool-identity",
+      nextGpuOffloadStage: "production-candidate-source-election-consumption",
     };
     return;
   }
@@ -2974,7 +3146,7 @@ function refreshWgslSourceFrontierRetainedRowsEvidence(
     droppedRefs: retainedRowsReadback.droppedRows,
     retainedBudgetRefs: retainedRowsReadback.retainedBudgetRefs,
     maxRefsPerTile: retainedRowsReadback.maxRefsPerTile,
-    nextGpuOffloadStage: "production-candidate-source-pool-identity",
+    nextGpuOffloadStage: "production-candidate-source-election-consumption",
   };
 }
 
@@ -4895,6 +5067,7 @@ function createCpuTileLocalSceneState(
     "tile_local_output"
   );
   const outputView = outputTexture.createView();
+  const candidateSourceBuffers = createCandidateSourceInputBuffers(device, undefined, "tile_local_legacy");
 
   const bindGroup = pipeline.createBindGroup({
     frameUniformBuffer,
@@ -4908,6 +5081,8 @@ function createCpuTileLocalSceneState(
     tileCoverageWeightBuffer: bridgeBuffers.tileCoverageWeightBuffer,
     tileScatterCursorBuffer,
     alphaParamBuffer,
+    candidateSourceRecordsBuffer: candidateSourceBuffers.candidateSourceRecordsBuffer,
+    candidateSourceGroupsBuffer: candidateSourceBuffers.candidateSourceGroupsBuffer,
     outputColorView: outputView,
   });
 
@@ -4929,7 +5104,10 @@ function createCpuTileLocalSceneState(
     tileBuildCountBuffer,
     tileScatterCursorBuffer,
     alphaParamBuffer,
+    candidateSourceRecordsBuffer: candidateSourceBuffers.candidateSourceRecordsBuffer,
+    candidateSourceGroupsBuffer: candidateSourceBuffers.candidateSourceGroupsBuffer,
     alphaParamData,
+    candidateSourceInputs: candidateSourceBuffers.candidateSourceInputs,
     sourceViewDepths: sourceDepthEvidence.depths,
     sourceOpacities: effectiveOpacities,
     tileRefShapeParams: legacyProjection?.tileRefShapeParams ?? bridge.tileRefShapeParams,
@@ -6105,6 +6283,40 @@ function createEmptyStorageBuffer(device: GPUDevice, size: number, label: string
   });
 }
 
+function createCandidateSourceInputBuffers(
+  device: GPUDevice,
+  candidateSources: GpuProjectionRetentionCandidateSources | undefined,
+  labelPrefix: string,
+): CandidateSourceInputBuffers {
+  const candidateSourceInputs = buildGpuProjectionRetentionCandidateSourceInputs(candidateSources);
+  const bufferBlocker = gpuProjectionRetentionCandidateSourceBufferUnavailableReason(
+    candidateSourceInputs,
+    device.limits.maxStorageBufferBindingSize,
+  );
+  if (bufferBlocker) {
+    throw new Error(bufferBlocker);
+  }
+  return {
+    candidateSourceInputs,
+    candidateSourceRecordsBuffer: createInitializedReadableStorageBuffer(
+      device,
+      gpuBufferSourceFromU32(candidateSourceInputs.recordU32),
+      `${labelPrefix}_candidate_source_records`,
+    ),
+    candidateSourceGroupsBuffer: createInitializedReadableStorageBuffer(
+      device,
+      gpuBufferSourceFromU32(candidateSourceInputs.groupU32),
+      `${labelPrefix}_candidate_source_groups`,
+    ),
+  };
+}
+
+function gpuBufferSourceFromU32(data: Uint32Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(data.byteLength);
+  new Uint32Array(buffer).set(data);
+  return buffer;
+}
+
 function createTileHeaderStorageBuffer(
   device: GPUDevice,
   plan: GpuTileCoveragePlan,
@@ -6539,6 +6751,8 @@ function destroyTileLocalSceneState(state: TileLocalSceneState): void {
     state.tileCoverageWeightBuffer.destroy();
     state.alphaParamBuffer.destroy();
   }
+  state.candidateSourceRecordsBuffer.destroy();
+  state.candidateSourceGroupsBuffer.destroy();
   if (state.wgslProjectedRefStream) {
     if (state.wgslProjectedRefStream.pendingReadback) {
       state.wgslProjectedRefStream.pendingReadback.cancelled = true;
@@ -6554,6 +6768,8 @@ function destroyTileLocalSceneState(state: TileLocalSceneState): void {
     state.wgslProjectedRefStream.tileCoverageWeightBuffer.destroy();
     state.wgslProjectedRefStream.tileScatterCursorBuffer.destroy();
     state.wgslProjectedRefStream.alphaParamBuffer.destroy();
+    state.wgslProjectedRefStream.candidateSourceRecordsBuffer.destroy();
+    state.wgslProjectedRefStream.candidateSourceGroupsBuffer.destroy();
   }
   state.tileBuildCountBuffer.destroy();
   state.tileScatterCursorBuffer.destroy();
