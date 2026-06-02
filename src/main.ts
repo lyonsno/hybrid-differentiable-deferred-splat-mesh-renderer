@@ -470,7 +470,7 @@ interface PendingTileLocalCompositorInputReadback {
 
 interface TileLocalRefStatsReadback {
   readonly status: "pending" | "present" | "blocked";
-  readonly source: "gpu-scatter-cursor-readback";
+  readonly source: "gpu-tile-header-and-scatter-readback";
   readonly frameId: number;
   readonly tileCount: number;
   readonly tileCapacity: number;
@@ -489,7 +489,8 @@ interface PendingTileLocalRefStatsReadback {
   readonly tileCount: number;
   readonly tileCapacity: number;
   readonly allocatedRefs: number;
-  readonly buffer: GPUBuffer;
+  readonly tileHeaderBuffer: GPUBuffer;
+  readonly tileScatterCursorBuffer: GPUBuffer;
   mapStarted: boolean;
   cancelled: boolean;
 }
@@ -587,9 +588,11 @@ interface RetainedSourceConstructionEvidence {
 
 interface SourceFrontierRetainedRowsEvidence {
   readonly status: "pending" | "present" | "blocked";
-  readonly source: "gpu-compositor-input-readback";
+  readonly source: "gpu-compositor-input-readback" | "gpu-ref-stats-readback";
   readonly payloadEncoding: "source-frontier-score";
-  readonly falseClosureGuard: "source-frontier-retained-row-readback-is-not-production-gpu-prefix-scatter";
+  readonly falseClosureGuard:
+    | "source-frontier-retained-row-readback-is-not-production-gpu-prefix-scatter"
+    | "source-frontier-ref-stats-readback-is-row-accounting-not-payload-readback";
   readonly rowFields: readonly string[];
   readonly tileCount: number;
   readonly retainedBudgetRefs: number;
@@ -1332,7 +1335,7 @@ async function main() {
       const overlayRefStatsReadback = overlayTileLocalRefStatsReadback(scene.tileLocalState, runtimeWindow.__MESH_SPLAT_SMOKE__);
       const refAccounting = tileLocalRefAccounting(scene.tileLocalState, scene.tileLocalState.diagnostics, overlayRefStatsReadback);
       statsText += ` | tile-local: ${scene.tileLocalState.plan.tileColumns}x${scene.tileLocalState.plan.tileRows} tiles/${refAccounting.retainedRefs} refs`;
-      if (refAccounting.source === "gpu-scatter-cursor-readback") {
+      if (refAccounting.source === "gpu-tile-header-and-scatter-readback") {
         statsText += ` | tile-local live refs: ${refAccounting.source}`;
       }
       const budgetText = formatTileLocalBudgetLabel(tileLocalBudgetEvidence(scene.tileLocalLastSkipReason, width, height));
@@ -2744,7 +2747,7 @@ function sourceFrontierCompositorReadLimit({
     return headerRefCount;
   }
   if (gpuScatterCount > 0) {
-    return tileCapacity;
+    return Math.min(gpuScatterCount, tileCapacity);
   }
   return 0;
 }
@@ -2838,6 +2841,31 @@ function summarizeWgslSourceFrontierRetainedRowsFromCompositorInputReadback({
   };
 }
 
+function sourceFrontierRetainedRowsFromRefStatsReadback(
+  readback: TileLocalRefStatsReadback,
+): SourceFrontierRetainedRowsEvidence {
+  return {
+    status: readback.status,
+    source: "gpu-ref-stats-readback",
+    payloadEncoding: "source-frontier-score",
+    falseClosureGuard: "source-frontier-ref-stats-readback-is-row-accounting-not-payload-readback",
+    rowFields: [],
+    frameId: readback.frameId,
+    tileCount: readback.tileCount,
+    retainedBudgetRefs: readback.allocatedRefs,
+    maxRefsPerTile: readback.tileCapacity,
+    projectedRows: readback.status === "present" ? readback.projectedScatterRefs : 0,
+    retainedRows: readback.status === "present" ? readback.retainedRefs : 0,
+    droppedRows: readback.status === "present" ? readback.droppedRefs : 0,
+    nonEmptyTiles: readback.status === "present" ? readback.nonEmptyTiles : 0,
+    saturatedTiles: readback.status === "present" ? readback.saturatedTiles : 0,
+    maxRowsPerTile: readback.status === "present" ? readback.maxRefsPerTile : 0,
+    scorePackedRows: 0,
+    maxRetentionScore: 0,
+    blockedReason: readback.blockedReason,
+  };
+}
+
 function sourceFrontierRetainedRowFields(): readonly string[] {
   return [
     "splatIndex",
@@ -2885,6 +2913,7 @@ function refreshWgslSourceFrontierRetainedSourceConstructionEvidence(
     droppedRefs: readback.droppedRefs,
     retainedBudgetRefs: readback.allocatedRefs,
     maxRefsPerTile: readback.tileCapacity,
+    retainedRows: sourceFrontierRetainedRowsFromRefStatsReadback(readback),
   };
 }
 
@@ -5102,6 +5131,7 @@ function resolveTileLocalCompositorInputReadback(state: TileLocalSceneState): vo
           tileCapacity: gpuLiveEffectiveRefsPerTile(pending.plan),
           allocatedRefs: pending.plan.maxTileRefs,
         },
+        tileHeaders,
         tileScatterCursors
       );
       const retainedRowsReadback = pending.tileRefPayloadEncoding === "source-frontier-score"
@@ -5287,21 +5317,24 @@ function enqueueTileLocalRefStatsReadback(
   const tileCapacity = state.gpuArenaRuntime
     ? TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE
     : gpuLiveEffectiveRefsPerTile(state.plan);
+  const tileHeaderBuffer = createReadbackBuffer(device, state.plan.tileHeaderBytes, "tile_local_live_ref_stats_tile_headers_readback");
   const scatterCursorBytes = Math.max(16, state.plan.tileCount * Uint32Array.BYTES_PER_ELEMENT);
-  const buffer = createReadbackBuffer(device, scatterCursorBytes, "tile_local_live_ref_stats_scatter_cursors_readback");
-  encoder.copyBufferToBuffer(tileLocalRefStatsReadbackSourceBuffer(state), 0, buffer, 0, scatterCursorBytes);
+  const tileScatterCursorBuffer = createReadbackBuffer(device, scatterCursorBytes, "tile_local_live_ref_stats_scatter_cursors_readback");
+  encoder.copyBufferToBuffer(state.tileHeaderBuffer, 0, tileHeaderBuffer, 0, state.plan.tileHeaderBytes);
+  encoder.copyBufferToBuffer(tileLocalRefStatsReadbackSourceBuffer(state), 0, tileScatterCursorBuffer, 0, scatterCursorBytes);
   state.pendingRefStatsReadback = {
     frameId,
     tileCount: state.plan.tileCount,
     tileCapacity,
     allocatedRefs: state.plan.maxTileRefs,
-    buffer,
+    tileHeaderBuffer,
+    tileScatterCursorBuffer,
     mapStarted: false,
     cancelled: false,
   };
   state.refStatsReadback = {
     status: "pending",
-    source: "gpu-scatter-cursor-readback",
+    source: "gpu-tile-header-and-scatter-readback",
     frameId,
     tileCount: state.plan.tileCount,
     tileCapacity,
@@ -5325,21 +5358,27 @@ function resolveTileLocalRefStatsReadback(state: TileLocalSceneState): void {
   }
   pending.mapStarted = true;
   state.pendingRefStatsReadback = undefined;
-  void pending.buffer.mapAsync(GPUMapMode.READ)
+  void Promise.all([
+    pending.tileHeaderBuffer.mapAsync(GPUMapMode.READ),
+    pending.tileScatterCursorBuffer.mapAsync(GPUMapMode.READ),
+  ])
     .then(() => {
-      const scatterCursors = new Uint32Array(pending.buffer.getMappedRange());
-      const readback = summarizeTileLocalRefStatsReadback(pending, scatterCursors);
+      const tileHeaders = new Uint32Array(pending.tileHeaderBuffer.getMappedRange());
+      const scatterCursors = new Uint32Array(pending.tileScatterCursorBuffer.getMappedRange());
+      const readback = summarizeTileLocalRefStatsReadback(pending, tileHeaders, scatterCursors);
       if (tileLocalRefStatsReadbackCanPublish(state, pending)) {
         state.refStatsReadback = readback;
         publishTileLocalRefStatsReadback(state, readback);
       }
-      pending.buffer.unmap();
-      pending.buffer.destroy();
+      pending.tileHeaderBuffer.unmap();
+      pending.tileScatterCursorBuffer.unmap();
+      pending.tileHeaderBuffer.destroy();
+      pending.tileScatterCursorBuffer.destroy();
     })
     .catch((error) => {
       const readback: TileLocalRefStatsReadback = {
         status: "blocked",
-        source: "gpu-scatter-cursor-readback",
+        source: "gpu-tile-header-and-scatter-readback",
         frameId: pending.frameId,
         tileCount: pending.tileCount,
         tileCapacity: pending.tileCapacity,
@@ -5356,7 +5395,8 @@ function resolveTileLocalRefStatsReadback(state: TileLocalSceneState): void {
         state.refStatsReadback = readback;
         publishTileLocalRefStatsReadback(state, readback);
       }
-      pending.buffer.destroy();
+      pending.tileHeaderBuffer.destroy();
+      pending.tileScatterCursorBuffer.destroy();
     });
 }
 
@@ -5382,8 +5422,10 @@ function summarizeTileLocalRefStatsReadback(
     readonly tileCapacity: number;
     readonly allocatedRefs: number;
   },
+  tileHeaders: Uint32Array,
   scatterCursors: Uint32Array
 ): TileLocalRefStatsReadback {
+  const headerStride = GPU_TILE_COVERAGE_TILE_HEADER_BYTES / Uint32Array.BYTES_PER_ELEMENT;
   let projectedScatterRefs = 0;
   let retainedRefs = 0;
   let droppedRefs = 0;
@@ -5391,22 +5433,25 @@ function summarizeTileLocalRefStatsReadback(
   let saturatedTiles = 0;
   let maxRefsPerTile = 0;
   for (let tileIndex = 0; tileIndex < pending.tileCount; tileIndex += 1) {
+    const headerBase = tileIndex * headerStride;
     const projectedRefs = scatterCursors[tileIndex] ?? 0;
-    const tileRetainedRefs = Math.min(projectedRefs, pending.tileCapacity);
-    projectedScatterRefs += projectedRefs;
-    retainedRefs += tileRetainedRefs;
-    droppedRefs += Math.max(0, projectedRefs - pending.tileCapacity);
-    maxRefsPerTile = Math.max(maxRefsPerTile, tileRetainedRefs);
-    if (projectedRefs > 0) {
+    const headerRetainedRefs = Math.min(tileHeaders[headerBase + 1] ?? 0, pending.tileCapacity);
+    const headerProjectedRefs = tileHeaders[headerBase + 2] ?? projectedRefs;
+    const headerDroppedRefs = tileHeaders[headerBase + 3] ?? Math.max(0, headerProjectedRefs - headerRetainedRefs);
+    projectedScatterRefs += headerProjectedRefs;
+    retainedRefs += headerRetainedRefs;
+    droppedRefs += headerDroppedRefs;
+    maxRefsPerTile = Math.max(maxRefsPerTile, headerRetainedRefs);
+    if (headerProjectedRefs > 0) {
       nonEmptyTiles += 1;
     }
-    if (projectedRefs >= pending.tileCapacity) {
+    if (headerRetainedRefs >= pending.tileCapacity) {
       saturatedTiles += 1;
     }
   }
   return {
     status: "present",
-    source: "gpu-scatter-cursor-readback",
+    source: "gpu-tile-header-and-scatter-readback",
     frameId: pending.frameId,
     tileCount: pending.tileCount,
     tileCapacity: pending.tileCapacity,
@@ -5686,7 +5731,7 @@ function sameFramePublishedTileLocalRefStatsReadback(
     ? tileLocal.refStatsReadback as Partial<TileLocalRefStatsReadback>
     : undefined;
   if (
-    readback?.source === "gpu-scatter-cursor-readback" &&
+    readback?.source === "gpu-tile-header-and-scatter-readback" &&
     readback.status === "present" &&
     readback.frameId === frameId
   ) {
@@ -5707,7 +5752,7 @@ function latestPublishedTileLocalRefStatsReadback(
   const readback = tileLocal?.refStatsReadback && typeof tileLocal.refStatsReadback === "object"
     ? tileLocal.refStatsReadback as Partial<TileLocalRefStatsReadback>
     : undefined;
-  if (readback?.source === "gpu-scatter-cursor-readback" && readback.status === "present") {
+  if (readback?.source === "gpu-tile-header-and-scatter-readback" && readback.status === "present") {
     return readback as TileLocalRefStatsReadback;
   }
   return undefined;
@@ -6447,7 +6492,10 @@ function destroyTileLocalSceneState(state: TileLocalSceneState): void {
   }
   if (state.pendingRefStatsReadback) {
     state.pendingRefStatsReadback.cancelled = true;
-    state.pendingRefStatsReadback.buffer.destroy();
+    destroyReadbackBuffers([
+      state.pendingRefStatsReadback.tileHeaderBuffer,
+      state.pendingRefStatsReadback.tileScatterCursorBuffer,
+    ]);
     state.pendingRefStatsReadback = undefined;
   }
   state.frameUniformBuffer.destroy();
@@ -6808,7 +6856,7 @@ function tileLocalRefAccounting(
   if (state.arenaBackend === "gpu" && !state.gpuArenaRuntime) {
     return {
       status: state.refStatsReadback?.status ?? "pending",
-      source: "gpu-scatter-cursor-readback-pending",
+      source: "gpu-tile-header-and-scatter-readback-pending",
       retainedRefs: 0,
       allocatedRefs: state.plan.maxTileRefs,
       estimatedRetainedRefs: state.tileRefCustody.retainedTileEntryCount,

@@ -408,10 +408,10 @@ function comparePairRoutes(pair, cpu, gpu) {
 function validateDirectGpuRefSource(pair, capture) {
   const refSource = tileRefSource(capture);
   const refStatus = tileRefStatus(capture);
-  if (refSource !== "gpu-scatter-cursor-readback" || refStatus !== "present") {
+  if (refSource !== "gpu-tile-header-and-scatter-readback" || refStatus !== "present") {
     return finding(
       "gpu-live-ref-source-missing",
-      `${pair.id} ${capture.routeRole || "direct-gpu"} capture reported refs from ${refSource || "missing"} (${refStatus || "missing"}) instead of present gpu-scatter-cursor-readback.`
+      `${pair.id} ${capture.routeRole || "direct-gpu"} capture reported refs from ${refSource || "missing"} (${refStatus || "missing"}) instead of present gpu-tile-header-and-scatter-readback.`
     );
   }
   return null;
@@ -496,10 +496,10 @@ function summarizeSourceTopology({ routeRole, refSource, compactSourceConstructi
       droppedRefs: compactSourceConstruction.droppedRefs,
     });
   }
-  if (refSource === "gpu-scatter-cursor-readback") {
+  if (refSource === "gpu-tile-header-and-scatter-readback") {
     return {
       status: "underinstrumented",
-      sourceClass: "gpu-scatter-cursor-source",
+      sourceClass: "gpu-tile-header-and-scatter-source",
       routeRole,
       refSource,
       constructionStatus: compactSourceConstruction?.status ?? "missing",

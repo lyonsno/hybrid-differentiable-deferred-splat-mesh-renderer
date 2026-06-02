@@ -26,10 +26,11 @@ export interface GpuTileCoveragePipelineSkeleton {
   readonly pipelineLayout: GPUPipelineLayout;
   readonly clearTilesPipeline: GPUComputePipeline;
   readonly buildTileRefsPipeline: GPUComputePipeline;
+  readonly compactRetainedRefsPipeline: GPUComputePipeline;
   readonly compositeTilesPipeline: GPUComputePipeline;
   createBindGroup(buffers: GpuTileCoverageBuffers): GPUBindGroup;
   dispatch(pass: GPUComputePassEncoder, bindGroup: GPUBindGroup, plan: GpuTileCoveragePlan): GpuTileCoverageDispatchPlan;
-  dispatchProjectedRefStream(pass: GPUComputePassEncoder, bindGroup: GPUBindGroup, plan: GpuTileCoveragePlan): Pick<GpuTileCoverageDispatchPlan, "clearTiles" | "buildTileRefs">;
+  dispatchProjectedRefStream(pass: GPUComputePassEncoder, bindGroup: GPUBindGroup, plan: GpuTileCoveragePlan): Pick<GpuTileCoverageDispatchPlan, "clearTiles" | "buildTileRefs" | "compactRetainedRefs">;
   dispatchComposite(pass: GPUComputePassEncoder, bindGroup: GPUBindGroup, plan: GpuTileCoveragePlan): void;
 }
 
@@ -77,6 +78,7 @@ export function createGpuTileCoveragePipelineSkeleton(
   });
   const clearTilesPipeline = createComputePipeline(device, shaderModule, pipelineLayout, "clear_tiles");
   const buildTileRefsPipeline = createComputePipeline(device, shaderModule, pipelineLayout, "build_tile_refs");
+  const compactRetainedRefsPipeline = createComputePipeline(device, shaderModule, pipelineLayout, "compact_retained_refs");
   const compositeTilesPipeline = createComputePipeline(device, shaderModule, pipelineLayout, "composite_tiles");
 
   return {
@@ -84,6 +86,7 @@ export function createGpuTileCoveragePipelineSkeleton(
     pipelineLayout,
     clearTilesPipeline,
     buildTileRefsPipeline,
+    compactRetainedRefsPipeline,
     compositeTilesPipeline,
     createBindGroup(buffers: GpuTileCoverageBuffers): GPUBindGroup {
       return device.createBindGroup({
@@ -109,16 +112,19 @@ export function createGpuTileCoveragePipelineSkeleton(
       const dispatchPlan = getGpuTileCoverageDispatchPlan(plan);
       dispatchStage(pass, clearTilesPipeline, bindGroup, dispatchPlan.clearTiles);
       dispatchStage(pass, buildTileRefsPipeline, bindGroup, dispatchPlan.buildTileRefs);
+      dispatchStage(pass, compactRetainedRefsPipeline, bindGroup, dispatchPlan.compactRetainedRefs);
       dispatchStage(pass, compositeTilesPipeline, bindGroup, dispatchPlan.compositeTiles);
       return dispatchPlan;
     },
-    dispatchProjectedRefStream(pass: GPUComputePassEncoder, bindGroup: GPUBindGroup, plan: GpuTileCoveragePlan): Pick<GpuTileCoverageDispatchPlan, "clearTiles" | "buildTileRefs"> {
+    dispatchProjectedRefStream(pass: GPUComputePassEncoder, bindGroup: GPUBindGroup, plan: GpuTileCoveragePlan): Pick<GpuTileCoverageDispatchPlan, "clearTiles" | "buildTileRefs" | "compactRetainedRefs"> {
       const dispatchPlan = getGpuTileCoverageDispatchPlan(plan);
       dispatchStage(pass, clearTilesPipeline, bindGroup, dispatchPlan.clearTiles);
       dispatchStage(pass, buildTileRefsPipeline, bindGroup, dispatchPlan.buildTileRefs);
+      dispatchStage(pass, compactRetainedRefsPipeline, bindGroup, dispatchPlan.compactRetainedRefs);
       return {
         clearTiles: dispatchPlan.clearTiles,
         buildTileRefs: dispatchPlan.buildTileRefs,
+        compactRetainedRefs: dispatchPlan.compactRetainedRefs,
       };
     },
     dispatchComposite(pass: GPUComputePassEncoder, bindGroup: GPUBindGroup, plan: GpuTileCoveragePlan): void {

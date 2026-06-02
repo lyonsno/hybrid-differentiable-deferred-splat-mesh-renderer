@@ -108,6 +108,7 @@ test("GPU tile coverage dispatch plan separates bounds, list construction, and t
   assert.deepEqual(dispatch, {
     clearTiles: { x: Math.ceil(plan.tileCount / GPU_TILE_COVERAGE_WORKGROUP_SIZE), y: 1, z: 1 },
     buildTileRefs: { x: 2, y: 1, z: 1 },
+    compactRetainedRefs: { x: Math.ceil(plan.tileCount / GPU_TILE_COVERAGE_WORKGROUP_SIZE), y: 1, z: 1 },
     compositeTiles: {
       x: Math.ceil(plan.viewportWidth / GPU_TILE_COVERAGE_COMPOSITE_WORKGROUP_WIDTH),
       y: Math.ceil(plan.viewportHeight / GPU_TILE_COVERAGE_COMPOSITE_WORKGROUP_HEIGHT),

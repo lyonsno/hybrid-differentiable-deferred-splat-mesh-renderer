@@ -125,6 +125,7 @@ export interface GpuTileCoverageDispatch {
 export interface GpuTileCoverageDispatchPlan {
   readonly clearTiles: GpuTileCoverageDispatch;
   readonly buildTileRefs: GpuTileCoverageDispatch;
+  readonly compactRetainedRefs: GpuTileCoverageDispatch;
   readonly compositeTiles: GpuTileCoverageDispatch;
 }
 
@@ -476,6 +477,7 @@ export function getGpuTileCoverageDispatchPlan(plan: GpuTileCoveragePlan): GpuTi
   return {
     clearTiles: linearDispatch(plan.tileCount),
     buildTileRefs: linearDispatch(plan.sourceSplatCount),
+    compactRetainedRefs: linearDispatch(plan.tileCount),
     compositeTiles: {
       x: Math.ceil(plan.viewportWidth / GPU_TILE_COVERAGE_COMPOSITE_WORKGROUP_WIDTH),
       y: Math.ceil(plan.viewportHeight / GPU_TILE_COVERAGE_COMPOSITE_WORKGROUP_HEIGHT),

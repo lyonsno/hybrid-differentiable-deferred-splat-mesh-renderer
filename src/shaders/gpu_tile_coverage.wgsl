@@ -83,6 +83,38 @@ fn clear_tile_ref(refIndex: u32, tileId: u32) {
   atomicStore(&tileRefs[tile_ref_word_index(refIndex, 3u)], refIndex);
 }
 
+fn retained_ref_is_live(refIndex: u32) -> bool {
+  let splatId = atomicLoad(&tileRefs[tile_ref_word_index(refIndex, 0u)]);
+  let retentionScore = atomicLoad(&tileRefs[tile_ref_word_index(refIndex, 1u)]) & RETENTION_SCORE_VALUE_MASK;
+  let tileCoverageWeight = tileCoverageWeights[refIndex];
+  return splatId < frame.splatCount && (retentionScore > 0u || tileCoverageWeight > 0.0);
+}
+
+fn copy_retained_ref_payload(sourceRefIndex: u32, compactRefIndex: u32) {
+  if (sourceRefIndex == compactRefIndex) {
+    return;
+  }
+  atomicStore(
+    &tileRefs[tile_ref_word_index(compactRefIndex, 0u)],
+    atomicLoad(&tileRefs[tile_ref_word_index(sourceRefIndex, 0u)])
+  );
+  atomicStore(
+    &tileRefs[tile_ref_word_index(compactRefIndex, 1u)],
+    atomicLoad(&tileRefs[tile_ref_word_index(sourceRefIndex, 1u)])
+  );
+  atomicStore(
+    &tileRefs[tile_ref_word_index(compactRefIndex, 2u)],
+    atomicLoad(&tileRefs[tile_ref_word_index(sourceRefIndex, 2u)])
+  );
+  atomicStore(
+    &tileRefs[tile_ref_word_index(compactRefIndex, 3u)],
+    compactRefIndex
+  );
+  tileCoverageWeights[compactRefIndex] = tileCoverageWeights[sourceRefIndex];
+  alphaParams[compactRefIndex] = alphaParams[sourceRefIndex];
+  alphaParams[compactRefIndex + frame.maxTileRefs] = alphaParams[sourceRefIndex + frame.maxTileRefs];
+}
+
 fn projected_center_px(splatId: u32) -> vec2f {
   let positionBase = splatId * 3u;
   let center = vec3f(positions[positionBase], positions[positionBase + 1u], positions[positionBase + 2u]);
@@ -259,7 +291,7 @@ fn source_frontier_compositor_ref_limit(headerRefCount: u32, gpuScatterCount: u3
     return headerRefCount;
   }
   if (gpuScatterCount > 0u) {
-    return tileCapacity;
+    return min(gpuScatterCount, tileCapacity);
   }
   return 0u;
 }
@@ -499,6 +531,49 @@ fn debug_heatmap_color(
       );
     }
   }
+}
+
+@compute @workgroup_size(64) fn compact_retained_refs(@builtin(global_invocation_id) globalId: vec3u) {
+  let tileId = globalId.x;
+  let tileCount = frame.tileGrid.x * frame.tileGrid.y;
+  if (tileId >= tileCount) {
+    return;
+  }
+
+  let tileCapacity = tile_ref_capacity_per_tile();
+  let firstRefIndex = tileId * tileCapacity;
+  let projectedCount = atomicLoad(&tileScatterCursors[tileId]);
+  var retainedCount = 0u;
+
+  for (var slot = 0u; slot < tileCapacity; slot = slot + 1u) {
+    let sourceRefIndex = firstRefIndex + slot;
+    if (sourceRefIndex >= frame.maxTileRefs) {
+      break;
+    }
+    if (retained_ref_is_live(sourceRefIndex)) {
+      let compactRefIndex = firstRefIndex + retainedCount;
+      copy_retained_ref_payload(sourceRefIndex, compactRefIndex);
+      retainedCount = retainedCount + 1u;
+    }
+  }
+
+  for (var slot = retainedCount; slot < tileCapacity; slot = slot + 1u) {
+    let refIndex = firstRefIndex + slot;
+    if (refIndex >= frame.maxTileRefs) {
+      break;
+    }
+    clear_tile_ref(refIndex, tileId);
+    tileCoverageWeights[refIndex] = 0.0;
+    alphaParams[refIndex] = vec4f(0.0, 0.0, 0.0, 0.0);
+    alphaParams[refIndex + frame.maxTileRefs] = vec4f(0.0, 0.0, 0.0, 0.0);
+  }
+
+  tileHeaders[tileId] = vec4u(
+    firstRefIndex,
+    retainedCount,
+    projectedCount,
+    projectedCount - min(projectedCount, retainedCount)
+  );
 }
 
 @compute @workgroup_size(8, 8, 1) fn composite_tiles(@builtin(global_invocation_id) globalId: vec3u) {

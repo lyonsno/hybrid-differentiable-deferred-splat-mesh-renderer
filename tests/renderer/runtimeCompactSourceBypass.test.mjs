@@ -329,6 +329,7 @@ test("WGSL projected-ref stream consumes compact source candidates and footprint
 test("WGSL projected source-frontier route skips CPU streaming retention and visibly owns source construction", () => {
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const shaderSource = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
+  const coverageRendererSource = readFileSync(new URL("../../src/gpuTileCoverageRenderer.ts", import.meta.url), "utf8");
   const renderLoopStart = mainSource.indexOf("const tileLocalComputePass = encoder.beginComputePass");
   const renderLoopEnd = mainSource.indexOf("tileLocalComputePass.end()", renderLoopStart);
   const renderLoopSource = mainSource.slice(renderLoopStart, renderLoopEnd);
@@ -348,8 +349,14 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   const compositorInputReadbackSource = extractFunctionSource(mainSource, "resolveTileLocalCompositorInputReadback");
   const readCompositorInputAnchorSource = extractFunctionSource(mainSource, "readCompositorInputAnchor");
   const refStatsPublisherSource = extractFunctionSource(mainSource, "publishTileLocalRefStatsReadback");
+  const refStatsEnqueueSource = extractFunctionSource(mainSource, "enqueueTileLocalRefStatsReadback");
+  const refStatsSummarySource = extractFunctionSource(mainSource, "summarizeTileLocalRefStatsReadback");
   const budgetReadbackSource = extractFunctionSource(mainSource, "runtimeBudgetDiagnosticsForRefStatsReadback");
   const retainedSourceRefreshSource = extractFunctionSource(mainSource, "refreshWgslSourceFrontierRetainedSourceConstructionEvidence");
+  const retainedRowsFromRefStatsSource = extractFunctionSource(
+    mainSource,
+    "sourceFrontierRetainedRowsFromRefStatsReadback",
+  );
   const retainedRowsSummarySource = extractFunctionSource(
     mainSource,
     "summarizeWgslSourceFrontierRetainedRowsFromCompositorInputReadback",
@@ -454,8 +461,8 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     shaderSource,
-    /fn source_frontier_compositor_ref_limit\([\s\S]*headerRefCount:\s*u32[\s\S]*gpuScatterCount:\s*u32[\s\S]*tileCapacity:\s*u32[\s\S]*gpuScatterCount > 0u[\s\S]*return tileCapacity/,
-    "source-frontier compositor must scan the full per-tile capacity when sparse depth buckets can place live refs beyond the scatter prefix",
+    /fn source_frontier_compositor_ref_limit\([\s\S]*headerRefCount:\s*u32[\s\S]*gpuScatterCount:\s*u32[\s\S]*tileCapacity:\s*u32[\s\S]*gpuScatterCount > 0u[\s\S]*return min\(gpuScatterCount,\s*tileCapacity\)/,
+    "source-frontier compositor must normally consume the compacted retained prefix after GPU compaction, not the full sparse capacity",
   );
   assert.match(
     shaderSource,
@@ -523,6 +530,66 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
     "after GPU retention election, the next retained-source frontier must be prefix/scatter construction rather than election itself",
   );
   assert.match(
+    shaderSource,
+    /@compute @workgroup_size\(64\)\s*fn compact_retained_refs\(/,
+    "source-frontier must finalize GPU-retained rows with a compact prefix pass after score election",
+  );
+  assert.match(
+    coverageRendererSource,
+    /compactRetainedRefsPipeline/,
+    "GPU tile coverage pipeline must expose the retained-row compaction stage",
+  );
+  assert.match(
+    coverageRendererSource,
+    /createComputePipeline\(device,\s*shaderModule,\s*pipelineLayout,\s*"compact_retained_refs"\)/,
+    "GPU tile coverage pipeline must bind the compact_retained_refs WGSL entry point",
+  );
+  assert.match(
+    coverageRendererSource,
+    /dispatchStage\(pass,\s*buildTileRefsPipeline[\s\S]*dispatchStage\(pass,\s*compactRetainedRefsPipeline[\s\S]*dispatchStage\(pass,\s*compositeTilesPipeline/,
+    "full tile coverage dispatch must compact retained rows between election and composition",
+  );
+  assert.match(
+    coverageRendererSource,
+    /dispatchProjectedRefStream[\s\S]*dispatchStage\(pass,\s*buildTileRefsPipeline[\s\S]*dispatchStage\(pass,\s*compactRetainedRefsPipeline/,
+    "source-frontier projected stream dispatch must compact retained rows before exposing tile refs as a source",
+  );
+  assert.match(
+    shaderSource,
+    /tileHeaders\[tileId\]\s*=\s*vec4u\([\s\S]*retainedCount[\s\S]*projectedCount[\s\S]*projectedCount - min\(projectedCount,\s*retainedCount\)/,
+    "compact_retained_refs must publish retained count, projected count, and dropped count into the tile header",
+  );
+  assert.match(
+    shaderSource,
+    /copy_retained_ref_payload\([\s\S]*compactRefIndex/,
+    "compact_retained_refs must move elected sparse payloads into the retained prefix, not only count them",
+  );
+  assert.match(
+    shaderSource,
+    /fn copy_retained_ref_payload\([\s\S]*tile_ref_word_index\(compactRefIndex,\s*3u\)[\s\S]*compactRefIndex/,
+    "compacted retained rows must repoint alpha/conic payload index to the compact row before tail slots are cleared",
+  );
+  assert.doesNotMatch(
+    shaderSource,
+    /fn copy_retained_ref_payload\([\s\S]*tile_ref_word_index\(compactRefIndex,\s*3u\)[\s\S]*atomicLoad\(&tileRefs\[tile_ref_word_index\(sourceRefIndex,\s*3u\)\]\)/,
+    "compacted retained rows must not keep stale sparse alpha payload indexes that tail clearing can erase",
+  );
+  assert.doesNotMatch(
+    shaderSource,
+    /fn source_frontier_compositor_ref_limit\([\s\S]*return tileCapacity/,
+    "after GPU retained-row compaction, source-frontier composition must not fall back to scanning full sparse tile capacity",
+  );
+  assert.match(
+    refStatsEnqueueSource,
+    /tileHeaderBuffer[\s\S]*copyBufferToBuffer\(state\.tileHeaderBuffer/,
+    "source-frontier ref stats readback must copy compacted tile headers, not only scatter cursors",
+  );
+  assert.match(
+    refStatsSummarySource,
+    /tileHeaders[\s\S]*headerBase[\s\S]*tileHeaders\[headerBase \+ 1\]/,
+    "source-frontier ref stats summary must use compacted tile-header retained counts",
+  );
+  assert.match(
     retainedSourceRefreshSource,
     /projectedRefs:\s*readback\.projectedScatterRefs/,
     "source-frontier retained-source evidence must refresh projected refs from live GPU scatter-cursor readback",
@@ -536,6 +603,16 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
     retainedSourceRefreshSource,
     /droppedRefs:\s*readback\.droppedRefs/,
     "source-frontier retained-source evidence must refresh dropped refs from live GPU scatter-cursor readback",
+  );
+  assert.match(
+    retainedSourceRefreshSource,
+    /retainedRows:\s*sourceFrontierRetainedRowsFromRefStatsReadback\(readback\)/,
+    "source-frontier live ref-stat publication must replace stale pending retained-row evidence with compacted row accounting",
+  );
+  assert.match(
+    retainedRowsFromRefStatsSource,
+    /source:\s*"gpu-ref-stats-readback"[\s\S]*projectedRows:\s*readback\.status === "present" \? readback\.projectedScatterRefs : 0[\s\S]*retainedRows:\s*readback\.status === "present" \? readback\.retainedRefs : 0[\s\S]*droppedRows:\s*readback\.status === "present" \? readback\.droppedRefs : 0/,
+    "ref-stat retained-row evidence must identify its source while carrying compacted tile-header projected/retained/dropped row counts",
   );
   assert.match(
     retainedSourceEvidence,
@@ -559,18 +636,18 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     sourceFrontierReadLimitSource,
-    /headerRefCount > 0[\s\S]*return headerRefCount[\s\S]*gpuScatterCount > 0[\s\S]*return tileCapacity/,
-    "source-frontier CPU witnesses must share the shader's full-capacity scan rule for sparse depth buckets",
+    /headerRefCount > 0[\s\S]*return headerRefCount[\s\S]*gpuScatterCount > 0[\s\S]*Math\.min\(gpuScatterCount,\s*tileCapacity\)/,
+    "source-frontier CPU witnesses must share the shader's compact-prefix scan rule after GPU retained-row compaction",
   );
   assert.match(
     retainedRowsSummarySource,
     /const scanTileRows = Math\.min\([\s\S]*sourceFrontierCompositorReadLimit\(/,
-    "source-frontier retained-row summary must scan the sparse-bucket capacity, not only the scatter prefix",
+    "source-frontier retained-row summary must use the shared compact-prefix scan limit",
   );
   assert.match(
     retainedRowsSummarySource,
     /retainedRows \+= scorePackedTileRows/,
-    "source-frontier retained-row summary must report actual score-packed rows found during the full scan",
+    "source-frontier retained-row summary must report actual score-packed rows found in the compacted prefix",
   );
   assert.doesNotMatch(
     retainedRowsSummarySource,

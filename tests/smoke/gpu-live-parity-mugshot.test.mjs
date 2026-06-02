@@ -554,7 +554,7 @@ test("GPU live parity classifier prefers live retained-ref accounting over canva
 
   assert.equal(result.closeable, true);
   assert.equal(result.metrics.pairs[0].gpuRefs, 94420);
-  assert.equal(result.metrics.pairs[0].gpuRefSource, "gpu-scatter-cursor-readback");
+  assert.equal(result.metrics.pairs[0].gpuRefSource, "gpu-tile-header-and-scatter-readback");
   assert.equal(result.divergence.primary, "final-color-divergence");
   assert.deepEqual(result.divergence.tileRefDivergencePairs, []);
 });
@@ -2008,7 +2008,7 @@ function boundedFullSceneConstruction(overrides = {}) {
 function liveRefAccounting(retainedRefs, allocatedRefs = retainedRefs) {
   return {
     status: "present",
-    source: "gpu-scatter-cursor-readback",
+    source: "gpu-tile-header-and-scatter-readback",
     retainedRefs,
     allocatedRefs,
     estimatedRetainedRefs: allocatedRefs,

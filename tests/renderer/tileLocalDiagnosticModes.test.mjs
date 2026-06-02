@@ -151,7 +151,7 @@ test("tile-local diagnostic summary trusts live GPU ref readback when CPU tile a
     alphaParamData: new Float32Array(8),
     runtimeRefStatsReadback: {
       status: "present",
-      source: "gpu-scatter-cursor-readback",
+      source: "gpu-tile-header-and-scatter-readback",
       frameId: 4,
       tileCount: 25_920,
       tileCapacity: 256,
@@ -202,7 +202,7 @@ test("tile-local diagnostic summary refuses source-frontier zero placeholders ov
     alphaParamData: new Float32Array(8),
     runtimeRefStatsReadback: {
       status: "present",
-      source: "gpu-scatter-cursor-readback",
+      source: "gpu-tile-header-and-scatter-readback",
       frameId: 1,
       tileCount: 3_600,
       tileCapacity: 256,
@@ -251,7 +251,7 @@ test("tile-local diagnostic summary treats present live zero readback as evidenc
     alphaParamData: new Float32Array(8),
     runtimeRefStatsReadback: {
       status: "present",
-      source: "gpu-scatter-cursor-readback",
+      source: "gpu-tile-header-and-scatter-readback",
       frameId: 2,
       tileCount: 3_600,
       tileCapacity: 256,

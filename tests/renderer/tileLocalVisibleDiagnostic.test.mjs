@@ -184,13 +184,15 @@ test("CPU reference route exposes compositor input diagnostics from CPU-owned st
   );
 });
 
-test("direct GPU live route reports retained refs from scatter cursors instead of capacity estimates", () => {
+test("direct GPU live route reports retained refs from compacted tile headers instead of capacity estimates", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
 
   assert.match(source, /interface TileLocalRefStatsReadback/);
   assert.match(source, /enqueueTileLocalRefStatsReadback/);
   assert.match(source, /resolveTileLocalRefStatsReadback/);
+  assert.match(source, /tile_local_live_ref_stats_tile_headers_readback/);
   assert.match(source, /tile_local_live_ref_stats_scatter_cursors_readback/);
+  assert.match(source, /encoder\.copyBufferToBuffer\(state\.tileHeaderBuffer,\s*0,\s*tileHeaderBuffer/);
   assert.match(source, /encoder\.copyBufferToBuffer\(tileLocalRefStatsReadbackSourceBuffer\(state\)/);
   assert.match(source, /encoder\.copyBufferToBuffer\(tileLocalRefStatsReadbackSourceBuffer\(state\),\s*0,\s*tileScatterCursorBuffer/);
   assert.match(source, /const refStatsReadback = summarizeTileLocalRefStatsReadback/);
@@ -201,9 +203,11 @@ test("direct GPU live route reports retained refs from scatter cursors instead o
   assert.match(source, /state\.gpuArenaRuntime\?\.buffers\.scatterCursorBuffer \?\? state\.tileScatterCursorBuffer/);
   assert.match(source, /state\.gpuArenaRuntime\s*\?\s*TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE\s*:\s*gpuLiveEffectiveRefsPerTile\(state\.plan\)/);
   assert.match(source, /summarizeTileLocalRefStatsReadback/);
-  assert.match(source, /Math\.min\(projectedRefs,\s*pending\.tileCapacity\)/);
+  assert.match(source, /tileHeaders\[headerBase \+ 1\]/);
+  assert.match(source, /const headerRetainedRefs = Math\.min\(tileHeaders\[headerBase \+ 1\]/);
+  assert.doesNotMatch(source, /const tileRetainedRefs = Math\.min\(projectedRefs,\s*pending\.tileCapacity\)/);
   assert.match(source, /tileLocalRefAccounting/);
-  assert.match(source, /source:\s*"gpu-scatter-cursor-readback"/);
+  assert.match(source, /source:\s*"gpu-tile-header-and-scatter-readback"/);
   assert.match(source, /refAccounting/);
   assert.match(source, /refs:\s*refAccounting\?\.retainedRefs/);
   assert.match(source, /estimatedRetainedRefs/);
@@ -215,6 +219,8 @@ test("direct GPU live route reports retained refs from scatter cursors instead o
   assert.match(source, /cancelled:\s*false/);
   assert.match(source, /state\.disposed\s*=\s*true/);
   assert.match(source, /pendingRefStatsReadback\.cancelled\s*=\s*true/);
+  assert.match(source, /pendingRefStatsReadback\.tileHeaderBuffer/);
+  assert.match(source, /pendingRefStatsReadback\.tileScatterCursorBuffer/);
   assert.match(source, /pendingCompositorInputReadback\.cancelled\s*=\s*true/);
   assert.match(source, /tileLocalRefStatsReadbackCanPublish/);
   assert.match(source, /tileLocalCompositorInputReadbackCanPublish/);
