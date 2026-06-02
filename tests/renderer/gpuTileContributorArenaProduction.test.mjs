@@ -12,6 +12,7 @@ import {
   buildDeterministicGpuTileProjectionRetentionArena,
   createGpuTileCoveragePlan,
   createGpuTileContributorArenaLayout,
+  inspectWgslSourceFrontierProductionPoolSeatGap,
 } from "../../node_modules/.cache/renderer-tests/src/gpuTileCoverage.js";
 import {
   selectCompactProjectionRetentionRecords,
@@ -203,6 +204,86 @@ test("GPU-owned projection retention honors compact support-sample quotas and ca
   assert.ok(supportRetainedCount <= 4, "support candidates must not exceed the 25% final support quota");
   assert.ok(arena.retainedRecords.some((record) => record.originalId >= 100 && record.originalId < 200));
   assert.ok(arena.retainedRecords.some((record) => record.originalId >= 300 && record.originalId < 400));
+});
+
+test("WGSL source-frontier witness names missing production pool seats without claiming exact plate parity", () => {
+  const maxRefsPerTile = 16;
+  const occluder = contributor({
+    splatIndex: 9001,
+    originalId: 9001,
+    retentionWeight: 0.05,
+    occlusionWeight: 100,
+    occlusionDensity: 100,
+    coverageWeight: 0.1,
+  });
+  const retentionRecords = Array.from({ length: 8 }, (_, index) => contributor({
+    splatIndex: 100 + index,
+    originalId: 100 + index,
+    retentionWeight: 80 - index,
+    occlusionWeight: 1,
+    coverageWeight: 1,
+  }));
+  const occlusionRecords = [
+    occluder,
+    ...Array.from({ length: 7 }, (_, index) => contributor({
+      splatIndex: 200 + index,
+      originalId: 200 + index,
+      retentionWeight: 1,
+      occlusionWeight: 40 - index,
+      occlusionDensity: 40 - index,
+      coverageWeight: 1,
+    })),
+  ];
+  const coverageRecords = Array.from({ length: 8 }, (_, index) => contributor({
+    splatIndex: 300 + index,
+    originalId: 300 + index,
+    retentionWeight: 1,
+    occlusionWeight: 1,
+    coverageWeight: 60 - index,
+  }));
+  const supportRecords = Array.from({ length: 64 }, (_, index) => contributor({
+    splatIndex: 1000 + index,
+    originalId: 1000 + index,
+    retentionWeight: 500,
+    occlusionWeight: 1,
+    coverageWeight: 500,
+    supportSampleWeight: 1000 - index,
+    supportSampleRetentionWeight: 1000 - index,
+  }));
+  const records = [
+    ...retentionRecords,
+    ...occlusionRecords,
+    ...coverageRecords,
+    ...supportRecords,
+  ];
+  const candidateSources = {
+    coverageRecords,
+    retentionRecords,
+    occlusionRecords,
+    supportSampleRecords: supportRecords,
+    supportSampleRecordGroups: [supportRecords],
+  };
+  const witness = inspectWgslSourceFrontierProductionPoolSeatGap({
+    records,
+    maxRefsPerTile,
+    candidateSources,
+  });
+
+  assert.equal(witness.status, "structural-gap");
+  assert.equal(witness.wgslElectionShape, "single-score-slot-competition");
+  assert.equal(witness.productionElectionShape, "round-robin-priority-pools-plus-support-quota");
+  assert.equal(witness.supportTarget, 4);
+  assert.equal(witness.priorityTarget, 12);
+  assert.equal(witness.retainedPoolCounts.support, 4);
+  assert.ok(witness.productionRetainedIds.includes(occluder.originalId));
+  assert.ok(witness.productionRetainedIds.some((id) => id >= 100 && id < 200));
+  assert.ok(witness.productionRetainedIds.some((id) => id >= 300 && id < 400));
+  assert.deepEqual(witness.missingStructures, [
+    "retention-occlusion-coverage-round-robin",
+    "support-sample-final-quota",
+  ]);
+  assert.equal(witness.falseClosureGuard, "source-frontier-score-witness-is-not-production-pool-seat-election");
+  assert.equal(witness.nextGpuOffloadStage, "production-retention-election-pool-seats");
 });
 
 test("GPU-owned projection retention indexes candidate sources once instead of filtering global pools per tile", () => {

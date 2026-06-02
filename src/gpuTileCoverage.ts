@@ -229,6 +229,33 @@ export interface DeterministicGpuTileProjectionRetentionArena extends Determinis
   readonly droppedContributorCount: number;
 }
 
+export interface WgslSourceFrontierProductionPoolSeatGapInput {
+  readonly records: readonly GpuTileContributorArenaProjectedContributor[];
+  readonly maxRefsPerTile: number;
+  readonly candidateSources?: GpuProjectionRetentionCandidateSources;
+}
+
+export interface WgslSourceFrontierProductionPoolSeatGapWitness {
+  readonly status: "structural-gap" | "not-cap-pressured";
+  readonly wgslElectionShape: "single-score-slot-competition";
+  readonly productionElectionShape: "round-robin-priority-pools-plus-support-quota";
+  readonly missingStructures: readonly string[];
+  readonly falseClosureGuard: "source-frontier-score-witness-is-not-production-pool-seat-election";
+  readonly nextGpuOffloadStage: "production-retention-election-pool-seats";
+  readonly projectedCount: number;
+  readonly maxRefsPerTile: number;
+  readonly supportTarget: number;
+  readonly priorityTarget: number;
+  readonly productionRetainedIds: readonly number[];
+  readonly retainedPoolCounts: {
+    readonly retention: number;
+    readonly occlusion: number;
+    readonly coverage: number;
+    readonly support: number;
+    readonly backfill: number;
+  };
+}
+
 export function createGpuTileCoveragePlan(input: GpuTileCoveragePlanInput): GpuTileCoveragePlan {
   const viewportWidth = assertPositiveInteger(input.viewportWidth, "viewport width");
   const viewportHeight = assertPositiveInteger(input.viewportHeight, "viewport height");
@@ -470,6 +497,43 @@ export function buildDeterministicGpuTileProjectionRetentionArena(
     projectedContributorCount: contributors.length,
     retainedContributorCount: retainedRecords.length,
     droppedContributorCount: droppedRecords.length,
+  };
+}
+
+export function inspectWgslSourceFrontierProductionPoolSeatGap(
+  input: WgslSourceFrontierProductionPoolSeatGapInput,
+): WgslSourceFrontierProductionPoolSeatGapWitness {
+  const maxRefsPerTile = assertPositiveInteger(input.maxRefsPerTile, "source-frontier pool-seat witness max refs per tile");
+  const records = input.records.map(validateProjectedContributor);
+  const supportGroups = gpuProjectionRetentionSupportSampleGroups(records, input.candidateSources);
+  const supportTarget = records.length > maxRefsPerTile && supportGroups.length > 0
+    ? Math.max(1, Math.floor(maxRefsPerTile * 0.25))
+    : 0;
+  const priorityTarget = maxRefsPerTile - supportTarget;
+  const productionRetained = selectGpuProjectionRetentionRecords(records, maxRefsPerTile, input.candidateSources);
+
+  return {
+    status: records.length > maxRefsPerTile ? "structural-gap" : "not-cap-pressured",
+    wgslElectionShape: "single-score-slot-competition",
+    productionElectionShape: "round-robin-priority-pools-plus-support-quota",
+    missingStructures: records.length > maxRefsPerTile
+      ? [
+          "retention-occlusion-coverage-round-robin",
+          "support-sample-final-quota",
+        ]
+      : [],
+    falseClosureGuard: "source-frontier-score-witness-is-not-production-pool-seat-election",
+    nextGpuOffloadStage: "production-retention-election-pool-seats",
+    projectedCount: records.length,
+    maxRefsPerTile,
+    supportTarget,
+    priorityTarget,
+    productionRetainedIds: productionRetained.map((record) => record.originalId),
+    retainedPoolCounts: countGpuProjectionRetentionPoolSeats(
+      productionRetained,
+      records,
+      input.candidateSources,
+    ),
   };
 }
 
@@ -999,6 +1063,44 @@ function readGpuProjectionOcclusionDensity(contributor: GpuTileContributorArenaP
     return occlusionDensity;
   }
   return 0;
+}
+
+function countGpuProjectionRetentionPoolSeats(
+  retainedRecords: readonly GpuTileContributorArenaProjectedContributor[],
+  records: readonly GpuTileContributorArenaProjectedContributor[],
+  candidateSources: GpuProjectionRetentionCandidateSources | undefined,
+): WgslSourceFrontierProductionPoolSeatGapWitness["retainedPoolCounts"] {
+  const supportKeys = new Set(
+    gpuProjectionRetentionSupportSampleGroups(records, candidateSources)
+      .flat()
+      .map(gpuProjectionRetentionRecordKey),
+  );
+  const retentionKeys = new Set((candidateSources?.retentionRecords ?? records).map(gpuProjectionRetentionRecordKey));
+  const occlusionKeys = new Set((candidateSources?.occlusionRecords ?? records).map(gpuProjectionRetentionRecordKey));
+  const coverageKeys = new Set((candidateSources?.coverageRecords ?? records).map(gpuProjectionRetentionRecordKey));
+  const counts = {
+    retention: 0,
+    occlusion: 0,
+    coverage: 0,
+    support: 0,
+    backfill: 0,
+  };
+
+  for (const record of retainedRecords) {
+    const key = gpuProjectionRetentionRecordKey(record);
+    if (supportKeys.has(key)) {
+      counts.support += 1;
+    } else if (retentionKeys.has(key)) {
+      counts.retention += 1;
+    } else if (occlusionKeys.has(key)) {
+      counts.occlusion += 1;
+    } else if (coverageKeys.has(key)) {
+      counts.coverage += 1;
+    } else {
+      counts.backfill += 1;
+    }
+  }
+  return counts;
 }
 
 type MutableGpuProjectionRetentionCandidateSources = {

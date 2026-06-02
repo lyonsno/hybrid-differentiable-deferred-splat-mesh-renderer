@@ -504,6 +504,11 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
     /"wgsl-source-frontier-occlusion-density-retention-score"/,
     "source-frontier retained-source evidence must advertise that live GPU election now carries production-style occlusion-density priority",
   );
+  assert.match(
+    retainedSourceEvidence,
+    /"wgsl-source-frontier-production-pool-seat-gap-witness"/,
+    "source-frontier retained-source evidence must advertise the remaining production pool-seat gap instead of implying scalar score closure",
+  );
   assert.doesNotMatch(
     shaderSource,
     /let slot = atomicAdd\(&tileScatterCursors\[tileId\], 1u\);\s*if \(slot >= tileCapacity\) \{\s*continue;\s*\}/,
@@ -551,7 +556,7 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     retainedSourceEvidence,
-    /nextGpuOffloadStage:\s*"production-retention-election"/,
+    /nextGpuOffloadStage:\s*"production-retention-election-pool-seats"/,
     "after GPU retained-row prefix/scatter lands, the next retained-source frontier must be production retention election rather than prefix/scatter itself",
   );
   assert.match(
@@ -696,7 +701,7 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     retainedRowsRefreshSource,
-    /nextGpuOffloadStage:\s*"production-retention-election"/,
+    /nextGpuOffloadStage:\s*"production-retention-election-pool-seats"/,
     "retained-row evidence must keep the next frontier pointed at production retention election after GPU prefix/scatter is live",
   );
   assert.match(

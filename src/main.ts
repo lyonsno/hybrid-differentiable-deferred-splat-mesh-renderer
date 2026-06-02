@@ -577,7 +577,7 @@ interface RetainedSourceConstructionEvidence {
   readonly gpuReadyStages: readonly string[];
   readonly nextGpuOffloadStage:
     | "wgsl-projected-ref-stream"
-    | "production-retention-election";
+    | "production-retention-election-pool-seats";
   readonly accountingSource?: "cpu-compact-source" | "gpu-ref-stats-readback-pending" | "gpu-ref-stats-readback-present" | "gpu-ref-stats-readback-blocked";
   readonly frontierBlockedStages?: readonly string[];
   readonly projectedRefs: number;
@@ -2679,11 +2679,12 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
       "wgsl-source-frontier-depth-aware-retention-election",
       "wgsl-source-frontier-production-weighted-retention-score",
       "wgsl-source-frontier-occlusion-density-retention-score",
+      "wgsl-source-frontier-production-pool-seat-gap-witness",
       "wgsl-source-frontier-depth-bucket-compositor-order",
       "wgsl-source-frontier-retained-row-prefix-scatter",
       "tile-local-visible-gaussian-compositor",
     ],
-    nextGpuOffloadStage: "production-retention-election",
+    nextGpuOffloadStage: "production-retention-election-pool-seats",
     accountingSource: "gpu-ref-stats-readback-pending",
     projectedRefs: frontierSource.projectedRefEstimate,
     retainedRefs: 0,
@@ -2694,7 +2695,7 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
     frontierBlockedStages: [
       compactSourceStreamRetentionBlockedStage,
       "compact-source-pixel-traces",
-      "production-retention-election",
+      "production-retention-election-pool-seats",
     ],
   };
 }
@@ -2937,7 +2938,7 @@ function refreshWgslSourceFrontierRetainedRowsEvidence(
     state.retainedSourceConstruction = {
       ...retainedSourceConstruction,
       retainedRows: retainedRowsReadback,
-      nextGpuOffloadStage: "production-retention-election",
+      nextGpuOffloadStage: "production-retention-election-pool-seats",
     };
     return;
   }
@@ -2948,7 +2949,7 @@ function refreshWgslSourceFrontierRetainedRowsEvidence(
     droppedRefs: retainedRowsReadback.droppedRows,
     retainedBudgetRefs: retainedRowsReadback.retainedBudgetRefs,
     maxRefsPerTile: retainedRowsReadback.maxRefsPerTile,
-    nextGpuOffloadStage: "production-retention-election",
+    nextGpuOffloadStage: "production-retention-election-pool-seats",
   };
 }
 
