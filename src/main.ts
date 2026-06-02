@@ -586,6 +586,15 @@ interface RetainedSourceConstructionEvidence {
   readonly retainedBudgetRefs?: number;
   readonly maxRefsPerTile?: number;
   readonly retainedRows?: SourceFrontierRetainedRowsEvidence;
+  readonly candidateSourceIdentity?: SourceFrontierCandidateSourceIdentityEvidence;
+}
+
+interface SourceFrontierCandidateSourceIdentityEvidence {
+  readonly status: "blocked-missing-wgsl-candidate-source-inputs";
+  readonly source: "wgsl-source-frontier-candidate-source-identity-contract";
+  readonly availableIdentity: "selected-slot-pool-only";
+  readonly requiredWgslInputs: readonly string[];
+  readonly falseClosureGuard: "bounded-pool-seats-are-not-production-candidate-source-identity";
 }
 
 interface SourceFrontierRetainedRowsEvidence {
@@ -2692,11 +2701,27 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
     retainedBudgetRefs: plan.maxTileRefs,
     maxRefsPerTile: gpuLiveEffectiveRefsPerTile(plan),
     retainedRows: pendingWgslSourceFrontierRetainedRowsEvidence(plan),
+    candidateSourceIdentity: sourceFrontierCandidateSourceIdentityEvidence(),
     frontierBlockedStages: [
       compactSourceStreamRetentionBlockedStage,
       "compact-source-pixel-traces",
       "production-candidate-source-pool-identity",
     ],
+  };
+}
+
+function sourceFrontierCandidateSourceIdentityEvidence(): SourceFrontierCandidateSourceIdentityEvidence {
+  return {
+    status: "blocked-missing-wgsl-candidate-source-inputs",
+    source: "wgsl-source-frontier-candidate-source-identity-contract",
+    availableIdentity: "selected-slot-pool-only",
+    requiredWgslInputs: [
+      "retention-candidate-records",
+      "occlusion-candidate-records",
+      "coverage-candidate-records",
+      "support-sample-record-groups",
+    ],
+    falseClosureGuard: "bounded-pool-seats-are-not-production-candidate-source-identity",
   };
 }
 

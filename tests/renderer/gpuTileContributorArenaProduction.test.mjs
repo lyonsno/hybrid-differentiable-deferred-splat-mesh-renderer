@@ -282,6 +282,14 @@ test("WGSL source-frontier witness names missing production pool seats without c
     "candidate-source-pool-identity",
     "cross-pool-duplicate-suppression",
   ]);
+  assert.equal(witness.candidateSourceIdentityStatus, "blocked-missing-wgsl-candidate-source-inputs");
+  assert.equal(witness.wgslAvailableIdentity, "selected-slot-pool-only");
+  assert.deepEqual(witness.requiredWgslCandidateSourceInputs, [
+    "retention-candidate-records",
+    "occlusion-candidate-records",
+    "coverage-candidate-records",
+    "support-sample-record-groups",
+  ]);
   assert.equal(witness.falseClosureGuard, "source-frontier-score-witness-is-not-production-pool-seat-election");
   assert.equal(witness.nextGpuOffloadStage, "production-candidate-source-pool-identity");
 });

@@ -560,6 +560,21 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
     "after bounded WGSL pool seats land, the next retained-source frontier must be production candidate-source identity rather than prefix/scatter itself",
   );
   assert.match(
+    retainedSourceEvidence,
+    /candidateSourceIdentity:\s*sourceFrontierCandidateSourceIdentityEvidence\(\)/,
+    "source-frontier retained-source evidence must expose the exact missing candidate-source identity contract",
+  );
+  assert.match(
+    mainSource,
+    /function sourceFrontierCandidateSourceIdentityEvidence\(\)[\s\S]*status:\s*"blocked-missing-wgsl-candidate-source-inputs"[\s\S]*availableIdentity:\s*"selected-slot-pool-only"/,
+    "bounded pool seats must not be laundered into production candidate-source identity",
+  );
+  assert.match(
+    mainSource,
+    /requiredWgslInputs:[\s\S]*"retention-candidate-records"[\s\S]*"occlusion-candidate-records"[\s\S]*"coverage-candidate-records"[\s\S]*"support-sample-record-groups"/,
+    "candidate-source identity evidence must name the missing class-tagged WGSL inputs",
+  );
+  assert.match(
     shaderSource,
     /@compute @workgroup_size\(64\)\s*fn compact_retained_refs\(/,
     "source-frontier must finalize GPU-retained rows with a compact prefix pass after score election",
