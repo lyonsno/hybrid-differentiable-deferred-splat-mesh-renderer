@@ -254,6 +254,16 @@ fn gpu_live_compositor_order_slot(sourceDepthNdc: f32, projectedSlot: u32, tileC
   return min(bucketStart + (projectedSlot % bucketWidth), safeCapacity - 1u);
 }
 
+fn source_frontier_compositor_ref_limit(headerRefCount: u32, gpuScatterCount: u32, tileCapacity: u32) -> u32 {
+  if (headerRefCount > 0u) {
+    return headerRefCount;
+  }
+  if (gpuScatterCount > 0u) {
+    return tileCapacity;
+  }
+  return 0u;
+}
+
 fn gpu_live_retention_election_slot(
   projectedSlot: u32,
   compositorOrderSlot: u32,
@@ -506,7 +516,7 @@ fn debug_heatmap_color(
   let pixelCenter = vec2f(f32(globalId.x) + 0.5, f32(globalId.y) + 0.5);
   let tileCapacity = tile_ref_capacity_per_tile();
   let gpuScatterCount = atomicLoad(&tileScatterCursors[tileId]);
-  let liveRefCount = select(min(gpuScatterCount, tileCapacity), header.y, header.y > 0u);
+  let liveRefCount = source_frontier_compositor_ref_limit(header.y, gpuScatterCount, tileCapacity);
   let flatRemainingRefs = frame.maxTileRefs - min(header.x, frame.maxTileRefs);
   let refLimit = min(liveRefCount, flatRemainingRefs);
   var composedColor = vec3f(0.02, 0.02, 0.04);

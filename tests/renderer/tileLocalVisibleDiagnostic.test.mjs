@@ -65,7 +65,8 @@ test("tile-local visible compositor consumes the retained tile header count with
 
   assert.doesNotMatch(shader, /min\(header\.y,\s*32u\)/);
   assert.match(shader, /let tileCapacity = tile_ref_capacity_per_tile\(\)/);
-  assert.match(shader, /let liveRefCount = select\(min\(gpuScatterCount,\s*tileCapacity\),\s*header\.y,\s*header\.y > 0u\)/);
+  assert.match(shader, /fn source_frontier_compositor_ref_limit\([\s\S]*headerRefCount:\s*u32[\s\S]*gpuScatterCount:\s*u32[\s\S]*tileCapacity:\s*u32/);
+  assert.match(shader, /let liveRefCount = source_frontier_compositor_ref_limit\(header\.y,\s*gpuScatterCount,\s*tileCapacity\)/);
   assert.match(shader, /let flatRemainingRefs = frame\.maxTileRefs - min\(header\.x,\s*frame\.maxTileRefs\)/);
   assert.match(shader, /let refLimit = min\(liveRefCount,\s*flatRemainingRefs\)/);
   assert.match(source, /visible-compositor cap/);

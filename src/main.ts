@@ -2731,6 +2731,24 @@ function blockedWgslSourceFrontierRetainedRowsEvidence({
   };
 }
 
+function sourceFrontierCompositorReadLimit({
+  headerRefCount,
+  gpuScatterCount,
+  tileCapacity,
+}: {
+  readonly headerRefCount: number;
+  readonly gpuScatterCount: number;
+  readonly tileCapacity: number;
+}): number {
+  if (headerRefCount > 0) {
+    return headerRefCount;
+  }
+  if (gpuScatterCount > 0) {
+    return tileCapacity;
+  }
+  return 0;
+}
+
 function summarizeWgslSourceFrontierRetainedRowsFromCompositorInputReadback({
   frameId,
   plan,
@@ -2761,23 +2779,25 @@ function summarizeWgslSourceFrontierRetainedRowsFromCompositorInputReadback({
   for (let tileIndex = 0; tileIndex < plan.tileCount; tileIndex += 1) {
     const headerBase = tileIndex * headerStride;
     const firstRefIndex = tileHeaders[headerBase] ?? tileIndex * tileCapacity;
+    const headerRefCount = tileHeaders[headerBase + 1] ?? 0;
     const projectedTileRows = tileScatterCursors[tileIndex] ?? 0;
-    const retainedTileRows = Math.min(
-      projectedTileRows,
-      tileCapacity,
+    const scanTileRows = Math.min(
+      sourceFrontierCompositorReadLimit({
+        headerRefCount,
+        gpuScatterCount: projectedTileRows,
+        tileCapacity,
+      }),
       Math.max(0, plan.maxTileRefs - firstRefIndex),
     );
+    let scorePackedTileRows = 0;
     projectedRows += projectedTileRows;
-    retainedRows += retainedTileRows;
-    droppedRows += Math.max(0, projectedTileRows - retainedTileRows);
-    maxRowsPerTile = Math.max(maxRowsPerTile, retainedTileRows);
     if (projectedTileRows > 0) {
       nonEmptyTiles += 1;
     }
     if (projectedTileRows >= tileCapacity) {
       saturatedTiles += 1;
     }
-    for (let layer = 0; layer < retainedTileRows; layer += 1) {
+    for (let layer = 0; layer < scanTileRows; layer += 1) {
       const refIndex = firstRefIndex + layer;
       if (refIndex >= plan.maxTileRefs) {
         break;
@@ -2787,10 +2807,14 @@ function summarizeWgslSourceFrontierRetainedRowsFromCompositorInputReadback({
       const retentionScore = tileRefs[refBase + 1] ?? 0;
       const tileCoverageWeight = tileCoverageWeights[refIndex] ?? 0;
       if (splatIndex < plan.splatCount && (retentionScore > 0 || tileCoverageWeight > 0)) {
+        scorePackedTileRows += 1;
         scorePackedRows += 1;
         maxRetentionScore = Math.max(maxRetentionScore, retentionScore);
       }
     }
+    retainedRows += scorePackedTileRows;
+    droppedRows += Math.max(0, projectedTileRows - scorePackedTileRows);
+    maxRowsPerTile = Math.max(maxRowsPerTile, scorePackedTileRows);
   }
 
   return {
@@ -5730,7 +5754,11 @@ function readCompositorInputAnchor({
   const droppedCount = tileHeaders[headerBase + 3] ?? Math.max(0, projectedCount - refCount);
   const gpuScatterCount = tileScatterCursors[tileAddress.tileIndex] ?? 0;
   const tileCapacity = Math.max(Math.floor(plan.maxTileRefs / Math.max(plan.tileCount, 1)), 1);
-  const liveRefCount = refCount > 0 ? refCount : Math.min(gpuScatterCount, tileCapacity);
+  const liveRefCount = sourceFrontierCompositorReadLimit({
+    headerRefCount: refCount,
+    gpuScatterCount,
+    tileCapacity,
+  });
   const refLimit = Math.min(liveRefCount, Math.max(0, plan.maxTileRefs - firstRefIndex));
   const pixelCenter = [Math.floor(anchor.x) + 0.5, Math.floor(anchor.y) + 0.5] as const;
   let runningColor = [0.02, 0.02, 0.04] as [number, number, number];

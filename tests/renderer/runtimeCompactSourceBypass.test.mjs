@@ -354,6 +354,7 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
     mainSource,
     "summarizeWgslSourceFrontierRetainedRowsFromCompositorInputReadback",
   );
+  const sourceFrontierReadLimitSource = extractFunctionSource(mainSource, "sourceFrontierCompositorReadLimit");
   const retainedRowsRefreshSource = extractFunctionSource(
     mainSource,
     "refreshWgslSourceFrontierRetainedRowsEvidence",
@@ -452,6 +453,21 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
     "source-frontier must not let first-arrival projectedSlot impersonate compositor draw order",
   );
   assert.match(
+    shaderSource,
+    /fn source_frontier_compositor_ref_limit\([\s\S]*headerRefCount:\s*u32[\s\S]*gpuScatterCount:\s*u32[\s\S]*tileCapacity:\s*u32[\s\S]*gpuScatterCount > 0u[\s\S]*return tileCapacity/,
+    "source-frontier compositor must scan the full per-tile capacity when sparse depth buckets can place live refs beyond the scatter prefix",
+  );
+  assert.match(
+    shaderSource,
+    /let liveRefCount = source_frontier_compositor_ref_limit\(header\.y,\s*gpuScatterCount,\s*tileCapacity\)/,
+    "source-frontier compositor must use the shared sparse-bucket scan limit instead of the old scatter-prefix count",
+  );
+  assert.doesNotMatch(
+    shaderSource,
+    /let liveRefCount = select\(min\(gpuScatterCount,\s*tileCapacity\),\s*header\.y,\s*header\.y > 0u\)/,
+    "source-frontier compositor must not hide high-bucket retained refs behind gpuScatterCount prefix scanning",
+  );
+  assert.match(
     retainedSourceEvidence,
     /"wgsl-source-frontier-depth-bucket-compositor-order"/,
     "source-frontier retained-source evidence must advertise the provisional depth-bucket compositor-order stage",
@@ -540,6 +556,31 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
     retainedRowsSummarySource,
     /falseClosureGuard:\s*"source-frontier-retained-row-readback-is-not-production-gpu-prefix-scatter"/,
     "source-frontier retained-row witness must not claim production GPU prefix/scatter completion",
+  );
+  assert.match(
+    sourceFrontierReadLimitSource,
+    /headerRefCount > 0[\s\S]*return headerRefCount[\s\S]*gpuScatterCount > 0[\s\S]*return tileCapacity/,
+    "source-frontier CPU witnesses must share the shader's full-capacity scan rule for sparse depth buckets",
+  );
+  assert.match(
+    retainedRowsSummarySource,
+    /const scanTileRows = Math\.min\([\s\S]*sourceFrontierCompositorReadLimit\(/,
+    "source-frontier retained-row summary must scan the sparse-bucket capacity, not only the scatter prefix",
+  );
+  assert.match(
+    retainedRowsSummarySource,
+    /retainedRows \+= scorePackedTileRows/,
+    "source-frontier retained-row summary must report actual score-packed rows found during the full scan",
+  );
+  assert.doesNotMatch(
+    retainedRowsSummarySource,
+    /retainedRows \+= retainedTileRows/,
+    "source-frontier retained-row summary must not treat the old prefix scan length as retained-row evidence",
+  );
+  assert.match(
+    readCompositorInputAnchorSource,
+    /sourceFrontierCompositorReadLimit\(/,
+    "source-frontier anchor readback must inspect high-bucket refs using the same scan limit as the compositor",
   );
   assert.match(
     compositorInputReadbackSource,
