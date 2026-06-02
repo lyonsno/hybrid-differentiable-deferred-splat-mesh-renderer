@@ -256,18 +256,27 @@ fn gpu_live_tile_coverage_weight(conic: GpuLiveConic, tileCenterPx: vec2f) -> f3
   return exp(-0.5 * tileMahalanobis2);
 }
 
+fn gpu_live_source_luminance(splatId: u32) -> f32 {
+  let colorBase = splatId * 3u;
+  let sourceColor = vec3f(colors[colorBase], colors[colorBase + 1u], colors[colorBase + 2u]);
+  return clamp(dot(max(sourceColor, vec3f(0.0, 0.0, 0.0)), vec3f(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
+}
+
 fn gpu_live_retention_election_score(
   tileCoverageWeight: f32,
   sourceOpacity: f32,
+  sourceLuminance: f32,
   sourceDepthNdc: f32,
   splatId: u32,
 ) -> u32 {
-  let weightedCoverage = clamp(tileCoverageWeight * max(sourceOpacity, 0.000001), 0.0, 1.0);
-  let coverageBucket = min(u32(weightedCoverage * 4095.0), 4095u);
+  let retentionSignal = clamp(tileCoverageWeight * max(sourceOpacity, 0.000001) * max(sourceLuminance, 0.000001), 0.0, 1.0);
+  let occlusionSignal = clamp(tileCoverageWeight * max(sourceOpacity, 0.000001), 0.0, 1.0);
+  let retentionBucket = min(u32(retentionSignal * 2047.0), 2047u);
+  let occlusionBucket = min(u32(occlusionSignal * 1023.0), 1023u);
   let frontness = clamp(1.0 - sourceDepthNdc, 0.0, 1.0);
-  let depthBucket = min(u32(frontness * 2047.0), 2047u);
-  let splatTie = 255u - min(splatId & 255u, 255u);
-  return max((coverageBucket << 19u) | (depthBucket << 8u) | splatTie, 1u);
+  let depthBucket = min(u32(frontness * 255.0), 255u);
+  let splatTie = 3u - min(splatId & 3u, 3u);
+  return max((retentionBucket << 20u) | (occlusionBucket << 10u) | (depthBucket << 2u) | splatTie, 1u);
 }
 
 fn gpu_live_overflow_election_slot(tileId: u32, splatId: u32, tileCapacity: u32) -> u32 {
@@ -513,9 +522,11 @@ fn debug_heatmap_color(
         gpu_live_tile_center_px(tileX, tileY, tileSizePx)
       );
       let sourceOpacity = clamp(opacities[splatId], 0.0, 0.999);
+      let sourceLuminance = gpu_live_source_luminance(splatId);
       let retentionScore = gpu_live_retention_election_score(
         tileCoverageWeight,
         sourceOpacity,
+        sourceLuminance,
         sourceDepthNdc,
         orderingKey
       );

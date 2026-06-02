@@ -426,8 +426,18 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     shaderSource,
-    /fn gpu_live_retention_election_score\([\s\S]*sourceDepthNdc:\s*f32[\s\S]*depthBucket[\s\S]*coverageBucket[\s\S]*depthBucket/,
+    /fn gpu_live_retention_election_score\([\s\S]*sourceDepthNdc:\s*f32[\s\S]*retentionBucket[\s\S]*occlusionBucket[\s\S]*depthBucket/,
     "source-frontier GPU retention election must include projected depth/frontness, not only coverage and opacity",
+  );
+  assert.match(
+    shaderSource,
+    /fn gpu_live_source_luminance\([\s\S]*colors\[colorBase\][\s\S]*0\.2126[\s\S]*0\.7152[\s\S]*0\.0722/,
+    "source-frontier GPU retention election must derive a luminance term from live source colors instead of scoring only coverage and depth",
+  );
+  assert.match(
+    shaderSource,
+    /fn gpu_live_retention_election_score\([\s\S]*sourceLuminance:\s*f32[\s\S]*retentionSignal[\s\S]*tileCoverageWeight \* max\(sourceOpacity[\s\S]*max\(sourceLuminance[\s\S]*occlusionSignal[\s\S]*tileCoverageWeight \* max\(sourceOpacity[\s\S]*retentionBucket[\s\S]*occlusionBucket/,
+    "source-frontier GPU retention election must carry production-like retention and occlusion score channels before depth tie-breaking",
   );
   assert.doesNotMatch(
     retentionScoreSource,
@@ -436,7 +446,7 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     shaderSource,
-    /let sourceDepthNdc = centerClip\.z \/ max\(centerClip\.w, 0\.000001\)[\s\S]*gpu_live_retention_election_score\([\s\S]*sourceDepthNdc/,
+    /let sourceDepthNdc = centerClip\.z \/ max\(centerClip\.w, 0\.000001\)[\s\S]*let sourceLuminance = gpu_live_source_luminance\(splatId\)[\s\S]*gpu_live_retention_election_score\([\s\S]*sourceLuminance[\s\S]*sourceDepthNdc/,
     "source-frontier build must pass the current projected depth into the retained-ref election score",
   );
   assert.match(
@@ -478,6 +488,11 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
     retainedSourceEvidence,
     /"wgsl-source-frontier-depth-bucket-compositor-order"/,
     "source-frontier retained-source evidence must advertise the provisional depth-bucket compositor-order stage",
+  );
+  assert.match(
+    retainedSourceEvidence,
+    /"wgsl-source-frontier-production-weighted-retention-score"/,
+    "source-frontier retained-source evidence must advertise that live GPU election now uses retention/occlusion-like production score channels",
   );
   assert.doesNotMatch(
     shaderSource,
@@ -526,8 +541,8 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     retainedSourceEvidence,
-    /nextGpuOffloadStage:\s*"gpu-retained-source-prefix-scatter"/,
-    "after GPU retention election, the next retained-source frontier must be prefix/scatter construction rather than election itself",
+    /nextGpuOffloadStage:\s*"production-retention-election"/,
+    "after GPU retained-row prefix/scatter lands, the next retained-source frontier must be production retention election rather than prefix/scatter itself",
   );
   assert.match(
     shaderSource,
@@ -631,8 +646,8 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     retainedRowsSummarySource,
-    /falseClosureGuard:\s*"source-frontier-retained-row-readback-is-not-production-gpu-prefix-scatter"/,
-    "source-frontier retained-row witness must not claim production GPU prefix/scatter completion",
+    /falseClosureGuard:\s*"source-frontier-retained-row-readback-is-production-gpu-prefix-scatter-not-production-retention-election"/,
+    "source-frontier retained-row witness may now claim GPU prefix/scatter completion while preserving that retention election remains provisional",
   );
   assert.match(
     sourceFrontierReadLimitSource,
@@ -671,8 +686,8 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     retainedRowsRefreshSource,
-    /nextGpuOffloadStage:\s*"gpu-retained-source-prefix-scatter"/,
-    "retained-row evidence must keep the next frontier pointed at production GPU prefix/scatter",
+    /nextGpuOffloadStage:\s*"production-retention-election"/,
+    "retained-row evidence must keep the next frontier pointed at production retention election after GPU prefix/scatter is live",
   );
   assert.match(
     retainedRowsRefreshSource,

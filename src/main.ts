@@ -575,7 +575,9 @@ interface RetainedSourceConstructionEvidence {
   readonly falseClosureGuard: string;
   readonly cpuOwnedStages: readonly string[];
   readonly gpuReadyStages: readonly string[];
-  readonly nextGpuOffloadStage: "wgsl-projected-ref-stream" | "gpu-retention-election" | "gpu-retained-source-prefix-scatter";
+  readonly nextGpuOffloadStage:
+    | "wgsl-projected-ref-stream"
+    | "production-retention-election";
   readonly accountingSource?: "cpu-compact-source" | "gpu-ref-stats-readback-pending" | "gpu-ref-stats-readback-present" | "gpu-ref-stats-readback-blocked";
   readonly frontierBlockedStages?: readonly string[];
   readonly projectedRefs: number;
@@ -591,7 +593,7 @@ interface SourceFrontierRetainedRowsEvidence {
   readonly source: "gpu-compositor-input-readback" | "gpu-ref-stats-readback";
   readonly payloadEncoding: "source-frontier-score";
   readonly falseClosureGuard:
-    | "source-frontier-retained-row-readback-is-not-production-gpu-prefix-scatter"
+    | "source-frontier-retained-row-readback-is-production-gpu-prefix-scatter-not-production-retention-election"
     | "source-frontier-ref-stats-readback-is-row-accounting-not-payload-readback";
   readonly rowFields: readonly string[];
   readonly tileCount: number;
@@ -2675,10 +2677,12 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
       "wgsl-projected-ref-stream-source-table",
       "wgsl-projected-ref-stream-build-tile-refs",
       "wgsl-source-frontier-depth-aware-retention-election",
+      "wgsl-source-frontier-production-weighted-retention-score",
       "wgsl-source-frontier-depth-bucket-compositor-order",
+      "wgsl-source-frontier-retained-row-prefix-scatter",
       "tile-local-visible-gaussian-compositor",
     ],
-    nextGpuOffloadStage: "gpu-retained-source-prefix-scatter",
+    nextGpuOffloadStage: "production-retention-election",
     accountingSource: "gpu-ref-stats-readback-pending",
     projectedRefs: frontierSource.projectedRefEstimate,
     retainedRefs: 0,
@@ -2701,7 +2705,7 @@ function pendingWgslSourceFrontierRetainedRowsEvidence(
     status: "pending",
     source: "gpu-compositor-input-readback",
     payloadEncoding: "source-frontier-score",
-    falseClosureGuard: "source-frontier-retained-row-readback-is-not-production-gpu-prefix-scatter",
+    falseClosureGuard: "source-frontier-retained-row-readback-is-production-gpu-prefix-scatter-not-production-retention-election",
     rowFields: sourceFrontierRetainedRowFields(),
     tileCount: plan.tileCount,
     retainedBudgetRefs: plan.maxTileRefs,
@@ -2824,7 +2828,7 @@ function summarizeWgslSourceFrontierRetainedRowsFromCompositorInputReadback({
     status: "present",
     source: "gpu-compositor-input-readback",
     payloadEncoding: "source-frontier-score",
-    falseClosureGuard: "source-frontier-retained-row-readback-is-not-production-gpu-prefix-scatter",
+    falseClosureGuard: "source-frontier-retained-row-readback-is-production-gpu-prefix-scatter-not-production-retention-election",
     rowFields: sourceFrontierRetainedRowFields(),
     frameId,
     tileCount: plan.tileCount,
@@ -2932,7 +2936,7 @@ function refreshWgslSourceFrontierRetainedRowsEvidence(
     state.retainedSourceConstruction = {
       ...retainedSourceConstruction,
       retainedRows: retainedRowsReadback,
-      nextGpuOffloadStage: "gpu-retained-source-prefix-scatter",
+      nextGpuOffloadStage: "production-retention-election",
     };
     return;
   }
@@ -2943,7 +2947,7 @@ function refreshWgslSourceFrontierRetainedRowsEvidence(
     droppedRefs: retainedRowsReadback.droppedRows,
     retainedBudgetRefs: retainedRowsReadback.retainedBudgetRefs,
     maxRefsPerTile: retainedRowsReadback.maxRefsPerTile,
-    nextGpuOffloadStage: "gpu-retained-source-prefix-scatter",
+    nextGpuOffloadStage: "production-retention-election",
   };
 }
 
