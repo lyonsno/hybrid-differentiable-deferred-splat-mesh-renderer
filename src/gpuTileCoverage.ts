@@ -237,11 +237,11 @@ export interface WgslSourceFrontierProductionPoolSeatGapInput {
 
 export interface WgslSourceFrontierProductionPoolSeatGapWitness {
   readonly status: "structural-gap" | "not-cap-pressured";
-  readonly wgslElectionShape: "single-score-slot-competition";
+  readonly wgslElectionShape: "bounded-priority-support-pool-slot-competition";
   readonly productionElectionShape: "round-robin-priority-pools-plus-support-quota";
   readonly missingStructures: readonly string[];
   readonly falseClosureGuard: "source-frontier-score-witness-is-not-production-pool-seat-election";
-  readonly nextGpuOffloadStage: "production-retention-election-pool-seats";
+  readonly nextGpuOffloadStage: "production-candidate-source-pool-identity";
   readonly projectedCount: number;
   readonly maxRefsPerTile: number;
   readonly supportTarget: number;
@@ -514,16 +514,16 @@ export function inspectWgslSourceFrontierProductionPoolSeatGap(
 
   return {
     status: records.length > maxRefsPerTile ? "structural-gap" : "not-cap-pressured",
-    wgslElectionShape: "single-score-slot-competition",
+    wgslElectionShape: "bounded-priority-support-pool-slot-competition",
     productionElectionShape: "round-robin-priority-pools-plus-support-quota",
     missingStructures: records.length > maxRefsPerTile
       ? [
-          "retention-occlusion-coverage-round-robin",
-          "support-sample-final-quota",
+          "candidate-source-pool-identity",
+          "cross-pool-duplicate-suppression",
         ]
       : [],
     falseClosureGuard: "source-frontier-score-witness-is-not-production-pool-seat-election",
-    nextGpuOffloadStage: "production-retention-election-pool-seats",
+    nextGpuOffloadStage: "production-candidate-source-pool-identity",
     projectedCount: records.length,
     maxRefsPerTile,
     supportTarget,

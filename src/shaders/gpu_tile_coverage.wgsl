@@ -41,6 +41,10 @@ const MIN_ANISOTROPIC_MINOR_RADIUS_FRACTION = 0.015625;
 const COMPACT_FOOTPRINT_SIGMA_RADIUS = 3.0;
 const COMPACT_FOOTPRINT_EPSILON = 0.000000001;
 const SOURCE_FRONTIER_COMPOSITOR_ORDER_BUCKET_COUNT = 16u;
+const RETENTION_POOL_RETENTION = 0u;
+const RETENTION_POOL_OCCLUSION = 1u;
+const RETENTION_POOL_COVERAGE = 2u;
+const RETENTION_POOL_SUPPORT = 3u;
 
 struct SplatShape {
   axis0: vec3f,
@@ -53,6 +57,11 @@ struct GpuLiveConic {
   inverseConic: vec3f,
   majorRadiusPx: f32,
   minorRadiusPx: f32,
+};
+
+struct RetentionPoolSlot {
+  slot: u32,
+  pool: u32,
 };
 
 fn tile_count() -> u32 {
@@ -262,13 +271,76 @@ fn gpu_live_source_luminance(splatId: u32) -> f32 {
   return clamp(dot(max(sourceColor, vec3f(0.0, 0.0, 0.0)), vec3f(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
 }
 
-fn gpu_live_retention_election_score(
+fn gpu_live_retention_support_target(tileCapacity: u32) -> u32 {
+  if (tileCapacity < 4u) {
+    return 0u;
+  }
+  return max(tileCapacity / 4u, 1u);
+}
+
+fn gpu_live_retention_priority_target(tileCapacity: u32) -> u32 {
+  return max(tileCapacity - gpu_live_retention_support_target(tileCapacity), 1u);
+}
+
+fn gpu_live_retention_priority_pool_start(priorityTarget: u32, pool: u32) -> u32 {
+  return (min(pool, 2u) * priorityTarget) / 3u;
+}
+
+fn gpu_live_retention_priority_pool_end(priorityTarget: u32, pool: u32) -> u32 {
+  return ((min(pool, 2u) + 1u) * priorityTarget) / 3u;
+}
+
+fn gpu_live_retention_pool_from_slot(slot: u32, tileCapacity: u32) -> u32 {
+  let priorityTarget = gpu_live_retention_priority_target(tileCapacity);
+  if (slot >= priorityTarget) {
+    return RETENTION_POOL_SUPPORT;
+  }
+  if (slot < gpu_live_retention_priority_pool_end(priorityTarget, RETENTION_POOL_RETENTION)) {
+    return RETENTION_POOL_RETENTION;
+  }
+  if (slot < gpu_live_retention_priority_pool_end(priorityTarget, RETENTION_POOL_OCCLUSION)) {
+    return RETENTION_POOL_OCCLUSION;
+  }
+  return RETENTION_POOL_COVERAGE;
+}
+
+fn gpu_live_retention_pool_slot(
+  projectedSlot: u32,
+  compositorOrderSlot: u32,
+  tileId: u32,
+  splatId: u32,
+  tileCapacity: u32,
+) -> RetentionPoolSlot {
+  let safeCapacity = max(tileCapacity, 1u);
+  let supportTarget = gpu_live_retention_support_target(safeCapacity);
+  let priorityTarget = gpu_live_retention_priority_target(safeCapacity);
+  if (projectedSlot < safeCapacity) {
+    if (supportTarget > 0u && projectedSlot % 4u == 3u) {
+      let supportSlot = priorityTarget + ((projectedSlot / 4u) % supportTarget);
+      return RetentionPoolSlot(min(supportSlot, safeCapacity - 1u), RETENTION_POOL_SUPPORT);
+    }
+    let priorityOrdinal = select(projectedSlot, projectedSlot - (projectedSlot / 4u), supportTarget > 0u);
+    let pool = priorityOrdinal % 3u;
+    let poolStart = gpu_live_retention_priority_pool_start(priorityTarget, pool);
+    let poolEnd = gpu_live_retention_priority_pool_end(priorityTarget, pool);
+    let poolWidth = max(poolEnd - poolStart, 1u);
+    let depthLocalSlot = (min(compositorOrderSlot, safeCapacity - 1u) * poolWidth) / safeCapacity;
+    let poolSlot = poolStart + ((depthLocalSlot + (priorityOrdinal / 3u)) % poolWidth);
+    return RetentionPoolSlot(min(poolSlot, safeCapacity - 1u), pool);
+  }
+  let overflowSlot = gpu_live_overflow_election_slot(tileId, splatId, safeCapacity);
+  return RetentionPoolSlot(overflowSlot, gpu_live_retention_pool_from_slot(overflowSlot, safeCapacity));
+}
+
+fn gpu_live_retention_pool_score(
   tileCoverageWeight: f32,
   sourceOpacity: f32,
   sourceLuminance: f32,
   sourceDepthNdc: f32,
   splatId: u32,
+  pool: u32,
 ) -> u32 {
+  let coverageBucket = min(u32(clamp(tileCoverageWeight, 0.0, 1.0) * 255.0), 255u);
   let retentionSignal = clamp(tileCoverageWeight * max(sourceOpacity, 0.000001) * max(sourceLuminance, 0.000001), 0.0, 1.0);
   let occlusionSignal = clamp(tileCoverageWeight * max(sourceOpacity, 0.000001), 0.0, 1.0);
   let occlusionDensityBucket = min(u32(clamp(sourceOpacity, 0.0, 1.0) * 255.0), 255u);
@@ -277,7 +349,16 @@ fn gpu_live_retention_election_score(
   let frontness = clamp(1.0 - sourceDepthNdc, 0.0, 1.0);
   let depthBucket = min(u32(frontness * 31.0), 31u);
   let splatTie = 3u - min(splatId & 3u, 3u);
-  return max((occlusionDensityBucket << 23u) | (occlusionWeightBucket << 15u) | (retentionBucket << 7u) | (depthBucket << 2u) | splatTie, 1u);
+  if (pool == RETENTION_POOL_OCCLUSION) {
+    return max((occlusionDensityBucket << 23u) | (occlusionWeightBucket << 15u) | (coverageBucket << 7u) | (depthBucket << 2u) | splatTie, 1u);
+  }
+  if (pool == RETENTION_POOL_COVERAGE) {
+    return max((coverageBucket << 23u) | (retentionBucket << 15u) | (occlusionWeightBucket << 7u) | (depthBucket << 2u) | splatTie, 1u);
+  }
+  if (pool == RETENTION_POOL_SUPPORT) {
+    return max((max(retentionBucket, coverageBucket) << 23u) | (occlusionWeightBucket << 15u) | (depthBucket << 2u) | splatTie, 1u);
+  }
+  return max((retentionBucket << 23u) | (coverageBucket << 15u) | (occlusionWeightBucket << 7u) | (depthBucket << 2u) | splatTie, 1u);
 }
 
 fn gpu_live_overflow_election_slot(tileId: u32, splatId: u32, tileCapacity: u32) -> u32 {
@@ -304,19 +385,6 @@ fn source_frontier_compositor_ref_limit(headerRefCount: u32, gpuScatterCount: u3
     return min(gpuScatterCount, tileCapacity);
   }
   return 0u;
-}
-
-fn gpu_live_retention_election_slot(
-  projectedSlot: u32,
-  compositorOrderSlot: u32,
-  tileId: u32,
-  splatId: u32,
-  tileCapacity: u32,
-) -> u32 {
-  if (projectedSlot < tileCapacity) {
-    return compositorOrderSlot;
-  }
-  return gpu_live_overflow_election_slot(tileId, splatId, tileCapacity);
 }
 
 fn gpu_live_try_commit_retained_ref(
@@ -513,8 +581,8 @@ fn debug_heatmap_color(
       }
       let projectedSlot = atomicAdd(&tileScatterCursors[tileId], 1u);
       let compositorOrderSlot = gpu_live_compositor_order_slot(sourceDepthNdc, projectedSlot, tileCapacity);
-      let slot = gpu_live_retention_election_slot(projectedSlot, compositorOrderSlot, tileId, splatId, tileCapacity);
-      let refIndex = tileId * tileCapacity + slot;
+      let poolSlot = gpu_live_retention_pool_slot(projectedSlot, compositorOrderSlot, tileId, splatId, tileCapacity);
+      let refIndex = tileId * tileCapacity + poolSlot.slot;
       if (refIndex >= frame.maxTileRefs) {
         continue;
       }
@@ -524,12 +592,13 @@ fn debug_heatmap_color(
       );
       let sourceOpacity = clamp(opacities[splatId], 0.0, 0.999);
       let sourceLuminance = gpu_live_source_luminance(splatId);
-      let retentionScore = gpu_live_retention_election_score(
+      let retentionScore = gpu_live_retention_pool_score(
         tileCoverageWeight,
         sourceOpacity,
         sourceLuminance,
         sourceDepthNdc,
-        orderingKey
+        orderingKey,
+        poolSlot.pool
       );
       gpu_live_try_commit_retained_ref(
         refIndex,

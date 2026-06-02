@@ -270,7 +270,7 @@ test("WGSL source-frontier witness names missing production pool seats without c
   });
 
   assert.equal(witness.status, "structural-gap");
-  assert.equal(witness.wgslElectionShape, "single-score-slot-competition");
+  assert.equal(witness.wgslElectionShape, "bounded-priority-support-pool-slot-competition");
   assert.equal(witness.productionElectionShape, "round-robin-priority-pools-plus-support-quota");
   assert.equal(witness.supportTarget, 4);
   assert.equal(witness.priorityTarget, 12);
@@ -279,11 +279,29 @@ test("WGSL source-frontier witness names missing production pool seats without c
   assert.ok(witness.productionRetainedIds.some((id) => id >= 100 && id < 200));
   assert.ok(witness.productionRetainedIds.some((id) => id >= 300 && id < 400));
   assert.deepEqual(witness.missingStructures, [
-    "retention-occlusion-coverage-round-robin",
-    "support-sample-final-quota",
+    "candidate-source-pool-identity",
+    "cross-pool-duplicate-suppression",
   ]);
   assert.equal(witness.falseClosureGuard, "source-frontier-score-witness-is-not-production-pool-seat-election");
-  assert.equal(witness.nextGpuOffloadStage, "production-retention-election-pool-seats");
+  assert.equal(witness.nextGpuOffloadStage, "production-candidate-source-pool-identity");
+});
+
+test("WGSL source-frontier retention election uses bounded priority and support pool slots", () => {
+  const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
+
+  assert.match(shader, /struct RetentionPoolSlot/);
+  assert.match(shader, /const RETENTION_POOL_RETENTION = 0u/);
+  assert.match(shader, /const RETENTION_POOL_OCCLUSION = 1u/);
+  assert.match(shader, /const RETENTION_POOL_COVERAGE = 2u/);
+  assert.match(shader, /const RETENTION_POOL_SUPPORT = 3u/);
+  assert.match(shader, /fn gpu_live_retention_support_target/);
+  assert.match(shader, /fn gpu_live_retention_priority_target/);
+  assert.match(shader, /fn gpu_live_retention_pool_slot/);
+  assert.match(shader, /fn gpu_live_retention_pool_score/);
+  assert.match(shader, /let\s+poolSlot\s*=\s*gpu_live_retention_pool_slot/);
+  assert.match(shader, /poolSlot\.slot/);
+  assert.match(shader, /poolSlot\.pool/);
+  assert.doesNotMatch(shader, /let\s+slot\s*=\s*gpu_live_retention_election_slot/);
 });
 
 test("WGSL source-frontier pool-seat witness attributes default overlapping priority pools by selected seat", () => {

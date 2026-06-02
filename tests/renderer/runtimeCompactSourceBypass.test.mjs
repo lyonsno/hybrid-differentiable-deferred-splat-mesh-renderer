@@ -342,7 +342,7 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   const runtimeEvidenceSource = extractFunctionSource(mainSource, "exposeTileLocalRuntimeEvidence");
   const retentionScoreSource = extractSourceBetween(
     shaderSource,
-    "fn gpu_live_retention_election_score(",
+    "fn gpu_live_retention_pool_score(",
     "fn gpu_live_overflow_election_slot",
   );
   const enqueueCompositorInputReadbackSource = extractFunctionSource(mainSource, "enqueueTileLocalCompositorInputReadback");
@@ -411,8 +411,8 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   assert.match(retainedSourceEvidence, /sourceHandoff:\s*"wgsl-projected-ref-stream-gpu-buffers"/);
   assert.match(
     retainedSourceEvidence,
-    /"wgsl-source-frontier-depth-aware-retention-election"/,
-    "source-frontier retained-source evidence must advertise the depth-aware GPU retention election stage",
+    /"wgsl-source-frontier-bounded-pool-seat-election"/,
+    "source-frontier retained-source evidence must advertise the bounded pool-seat election stage",
   );
   assert.match(
     shaderSource,
@@ -426,8 +426,8 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     shaderSource,
-    /fn gpu_live_retention_election_score\([\s\S]*sourceDepthNdc:\s*f32[\s\S]*occlusionDensityBucket[\s\S]*occlusionWeightBucket[\s\S]*retentionBucket[\s\S]*depthBucket/,
-    "source-frontier GPU retention election must include projected depth/frontness, not only coverage and opacity",
+    /fn gpu_live_retention_pool_score\([\s\S]*sourceDepthNdc:\s*f32[\s\S]*pool:\s*u32[\s\S]*coverageBucket[\s\S]*occlusionDensityBucket[\s\S]*occlusionWeightBucket[\s\S]*retentionBucket[\s\S]*depthBucket/,
+    "source-frontier GPU retention pool scoring must include projected depth/frontness and the selected pool, not only coverage and opacity",
   );
   assert.match(
     shaderSource,
@@ -436,13 +436,13 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     shaderSource,
-    /fn gpu_live_retention_election_score\([\s\S]*sourceLuminance:\s*f32[\s\S]*retentionSignal[\s\S]*tileCoverageWeight \* max\(sourceOpacity[\s\S]*max\(sourceLuminance[\s\S]*occlusionSignal[\s\S]*tileCoverageWeight \* max\(sourceOpacity[\s\S]*retentionBucket[\s\S]*occlusionWeightBucket/,
-    "source-frontier GPU retention election must carry production-like retention and occlusion score channels before depth tie-breaking",
+    /fn gpu_live_retention_pool_score\([\s\S]*sourceLuminance:\s*f32[\s\S]*pool:\s*u32[\s\S]*retentionSignal[\s\S]*tileCoverageWeight \* max\(sourceOpacity[\s\S]*max\(sourceLuminance[\s\S]*occlusionSignal[\s\S]*tileCoverageWeight \* max\(sourceOpacity[\s\S]*retentionBucket[\s\S]*occlusionWeightBucket/,
+    "source-frontier GPU retention pool scoring must carry production-like retention and occlusion score channels before depth tie-breaking",
   );
   assert.match(
     shaderSource,
-    /fn gpu_live_retention_election_score\([\s\S]*occlusionDensityBucket[\s\S]*clamp\(sourceOpacity[\s\S]*occlusionWeightBucket[\s\S]*occlusionSignal[\s\S]*retentionBucket[\s\S]*retentionSignal[\s\S]*occlusionDensityBucket << 23u[\s\S]*occlusionWeightBucket << 15u[\s\S]*retentionBucket << 7u/,
-    "source-frontier GPU retention election must mirror production occlusion priority by packing opacity/density ahead of occlusion weight and retention weight",
+    /fn gpu_live_retention_pool_score\([\s\S]*if \(pool == RETENTION_POOL_OCCLUSION\)[\s\S]*occlusionDensityBucket << 23u[\s\S]*occlusionWeightBucket << 15u[\s\S]*coverageBucket << 7u/,
+    "source-frontier GPU retention pool scoring must preserve an occlusion pool that packs opacity/density ahead of occlusion weight",
   );
   assert.doesNotMatch(
     retentionScoreSource,
@@ -451,8 +451,8 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     shaderSource,
-    /let sourceDepthNdc = centerClip\.z \/ max\(centerClip\.w, 0\.000001\)[\s\S]*let sourceLuminance = gpu_live_source_luminance\(splatId\)[\s\S]*gpu_live_retention_election_score\([\s\S]*sourceLuminance[\s\S]*sourceDepthNdc/,
-    "source-frontier build must pass the current projected depth into the retained-ref election score",
+    /let sourceDepthNdc = centerClip\.z \/ max\(centerClip\.w, 0\.000001\)[\s\S]*let sourceLuminance = gpu_live_source_luminance\(splatId\)[\s\S]*gpu_live_retention_pool_score\([\s\S]*sourceLuminance[\s\S]*sourceDepthNdc[\s\S]*poolSlot\.pool/,
+    "source-frontier build must pass the current projected depth and selected pool into the retained-ref pool score",
   );
   assert.match(
     shaderSource,
@@ -466,8 +466,8 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     shaderSource,
-    /let compositorOrderSlot = gpu_live_compositor_order_slot\(sourceDepthNdc,\s*projectedSlot,\s*tileCapacity\)[\s\S]*gpu_live_retention_election_slot\(projectedSlot,\s*compositorOrderSlot,\s*tileId,\s*splatId,\s*tileCapacity\)/,
-    "source-frontier retained refs must feed the visible compositor in provisional back-to-front slot order",
+    /let compositorOrderSlot = gpu_live_compositor_order_slot\(sourceDepthNdc,\s*projectedSlot,\s*tileCapacity\)[\s\S]*let poolSlot = gpu_live_retention_pool_slot\(projectedSlot,\s*compositorOrderSlot,\s*tileId,\s*splatId,\s*tileCapacity\)[\s\S]*poolSlot\.slot/,
+    "source-frontier retained refs must feed provisional back-to-front order through bounded retention pool slots",
   );
   assert.doesNotMatch(
     shaderSource,
@@ -506,8 +506,8 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     retainedSourceEvidence,
-    /"wgsl-source-frontier-production-pool-seat-gap-witness"/,
-    "source-frontier retained-source evidence must advertise the remaining production pool-seat gap instead of implying scalar score closure",
+    /"wgsl-source-frontier-bounded-pool-seat-election"/,
+    "source-frontier retained-source evidence must advertise bounded pool-seat election instead of implying scalar score closure",
   );
   assert.doesNotMatch(
     shaderSource,
@@ -556,8 +556,8 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     retainedSourceEvidence,
-    /nextGpuOffloadStage:\s*"production-retention-election-pool-seats"/,
-    "after GPU retained-row prefix/scatter lands, the next retained-source frontier must be production retention election rather than prefix/scatter itself",
+    /nextGpuOffloadStage:\s*"production-candidate-source-pool-identity"/,
+    "after bounded WGSL pool seats land, the next retained-source frontier must be production candidate-source identity rather than prefix/scatter itself",
   );
   assert.match(
     shaderSource,
@@ -701,8 +701,8 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     retainedRowsRefreshSource,
-    /nextGpuOffloadStage:\s*"production-retention-election-pool-seats"/,
-    "retained-row evidence must keep the next frontier pointed at production retention election after GPU prefix/scatter is live",
+    /nextGpuOffloadStage:\s*"production-candidate-source-pool-identity"/,
+    "retained-row evidence must keep the next frontier pointed at candidate-source pool identity after bounded WGSL pool seats are live",
   );
   assert.match(
     retainedRowsRefreshSource,

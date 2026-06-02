@@ -577,7 +577,7 @@ interface RetainedSourceConstructionEvidence {
   readonly gpuReadyStages: readonly string[];
   readonly nextGpuOffloadStage:
     | "wgsl-projected-ref-stream"
-    | "production-retention-election-pool-seats";
+    | "production-candidate-source-pool-identity";
   readonly accountingSource?: "cpu-compact-source" | "gpu-ref-stats-readback-pending" | "gpu-ref-stats-readback-present" | "gpu-ref-stats-readback-blocked";
   readonly frontierBlockedStages?: readonly string[];
   readonly projectedRefs: number;
@@ -2679,12 +2679,12 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
       "wgsl-source-frontier-depth-aware-retention-election",
       "wgsl-source-frontier-production-weighted-retention-score",
       "wgsl-source-frontier-occlusion-density-retention-score",
-      "wgsl-source-frontier-production-pool-seat-gap-witness",
+      "wgsl-source-frontier-bounded-pool-seat-election",
       "wgsl-source-frontier-depth-bucket-compositor-order",
       "wgsl-source-frontier-retained-row-prefix-scatter",
       "tile-local-visible-gaussian-compositor",
     ],
-    nextGpuOffloadStage: "production-retention-election-pool-seats",
+    nextGpuOffloadStage: "production-candidate-source-pool-identity",
     accountingSource: "gpu-ref-stats-readback-pending",
     projectedRefs: frontierSource.projectedRefEstimate,
     retainedRefs: 0,
@@ -2695,7 +2695,7 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
     frontierBlockedStages: [
       compactSourceStreamRetentionBlockedStage,
       "compact-source-pixel-traces",
-      "production-retention-election-pool-seats",
+      "production-candidate-source-pool-identity",
     ],
   };
 }
@@ -2938,7 +2938,7 @@ function refreshWgslSourceFrontierRetainedRowsEvidence(
     state.retainedSourceConstruction = {
       ...retainedSourceConstruction,
       retainedRows: retainedRowsReadback,
-      nextGpuOffloadStage: "production-retention-election-pool-seats",
+      nextGpuOffloadStage: "production-candidate-source-pool-identity",
     };
     return;
   }
@@ -2949,7 +2949,7 @@ function refreshWgslSourceFrontierRetainedRowsEvidence(
     droppedRefs: retainedRowsReadback.droppedRows,
     retainedBudgetRefs: retainedRowsReadback.retainedBudgetRefs,
     maxRefsPerTile: retainedRowsReadback.maxRefsPerTile,
-    nextGpuOffloadStage: "production-retention-election-pool-seats",
+    nextGpuOffloadStage: "production-candidate-source-pool-identity",
   };
 }
 
