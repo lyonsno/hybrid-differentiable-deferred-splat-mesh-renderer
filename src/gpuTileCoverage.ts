@@ -1070,14 +1070,7 @@ function countGpuProjectionRetentionPoolSeats(
   records: readonly GpuTileContributorArenaProjectedContributor[],
   candidateSources: GpuProjectionRetentionCandidateSources | undefined,
 ): WgslSourceFrontierProductionPoolSeatGapWitness["retainedPoolCounts"] {
-  const supportKeys = new Set(
-    gpuProjectionRetentionSupportSampleGroups(records, candidateSources)
-      .flat()
-      .map(gpuProjectionRetentionRecordKey),
-  );
-  const retentionKeys = new Set((candidateSources?.retentionRecords ?? records).map(gpuProjectionRetentionRecordKey));
-  const occlusionKeys = new Set((candidateSources?.occlusionRecords ?? records).map(gpuProjectionRetentionRecordKey));
-  const coverageKeys = new Set((candidateSources?.coverageRecords ?? records).map(gpuProjectionRetentionRecordKey));
+  const poolSeats = assignGpuProjectionRetentionPoolSeats(records, retainedRecords.length, candidateSources);
   const counts = {
     retention: 0,
     occlusion: 0,
@@ -1088,19 +1081,97 @@ function countGpuProjectionRetentionPoolSeats(
 
   for (const record of retainedRecords) {
     const key = gpuProjectionRetentionRecordKey(record);
-    if (supportKeys.has(key)) {
-      counts.support += 1;
-    } else if (retentionKeys.has(key)) {
-      counts.retention += 1;
-    } else if (occlusionKeys.has(key)) {
-      counts.occlusion += 1;
-    } else if (coverageKeys.has(key)) {
-      counts.coverage += 1;
-    } else {
-      counts.backfill += 1;
-    }
+    counts[poolSeats.get(key) ?? "backfill"] += 1;
   }
   return counts;
+}
+
+type GpuProjectionRetentionPoolSeatName = keyof WgslSourceFrontierProductionPoolSeatGapWitness["retainedPoolCounts"];
+
+function assignGpuProjectionRetentionPoolSeats(
+  records: readonly GpuTileContributorArenaProjectedContributor[],
+  maxRefsPerTile: number,
+  candidateSources: GpuProjectionRetentionCandidateSources | undefined,
+): ReadonlyMap<bigint, GpuProjectionRetentionPoolSeatName> {
+  const seatByKey = new Map<bigint, GpuProjectionRetentionPoolSeatName>();
+  const selectedKeys = new Set<bigint>();
+  const supportSampleGroups = gpuProjectionRetentionSupportSampleGroups(records, candidateSources);
+  const supportTarget = supportSampleGroups.length > 0 ? Math.max(1, Math.floor(maxRefsPerTile * 0.25)) : 0;
+  const priorityTarget = maxRefsPerTile - supportTarget;
+  const priorityPoolLabels = ["retention", "occlusion", "coverage"] as const;
+
+  assignRoundRobinGpuProjectionRetentionPoolSeats({
+    seatByKey,
+    selectedKeys,
+    maxSelected: priorityTarget,
+    pools: gpuProjectionRetentionPriorityPools(records, candidateSources).map((pool, index) => ({
+      records: pool.records,
+      label: priorityPoolLabels[index],
+    })),
+  });
+  assignRoundRobinGpuProjectionRetentionPoolSeats({
+    seatByKey,
+    selectedKeys,
+    maxSelected: maxRefsPerTile,
+    pools: supportSampleGroups.map((group) => ({
+      records: [...group].sort(compareGpuProjectionSupportSamplePriority),
+      label: "support",
+    })),
+  });
+  for (const record of records) {
+    if (selectedKeys.size >= maxRefsPerTile) {
+      break;
+    }
+    const key = gpuProjectionRetentionRecordKey(record);
+    if (selectedKeys.has(key)) {
+      continue;
+    }
+    selectedKeys.add(key);
+    seatByKey.set(key, "backfill");
+  }
+  return seatByKey;
+}
+
+function assignRoundRobinGpuProjectionRetentionPoolSeats({
+  seatByKey,
+  selectedKeys,
+  maxSelected,
+  pools,
+}: {
+  readonly seatByKey: Map<bigint, GpuProjectionRetentionPoolSeatName>;
+  readonly selectedKeys: Set<bigint>;
+  readonly maxSelected: number;
+  readonly pools: readonly {
+    readonly records: readonly GpuTileContributorArenaProjectedContributor[];
+    readonly label: GpuProjectionRetentionPoolSeatName;
+  }[];
+}): void {
+  if (maxSelected <= selectedKeys.size || pools.length === 0) {
+    return;
+  }
+  const cursors = new Array(pools.length).fill(0);
+
+  while (selectedKeys.size < maxSelected) {
+    let added = false;
+    for (let poolIndex = 0; poolIndex < pools.length && selectedKeys.size < maxSelected; poolIndex += 1) {
+      const pool = pools[poolIndex].records;
+      while (cursors[poolIndex] < pool.length) {
+        const record = pool[cursors[poolIndex]];
+        cursors[poolIndex] += 1;
+        const key = gpuProjectionRetentionRecordKey(record);
+        if (selectedKeys.has(key)) {
+          continue;
+        }
+        selectedKeys.add(key);
+        seatByKey.set(key, pools[poolIndex].label);
+        added = true;
+        break;
+      }
+    }
+    if (!added) {
+      break;
+    }
+  }
 }
 
 type MutableGpuProjectionRetentionCandidateSources = {

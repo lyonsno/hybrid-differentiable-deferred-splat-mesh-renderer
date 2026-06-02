@@ -286,6 +286,57 @@ test("WGSL source-frontier witness names missing production pool seats without c
   assert.equal(witness.nextGpuOffloadStage, "production-retention-election-pool-seats");
 });
 
+test("WGSL source-frontier pool-seat witness attributes default overlapping priority pools by selected seat", () => {
+  const maxRefsPerTile = 3;
+  const records = [
+    contributor({
+      splatIndex: 1,
+      originalId: 1,
+      retentionWeight: 100,
+      occlusionWeight: 1,
+      occlusionDensity: 1,
+      coverageWeight: 1,
+    }),
+    contributor({
+      splatIndex: 2,
+      originalId: 2,
+      retentionWeight: 1,
+      occlusionWeight: 100,
+      occlusionDensity: 100,
+      coverageWeight: 1,
+    }),
+    contributor({
+      splatIndex: 3,
+      originalId: 3,
+      retentionWeight: 1,
+      occlusionWeight: 1,
+      occlusionDensity: 1,
+      coverageWeight: 100,
+    }),
+    contributor({
+      splatIndex: 4,
+      originalId: 4,
+      retentionWeight: 50,
+      occlusionWeight: 50,
+      occlusionDensity: 50,
+      coverageWeight: 50,
+    }),
+  ];
+  const witness = inspectWgslSourceFrontierProductionPoolSeatGap({
+    records,
+    maxRefsPerTile,
+  });
+
+  assert.equal(witness.status, "structural-gap");
+  assert.deepEqual(witness.retainedPoolCounts, {
+    retention: 1,
+    occlusion: 1,
+    coverage: 1,
+    support: 0,
+    backfill: 0,
+  });
+});
+
 test("GPU-owned projection retention indexes candidate sources once instead of filtering global pools per tile", () => {
   const coverageRecords = Array.from({ length: 12 }, (_, tileIndex) => contributor({
     splatIndex: tileIndex,
