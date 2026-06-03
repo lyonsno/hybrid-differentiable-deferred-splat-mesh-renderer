@@ -312,9 +312,61 @@ test("static dessert witness classifier requires one asset, one viewport, final 
   assert.equal(result.metrics.visualGapTrace.anchors[0].category, "ordered-present");
   assert.equal(result.metrics.visualGapTrace.anchors[0].finalStepCount, 1);
   assert.equal(result.metrics.visualGapTrace.anchors[0].outputAlpha, 0.44);
+  assert.equal(result.metrics.plateSeepageClassification.status, "classified");
+  assert.equal(result.metrics.plateSeepageClassification.category, "no-seepage");
+  assert.equal(result.metrics.plateSeepageClassification.stage, "foreground-survived");
   assert.equal(result.observations.visibleHoles.evidenceIds.includes("coverage-weight"), true);
   assert.equal(result.observations.plateSeepage.evidenceIds.includes("transmittance"), true);
   assert.equal(result.observations.budgetSkip.status, "separate-high-viewport-observation");
+});
+
+test("static dessert witness classifier classifies source-frontier plate seepage by foreground survival stage", () => {
+  const anchors = [
+    { id: "visual-gap-1", kind: "plate-through-dessert", x: 640, y: 342, score: 71, plateDelta: 88, tileLocalDelta: 9 },
+  ];
+  const result = classifyStaticDessertWitness({
+    captures: [
+      witnessCapture("final-color", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        routeIdentity: {
+          ...visualGapTraceRoute([]),
+          traceAnchors: "",
+          wgslProjectedRefStream: "source-frontier",
+        },
+      }),
+      ...staticDessertRequiredCaptures().filter((capture) => capture.id !== "final-color"),
+      witnessCapture("visual-gap-trace", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        routeIdentity: {
+          ...visualGapTraceRoute(anchors),
+          wgslProjectedRefStream: "source-frontier",
+        },
+        visualGapAnchors: anchors,
+        perPixelFinalColorAccumulation: finalAccumulationRowsFor(anchors),
+        perPixelRetainedToOrderedSurvivalLedger: survivalLedgerFor(anchors, {
+          category: "projected-foreground-dropped-before-retention",
+          mechanism: "pixel-strong-projected-foreground-support-lost-before-retained-slate",
+          counts: { projectedForegroundDroppedBeforeRetention: 4, retainedForeground: 0, orderedForeground: 0 },
+        }),
+      }),
+    ],
+  });
+
+  assert.equal(result.closeable, true);
+  assert.deepEqual(result.metrics.plateSeepageClassification, {
+    status: "classified",
+    category: "tile-list-loss",
+    stage: "retention-election",
+    sourceRoute: "wgsl-projected-ref-stream-source-frontier",
+    anchorCount: 1,
+    classifiedAnchorCount: 1,
+    mechanismCounts: {
+      "pixel-strong-projected-foreground-support-lost-before-retained-slate": 1,
+    },
+    blockerCount: 0,
+  });
+  assert.equal(result.observations.plateSeepage.status, "classified-for-review");
+  assert.equal(result.observations.plateSeepage.boundary.includes("retention-election"), true);
 });
 
 test("static dessert witness classifier refuses incomplete visual gap trace evidence", () => {
@@ -627,6 +679,7 @@ test("visual smoke CLI exposes a static dessert witness batch mode", () => {
   assert.match(source, /metrics\.retentionAudit\.regions\.centerLeakBand\.region/);
   assert.match(source, /deriveStaticDessertVisualGapAnchors/);
   assert.match(source, /Visual Gap Trace/);
+  assert.match(source, /Plate Seepage Classification/);
   assert.match(source, /metrics\.visualGapTrace\.anchors/);
 });
 
@@ -764,14 +817,14 @@ function finalAccumulationRowsFor(anchors) {
   }));
 }
 
-function survivalLedgerFor(anchors) {
+function survivalLedgerFor(anchors, overrides = {}) {
   return {
     anchorLedgers: anchors.map((anchor) => ({
       anchorPixel: { id: anchor.id, x: anchor.x, y: anchor.y },
-      category: "ordered-present",
-      mechanism: "retained-foreground-identity-survives-to-final-accumulation",
-      counts: { retainedForeground: 2, orderedForeground: 3 },
-      metrics: { finalForegroundAlpha: 0.44 },
+      category: overrides.category ?? "ordered-present",
+      mechanism: overrides.mechanism ?? "retained-foreground-identity-survives-to-final-accumulation",
+      counts: { retainedForeground: 2, orderedForeground: 3, ...overrides.counts },
+      metrics: { finalForegroundAlpha: 0.44, ...overrides.metrics },
     })),
   };
 }

@@ -1395,6 +1395,16 @@ ${renderSmokeHandoffSection(result.smokeHandoff)}
 
 ${metrics.visualGapTrace.anchors.length === 0 ? "- None" : metrics.visualGapTrace.anchors.map((anchor) => `- ${anchor.id}@${anchor.x},${anchor.y}: ${anchor.traceStatus}; score ${anchor.score}; plate delta ${anchor.plateDelta}; tile-local delta ${anchor.tileLocalDelta}; ${anchor.category}/${anchor.mechanism}; steps ${anchor.finalStepCount}; alpha ${anchor.outputAlpha}; foreground ${anchor.orderedForegroundCount}`).join("\n")}
 
+## Plate Seepage Classification
+
+- Status: ${metrics.plateSeepageClassification.status}
+- Category: ${metrics.plateSeepageClassification.category}
+- Stage: ${metrics.plateSeepageClassification.stage}
+- Source route: ${metrics.plateSeepageClassification.sourceRoute}
+- Classified anchors: ${metrics.plateSeepageClassification.classifiedAnchorCount} / ${metrics.plateSeepageClassification.anchorCount}
+- Blockers: ${metrics.plateSeepageClassification.blockerCount}
+- Mechanisms: ${Object.entries(metrics.plateSeepageClassification.mechanismCounts ?? {}).map(([mechanism, count]) => `${mechanism}=${count}`).join(", ") || "none"}
+
 ## Captures
 
 ${result.captures
@@ -1960,6 +1970,7 @@ function routeIdentityFromCapture(capture, pageEvidence, options) {
     effectiveArenaBackend: pageEvidence.arenaRuntime?.effectiveArenaBackend || null,
     tileSizePx: url.searchParams.get("tileSizePx") || pageEvidence.tileLocal?.diagnostics?.config?.tileSizePx || null,
     maxRefsPerTile: url.searchParams.get("maxRefsPerTile") || pageEvidence.tileLocal?.diagnostics?.config?.maxRefsPerTile || null,
+    wgslProjectedRefStream: url.searchParams.get("wgslProjectedRefStream") || null,
     tileDebug: url.searchParams.get("tileDebug") || null,
     debug: url.searchParams.get("debug") || null,
     traceAnchors: url.searchParams.get("traceAnchors") || null,

@@ -96,6 +96,10 @@ export function classifyStaticDessertWitness({ captures = [] } = {}) {
     byId.get(STATIC_DESSERT_WITNESS_CAPTURE_IDS.visualGapTrace),
     staticTileLocalRouteExpectation(finalColor)
   );
+  const plateSeepageClassification = classifyPlateSeepageFromVisualGapTrace(
+    visualGapTrace,
+    staticTileLocalRouteExpectation(finalColor)
+  );
   if (plateFinalColor && rendererLabel(plateFinalColor) !== "plate") {
     findings.push(
       finding(
@@ -231,6 +235,14 @@ export function classifyStaticDessertWitness({ captures = [] } = {}) {
       )
     );
   }
+  if (visualGapTrace.status === "present" && plateSeepageClassification.status !== "classified") {
+    findings.push(
+      finding(
+        "plate-seepage-classification-blocked",
+        `Plate/background seepage anchors were traced but not stage-classified: ${plateSeepageClassification.category}/${plateSeepageClassification.stage}.`
+      )
+    );
+  }
 
   const closeable = findings.length === 0;
   return {
@@ -287,8 +299,9 @@ export function classifyStaticDessertWitness({ captures = [] } = {}) {
           0,
       },
       visualGapTrace,
+      plateSeepageClassification,
     },
-    observations: staticDessertObservations(),
+    observations: staticDessertObservations(plateSeepageClassification),
     findings,
   };
 }
@@ -584,6 +597,7 @@ function visualGapTraceRouteStatus(capture, anchors, expectedRoute = {}) {
     ["arenaBackend", DEFAULT_STATIC_TILE_LOCAL_ROUTE.arenaBackend],
     ["tileSizePx", DEFAULT_STATIC_TILE_LOCAL_ROUTE.tileSizePx],
     ["maxRefsPerTile", DEFAULT_STATIC_TILE_LOCAL_ROUTE.maxRefsPerTile],
+    ["wgslProjectedRefStream", expectedRoute.wgslProjectedRefStream],
   ];
   for (const [field, expected] of routeChecks) {
     const actual = routeValue(capture, routeIdentity, field);
@@ -678,6 +692,7 @@ function staticTileLocalRouteExpectation(finalColorCapture = {}) {
   return {
     assetPath: stringValue(identity.assetPath) || assetPath(finalColorCapture),
     witnessView: stringValue(identity.witnessView) || "default",
+    wgslProjectedRefStream: routeValue(finalColorCapture, identity, "wgslProjectedRefStream"),
   };
 }
 
@@ -709,7 +724,112 @@ function anchorPixelMatches(anchor, anchorPixel) {
   );
 }
 
-function staticDessertObservations() {
+function classifyPlateSeepageFromVisualGapTrace(visualGapTrace = {}, expectedRoute = {}) {
+  const anchors = Array.isArray(visualGapTrace.anchors) ? visualGapTrace.anchors : [];
+  const sourceRoute = sourceRouteLabel(expectedRoute.wgslProjectedRefStream);
+  const base = {
+    status: "blocked",
+    category: "unclassified",
+    stage: "trace",
+    sourceRoute,
+    anchorCount: anchors.length,
+    classifiedAnchorCount: 0,
+    mechanismCounts: {},
+    blockerCount: anchors.length,
+  };
+  if (visualGapTrace.status === "not-captured") {
+    return { ...base, category: "trace-missing", stage: "trace-capture" };
+  }
+  if (visualGapTrace.status === "empty") {
+    return { ...base, category: "trace-empty", stage: "trace-anchor-derivation", blockerCount: 0 };
+  }
+  if (visualGapTrace.status === "malformed") {
+    return { ...base, category: "trace-route-malformed", stage: "trace-route" };
+  }
+  if (visualGapTrace.status === "partial") {
+    return {
+      ...base,
+      category: "trace-incomplete",
+      stage: "trace-readback",
+      blockerCount: anchors.filter((anchor) => !anchor.traceComplete).length,
+    };
+  }
+  if (visualGapTrace.status !== "present") {
+    return base;
+  }
+
+  const completeAnchors = anchors.filter((anchor) => anchor.traceComplete);
+  const mechanismCounts = countBy(
+    completeAnchors.map((anchor) => anchor.mechanism || "unclassified")
+  );
+  const categories = new Set(completeAnchors.map((anchor) => anchor.category || "unclassified"));
+  const blockerCount = completeAnchors.filter((anchor) => (
+    anchor.category === "trace-blocked" ||
+    anchor.category === "unclassified" ||
+    anchor.mechanism === "unclassified"
+  )).length;
+  const classification = classifyPlateSeepageCategories(categories);
+  return {
+    status: blockerCount > 0 || classification.category === "unclassified" ? "blocked" : "classified",
+    category: classification.category,
+    stage: classification.stage,
+    sourceRoute,
+    anchorCount: anchors.length,
+    classifiedAnchorCount: completeAnchors.length - blockerCount,
+    mechanismCounts,
+    blockerCount,
+  };
+}
+
+function classifyPlateSeepageCategories(categories) {
+  if (categories.has("narrower-role-source-blocker") || categories.has("no-retained-foreground-role-support")) {
+    return { category: "source-role-loss", stage: "source-construction" };
+  }
+  if (categories.has("projected-foreground-dropped-before-retention")) {
+    return { category: "tile-list-loss", stage: "retention-election" };
+  }
+  if (categories.has("retained-missing-from-order")) {
+    return { category: "ordering-loss", stage: "compositor-order" };
+  }
+  if (categories.has("ordered-present-final-alpha-weak")) {
+    return { category: "alpha-under-accumulation", stage: "alpha-transfer" };
+  }
+  if (categories.size > 0 && [...categories].every((category) => category === "ordered-present")) {
+    return { category: "no-seepage", stage: "foreground-survived" };
+  }
+  if (categories.has("trace-blocked")) {
+    return { category: "trace-blocked", stage: "trace-readback" };
+  }
+  return { category: "unclassified", stage: "unknown" };
+}
+
+function sourceRouteLabel(wgslProjectedRefStream) {
+  const stream = stringValue(wgslProjectedRefStream);
+  if (stream === "source-frontier") {
+    return "wgsl-projected-ref-stream-source-frontier";
+  }
+  if (stream !== "") {
+    return `wgsl-projected-ref-stream-${stream}`;
+  }
+  return "default-retained-source";
+}
+
+function countBy(values) {
+  const counts = {};
+  for (const value of values) {
+    const key = stringValue(value) || "unclassified";
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
+  return counts;
+}
+
+function staticDessertObservations(plateSeepageClassification = {}) {
+  const plateSeepageStatus = plateSeepageClassification.status === "classified"
+    ? "classified-for-review"
+    : "captured-for-review";
+  const plateSeepageBoundary = plateSeepageClassification.status === "classified"
+    ? `Plate/background seepage is classified at ${plateSeepageClassification.stage} (${plateSeepageClassification.category}) for ${plateSeepageClassification.sourceRoute}.`
+    : "Plate/background seepage is witnessed through final color plus alpha/transmittance debug modes, not by opacity tuning.";
   return {
     visibleHoles: {
       status: "captured-for-review",
@@ -721,13 +841,14 @@ function staticDessertObservations() {
       boundary: "Porous/non-square final-color gaps are witnessed separately from tile-ref density and alpha transfer.",
     },
     plateSeepage: {
-      status: "captured-for-review",
+      status: plateSeepageStatus,
       evidenceIds: [
         STATIC_DESSERT_WITNESS_CAPTURE_IDS.finalColor,
         STATIC_DESSERT_WITNESS_CAPTURE_IDS.accumulatedAlpha,
         STATIC_DESSERT_WITNESS_CAPTURE_IDS.transmittance,
+        STATIC_DESSERT_WITNESS_CAPTURE_IDS.visualGapTrace,
       ],
-      boundary: "Plate/background seepage is witnessed through final color plus alpha/transmittance debug modes, not by opacity tuning.",
+      boundary: plateSeepageBoundary,
     },
     budgetSkip: {
       status: "separate-high-viewport-observation",
