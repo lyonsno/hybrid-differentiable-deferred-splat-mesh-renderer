@@ -225,10 +225,10 @@ interface TileLocalSceneState {
   tileBuildCountBuffer: GPUBuffer;
   tileScatterCursorBuffer: GPUBuffer;
   alphaParamBuffer: GPUBuffer;
-  candidateSourceRecordsBuffer: GPUBuffer;
-  candidateSourceGroupsBuffer: GPUBuffer;
+  candidateSourceRecordsBuffer?: GPUBuffer;
+  candidateSourceGroupsBuffer?: GPUBuffer;
   alphaParamData: Float32Array;
-  candidateSourceInputs: GpuProjectionRetentionCandidateSourceInputs;
+  candidateSourceInputs?: GpuProjectionRetentionCandidateSourceInputs;
   sourceViewDepths: Float32Array;
   sourceOpacities: Float32Array;
   tileRefShapeParams: Float32Array;
@@ -305,9 +305,6 @@ interface WgslProjectedRefStreamState {
   readonly tileCoverageWeightBuffer: GPUBuffer;
   readonly tileScatterCursorBuffer: GPUBuffer;
   readonly alphaParamBuffer: GPUBuffer;
-  readonly candidateSourceRecordsBuffer: GPUBuffer;
-  readonly candidateSourceGroupsBuffer: GPUBuffer;
-  readonly candidateSourceInputs: GpuProjectionRetentionCandidateSourceInputs;
   readonly compactSourceProjectedRefs: number;
   readonly compactSourceRetainedRefs: number;
   readonly sourceSplatCount: number;
@@ -1683,7 +1680,6 @@ function createGpuArenaTileLocalSceneState(
   const wgslProjectedRefStream = wgslProjectedRefStreamResult.state;
   const alphaParamData = new Float32Array(Math.max(plan.alphaParamBytes / Float32Array.BYTES_PER_ELEMENT, 8));
   alphaParamData.set(legacyProjection.alphaParamData.slice(0, alphaParamData.length));
-  const candidateSourceBuffers = createCandidateSourceInputBuffers(device, undefined, "gpu_arena_legacy");
   const bindGroup = pipeline.createBindGroup({
     frameUniformBuffer,
     positionBuffer: buffers.positionBuffer,
@@ -1696,8 +1692,6 @@ function createGpuArenaTileLocalSceneState(
     tileCoverageWeightBuffer: gpuArenaRuntime.buffers.legacyTileCoverageWeightBuffer,
     tileScatterCursorBuffer,
     alphaParamBuffer: gpuArenaRuntime.buffers.legacyAlphaParamBuffer,
-    candidateSourceRecordsBuffer: candidateSourceBuffers.candidateSourceRecordsBuffer,
-    candidateSourceGroupsBuffer: candidateSourceBuffers.candidateSourceGroupsBuffer,
     outputColorView: outputView,
   });
   const retentionAudit = estimatedGpuLiveRetentionAudit(compactSource.tileRefCustody, plan.tileCount);
@@ -1738,10 +1732,7 @@ function createGpuArenaTileLocalSceneState(
     tileBuildCountBuffer,
     tileScatterCursorBuffer,
     alphaParamBuffer: gpuArenaRuntime.buffers.legacyAlphaParamBuffer,
-    candidateSourceRecordsBuffer: candidateSourceBuffers.candidateSourceRecordsBuffer,
-    candidateSourceGroupsBuffer: candidateSourceBuffers.candidateSourceGroupsBuffer,
     alphaParamData,
-    candidateSourceInputs: candidateSourceBuffers.candidateSourceInputs,
     sourceViewDepths: sourceDepthEvidence.depths,
     sourceOpacities: effectiveOpacities,
     tileRefShapeParams: legacyProjection.tileRefShapeParams,
@@ -1928,8 +1919,6 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     tileCoverageWeightBuffer,
     tileScatterCursorBuffer,
     alphaParamBuffer,
-    candidateSourceRecordsBuffer: candidateSourceBuffers.candidateSourceRecordsBuffer,
-    candidateSourceGroupsBuffer: candidateSourceBuffers.candidateSourceGroupsBuffer,
     outputColorView: outputView,
   });
   const tileRefCustody = compactSource.tileRefCustody;
@@ -2254,7 +2243,6 @@ function createWgslProjectedRefStreamState({
     "wgsl_projected_ref_stream_scatter_cursors"
   );
   const alphaParamBuffer = createEmptyStorageBuffer(device, plan.alphaParamBytes, "wgsl_projected_ref_stream_alpha_params");
-  const candidateSourceBuffers = createCandidateSourceInputBuffers(device, undefined, "wgsl_projected_ref_stream");
   const bindGroup = pipeline.createBindGroup({
     frameUniformBuffer,
     positionBuffer: buffers.positionBuffer,
@@ -2267,8 +2255,6 @@ function createWgslProjectedRefStreamState({
     tileCoverageWeightBuffer,
     tileScatterCursorBuffer,
     alphaParamBuffer,
-    candidateSourceRecordsBuffer: candidateSourceBuffers.candidateSourceRecordsBuffer,
-    candidateSourceGroupsBuffer: candidateSourceBuffers.candidateSourceGroupsBuffer,
     outputColorView: outputView,
   });
   return {
@@ -2285,9 +2271,6 @@ function createWgslProjectedRefStreamState({
       tileCoverageWeightBuffer,
       tileScatterCursorBuffer,
       alphaParamBuffer,
-      candidateSourceRecordsBuffer: candidateSourceBuffers.candidateSourceRecordsBuffer,
-      candidateSourceGroupsBuffer: candidateSourceBuffers.candidateSourceGroupsBuffer,
-      candidateSourceInputs: candidateSourceBuffers.candidateSourceInputs,
       compactSourceProjectedRefs: compactSource.projectedContributorCount,
       compactSourceRetainedRefs: compactSource.retainedContributorCount,
       sourceSplatCount: compactSource.candidateSplatIndexes.length,
@@ -5067,8 +5050,6 @@ function createCpuTileLocalSceneState(
     "tile_local_output"
   );
   const outputView = outputTexture.createView();
-  const candidateSourceBuffers = createCandidateSourceInputBuffers(device, undefined, "tile_local_legacy");
-
   const bindGroup = pipeline.createBindGroup({
     frameUniformBuffer,
     positionBuffer: buffers.positionBuffer,
@@ -5081,8 +5062,6 @@ function createCpuTileLocalSceneState(
     tileCoverageWeightBuffer: bridgeBuffers.tileCoverageWeightBuffer,
     tileScatterCursorBuffer,
     alphaParamBuffer,
-    candidateSourceRecordsBuffer: candidateSourceBuffers.candidateSourceRecordsBuffer,
-    candidateSourceGroupsBuffer: candidateSourceBuffers.candidateSourceGroupsBuffer,
     outputColorView: outputView,
   });
 
@@ -5104,10 +5083,7 @@ function createCpuTileLocalSceneState(
     tileBuildCountBuffer,
     tileScatterCursorBuffer,
     alphaParamBuffer,
-    candidateSourceRecordsBuffer: candidateSourceBuffers.candidateSourceRecordsBuffer,
-    candidateSourceGroupsBuffer: candidateSourceBuffers.candidateSourceGroupsBuffer,
     alphaParamData,
-    candidateSourceInputs: candidateSourceBuffers.candidateSourceInputs,
     sourceViewDepths: sourceDepthEvidence.depths,
     sourceOpacities: effectiveOpacities,
     tileRefShapeParams: legacyProjection?.tileRefShapeParams ?? bridge.tileRefShapeParams,
@@ -6751,8 +6727,8 @@ function destroyTileLocalSceneState(state: TileLocalSceneState): void {
     state.tileCoverageWeightBuffer.destroy();
     state.alphaParamBuffer.destroy();
   }
-  state.candidateSourceRecordsBuffer.destroy();
-  state.candidateSourceGroupsBuffer.destroy();
+  state.candidateSourceRecordsBuffer?.destroy();
+  state.candidateSourceGroupsBuffer?.destroy();
   if (state.wgslProjectedRefStream) {
     if (state.wgslProjectedRefStream.pendingReadback) {
       state.wgslProjectedRefStream.pendingReadback.cancelled = true;
@@ -6768,8 +6744,6 @@ function destroyTileLocalSceneState(state: TileLocalSceneState): void {
     state.wgslProjectedRefStream.tileCoverageWeightBuffer.destroy();
     state.wgslProjectedRefStream.tileScatterCursorBuffer.destroy();
     state.wgslProjectedRefStream.alphaParamBuffer.destroy();
-    state.wgslProjectedRefStream.candidateSourceRecordsBuffer.destroy();
-    state.wgslProjectedRefStream.candidateSourceGroupsBuffer.destroy();
   }
   state.tileBuildCountBuffer.destroy();
   state.tileScatterCursorBuffer.destroy();

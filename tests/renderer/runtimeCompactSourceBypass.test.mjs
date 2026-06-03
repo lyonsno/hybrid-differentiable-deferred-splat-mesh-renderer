@@ -574,30 +574,30 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
     /presentWgslInputs:[\s\S]*"retention-candidate-records"[\s\S]*"occlusion-candidate-records"[\s\S]*"coverage-candidate-records"[\s\S]*"support-sample-record-groups"/,
     "candidate-source identity evidence must name the seated class-tagged WGSL inputs",
   );
-  assert.match(
+  assert.doesNotMatch(
     coverageRendererSource,
     /candidateSourceRecordsBuffer:\s*GPUBuffer/,
-    "source-frontier bind groups must expose a class-tagged candidate-source records buffer",
+    "candidate-source records must not be wired into the already-full current compositor bind group",
   );
-  assert.match(
+  assert.doesNotMatch(
     coverageRendererSource,
     /candidateSourceGroupsBuffer:\s*GPUBuffer/,
-    "source-frontier bind groups must expose support-sample group ranges as GPU input substrate",
+    "candidate-source groups must wait for a narrower future election consumer instead of the current compositor bind group",
   );
-  assert.match(
+  assert.doesNotMatch(
     coverageRendererSource,
-    /GPU_TILE_COVERAGE_BINDINGS\.candidateSourceRecords/,
-    "candidate-source records need a stable WGSL binding instead of evidence-only prose",
+    /storageEntry\(GPU_TILE_COVERAGE_BINDINGS\.candidateSource/,
+    "candidate-source bindings are reserved constants, not live storage entries on this 10-storage-buffer compositor layout",
   );
-  assert.match(
+  assert.doesNotMatch(
     shaderSource,
     /@binding\(13\)\s*var<storage,\s*read>\s+candidateSourceRecords/,
-    "WGSL must receive class-tagged candidate-source records even before the election consumes them",
+    "the current compositor shader must not bind candidate-source records before the narrower election consumer exists",
   );
-  assert.match(
+  assert.doesNotMatch(
     shaderSource,
     /@binding\(14\)\s*var<storage,\s*read>\s+candidateSourceGroups/,
-    "WGSL must receive support-sample group ranges even before the election consumes them",
+    "the current compositor shader must not bind candidate-source groups before the narrower election consumer exists",
   );
   assert.match(
     retainedSourceEvidence,

@@ -144,6 +144,9 @@ test("GPU tile coverage compact source table stores non-contiguous source ids af
 });
 
 test("GPU tile coverage bindings carry the live tile buffers inside WebGPU storage limits", () => {
+  const renderer = readFileSync(new URL("../../src/gpuTileCoverageRenderer.ts", import.meta.url), "utf8");
+  const storageBindings = [...renderer.matchAll(/storageEntry\(GPU_TILE_COVERAGE_BINDINGS\.(\w+)/g)].map((match) => match[1]);
+
   assert.deepEqual(GPU_TILE_COVERAGE_BINDINGS, {
     frame: 0,
     positions: 1,
@@ -160,6 +163,16 @@ test("GPU tile coverage bindings carry the live tile buffers inside WebGPU stora
     candidateSourceRecords: 13,
     candidateSourceGroups: 14,
   });
+  assert.equal(
+    storageBindings.length,
+    10,
+    `current tile coverage compositor layout must not exceed WebGPU's common 10 storage-buffer compute-stage limit: ${storageBindings.join(", ")}`,
+  );
+  assert.doesNotMatch(
+    renderer,
+    /storageEntry\(GPU_TILE_COVERAGE_BINDINGS\.candidateSource/,
+    "candidate-source inputs need a narrower future election consumer, not the already-full compositor bind group",
+  );
 });
 
 test("GPU live footprint policy caps pathological projected conic energy without shrinking normal splats", () => {
