@@ -324,6 +324,41 @@ fn gpu_live_candidate_source_pool(candidateSourceClassMask: u32, fallbackPool: u
   return fallbackPool;
 }
 
+fn gpu_live_retention_overflow_pool_slot(
+  tileId: u32,
+  splatId: u32,
+  candidateSourceClassMask: u32,
+  tileCapacity: u32,
+) -> RetentionPoolSlot {
+  let safeCapacity = max(tileCapacity, 1u);
+  let fallbackSlot = gpu_live_overflow_election_slot(tileId, splatId, safeCapacity);
+  let fallbackPool = gpu_live_retention_pool_from_slot(fallbackSlot, safeCapacity);
+  if (candidateSourceClassMask == 0u) {
+    return RetentionPoolSlot(fallbackSlot, fallbackPool);
+  }
+
+  let requestedPool = gpu_live_candidate_source_pool(candidateSourceClassMask, fallbackPool);
+  if (requestedPool == fallbackPool) {
+    return RetentionPoolSlot(fallbackSlot, fallbackPool);
+  }
+
+  let supportTarget = gpu_live_retention_support_target(safeCapacity);
+  let priorityTarget = gpu_live_retention_priority_target(safeCapacity);
+  if (requestedPool == RETENTION_POOL_SUPPORT) {
+    if (supportTarget == 0u) {
+      return RetentionPoolSlot(fallbackSlot, fallbackPool);
+    }
+    let poolSlot = priorityTarget + gpu_live_overflow_election_slot(tileId, splatId, supportTarget);
+    return RetentionPoolSlot(min(poolSlot, safeCapacity - 1u), requestedPool);
+  }
+
+  let poolStart = gpu_live_retention_priority_pool_start(priorityTarget, requestedPool);
+  let poolEnd = gpu_live_retention_priority_pool_end(priorityTarget, requestedPool);
+  let poolWidth = max(poolEnd - poolStart, 1u);
+  let poolSlot = poolStart + gpu_live_overflow_election_slot(tileId, splatId, poolWidth);
+  return RetentionPoolSlot(min(poolSlot, safeCapacity - 1u), requestedPool);
+}
+
 fn gpu_live_retention_pool_slot(
   projectedSlot: u32,
   compositorOrderSlot: u32,
@@ -351,9 +386,7 @@ fn gpu_live_retention_pool_slot(
     let poolSlot = poolStart + ((depthLocalSlot + (priorityOrdinal / 3u)) % poolWidth);
     return RetentionPoolSlot(min(poolSlot, safeCapacity - 1u), pool);
   }
-  let overflowSlot = gpu_live_overflow_election_slot(tileId, splatId, safeCapacity);
-  let fallbackPool = gpu_live_retention_pool_from_slot(overflowSlot, safeCapacity);
-  return RetentionPoolSlot(overflowSlot, gpu_live_candidate_source_pool(candidateSourceClassMask, fallbackPool));
+  return gpu_live_retention_overflow_pool_slot(tileId, splatId, candidateSourceClassMask, safeCapacity);
 }
 
 fn gpu_live_retention_pool_score(

@@ -230,6 +230,21 @@ test("WGSL source-frontier election consumes candidate class masks from the comp
   assert.match(shader, /gpu_live_retention_pool_slot\([\s\S]*candidateSourceClassMask[\s\S]*tileCapacity/);
 });
 
+test("WGSL source-frontier overflow keeps retained slot and score pool coherent", () => {
+  const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
+
+  assert.match(
+    shader,
+    /fn gpu_live_retention_overflow_pool_slot\([\s\S]*candidateSourceClassMask:\s*u32[\s\S]*fallbackPool[\s\S]*requestedPool[\s\S]*poolStart[\s\S]*poolSlot[\s\S]*RetentionPoolSlot\(min\(poolSlot,\s*safeCapacity - 1u\),\s*requestedPool\)/,
+    "overflow candidate source masks must choose a slot inside the same pool that scores/elects the candidate",
+  );
+  assert.doesNotMatch(
+    shader,
+    /RetentionPoolSlot\(overflowSlot,\s*gpu_live_candidate_source_pool\(candidateSourceClassMask,\s*fallbackPool\)\)/,
+    "overflow must not hash into one pool's slot range while scoring as a different candidate-source pool",
+  );
+});
+
 test("GPU live footprint policy caps pathological projected conic energy without shrinking normal splats", () => {
   const normal = resolveGpuLiveFootprintPolicy({
     majorRadiusPx: 24,
