@@ -19,6 +19,7 @@ import { createStorageBuffer, createTexture2D, createUniformBuffer } from "./buf
 import {
   buildDeterministicGpuTileProjectionRetentionArena,
   buildGpuProjectionRetentionCandidateSourceInputs,
+  buildGpuProjectionRetentionCandidateSourceClassMasks,
   createGpuTileCoveragePlan,
   GPU_TILE_COVERAGE_ALPHA_PARAM_FLOATS_PER_REF,
   GPU_TILE_COVERAGE_FRAME_UNIFORM_BYTES,
@@ -604,15 +605,21 @@ interface RetainedSourceConstructionEvidence {
 }
 
 interface SourceFrontierCandidateSourceIdentityEvidence {
-  readonly status: "blocked-missing-wgsl-candidate-source-inputs" | "present-not-consumed";
+  readonly status:
+    | "blocked-missing-wgsl-candidate-source-inputs"
+    | "present-not-consumed"
+    | "class-mask-consumed-record-groups-not-yet-consumed";
   readonly source: "wgsl-source-frontier-candidate-source-identity-contract";
   readonly availableIdentity: "selected-slot-pool-only" | "class-tagged-wgsl-candidate-source-inputs";
+  readonly consumptionPath?: "source-index-table-class-mask";
   readonly requiredWgslInputs: readonly string[];
   readonly presentWgslInputs?: readonly string[];
   readonly recordCount?: number;
   readonly groupCount?: number;
   readonly classesPresent?: readonly string[];
-  readonly falseClosureGuard: "bounded-pool-seats-are-not-production-candidate-source-identity";
+  readonly falseClosureGuard:
+    | "bounded-pool-seats-are-not-production-candidate-source-identity"
+    | "source-index-class-masks-do-not-consume-full-candidate-record-groups";
 }
 
 interface SourceFrontierRetainedRowsEvidence {
@@ -1852,11 +1859,29 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     "wgsl_source_frontier_frame_uniforms"
   );
   const frameUniformData = new Float32Array(GPU_TILE_COVERAGE_FRAME_UNIFORM_BYTES / Float32Array.BYTES_PER_ELEMENT);
+  const candidateSources = timeOptionalFrameStage(frameTiming, "wgsl-source-frontier-pack-candidate-source-inputs", () =>
+    buildWgslSourceFrontierCandidateSources({
+      frontierSource,
+      attributes,
+      effectiveOpacities,
+      viewMatrix,
+      viewportWidth,
+      viewportHeight,
+      tileSizePx,
+      tileColumns,
+      maxRefsPerTile: gpuLiveEffectiveRefsPerTile(plan),
+    })
+  );
+  const candidateSourceClassMasks = buildGpuProjectionRetentionCandidateSourceClassMasks(
+    frontierSource.candidateSplatIndexes,
+    candidateSources,
+  );
   const tileHeaderBuffer = createTileHeaderStorageBuffer(
     device,
     plan,
     frontierSource.candidateSplatIndexes,
-    "wgsl_source_frontier_tile_headers"
+    "wgsl_source_frontier_tile_headers",
+    candidateSourceClassMasks,
   );
   const tileRefBuffer = createEmptyStorageBuffer(device, plan.tileRefBytes, "wgsl_source_frontier_tile_refs");
   const tileCoverageWeightBuffer = createEmptyStorageBuffer(
@@ -1892,19 +1917,6 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     frontierSource,
     compactSourceConstruction,
     plan
-  );
-  const candidateSources = timeOptionalFrameStage(frameTiming, "wgsl-source-frontier-pack-candidate-source-inputs", () =>
-    buildWgslSourceFrontierCandidateSources({
-      frontierSource,
-      attributes,
-      effectiveOpacities,
-      viewMatrix,
-      viewportWidth,
-      viewportHeight,
-      tileSizePx,
-      tileColumns,
-      maxRefsPerTile: gpuLiveEffectiveRefsPerTile(plan),
-    })
   );
   const candidateSourceBuffers = createCandidateSourceInputBuffers(device, candidateSources, "wgsl_source_frontier");
   const bindGroup = pipeline.createBindGroup({
@@ -2850,9 +2862,10 @@ function sourceFrontierCandidateSourceIdentityEvidence(
 ): SourceFrontierCandidateSourceIdentityEvidence {
   if (candidateSourceInputs && candidateSourceInputs.recordCount > 0) {
     return {
-      status: "present-not-consumed",
+      status: "class-mask-consumed-record-groups-not-yet-consumed",
       source: "wgsl-source-frontier-candidate-source-identity-contract",
       availableIdentity: "class-tagged-wgsl-candidate-source-inputs",
+      consumptionPath: "source-index-table-class-mask",
       requiredWgslInputs: [],
       presentWgslInputs: [
         "retention-candidate-records",
@@ -2863,7 +2876,7 @@ function sourceFrontierCandidateSourceIdentityEvidence(
       recordCount: candidateSourceInputs.recordCount,
       groupCount: candidateSourceInputs.groupCount,
       classesPresent: candidateSourceInputs.classesPresent,
-      falseClosureGuard: "bounded-pool-seats-are-not-production-candidate-source-identity",
+      falseClosureGuard: "source-index-class-masks-do-not-consume-full-candidate-record-groups",
     };
   }
   return {
@@ -6298,12 +6311,13 @@ function createTileHeaderStorageBuffer(
   plan: GpuTileCoveragePlan,
   candidateSplatIndexes: Uint32Array | null,
   label: string,
+  candidateSourceClassMasks?: Uint32Array | null,
 ): GPUBuffer {
   if (!candidateSplatIndexes || candidateSplatIndexes.length === 0) {
     return createEmptyStorageBuffer(device, plan.tileHeaderBytes, label);
   }
   const headerU32 = new Uint32Array(plan.tileHeaderBytes / Uint32Array.BYTES_PER_ELEMENT);
-  writeGpuTileCoverageSourceIndexTable(headerU32, plan, candidateSplatIndexes);
+  writeGpuTileCoverageSourceIndexTable(headerU32, plan, candidateSplatIndexes, candidateSourceClassMasks ?? undefined);
   return createInitializedReadableStorageBuffer(device, headerU32.buffer, label);
 }
 

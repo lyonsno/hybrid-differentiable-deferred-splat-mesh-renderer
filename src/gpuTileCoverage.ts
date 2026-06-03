@@ -217,6 +217,13 @@ export const GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_CODES = {
 export type GpuProjectionRetentionCandidateSourceClass =
   keyof typeof GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_CODES;
 
+export const GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS = {
+  retention: 1 << 0,
+  occlusion: 1 << 1,
+  coverage: 1 << 2,
+  support: 1 << 3,
+} as const satisfies Record<GpuProjectionRetentionCandidateSourceClass, number>;
+
 export interface GpuProjectionRetentionCandidateSourceInputs {
   readonly recordU32: Uint32Array;
   readonly groupU32: Uint32Array;
@@ -305,6 +312,38 @@ export function buildGpuProjectionRetentionCandidateSourceInputs(
       classesPresent.has(className)
     ),
   };
+}
+
+export function buildGpuProjectionRetentionCandidateSourceClassMasks(
+  candidateSplatIndexes: ArrayLike<number>,
+  candidateSources: GpuProjectionRetentionCandidateSources = {},
+): Uint32Array {
+  const masksBySplat = new Map<number, number>();
+  const appendMask = (
+    records: readonly GpuTileContributorArenaProjectedContributor[] | undefined,
+    className: GpuProjectionRetentionCandidateSourceClass,
+  ): void => {
+    const classMask = GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS[className];
+    for (const record of records ?? []) {
+      const splatIndex = assertNonNegativeInteger(record.splatIndex, "candidate source class-mask splat id");
+      masksBySplat.set(splatIndex, (masksBySplat.get(splatIndex) ?? 0) | classMask);
+    }
+  };
+
+  appendMask(candidateSources.retentionRecords, "retention");
+  appendMask(candidateSources.occlusionRecords, "occlusion");
+  appendMask(candidateSources.coverageRecords, "coverage");
+  appendMask(candidateSources.supportSampleRecords, "support");
+  for (const supportGroup of candidateSources.supportSampleRecordGroups ?? []) {
+    appendMask(supportGroup, "support");
+  }
+
+  const classMasks = new Uint32Array(candidateSplatIndexes.length);
+  for (let index = 0; index < candidateSplatIndexes.length; index += 1) {
+    const splatIndex = assertNonNegativeInteger(candidateSplatIndexes[index], "candidate source class-mask source index");
+    classMasks[index] = masksBySplat.get(splatIndex) ?? 0;
+  }
+  return classMasks;
 }
 
 function candidateSourceU32Buffer(words: readonly number[]): Uint32Array {
@@ -692,6 +731,7 @@ export function writeGpuTileCoverageSourceIndexTable(
   target: Uint32Array,
   plan: Pick<GpuTileCoveragePlan, "tileCount" | "tileHeaderBytes">,
   candidateSplatIndexes: ArrayLike<number>,
+  candidateSourceClassMasks?: ArrayLike<number>,
 ): GpuTileCoverageSourceIndexTableLayout {
   const tileCount = assertNonNegativeInteger(plan.tileCount, "source-index table tile count");
   const tileHeaderBytes = assertPositiveInteger(plan.tileHeaderBytes, "source-index table header bytes");
@@ -706,10 +746,16 @@ export function writeGpuTileCoverageSourceIndexTable(
   }
 
   for (let index = 0; index < candidateSplatIndexes.length; index += 1) {
-    target[offsetU32 + index * strideU32] = assertNonNegativeInteger(
+    const rowOffset = offsetU32 + index * strideU32;
+    target[rowOffset] = assertNonNegativeInteger(
       candidateSplatIndexes[index],
       "source-index table splat id",
     );
+    target[rowOffset + 1] = candidateSourceClassMasks
+      ? assertNonNegativeInteger(candidateSourceClassMasks[index] ?? 0, "source-index table candidate source class mask")
+      : 0;
+    target[rowOffset + 2] = 0;
+    target[rowOffset + 3] = 0;
   }
   return { offsetU32, strideU32, count: candidateSplatIndexes.length };
 }

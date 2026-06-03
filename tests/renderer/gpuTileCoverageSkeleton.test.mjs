@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
+  GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS,
   GPU_TILE_COVERAGE_BINDINGS,
   GPU_TILE_COVERAGE_FRAME_UNIFORM_BYTES,
   GPU_TILE_COVERAGE_PROJECTED_BOUNDS_BYTES,
@@ -14,6 +15,7 @@ import {
   GPU_TILE_COVERAGE_COMPOSITE_WORKGROUP_HEIGHT,
   createGpuTileCoveragePlan,
   createGpuTileContributorArenaLayout,
+  buildGpuProjectionRetentionCandidateSourceClassMasks,
   resolveGpuLiveFootprintPolicy,
   resolveGpuTileCoverageCompactFootprintTileBounds,
   getGpuTileContributorArenaDispatchPlan,
@@ -143,6 +145,45 @@ test("GPU tile coverage compact source table stores non-contiguous source ids af
   assert.equal(target[21], 0);
 });
 
+test("GPU tile coverage compact source table carries candidate source class masks without new bindings", () => {
+  const plan = createGpuTileCoveragePlan({
+    viewportWidth: 64,
+    viewportHeight: 64,
+    tileSizePx: 32,
+    splatCount: 6,
+    sourceSplatCount: 3,
+    maxTileRefs: 8,
+  });
+  const candidateSplatIndexes = Uint32Array.of(5, 3, 1);
+  const classMasks = buildGpuProjectionRetentionCandidateSourceClassMasks(candidateSplatIndexes, {
+    retentionRecords: [{ tileIndex: 0, splatIndex: 5, originalId: 50 }],
+    occlusionRecords: [{ tileIndex: 1, splatIndex: 3, originalId: 30 }],
+    coverageRecords: [
+      { tileIndex: 2, splatIndex: 5, originalId: 51 },
+      { tileIndex: 2, splatIndex: 1, originalId: 10 },
+    ],
+    supportSampleRecordGroups: [
+      [
+        { tileIndex: 3, splatIndex: 3, originalId: 31 },
+      ],
+    ],
+  });
+  const target = new Uint32Array(plan.tileHeaderBytes / Uint32Array.BYTES_PER_ELEMENT);
+
+  const layout = writeGpuTileCoverageSourceIndexTable(target, plan, candidateSplatIndexes, classMasks);
+
+  assert.deepEqual(layout, { offsetU32: 16, strideU32: 4, count: 3 });
+  assert.equal(target[16], 5);
+  assert.equal(target[17], GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.retention | GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.coverage);
+  assert.equal(target[20], 3);
+  assert.equal(target[21], GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.occlusion | GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.support);
+  assert.equal(target[24], 1);
+  assert.equal(target[25], GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.coverage);
+  assert.equal(target[18], 0);
+  assert.equal(target[22], 0);
+  assert.equal(target[26], 0);
+});
+
 test("GPU tile coverage bindings carry the live tile buffers inside WebGPU storage limits", () => {
   const renderer = readFileSync(new URL("../../src/gpuTileCoverageRenderer.ts", import.meta.url), "utf8");
   const storageBindings = [...renderer.matchAll(/storageEntry\(GPU_TILE_COVERAGE_BINDINGS\.(\w+)/g)].map((match) => match[1]);
@@ -173,6 +214,20 @@ test("GPU tile coverage bindings carry the live tile buffers inside WebGPU stora
     /storageEntry\(GPU_TILE_COVERAGE_BINDINGS\.candidateSource/,
     "candidate-source inputs need a narrower future election consumer, not the already-full compositor bind group",
   );
+});
+
+test("WGSL source-frontier election consumes candidate class masks from the compact source table", () => {
+  const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
+
+  assert.match(shader, /const CANDIDATE_SOURCE_CLASS_RETENTION_MASK = 1u/);
+  assert.match(shader, /const CANDIDATE_SOURCE_CLASS_OCCLUSION_MASK = 2u/);
+  assert.match(shader, /const CANDIDATE_SOURCE_CLASS_COVERAGE_MASK = 4u/);
+  assert.match(shader, /const CANDIDATE_SOURCE_CLASS_SUPPORT_MASK = 8u/);
+  assert.match(shader, /let sourceMetadata = tileHeaders\[tile_count\(\) \+ sourceOrdinal\]/);
+  assert.match(shader, /splatId = sourceMetadata\.x/);
+  assert.match(shader, /candidateSourceClassMask = sourceMetadata\.y/);
+  assert.match(shader, /fn gpu_live_candidate_source_pool\(/);
+  assert.match(shader, /gpu_live_retention_pool_slot\([\s\S]*candidateSourceClassMask[\s\S]*tileCapacity/);
 });
 
 test("GPU live footprint policy caps pathological projected conic energy without shrinking normal splats", () => {

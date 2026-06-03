@@ -321,7 +321,9 @@ test("WGSL projected-ref stream consumes compact source candidates and footprint
   assert.doesNotMatch(shaderSource, /@binding\(10\) var<storage, read> sourceSplatIndexes: array<u32>/);
   assert.match(shaderSource, /let sourceOrdinal = globalId\.x/);
   assert.match(shaderSource, /var splatId = sourceOrdinal/);
-  assert.match(shaderSource, /tileHeaders\[tile_count\(\) \+ sourceOrdinal\]\.x/);
+  assert.match(shaderSource, /let sourceMetadata = tileHeaders\[tile_count\(\) \+ sourceOrdinal\]/);
+  assert.match(shaderSource, /splatId = sourceMetadata\.x/);
+  assert.match(shaderSource, /candidateSourceClassMask = sourceMetadata\.y/);
   assert.match(shaderSource, /sourceOrdinal >= frame\.sourceSplatCount/);
   assert.match(shaderSource, /frame\.maxTilesPerSplat > 0u/);
 });
@@ -466,7 +468,7 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     shaderSource,
-    /let compositorOrderSlot = gpu_live_compositor_order_slot\(sourceDepthNdc,\s*projectedSlot,\s*tileCapacity\)[\s\S]*let poolSlot = gpu_live_retention_pool_slot\(projectedSlot,\s*compositorOrderSlot,\s*tileId,\s*splatId,\s*tileCapacity\)[\s\S]*poolSlot\.slot/,
+    /let compositorOrderSlot = gpu_live_compositor_order_slot\(sourceDepthNdc,\s*projectedSlot,\s*tileCapacity\)[\s\S]*let poolSlot = gpu_live_retention_pool_slot\(projectedSlot,\s*compositorOrderSlot,\s*tileId,\s*splatId,\s*candidateSourceClassMask,\s*tileCapacity\)[\s\S]*poolSlot\.slot/,
     "source-frontier retained refs must feed provisional back-to-front order through bounded retention pool slots",
   );
   assert.doesNotMatch(
@@ -566,8 +568,8 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     mainSource,
-    /function sourceFrontierCandidateSourceIdentityEvidence\(\s*candidateSourceInputs[\s\S]*status:\s*"present-not-consumed"[\s\S]*availableIdentity:\s*"class-tagged-wgsl-candidate-source-inputs"/,
-    "candidate-source evidence must distinguish present class-tagged input substrate from consumed production election",
+    /function sourceFrontierCandidateSourceIdentityEvidence\(\s*candidateSourceInputs[\s\S]*status:\s*"class-mask-consumed-record-groups-not-yet-consumed"[\s\S]*availableIdentity:\s*"class-tagged-wgsl-candidate-source-inputs"[\s\S]*consumptionPath:\s*"source-index-table-class-mask"/,
+    "candidate-source evidence must distinguish class-mask consumption from full record/group consumption",
   );
   assert.match(
     mainSource,

@@ -45,6 +45,10 @@ const RETENTION_POOL_RETENTION = 0u;
 const RETENTION_POOL_OCCLUSION = 1u;
 const RETENTION_POOL_COVERAGE = 2u;
 const RETENTION_POOL_SUPPORT = 3u;
+const CANDIDATE_SOURCE_CLASS_RETENTION_MASK = 1u;
+const CANDIDATE_SOURCE_CLASS_OCCLUSION_MASK = 2u;
+const CANDIDATE_SOURCE_CLASS_COVERAGE_MASK = 4u;
+const CANDIDATE_SOURCE_CLASS_SUPPORT_MASK = 8u;
 
 struct SplatShape {
   axis0: vec3f,
@@ -304,23 +308,42 @@ fn gpu_live_retention_pool_from_slot(slot: u32, tileCapacity: u32) -> u32 {
   return RETENTION_POOL_COVERAGE;
 }
 
+fn gpu_live_candidate_source_pool(candidateSourceClassMask: u32, fallbackPool: u32) -> u32 {
+  if ((candidateSourceClassMask & CANDIDATE_SOURCE_CLASS_SUPPORT_MASK) != 0u) {
+    return RETENTION_POOL_SUPPORT;
+  }
+  if ((candidateSourceClassMask & CANDIDATE_SOURCE_CLASS_RETENTION_MASK) != 0u) {
+    return RETENTION_POOL_RETENTION;
+  }
+  if ((candidateSourceClassMask & CANDIDATE_SOURCE_CLASS_OCCLUSION_MASK) != 0u) {
+    return RETENTION_POOL_OCCLUSION;
+  }
+  if ((candidateSourceClassMask & CANDIDATE_SOURCE_CLASS_COVERAGE_MASK) != 0u) {
+    return RETENTION_POOL_COVERAGE;
+  }
+  return fallbackPool;
+}
+
 fn gpu_live_retention_pool_slot(
   projectedSlot: u32,
   compositorOrderSlot: u32,
   tileId: u32,
   splatId: u32,
+  candidateSourceClassMask: u32,
   tileCapacity: u32,
 ) -> RetentionPoolSlot {
   let safeCapacity = max(tileCapacity, 1u);
   let supportTarget = gpu_live_retention_support_target(safeCapacity);
   let priorityTarget = gpu_live_retention_priority_target(safeCapacity);
   if (projectedSlot < safeCapacity) {
-    if (supportTarget > 0u && projectedSlot % 4u == 3u) {
+    let fallbackPool = gpu_live_retention_pool_from_slot(projectedSlot, safeCapacity);
+    let requestedPool = gpu_live_candidate_source_pool(candidateSourceClassMask, fallbackPool);
+    if (requestedPool == RETENTION_POOL_SUPPORT && supportTarget > 0u) {
       let supportSlot = priorityTarget + ((projectedSlot / 4u) % supportTarget);
       return RetentionPoolSlot(min(supportSlot, safeCapacity - 1u), RETENTION_POOL_SUPPORT);
     }
     let priorityOrdinal = select(projectedSlot, projectedSlot - (projectedSlot / 4u), supportTarget > 0u);
-    let pool = priorityOrdinal % 3u;
+    let pool = select(requestedPool, priorityOrdinal % 3u, requestedPool == RETENTION_POOL_SUPPORT);
     let poolStart = gpu_live_retention_priority_pool_start(priorityTarget, pool);
     let poolEnd = gpu_live_retention_priority_pool_end(priorityTarget, pool);
     let poolWidth = max(poolEnd - poolStart, 1u);
@@ -329,7 +352,8 @@ fn gpu_live_retention_pool_slot(
     return RetentionPoolSlot(min(poolSlot, safeCapacity - 1u), pool);
   }
   let overflowSlot = gpu_live_overflow_election_slot(tileId, splatId, safeCapacity);
-  return RetentionPoolSlot(overflowSlot, gpu_live_retention_pool_from_slot(overflowSlot, safeCapacity));
+  let fallbackPool = gpu_live_retention_pool_from_slot(overflowSlot, safeCapacity);
+  return RetentionPoolSlot(overflowSlot, gpu_live_candidate_source_pool(candidateSourceClassMask, fallbackPool));
 }
 
 fn gpu_live_retention_pool_score(
@@ -537,8 +561,11 @@ fn debug_heatmap_color(
     return;
   }
   var splatId = sourceOrdinal;
+  var candidateSourceClassMask = 0u;
   if (frame.maxTilesPerSplat > 0u || frame.sourceSplatCount != frame.splatCount) {
-    splatId = tileHeaders[tile_count() + sourceOrdinal].x;
+    let sourceMetadata = tileHeaders[tile_count() + sourceOrdinal];
+    splatId = sourceMetadata.x;
+    candidateSourceClassMask = sourceMetadata.y;
   }
   if (splatId == 0xffffffffu || splatId >= frame.splatCount) {
     return;
@@ -581,7 +608,7 @@ fn debug_heatmap_color(
       }
       let projectedSlot = atomicAdd(&tileScatterCursors[tileId], 1u);
       let compositorOrderSlot = gpu_live_compositor_order_slot(sourceDepthNdc, projectedSlot, tileCapacity);
-      let poolSlot = gpu_live_retention_pool_slot(projectedSlot, compositorOrderSlot, tileId, splatId, tileCapacity);
+      let poolSlot = gpu_live_retention_pool_slot(projectedSlot, compositorOrderSlot, tileId, splatId, candidateSourceClassMask, tileCapacity);
       let refIndex = tileId * tileCapacity + poolSlot.slot;
       if (refIndex >= frame.maxTileRefs) {
         continue;
