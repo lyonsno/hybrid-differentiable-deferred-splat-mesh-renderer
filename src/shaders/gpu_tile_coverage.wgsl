@@ -354,7 +354,10 @@ fn gpu_live_retention_overflow_pool_slot(
 
   let poolStart = gpu_live_retention_priority_pool_start(priorityTarget, requestedPool);
   let poolEnd = gpu_live_retention_priority_pool_end(priorityTarget, requestedPool);
-  let poolWidth = max(poolEnd - poolStart, 1u);
+  if (poolEnd <= poolStart) {
+    return RetentionPoolSlot(fallbackSlot, fallbackPool);
+  }
+  let poolWidth = poolEnd - poolStart;
   let poolSlot = poolStart + gpu_live_overflow_election_slot(tileId, splatId, poolWidth);
   return RetentionPoolSlot(min(poolSlot, safeCapacity - 1u), requestedPool);
 }
@@ -381,7 +384,10 @@ fn gpu_live_retention_pool_slot(
     let pool = select(requestedPool, priorityOrdinal % 3u, requestedPool == RETENTION_POOL_SUPPORT);
     let poolStart = gpu_live_retention_priority_pool_start(priorityTarget, pool);
     let poolEnd = gpu_live_retention_priority_pool_end(priorityTarget, pool);
-    let poolWidth = max(poolEnd - poolStart, 1u);
+    if (poolEnd <= poolStart) {
+      return RetentionPoolSlot(projectedSlot, fallbackPool);
+    }
+    let poolWidth = poolEnd - poolStart;
     let depthLocalSlot = (min(compositorOrderSlot, safeCapacity - 1u) * poolWidth) / safeCapacity;
     let poolSlot = poolStart + ((depthLocalSlot + (priorityOrdinal / 3u)) % poolWidth);
     return RetentionPoolSlot(min(poolSlot, safeCapacity - 1u), pool);

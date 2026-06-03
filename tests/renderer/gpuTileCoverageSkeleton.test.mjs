@@ -245,6 +245,63 @@ test("WGSL source-frontier overflow keeps retained slot and score pool coherent"
   );
 });
 
+test("WGSL source-frontier priority pools fall back when tiny capacities leave no legal seats", () => {
+  const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
+  const poolNames = ["retention", "occlusion", "coverage", "support"];
+  const retention = 0;
+  const occlusion = 1;
+  const coverage = 2;
+  const support = 3;
+  const classMasks = [
+    { name: "retention", mask: 1, pool: retention },
+    { name: "occlusion", mask: 2, pool: occlusion },
+    { name: "coverage", mask: 4, pool: coverage },
+    { name: "support", mask: 8, pool: support },
+  ];
+  const supportTarget = (capacity) => (capacity < 4 ? 0 : Math.max(Math.floor(capacity / 4), 1));
+  const priorityTarget = (capacity) => Math.max(capacity - supportTarget(capacity), 1);
+  const priorityPoolStart = (target, pool) => Math.floor((Math.min(pool, 2) * target) / 3);
+  const priorityPoolEnd = (target, pool) => Math.floor(((Math.min(pool, 2) + 1) * target) / 3);
+  const poolFromSlot = (slot, capacity) => {
+    const target = priorityTarget(capacity);
+    if (slot >= target) return support;
+    if (slot < priorityPoolEnd(target, retention)) return retention;
+    if (slot < priorityPoolEnd(target, occlusion)) return occlusion;
+    return coverage;
+  };
+
+  const impossibleSeats = [];
+  for (let capacity = 1; capacity <= 4; capacity += 1) {
+    const target = priorityTarget(capacity);
+    for (const { name, pool } of classMasks) {
+      if (pool === support) continue;
+      const poolStart = priorityPoolStart(target, pool);
+      const poolEnd = priorityPoolEnd(target, pool);
+      if (poolEnd > poolStart) continue;
+      const fallbackPool = poolFromSlot(0, capacity);
+      if (fallbackPool !== pool) {
+        impossibleSeats.push(`${capacity}:${name}->${poolNames[fallbackPool]}`);
+      }
+    }
+  }
+
+  assert.deepEqual(
+    impossibleSeats,
+    ["1:retention->coverage", "1:occlusion->coverage", "2:retention->occlusion"],
+    "fixture should cover the tiny-capacity priority pools that have no legal seats",
+  );
+  assert.match(
+    shader,
+    /fn gpu_live_retention_overflow_pool_slot\([\s\S]*let poolEnd = gpu_live_retention_priority_pool_end\(priorityTarget, requestedPool\);\s*if \(poolEnd <= poolStart\) \{\s*return RetentionPoolSlot\(fallbackSlot, fallbackPool\);\s*\}\s*let poolWidth = poolEnd - poolStart;/,
+    "overflow priority-pool remap must fall back when the requested pool has no legal seats",
+  );
+  assert.match(
+    shader,
+    /let poolEnd = gpu_live_retention_priority_pool_end\(priorityTarget, pool\);\s*if \(poolEnd <= poolStart\) \{\s*return RetentionPoolSlot\(projectedSlot, fallbackPool\);\s*\}\s*let poolWidth = poolEnd - poolStart;/,
+    "in-cap priority-pool remap must fall back when the requested pool has no legal seats",
+  );
+});
+
 test("GPU live footprint policy caps pathological projected conic energy without shrinking normal splats", () => {
   const normal = resolveGpuLiveFootprintPolicy({
     majorRadiusPx: 24,
