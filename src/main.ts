@@ -21,6 +21,7 @@ import {
   buildGpuProjectionRetentionCandidateSourceInputs,
   buildGpuProjectionRetentionCandidateSourceClassMasks,
   createGpuTileCoveragePlan,
+  GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS,
   GPU_TILE_COVERAGE_ALPHA_PARAM_FLOATS_PER_REF,
   GPU_TILE_COVERAGE_FRAME_UNIFORM_BYTES,
   GPU_TILE_COVERAGE_TILE_HEADER_BYTES,
@@ -447,6 +448,11 @@ interface TileLocalCompositorInputReadback {
       readonly tileIndex: number;
       readonly viewRank: number;
       readonly retentionScore?: number;
+      readonly candidateSourceClassMask?: number;
+      readonly sourceRole?: string;
+      readonly role?: string;
+      readonly roleClass?: string;
+      readonly retentionBand?: string;
       readonly viewDepth: number;
       readonly alphaParamIndex: number;
       readonly centerPx: readonly [number, number];
@@ -455,6 +461,7 @@ interface TileLocalCompositorInputReadback {
       readonly tileCoverageWeight: number;
       readonly pixelCoverageWeight: number;
       readonly sourceOpacity: number;
+      readonly opacity?: number;
       readonly coverageAlpha: number;
       readonly transmittanceBefore: number;
       readonly transmittanceAfter: number;
@@ -5366,7 +5373,7 @@ function resolveTileLocalCompositorInputReadback(state: TileLocalSceneState): vo
           refreshWgslSourceFrontierRetainedRowsEvidence(state, retainedRowsReadback);
         }
         publishTileLocalRefStatsReadback(state, refStatsReadback);
-        publishTileLocalCompositorInputReadback(state, compositorInputReadback);
+        publishTileLocalCompositorInputReadback(state, compositorInputReadback, pending.sourceColors);
       }
       destroyMappedReadbackBuffers(buffers);
     })
@@ -5419,6 +5426,7 @@ function tileLocalCompositorInputReadbackCanPublish(
 function publishTileLocalCompositorInputReadback(
   state: TileLocalSceneState,
   readback: TileLocalCompositorInputReadback,
+  sourceColors?: Float32Array,
 ): void {
   const runtimeWindow = window as unknown as { __MESH_SPLAT_SMOKE__?: Record<string, unknown> };
   const smoke = runtimeWindow.__MESH_SPLAT_SMOKE__;
@@ -5431,9 +5439,54 @@ function publishTileLocalCompositorInputReadback(
   const arenaRuntime = smoke.arenaRuntime && typeof smoke.arenaRuntime === "object"
     ? smoke.arenaRuntime as Record<string, unknown>
     : null;
+  const sourceFrontierContributorsByAnchorId = compositorInputContributorListByAnchorId(readback);
+  const perPixelFinalColorAccumulation = readback.status === "present" && sourceColors
+    ? buildPerPixelFinalColorAccumulationTraces({
+        contributors: state.gpuArenaProjectedContributors,
+        contributorsByAnchorId: sourceFrontierContributorsByAnchorId,
+        sourceColors,
+        projectedContributorsByAnchorId: traceContributorListByAnchorId(
+          state.perPixelProjectedContributors,
+          "projectedContributors",
+        ),
+        retainedContributorsByAnchorId: mergeAnchorContributorLists(
+          traceContributorListByAnchorId(
+            state.perPixelRetainedContributors,
+            "retainedContributors",
+          ),
+          sourceFrontierContributorsByAnchorId,
+        ),
+        orderedContributorsByAnchorId: sourceFrontierContributorsByAnchorId,
+        dispatchCache: state.bandDispatchCacheTrace,
+        rendererMetadata: {
+          requestedRenderer: "tile-local-visible",
+          effectiveRenderer: "tile-local-visible-gaussian-compositor",
+          requestedArenaBackend: REQUESTED_ARENA_BACKEND,
+          effectiveArenaBackend: state.arenaBackend,
+          tileSizePx: state.plan.tileSizePx,
+          maxRefsPerTile: TILE_LOCAL_PROVISIONAL_MAX_REFS_PER_TILE,
+          viewport: {
+            width: state.viewportWidth,
+            height: state.viewportHeight,
+          },
+        },
+        tileSizePx: state.plan.tileSizePx,
+        tileColumns: state.plan.tileColumns,
+        anchors: state.traceAnchors ?? TILE_LOCAL_TRACE_ANCHORS ?? [],
+      })
+    : undefined;
+  const perPixelRetainedToOrderedSurvivalLedger = perPixelFinalColorAccumulation
+    ? buildRetainedToOrderedSurvivalLedger(
+        perPixelFinalColorAccumulation.map((trace) =>
+          (trace.traceRecord ?? trace) as Record<string, unknown>
+        )
+      )
+    : undefined;
   smoke.tileLocal = {
     ...tileLocal,
     compositorInputReadback: readback,
+    ...(perPixelFinalColorAccumulation ? { perPixelFinalColorAccumulation } : {}),
+    ...(perPixelRetainedToOrderedSurvivalLedger ? { perPixelRetainedToOrderedSurvivalLedger } : {}),
     retainedSourceConstruction: state.retainedSourceConstruction,
   };
   if (arenaRuntime) {
@@ -6023,6 +6076,12 @@ function readCompositorInputAnchor({
     const alphaViewRank = Number.isFinite(alphaParam[3]) ? Math.trunc(alphaParam[3]) : -1;
     const viewRank = tileRefPayloadEncoding === "source-frontier-score" ? splatIndex : alphaViewRank;
     const retentionScore = tileRefPayloadEncoding === "source-frontier-score" ? tileRefAux : undefined;
+    const candidateSourceClassMask = tileRefPayloadEncoding === "source-frontier-score"
+      ? candidateSourceClassMaskForSplatId(plan, tileHeaders, splatIndex)
+      : 0;
+    const sourceRole = sourceRoleForCandidateSourceClassMask(candidateSourceClassMask);
+    const roleClass = roleClassForSourceRole(sourceRole);
+    const retentionBand = retentionBandForSourceRole(sourceRole);
     const viewDepth = sourceViewDepths[splatIndex] ?? 0;
     if (splatIndex >= plan.splatCount) {
       contributors.push({
@@ -6033,6 +6092,11 @@ function readCompositorInputAnchor({
         tileIndex,
         viewRank,
         retentionScore,
+        candidateSourceClassMask,
+        sourceRole,
+        role: sourceRole,
+        roleClass,
+        retentionBand,
         viewDepth: roundColorChannel(viewDepth),
         alphaParamIndex,
         centerPx: [0, 0],
@@ -6041,6 +6105,7 @@ function readCompositorInputAnchor({
         tileCoverageWeight: 0,
         pixelCoverageWeight: 0,
         sourceOpacity: 0,
+        opacity: 0,
         coverageAlpha: 0,
         transmittanceBefore: roundColorChannel(remainingTransmission),
         transmittanceAfter: roundColorChannel(remainingTransmission),
@@ -6062,6 +6127,12 @@ function readCompositorInputAnchor({
         originalId,
         tileIndex,
         viewRank,
+        retentionScore,
+        candidateSourceClassMask,
+        sourceRole,
+        role: sourceRole,
+        roleClass,
+        retentionBand,
         viewDepth: roundColorChannel(viewDepth),
         alphaParamIndex,
         centerPx: [roundColorChannel(alphaParam[1]), roundColorChannel(alphaParam[2])],
@@ -6070,6 +6141,7 @@ function readCompositorInputAnchor({
         tileCoverageWeight: 0,
         pixelCoverageWeight: 0,
         sourceOpacity: roundColorChannel(sourceOpacity),
+        opacity: roundColorChannel(sourceOpacity),
         coverageAlpha: 0,
         transmittanceBefore: roundColorChannel(remainingTransmission),
         transmittanceAfter: roundColorChannel(remainingTransmission),
@@ -6098,6 +6170,11 @@ function readCompositorInputAnchor({
       tileIndex,
       viewRank,
       retentionScore,
+      candidateSourceClassMask,
+      sourceRole,
+      role: sourceRole,
+      roleClass,
+      retentionBand,
       viewDepth: roundColorChannel(viewDepth),
       alphaParamIndex,
       centerPx: [roundColorChannel(alphaParam[1]), roundColorChannel(alphaParam[2])],
@@ -6106,6 +6183,7 @@ function readCompositorInputAnchor({
       tileCoverageWeight: roundColorChannel(tileCoverageWeight),
       pixelCoverageWeight: roundColorChannel(pixelCoverageWeight),
       sourceOpacity: roundColorChannel(sourceOpacity),
+      opacity: roundColorChannel(sourceOpacity),
       coverageAlpha: roundColorChannel(coverageAlpha),
       transmittanceBefore: roundColorChannel(transmittanceBefore),
       transmittanceAfter: roundColorChannel(remainingTransmission),
@@ -6194,6 +6272,61 @@ function readSourceColor(sourceColors: Float32Array, splatIndex: number): [numbe
     sourceColors[base + 1] ?? 0,
     sourceColors[base + 2] ?? 0,
   ];
+}
+
+function candidateSourceClassMaskForSplatId(
+  plan: GpuTileCoveragePlan,
+  tileHeaders: Uint32Array,
+  splatIndex: number,
+): number {
+  if (splatIndex >= plan.splatCount || plan.sourceSplatCount <= 0) {
+    return 0;
+  }
+  const headerStride = GPU_TILE_COVERAGE_TILE_HEADER_BYTES / Uint32Array.BYTES_PER_ELEMENT;
+  const sourceIndexTableOffset = plan.tileCount * headerStride;
+  for (let sourceOrdinal = 0; sourceOrdinal < plan.sourceSplatCount; sourceOrdinal += 1) {
+    const sourceBase = sourceIndexTableOffset + sourceOrdinal * headerStride;
+    if ((tileHeaders[sourceBase] ?? plan.splatCount) === splatIndex) {
+      return tileHeaders[sourceBase + 1] ?? 0;
+    }
+  }
+  return 0;
+}
+
+function sourceRoleForCandidateSourceClassMask(candidateSourceClassMask: number): string {
+  if ((candidateSourceClassMask & GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.support) !== 0) {
+    return "foreground-sealing";
+  }
+  if ((candidateSourceClassMask & GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.retention) !== 0) {
+    return "foreground-sealing";
+  }
+  if ((candidateSourceClassMask & GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.coverage) !== 0) {
+    return "porous-surface";
+  }
+  if ((candidateSourceClassMask & GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.occlusion) !== 0) {
+    return "behind-surface";
+  }
+  return "unclassified";
+}
+
+function roleClassForSourceRole(sourceRole: string): string {
+  if (sourceRole === "behind-surface") {
+    return "behindOrBackground";
+  }
+  if (sourceRole === "unclassified") {
+    return "unknown";
+  }
+  return "foreground";
+}
+
+function retentionBandForSourceRole(sourceRole: string): string {
+  if (sourceRole === "behind-surface") {
+    return "behind";
+  }
+  if (sourceRole === "unclassified") {
+    return "unknown";
+  }
+  return "foreground";
 }
 
 function conicPixelWeightFromParams(
@@ -7308,6 +7441,9 @@ function exposeTileLocalRuntimeEvidence(
     ? ensureCpuReferenceCompositorInputReadback(tileLocalState, sourceColors, evidenceFrameId, traceAnchors) ??
       tileLocalState.compositorInputReadback
     : undefined;
+  const compositorInputContributorsByAnchorId = compositorInputReadback?.status === "present"
+    ? compositorInputContributorListByAnchorId(compositorInputReadback)
+    : new Map<string, readonly unknown[]>();
   const pixelOrderTrace = tileLocalState && bandDispatchCache
     ? buildBandPixelOrderTraceRecord({
         contributors: tileLocalState.gpuArenaProjectedContributors,
@@ -7348,17 +7484,24 @@ function exposeTileLocalRuntimeEvidence(
     ? buildPerPixelFinalColorAccumulationTraces({
         contributors: tileLocalState.gpuArenaProjectedContributors,
         sourceColors,
+        contributorsByAnchorId: compositorInputContributorsByAnchorId,
         projectedContributorsByAnchorId: traceContributorListByAnchorId(
           tileLocalState.perPixelProjectedContributors,
           "projectedContributors",
         ),
-        retainedContributorsByAnchorId: traceContributorListByAnchorId(
-          tileLocalState.perPixelRetainedContributors,
-          "retainedContributors",
+        retainedContributorsByAnchorId: mergeAnchorContributorLists(
+          traceContributorListByAnchorId(
+            tileLocalState.perPixelRetainedContributors,
+            "retainedContributors",
+          ),
+          compositorInputContributorsByAnchorId,
         ),
-        orderedContributorsByAnchorId: pixelOrderTrace
-          ? new Map([[pixelOrderTrace.anchorPixel.id, pixelOrderTrace.orderedContributors]])
-          : new Map(),
+        orderedContributorsByAnchorId: mergeAnchorContributorLists(
+          pixelOrderTrace
+            ? new Map([[pixelOrderTrace.anchorPixel.id, pixelOrderTrace.orderedContributors]])
+            : new Map(),
+          compositorInputContributorsByAnchorId,
+        ),
         dispatchCache: bandDispatchCache,
         rendererMetadata: pixelOrderTrace?.rendererMetadata ?? {
           requestedRenderer: "tile-local-visible",
@@ -7464,6 +7607,39 @@ function traceContributorListByAnchorId(
     }
   }
   return byAnchorId;
+}
+
+function compositorInputContributorListByAnchorId(
+  readback: TileLocalCompositorInputReadback | undefined,
+): Map<string, readonly unknown[]> {
+  const byAnchorId = new Map<string, readonly unknown[]>();
+  if (readback?.status !== "present") {
+    return byAnchorId;
+  }
+  for (const anchor of readback.anchors) {
+    byAnchorId.set(
+      anchor.id,
+      anchor.contributors.filter((contributor) => contributor.status !== "skipped-invalid-splat"),
+    );
+  }
+  return byAnchorId;
+}
+
+function mergeAnchorContributorLists(
+  primary: Map<string, readonly unknown[]>,
+  fallback: Map<string, readonly unknown[]>,
+): Map<string, readonly unknown[]> {
+  if (fallback.size === 0) {
+    return primary;
+  }
+  const merged = new Map(primary);
+  for (const [anchorId, contributors] of fallback) {
+    const primaryContributors = merged.get(anchorId);
+    if (!primaryContributors || primaryContributors.length === 0) {
+      merged.set(anchorId, contributors);
+    }
+  }
+  return merged;
 }
 
 function buildArenaRuntimeEvidence(

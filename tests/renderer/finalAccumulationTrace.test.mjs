@@ -200,6 +200,36 @@ test("per-pixel final accumulation traces expose runtime ordered contributors wh
   assert.equal(trace.orderedContributors[0].opacity, 0.4);
 });
 
+test("per-pixel final accumulation traces can consume anchor-keyed source-frontier readback contributors", () => {
+  const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
+  const readbackContributor = accumulationContributor({
+    anchor,
+    tileIndex: tileIndexForAnchor(anchor),
+    splatIndex: 41,
+    originalId: 41,
+    sourceRole: "foreground-sealing",
+    role: "foreground-sealing",
+    candidateSourceClassMask: 9,
+    opacity: 0.55,
+  });
+  const traces = buildPerPixelFinalColorAccumulationTraces({
+    contributors: [],
+    contributorsByAnchorId: new Map([[anchor.id, [readbackContributor]]]),
+    sourceColors: new Map([[41, [0.6, 0.4, 0.2]]]),
+    retainedContributorsByAnchorId: new Map([[anchor.id, [readbackContributor]]]),
+    orderedContributorsByAnchorId: new Map([[anchor.id, [readbackContributor]]]),
+    tileSizePx: 16,
+    tileColumns: 216,
+    anchors: [anchor],
+  });
+
+  assert.equal(traces.length, 1);
+  assert.equal(traces[0].status, "present");
+  assert.equal(traces[0].finalColorAccumulation.steps.length, 1);
+  assert.equal(traces[0].retainedContributors[0].sourceRole, "foreground-sealing");
+  assert.equal(traces[0].orderedContributors[0].candidateSourceClassMask, 9);
+});
+
 function accumulationContributor(overrides = {}) {
   const anchor = overrides.anchor ?? BLACK_BAND_FINAL_ACCUMULATION_ANCHOR;
   return {

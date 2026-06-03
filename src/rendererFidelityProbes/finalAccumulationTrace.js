@@ -94,6 +94,7 @@ export function buildFinalColorAccumulationTraceRecord({
 
 export function buildPerPixelFinalColorAccumulationTraces({
   contributors = [],
+  contributorsByAnchorId = new Map(),
   sourceColors,
   projectedContributorsByAnchorId = new Map(),
   retainedContributorsByAnchorId = new Map(),
@@ -109,7 +110,7 @@ export function buildPerPixelFinalColorAccumulationTraces({
   return anchors.map((anchorPixel) => {
     const record = buildFinalColorAccumulationTraceRecord({
       anchorPixel,
-      contributors,
+      contributors: lookupOptionalAnchorList(contributorsByAnchorId, anchorPixel.id) ?? contributors,
       sourceColors,
       projectedContributors: lookupAnchorList(projectedContributorsByAnchorId, anchorPixel.id),
       retainedContributors: lookupAnchorList(retainedContributorsByAnchorId, anchorPixel.id),

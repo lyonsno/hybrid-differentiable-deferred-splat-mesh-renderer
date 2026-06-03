@@ -833,6 +833,16 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
     /tileCapacity:\s*gpuLiveEffectiveRefsPerTile\(pending\.plan\)/,
     "source-frontier compositor-input readback must report the effective plan cap rather than a hardcoded requested cap",
   );
+  assert.match(
+    compositorInputReadbackSource,
+    /publishTileLocalCompositorInputReadback\(state,\s*compositorInputReadback,\s*pending\.sourceColors\)/,
+    "source-frontier compositor-input readback must republish trace evidence with source colors after async GPU rows land",
+  );
+  assert.match(
+    mainSource,
+    /function publishTileLocalCompositorInputReadback[\s\S]*buildPerPixelFinalColorAccumulationTraces\([\s\S]*contributorsByAnchorId:\s*sourceFrontierContributorsByAnchorId[\s\S]*buildRetainedToOrderedSurvivalLedger\(/,
+    "source-frontier readback publication must refresh final accumulation and retained-to-ordered survival from live anchor rows",
+  );
   assert.match(renderLoopSource, /else \{\s*tileLocalState\.pipeline\.dispatch\(tileLocalComputePass,\s*tileLocalState\.bindGroup,\s*tileLocalState\.plan\);/);
   assert.match(
     mainSource,
