@@ -110,6 +110,7 @@ import {
   buildPerPixelFinalColorAccumulationTraces,
   type PixelFinalAccumulationTraceRecord,
 } from "./rendererFidelityProbes/finalAccumulationTrace.js";
+import { sourceFrontierProjectedSupportFallbackByAnchorId } from "./rendererFidelityProbes/sourceFrontierEvidence.js";
 import { buildDeadSplatElectorLedger } from "./rendererFidelityProbes/deadSplatElectorLedger.js";
 import { buildRetainedToOrderedSurvivalLedger } from "./rendererFidelityProbes/retainedToOrderedSurvivalLedger.js";
 import {
@@ -419,6 +420,7 @@ interface TileLocalCompositorInputReadback {
   readonly status: "pending" | "present" | "blocked";
   readonly source?: "gpu-buffer-readback" | "cpu-reference-diagnostic-state";
   readonly frameId: number;
+  readonly tileRefPayloadEncoding?: "legacy-identity" | "source-frontier-score";
   readonly anchors: readonly {
     readonly id: string;
     readonly pixel: { readonly x: number; readonly y: number };
@@ -5359,6 +5361,7 @@ function resolveTileLocalCompositorInputReadback(state: TileLocalSceneState): vo
         status: "present",
         source: "gpu-buffer-readback",
         frameId: pending.frameId,
+        tileRefPayloadEncoding: pending.tileRefPayloadEncoding,
         anchors: pending.anchors.map((anchor) => readCompositorInputAnchor({
           anchor,
           plan: pending.plan,
@@ -5379,7 +5382,12 @@ function resolveTileLocalCompositorInputReadback(state: TileLocalSceneState): vo
           refreshWgslSourceFrontierRetainedRowsEvidence(state, retainedRowsReadback);
         }
         publishTileLocalRefStatsReadback(state, refStatsReadback);
-        publishTileLocalCompositorInputReadback(state, compositorInputReadback, pending.sourceColors);
+        publishTileLocalCompositorInputReadback(
+          state,
+          compositorInputReadback,
+          pending.sourceColors,
+          pending.tileRefPayloadEncoding,
+        );
       }
       destroyMappedReadbackBuffers(buffers);
     })
@@ -5388,6 +5396,7 @@ function resolveTileLocalCompositorInputReadback(state: TileLocalSceneState): vo
         status: "blocked",
         source: "gpu-buffer-readback",
         frameId: pending.frameId,
+        tileRefPayloadEncoding: pending.tileRefPayloadEncoding,
         anchors: [],
         blockedReason: errorMessage(error),
       };
@@ -5400,7 +5409,12 @@ function resolveTileLocalCompositorInputReadback(state: TileLocalSceneState): vo
             blockedReason: errorMessage(error),
           }));
         }
-        publishTileLocalCompositorInputReadback(state, compositorInputReadback);
+        publishTileLocalCompositorInputReadback(
+          state,
+          compositorInputReadback,
+          undefined,
+          pending.tileRefPayloadEncoding,
+        );
       }
       destroyReadbackBuffers(buffers);
     });
@@ -5433,6 +5447,7 @@ function publishTileLocalCompositorInputReadback(
   state: TileLocalSceneState,
   readback: TileLocalCompositorInputReadback,
   sourceColors?: Float32Array,
+  tileRefPayloadEncoding: "legacy-identity" | "source-frontier-score" = readback.tileRefPayloadEncoding ?? "legacy-identity",
 ): void {
   const runtimeWindow = window as unknown as { __MESH_SPLAT_SMOKE__?: Record<string, unknown> };
   const smoke = runtimeWindow.__MESH_SPLAT_SMOKE__;
@@ -5451,12 +5466,13 @@ function publishTileLocalCompositorInputReadback(
         contributors: state.gpuArenaProjectedContributors,
         contributorsByAnchorId: sourceFrontierContributorsByAnchorId,
         sourceColors,
-        projectedContributorsByAnchorId: mergeAnchorContributorLists(
+        projectedContributorsByAnchorId: sourceFrontierProjectedSupportFallbackByAnchorId(
           traceContributorListByAnchorId(
             state.perPixelProjectedContributors,
             "projectedContributors",
           ),
           sourceFrontierContributorsByAnchorId,
+          tileRefPayloadEncoding,
         ),
         retainedContributorsByAnchorId: mergeAnchorContributorLists(
           traceContributorListByAnchorId(
@@ -5540,6 +5556,7 @@ function ensureCpuReferenceCompositorInputReadback(
     status: "present",
     source: "cpu-reference-diagnostic-state",
     frameId,
+    tileRefPayloadEncoding: "legacy-identity",
     anchors: anchors.map((anchor) => readCompositorInputAnchor({
       anchor,
       plan: state.plan,
@@ -7451,6 +7468,11 @@ function exposeTileLocalRuntimeEvidence(
   const compositorInputContributorsByAnchorId = compositorInputReadback?.status === "present"
     ? compositorInputContributorListByAnchorId(compositorInputReadback)
     : new Map<string, readonly unknown[]>();
+  const compositorInputProjectedSupportEncoding =
+    compositorInputReadback?.source === "gpu-buffer-readback" &&
+    compositorInputReadback.tileRefPayloadEncoding === "source-frontier-score"
+      ? "source-frontier-score"
+      : "legacy-identity";
   const pixelOrderTrace = tileLocalState && bandDispatchCache
     ? buildBandPixelOrderTraceRecord({
         contributors: tileLocalState.gpuArenaProjectedContributors,
@@ -7492,12 +7514,13 @@ function exposeTileLocalRuntimeEvidence(
         contributors: tileLocalState.gpuArenaProjectedContributors,
         sourceColors,
         contributorsByAnchorId: compositorInputContributorsByAnchorId,
-        projectedContributorsByAnchorId: mergeAnchorContributorLists(
+        projectedContributorsByAnchorId: sourceFrontierProjectedSupportFallbackByAnchorId(
           traceContributorListByAnchorId(
             tileLocalState.perPixelProjectedContributors,
             "projectedContributors",
           ),
           compositorInputContributorsByAnchorId,
+          compositorInputProjectedSupportEncoding,
         ),
         retainedContributorsByAnchorId: mergeAnchorContributorLists(
           traceContributorListByAnchorId(

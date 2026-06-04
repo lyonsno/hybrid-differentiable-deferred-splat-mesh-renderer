@@ -1,6 +1,38 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { sourceFrontierProjectedSupportFallbackByAnchorId } from "../../src/rendererFidelityProbes/sourceFrontierEvidence.js";
+
+test("source-frontier projected-support fallback is behaviorally route-gated", () => {
+  const primary = new Map([
+    ["primary-present", [{ splatIndex: 10 }]],
+    ["primary-empty", []],
+  ]);
+  const fallback = new Map([
+    ["primary-present", [{ splatIndex: 99 }]],
+    ["primary-empty", [{ splatIndex: 20 }]],
+    ["fallback-only", [{ splatIndex: 30 }]],
+  ]);
+
+  const sourceFrontier = sourceFrontierProjectedSupportFallbackByAnchorId(
+    primary,
+    fallback,
+    "source-frontier-score",
+  );
+
+  assert.deepEqual(sourceFrontier.get("primary-present"), [{ splatIndex: 10 }]);
+  assert.deepEqual(sourceFrontier.get("primary-empty"), [{ splatIndex: 20 }]);
+  assert.deepEqual(sourceFrontier.get("fallback-only"), [{ splatIndex: 30 }]);
+
+  const legacy = sourceFrontierProjectedSupportFallbackByAnchorId(
+    primary,
+    fallback,
+    "legacy-identity",
+  );
+
+  assert.equal(legacy, primary, "legacy/CPU diagnostic rows must not backfill projected support");
+  assert.equal(legacy.get("fallback-only"), undefined);
+});
 
 test("requested GPU arena runtime routes presentation through compact retained source without CPU prepass bridge", () => {
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
@@ -835,8 +867,8 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     compositorInputReadbackSource,
-    /publishTileLocalCompositorInputReadback\(state,\s*compositorInputReadback,\s*pending\.sourceColors\)/,
-    "source-frontier compositor-input readback must republish trace evidence with source colors after async GPU rows land",
+    /publishTileLocalCompositorInputReadback\(\s*state,\s*compositorInputReadback,\s*pending\.sourceColors,\s*pending\.tileRefPayloadEncoding,\s*\)/,
+    "source-frontier compositor-input readback publication must preserve tile-ref payload identity so legacy rows cannot impersonate projected support",
   );
   assert.match(
     mainSource,
@@ -845,13 +877,18 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     mainSource,
-    /function publishTileLocalCompositorInputReadback[\s\S]*projectedContributorsByAnchorId:\s*mergeAnchorContributorLists\(\s*traceContributorListByAnchorId\(\s*state\.perPixelProjectedContributors,\s*"projectedContributors",\s*\),\s*sourceFrontierContributorsByAnchorId,\s*\)/,
-    "source-frontier readback publication must let same-frame compositor-input rows backfill projected foreground support instead of leaving retained/ordered survivors with zero projected authority",
+    /function publishTileLocalCompositorInputReadback[\s\S]*projectedContributorsByAnchorId:\s*sourceFrontierProjectedSupportFallbackByAnchorId\(\s*traceContributorListByAnchorId\(\s*state\.perPixelProjectedContributors,\s*"projectedContributors",\s*\),\s*sourceFrontierContributorsByAnchorId,\s*tileRefPayloadEncoding,\s*\)/,
+    "source-frontier readback publication must route-gate projected foreground support fallback instead of letting legacy compositor rows impersonate projected authority",
   );
   assert.match(
     runtimeEvidenceSource,
-    /projectedContributorsByAnchorId:\s*mergeAnchorContributorLists\(\s*traceContributorListByAnchorId\(\s*tileLocalState\.perPixelProjectedContributors,\s*"projectedContributors",\s*\),\s*compositorInputContributorsByAnchorId,\s*\)/,
-    "source-frontier runtime evidence must let live compositor-input rows backfill projected foreground support when compact projected traces are sparse",
+    /const compositorInputProjectedSupportEncoding\s*=[\s\S]*compositorInputReadback\?\.source === "gpu-buffer-readback"[\s\S]*source-frontier-score[\s\S]*: "legacy-identity"/,
+    "source-frontier runtime evidence must classify CPU diagnostic and legacy readback rows as legacy before projected-support fallback",
+  );
+  assert.match(
+    runtimeEvidenceSource,
+    /projectedContributorsByAnchorId:\s*sourceFrontierProjectedSupportFallbackByAnchorId\(\s*traceContributorListByAnchorId\(\s*tileLocalState\.perPixelProjectedContributors,\s*"projectedContributors",\s*\),\s*compositorInputContributorsByAnchorId,\s*compositorInputProjectedSupportEncoding,\s*\)/,
+    "source-frontier runtime evidence must route-gate projected foreground support fallback when compact projected traces are sparse",
   );
   assert.match(renderLoopSource, /else \{\s*tileLocalState\.pipeline\.dispatch\(tileLocalComputePass,\s*tileLocalState\.bindGroup,\s*tileLocalState\.plan\);/);
   assert.match(
