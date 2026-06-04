@@ -41,6 +41,8 @@ const TRACE_ROUTE_PARAMS = Object.freeze([
   "traceAnchor",
 ]);
 const MAX_TILE_LOCAL_TO_PLATE_CHANGED_PIXEL_RATIO = 2.0;
+const MAX_VISUAL_GAP_REMAINING_TRANSMITTANCE_FOR_SEALED = 0.1;
+const MIN_VISUAL_GAP_ALPHA_FOR_SEALED = 0.9;
 
 export function buildStaticDessertWitnessPlan(baseUrl) {
   return [
@@ -786,7 +788,7 @@ function classifyPlateSeepageFromVisualGapTrace(visualGapTrace = {}, expectedRou
   const mechanismCounts = countBy(
     completeAnchors.map((anchor) => anchor.mechanism || "unclassified")
   );
-  const categories = new Set(completeAnchors.map((anchor) => anchor.category || "unclassified"));
+  const categories = new Set(completeAnchors.map(plateSeepageCategoryForAnchor));
   const blockerCount = completeAnchors.filter((anchor) => (
     anchor.category === "trace-blocked" ||
     anchor.category === "unclassified" ||
@@ -803,6 +805,27 @@ function classifyPlateSeepageFromVisualGapTrace(visualGapTrace = {}, expectedRou
     mechanismCounts,
     blockerCount,
   };
+}
+
+function plateSeepageCategoryForAnchor(anchor = {}) {
+  const category = anchor.category || "unclassified";
+  if (category === "ordered-present" && visualGapAnchorHasWeakFinalAlpha(anchor)) {
+    return "ordered-present-final-alpha-weak";
+  }
+  return category;
+}
+
+function visualGapAnchorHasWeakFinalAlpha(anchor = {}) {
+  const remainingTransmittance = finiteNumber(anchor.remainingTransmittance);
+  if (remainingTransmittance !== undefined && remainingTransmittance > MAX_VISUAL_GAP_REMAINING_TRANSMITTANCE_FOR_SEALED) {
+    return true;
+  }
+  const outputAlpha = finiteNumber(anchor.outputAlpha);
+  if (outputAlpha !== undefined && outputAlpha < MIN_VISUAL_GAP_ALPHA_FOR_SEALED) {
+    return true;
+  }
+  const finalForegroundAlpha = finiteNumber(anchor.finalForegroundAlpha);
+  return finalForegroundAlpha !== undefined && finalForegroundAlpha < MIN_VISUAL_GAP_ALPHA_FOR_SEALED;
 }
 
 function classifyPlateSeepageCategories(categories) {

@@ -325,8 +325,8 @@ test("static dessert witness classifier requires one asset, one viewport, final 
   assert.equal(result.metrics.visualGapTrace.anchors[0].finalStepCount, 1);
   assert.equal(result.metrics.visualGapTrace.anchors[0].outputAlpha, 0.44);
   assert.equal(result.metrics.plateSeepageClassification.status, "classified");
-  assert.equal(result.metrics.plateSeepageClassification.category, "no-seepage");
-  assert.equal(result.metrics.plateSeepageClassification.stage, "foreground-survived");
+  assert.equal(result.metrics.plateSeepageClassification.category, "alpha-under-accumulation");
+  assert.equal(result.metrics.plateSeepageClassification.stage, "alpha-transfer");
   assert.equal(result.observations.visibleHoles.evidenceIds.includes("coverage-weight"), true);
   assert.equal(result.observations.plateSeepage.evidenceIds.includes("transmittance"), true);
   assert.equal(result.observations.budgetSkip.status, "separate-high-viewport-observation");

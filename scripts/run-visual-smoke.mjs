@@ -1464,7 +1464,7 @@ ${renderSmokeHandoffSection(result.smokeHandoff)}
 - Derived anchor count: ${metrics.visualGapTrace.anchorCount}
 - Trace changed pixels: ${formatPercent(metrics.visualGapTrace.changedPixelRatio)}
 
-${metrics.visualGapTrace.anchors.length === 0 ? "- None" : metrics.visualGapTrace.anchors.map((anchor) => `- ${anchor.id}@${anchor.x},${anchor.y}: ${anchor.traceStatus}; score ${anchor.score}; plate delta ${anchor.plateDelta}; tile-local delta ${anchor.tileLocalDelta}; ${anchor.category}/${anchor.mechanism}; steps ${anchor.finalStepCount}; alpha ${anchor.outputAlpha}; foreground ${anchor.orderedForegroundCount}`).join("\n")}
+${metrics.visualGapTrace.anchors.length === 0 ? "- None" : metrics.visualGapTrace.anchors.map((anchor) => `- ${anchor.id}@${anchor.x},${anchor.y}: ${anchor.traceStatus}; score ${anchor.score}; plate delta ${anchor.plateDelta}; tile-local delta ${anchor.tileLocalDelta}; ${anchor.category}/${anchor.mechanism}; steps ${anchor.finalStepCount}; alpha ${anchor.outputAlpha}; remaining T ${anchor.remainingTransmittance}; foreground ${anchor.orderedForegroundCount}; foreground alpha ${anchor.finalForegroundAlpha}`).join("\n")}
 
 ## Plate Seepage Classification
 
