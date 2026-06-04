@@ -251,6 +251,7 @@ interface TileLocalSceneState {
   arenaBackend: "cpu" | "gpu";
   gpuArenaRuntime: GpuTileContributorArenaRuntime | null;
   gpuArenaProjectedContributors: readonly GpuTileContributorArenaProjectedContributor[];
+  gpuArenaProjectedConicSources?: RuntimeCompactTileCoverage["splats"];
   presentationAnchors?: readonly PixelTraceAnchor[];
   presentationScope: TileLocalPresentationScope;
   traceAnchors?: readonly PixelTraceAnchor[];
@@ -1767,6 +1768,7 @@ function createGpuArenaTileLocalSceneState(
     arenaBackend: "gpu",
     gpuArenaRuntime,
     gpuArenaProjectedContributors,
+    gpuArenaProjectedConicSources: undefined,
     presentationAnchors: TILE_LOCAL_PRESENTATION_ANCHORS,
     presentationScope: TILE_LOCAL_PRESENTATION_SCOPE,
     traceAnchors: TILE_LOCAL_TRACE_ANCHORS,
@@ -1959,6 +1961,8 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     tileCoverageWeights: tileCoverageWeightData,
     alphaParamData,
     sourceOpacities: effectiveOpacities,
+    runtimeContributors: compactSource.retainedRecords,
+    runtimeConicSources: splats,
   });
   const retainedSourceConstruction = buildWgslProjectedSourceFrontierConstructionEvidence(
     frontierSource,
@@ -2008,7 +2012,8 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     diagnostics,
     arenaBackend: "gpu",
     gpuArenaRuntime: null,
-    gpuArenaProjectedContributors: [],
+    gpuArenaProjectedContributors: compactSource.retainedRecords,
+    gpuArenaProjectedConicSources: splats,
     presentationAnchors: TILE_LOCAL_PRESENTATION_ANCHORS,
     presentationScope: TILE_LOCAL_PRESENTATION_SCOPE,
     traceAnchors: TILE_LOCAL_TRACE_ANCHORS,
@@ -5130,6 +5135,7 @@ function createCpuTileLocalSceneState(
     arenaBackend: gpuArenaRuntime ? "gpu" : "cpu",
     gpuArenaRuntime,
     gpuArenaProjectedContributors,
+    gpuArenaProjectedConicSources: undefined,
     presentationScope: TILE_LOCAL_PRESENTATION_SCOPE,
     perPixelProjectedContributors: bridge.perPixelProjectedContributors,
     perPixelRetainedContributors: bridge.perPixelRetainedContributors,
@@ -5556,9 +5562,6 @@ function enqueueTileLocalRefStatsReadback(
   if (frameId < 0 || state.disposed) {
     return;
   }
-  if (state.debugMode !== "final-color") {
-    return;
-  }
   if (state.arenaBackend !== "gpu" || state.gpuArenaRuntime) {
     return;
   }
@@ -5766,7 +5769,7 @@ function enqueueWgslProjectedRefStreamReadback(
   frameId: number
 ): void {
   const stream = state.wgslProjectedRefStream;
-  if (!stream || frameId < 0 || state.disposed || state.debugMode !== "final-color") {
+  if (!stream || frameId < 0 || state.disposed) {
     return;
   }
   if (stream.pendingReadback || stream.readback?.frameId === frameId) {
@@ -7183,6 +7186,7 @@ function refreshTileLocalDiagnostics(
     alphaParamData: state.alphaParamData,
     sourceOpacities: state.sourceOpacities,
     runtimeContributors: state.gpuArenaProjectedContributors,
+    runtimeConicSources: state.gpuArenaProjectedConicSources,
     runtimeRefStatsReadback,
     traceCapacityEvidence: traceCapacityEvidenceFromState(state, perPixelFinalColorAccumulation),
   });

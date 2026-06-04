@@ -9,6 +9,7 @@ export function summarizeTileLocalDiagnostics({
   alphaParamData,
   sourceOpacities,
   runtimeContributors,
+  runtimeConicSources,
   runtimeRefStatsReadback,
   traceCapacityEvidence,
 } = {}) {
@@ -36,6 +37,17 @@ export function summarizeTileLocalDiagnostics({
     tileRefs,
   });
   const conicShape = summarizeConicShape(alphaParamData, refLimit, maxTileRefs);
+  const runtimeContributorConicShape = conicShape.observed > 0
+    ? null
+    : summarizeRuntimeContributorConicShape(runtimeContributors);
+  const projectedConicShape = conicShape.observed > 0 || runtimeContributorConicShape?.observed > 0
+    ? null
+    : summarizeProjectedConicSources(runtimeConicSources);
+  const effectiveConicShape = conicShape.observed > 0
+    ? conicShape
+    : runtimeContributorConicShape?.observed > 0
+      ? runtimeContributorConicShape
+      : projectedConicShape ?? conicShape;
   const runtimeRefBudget = summarizeRuntimeRefBudget({
     plan,
     tileHeaders,
@@ -65,7 +77,7 @@ export function summarizeTileLocalDiagnostics({
     retentionAudit: normalizeRetentionAudit(retentionAudit),
     coverageWeight,
     alpha,
-    conicShape,
+    conicShape: stripConicObservation(effectiveConicShape),
   };
 }
 
@@ -648,10 +660,7 @@ function summarizeAlpha({
 }
 
 function summarizeConicShape(alphaParamData, refLimit, maxTileRefs) {
-  let maxMajorRadiusPx = 0;
-  let minMinorRadiusPx = Number.POSITIVE_INFINITY;
-  let maxAnisotropyRatio = 0;
-  let observed = 0;
+  const summary = emptyConicShapeSummary("alpha-param-buffer");
   for (let refIndex = 0; refIndex < refLimit; refIndex += 1) {
     const conicBase = (maxTileRefs + refIndex) * 4;
     const radii = inverseConicRadii(
@@ -660,16 +669,75 @@ function summarizeConicShape(alphaParamData, refLimit, maxTileRefs) {
       alphaParamData?.[conicBase + 2] ?? 1,
     );
     if (!radii) continue;
-    maxMajorRadiusPx = Math.max(maxMajorRadiusPx, radii.major);
-    minMinorRadiusPx = Math.min(minMinorRadiusPx, radii.minor);
-    maxAnisotropyRatio = Math.max(maxAnisotropyRatio, radii.major / Math.max(radii.minor, 1e-6));
-    observed += 1;
+    observeConicRadii(summary, radii);
   }
 
+  return finalizeConicShapeSummary(summary);
+}
+
+function summarizeRuntimeContributorConicShape(runtimeContributors) {
+  const summary = emptyConicShapeSummary("runtime-contributor-conics");
+  for (const contributor of runtimeContributors ?? []) {
+    const inverseConic = contributor?.inverseConic;
+    if (!Array.isArray(inverseConic) && !(inverseConic && typeof inverseConic === "object")) {
+      continue;
+    }
+    const radii = inverseConicRadii(
+      Array.isArray(inverseConic) ? inverseConic[0] : inverseConic.xx,
+      Array.isArray(inverseConic) ? inverseConic[1] ?? 0 : inverseConic.xy ?? 0,
+      Array.isArray(inverseConic) ? inverseConic[2] : inverseConic.yy,
+    );
+    if (!radii) continue;
+    observeConicRadii(summary, radii);
+  }
+  return finalizeConicShapeSummary(summary);
+}
+
+function summarizeProjectedConicSources(runtimeConicSources) {
+  const summary = emptyConicShapeSummary("projected-source-frontier-conics");
+  for (const source of runtimeConicSources ?? []) {
+    const covariance = source?.covariancePx;
+    if (!covariance || typeof covariance !== "object") continue;
+    const radii = covarianceRadii(covariance.xx, covariance.xy ?? 0, covariance.yy);
+    if (!radii) continue;
+    observeConicRadii(summary, radii);
+  }
+  return finalizeConicShapeSummary(summary);
+}
+
+function emptyConicShapeSummary(source = "unavailable") {
   return {
-    maxMajorRadiusPx: round(maxMajorRadiusPx),
-    minMinorRadiusPx: observed > 0 ? round(minMinorRadiusPx) : 0,
-    maxAnisotropyRatio: round(maxAnisotropyRatio),
+    maxMajorRadiusPx: 0,
+    minMinorRadiusPx: Number.POSITIVE_INFINITY,
+    maxAnisotropyRatio: 0,
+    observed: 0,
+    source,
+  };
+}
+
+function observeConicRadii(summary, radii) {
+  summary.maxMajorRadiusPx = Math.max(summary.maxMajorRadiusPx, radii.major);
+  summary.minMinorRadiusPx = Math.min(summary.minMinorRadiusPx, radii.minor);
+  summary.maxAnisotropyRatio = Math.max(summary.maxAnisotropyRatio, radii.major / Math.max(radii.minor, 1e-6));
+  summary.observed += 1;
+}
+
+function finalizeConicShapeSummary(summary) {
+  return {
+    maxMajorRadiusPx: round(summary.maxMajorRadiusPx),
+    minMinorRadiusPx: summary.observed > 0 ? round(summary.minMinorRadiusPx) : 0,
+    maxAnisotropyRatio: round(summary.maxAnisotropyRatio),
+    observed: summary.observed,
+    source: summary.source,
+  };
+}
+
+function stripConicObservation(summary) {
+  return {
+    maxMajorRadiusPx: summary.maxMajorRadiusPx,
+    minMinorRadiusPx: summary.minMinorRadiusPx,
+    maxAnisotropyRatio: summary.maxAnisotropyRatio,
+    source: summary.source,
   };
 }
 
@@ -683,6 +751,19 @@ function inverseConicRadii(xx, xy, yy) {
   return {
     major: 1 / Math.sqrt(lambdaSmall),
     minor: 1 / Math.sqrt(lambdaLarge),
+  };
+}
+
+function covarianceRadii(xx, xy, yy) {
+  if (![xx, xy, yy].every(Number.isFinite)) return null;
+  const trace = xx + yy;
+  const discriminant = Math.sqrt(Math.max((xx - yy) * (xx - yy) + 4 * xy * xy, 0));
+  const lambdaSmall = 0.5 * (trace - discriminant);
+  const lambdaLarge = 0.5 * (trace + discriminant);
+  if (lambdaSmall <= 0 || lambdaLarge <= 0) return null;
+  return {
+    major: Math.sqrt(lambdaLarge),
+    minor: Math.sqrt(lambdaSmall),
   };
 }
 

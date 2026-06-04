@@ -52,6 +52,18 @@ test("static dessert witness plan captures final color and all debug modes for o
       ],
     ]
   );
+  assert.deepEqual(
+    plan
+      .filter((capture) => capture.id !== "plate-final-color" && capture.id !== "final-color")
+      .map((capture) => [capture.id, capture.readiness?.tileLocalDiagnostics]),
+    [
+      ["coverage-weight", { debugMode: "coverage-weight", requireTileRefs: true, requireDiagnostics: true }],
+      ["accumulated-alpha", { debugMode: "accumulated-alpha", requireTileRefs: true, requireAlpha: true }],
+      ["transmittance", { debugMode: "transmittance", requireTileRefs: true, requireTransmittance: true }],
+      ["tile-ref-count", { debugMode: "tile-ref-count", requireTileRefs: true, requireRefDensity: true }],
+      ["conic-shape", { debugMode: "conic-shape", requireTileRefs: true, requireConicShape: true }],
+    ],
+  );
 });
 
 test("static dessert witness plan preserves the close-up witness view across final and debug captures", () => {

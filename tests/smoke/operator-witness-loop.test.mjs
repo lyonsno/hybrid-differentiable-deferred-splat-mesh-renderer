@@ -261,6 +261,33 @@ test("operator witness app frame timing routes requested GPU presentation throug
   assert.match(dispatchSource, /tileLocalState\.pipeline\.dispatchComposite\(tileLocalComputePass/);
 });
 
+test("static dessert debug modes can publish compact ref readbacks without enabling heavy per-pixel probes", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const refStatsSource = extractFunctionSource(source, "enqueueTileLocalRefStatsReadback");
+  const projectedStreamSource = extractFunctionSource(source, "enqueueWgslProjectedRefStreamReadback");
+  const outputTextureSource = extractFunctionSource(source, "enqueueTileLocalOutputTextureReadback");
+  const compositorInputSource = extractFunctionSource(source, "enqueueTileLocalCompositorInputReadback");
+  const cpuReferenceSource = extractFunctionSource(source, "ensureCpuReferenceCompositorInputReadback");
+
+  assert.doesNotMatch(refStatsSource, /state\.debugMode !== "final-color"/);
+  assert.doesNotMatch(projectedStreamSource, /state\.debugMode !== "final-color"/);
+  assert.match(outputTextureSource, /state\.debugMode !== "final-color"/);
+  assert.match(compositorInputSource, /state\.debugMode !== "final-color"/);
+  assert.match(cpuReferenceSource, /state\.debugMode !== "final-color"/);
+});
+
+test("source-frontier state preserves retained compact contributors for debug diagnostics", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const sourceFrontierSource = extractFunctionSource(source, "createWgslProjectedSourceFrontierTileLocalSceneState");
+  const refreshSource = extractFunctionSource(source, "refreshTileLocalDiagnostics");
+
+  assert.match(sourceFrontierSource, /runtimeContributors:\s*compactSource\.retainedRecords/);
+  assert.match(sourceFrontierSource, /gpuArenaProjectedContributors:\s*compactSource\.retainedRecords/);
+  assert.match(sourceFrontierSource, /gpuArenaProjectedConicSources:\s*splats/);
+  assert.match(refreshSource, /runtimeConicSources:\s*state\.gpuArenaProjectedConicSources/);
+  assert.doesNotMatch(sourceFrontierSource, /gpuArenaProjectedContributors:\s*\[\]/);
+});
+
 test("operator witness evidence distinguishes GPU arena consumption from retained-source construction ownership", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const gpuSource = extractFunctionSource(source, "createGpuArenaTileLocalSceneState");

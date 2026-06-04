@@ -617,6 +617,7 @@ async function captureOperatorWitnessFrame({
       applyOperatorWitnessView(page, capture.witnessView ?? "default", timeoutMs)
     );
     readinessEvidence = await timeStage(timing, "view-readiness", () => waitForVisualSmokeCaptureReady(page, capture.expectedRendererLabel, timeoutMs, {
+      ...(capture.readiness ?? {}),
       operatorWitness: {
         witnessView: capture.witnessView ?? "default",
         minRevision: viewRevision,
@@ -629,12 +630,13 @@ async function captureOperatorWitnessFrame({
       );
       readinessEvidence = await timeStage(timing, "interaction-readiness", () => waitForVisualSmokeCaptureReady(page, capture.expectedRendererLabel, timeoutMs, interactionRevision !== null
         ? {
+            ...(capture.readiness ?? {}),
             operatorWitness: {
               witnessView: capture.witnessView ?? "default",
               minRevision: interactionRevision,
             },
           }
-        : {}));
+        : capture.readiness ?? {}));
       await timeStage(timing, "settle-after-interaction", () => page.waitForTimeout(options.settleMs));
     }
 
@@ -717,11 +719,11 @@ async function captureVisualSmoke({ browser, options, capture, reportDir }) {
     const canvas = page.locator("canvas").first();
     await canvas.waitFor({ state: "attached", timeout: timeoutMs });
     try {
-      await waitForVisualSmokeCaptureReady(page, capture.expectedRendererLabel, timeoutMs);
+      await waitForVisualSmokeCaptureReady(page, capture.expectedRendererLabel, timeoutMs, capture.readiness ?? {});
       await page.waitForTimeout(options.settleMs);
       if (Array.isArray(capture.interactions) && capture.interactions.length > 0) {
         await applyCaptureInteractions({ page, canvas, interactions: capture.interactions });
-        await waitForVisualSmokeCaptureReady(page, capture.expectedRendererLabel, timeoutMs);
+        await waitForVisualSmokeCaptureReady(page, capture.expectedRendererLabel, timeoutMs, capture.readiness ?? {});
         await page.waitForTimeout(options.settleMs);
       }
     } catch (error) {
@@ -960,7 +962,8 @@ async function waitForVisualSmokeCaptureReady(page, expectedRendererLabel, timeo
     };
     if (
       isVisualSmokeCaptureReady(lastEvidence, { expectedRendererLabel }) &&
-      operatorWitnessReadinessMatches(lastEvidence, readiness.operatorWitness)
+      operatorWitnessReadinessMatches(lastEvidence, readiness.operatorWitness) &&
+      tileLocalDiagnosticsReadinessMatches(lastEvidence, readiness.tileLocalDiagnostics)
     ) {
       return lastEvidence;
     }
@@ -992,6 +995,74 @@ function operatorWitnessReadinessMatches(pageEvidence, expectation) {
     return false;
   }
   return true;
+}
+
+function tileLocalDiagnosticsReadinessMatches(pageEvidence, expectation) {
+  if (!expectation) {
+    return true;
+  }
+  const tileLocal = pageEvidence.tileLocal && typeof pageEvidence.tileLocal === "object"
+    ? pageEvidence.tileLocal
+    : {};
+  const diagnostics = tileLocal.diagnostics && typeof tileLocal.diagnostics === "object"
+    ? tileLocal.diagnostics
+    : pageEvidence.tileLocalDiagnostics && typeof pageEvidence.tileLocalDiagnostics === "object"
+      ? pageEvidence.tileLocalDiagnostics
+      : undefined;
+  if (!diagnostics) {
+    return false;
+  }
+  if (expectation.debugMode && diagnostics.debugMode !== expectation.debugMode) {
+    return false;
+  }
+  if (expectation.requireTileRefs && tileLocalRetainedRefs(pageEvidence, diagnostics) <= 0) {
+    return false;
+  }
+  if (expectation.requireDiagnostics && Object.keys(diagnostics).length <= 0) {
+    return false;
+  }
+  if (expectation.requireAlpha && positiveNumber(diagnostics.alpha?.estimatedMaxAccumulatedAlpha) === undefined) {
+    return false;
+  }
+  if (expectation.requireTransmittance && finiteNumber(diagnostics.alpha?.estimatedMinTransmittance) === undefined) {
+    return false;
+  }
+  if (
+    expectation.requireRefDensity &&
+    (
+      positiveNumber(diagnostics.tileRefs?.total) === undefined ||
+      positiveNumber(diagnostics.tileRefs?.maxPerTile) === undefined
+    )
+  ) {
+    return false;
+  }
+  if (expectation.requireConicShape && positiveNumber(diagnostics.conicShape?.maxMajorRadiusPx) === undefined) {
+    return false;
+  }
+  return true;
+}
+
+function tileLocalRetainedRefs(pageEvidence, diagnostics) {
+  const tileLocal = pageEvidence.tileLocal && typeof pageEvidence.tileLocal === "object"
+    ? pageEvidence.tileLocal
+    : {};
+  return (
+    positiveNumber(tileLocal.refAccounting?.retainedRefs) ??
+    positiveNumber(tileLocal.refStatsReadback?.retainedRefs) ??
+    positiveNumber(tileLocal.refs) ??
+    positiveNumber(diagnostics.tileRefs?.total) ??
+    0
+  );
+}
+
+function finiteNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : undefined;
+}
+
+function positiveNumber(value) {
+  const number = finiteNumber(value);
+  return number !== undefined && number > 0 ? number : undefined;
 }
 
 function attachTraceCanvasParityEvidence({ pageEvidence, screenshot, url, viewport }) {

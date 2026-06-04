@@ -342,8 +342,32 @@ function debugCapture(baseUrl, id, title) {
     id,
     title,
     expectedRendererLabel: `tile-local-visible-debug-${id}`,
+    readiness: {
+      tileLocalDiagnostics: staticDessertDebugReadiness(id),
+    },
     url: url.toString().replaceAll("%2F", "/"),
   };
+}
+
+function staticDessertDebugReadiness(id) {
+  const base = {
+    debugMode: id,
+    requireTileRefs: true,
+  };
+  switch (id) {
+    case STATIC_DESSERT_WITNESS_CAPTURE_IDS.coverageWeight:
+      return { ...base, requireDiagnostics: true };
+    case STATIC_DESSERT_WITNESS_CAPTURE_IDS.accumulatedAlpha:
+      return { ...base, requireAlpha: true };
+    case STATIC_DESSERT_WITNESS_CAPTURE_IDS.transmittance:
+      return { ...base, requireTransmittance: true };
+    case STATIC_DESSERT_WITNESS_CAPTURE_IDS.tileRefCount:
+      return { ...base, requireRefDensity: true };
+    case STATIC_DESSERT_WITNESS_CAPTURE_IDS.conicShape:
+      return { ...base, requireConicShape: true };
+    default:
+      return base;
+  }
 }
 
 function applyStaticTileLocalRoute(url) {

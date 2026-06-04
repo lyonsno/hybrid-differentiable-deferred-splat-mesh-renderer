@@ -90,6 +90,79 @@ test("tile-local diagnostic summary exports coverage, alpha/transmittance, ref d
   assert.equal(summary.conicShape.minMinorRadiusPx, 0.5);
 });
 
+test("tile-local diagnostic summary falls back to runtime contributor conics when alpha mirror is empty", () => {
+  const summary = summarizeTileLocalDiagnostics({
+    debugMode: "conic-shape",
+    plan: {
+      tileColumns: 2,
+      tileRows: 1,
+      tileSizePx: 8,
+      maxTileRefs: 8,
+    },
+    tileEntryCount: 0,
+    tileHeaders: new Uint32Array(8),
+    tileRefCustody: {
+      projectedTileEntryCount: 2,
+      retainedTileEntryCount: 2,
+      evictedTileEntryCount: 0,
+      cappedTileCount: 0,
+      saturatedRetainedTileCount: 0,
+      maxProjectedRefsPerTile: 2,
+      maxRetainedRefsPerTile: 2,
+      headerRefCount: 2,
+      headerAccountingMatches: true,
+    },
+    tileCoverageWeights: new Float32Array(0),
+    alphaParamData: new Float32Array(8),
+    runtimeContributors: [
+      { splatIndex: 10, originalId: 100, tileIndex: 0, inverseConic: [0.25, 0, 4] },
+      { splatIndex: 11, originalId: 101, tileIndex: 0, inverseConic: [0.0625, 0, 0.25] },
+    ],
+  });
+
+  assert.equal(summary.conicShape.maxMajorRadiusPx, 4);
+  assert.equal(summary.conicShape.minMinorRadiusPx, 0.5);
+  assert.equal(summary.conicShape.maxAnisotropyRatio, 4);
+  assert.equal(summary.conicShape.source, "runtime-contributor-conics");
+});
+
+test("tile-local diagnostic summary falls back to projected frontier conics without retained runtime rows", () => {
+  const summary = summarizeTileLocalDiagnostics({
+    debugMode: "conic-shape",
+    plan: {
+      tileColumns: 2,
+      tileRows: 1,
+      tileSizePx: 8,
+      maxTileRefs: 8,
+    },
+    tileEntryCount: 0,
+    tileHeaders: new Uint32Array(8),
+    tileRefCustody: {
+      projectedTileEntryCount: 2,
+      retainedTileEntryCount: 0,
+      evictedTileEntryCount: 0,
+      cappedTileCount: 0,
+      saturatedRetainedTileCount: 0,
+      maxProjectedRefsPerTile: 0,
+      maxRetainedRefsPerTile: 0,
+      headerRefCount: 0,
+      headerAccountingMatches: false,
+    },
+    tileCoverageWeights: new Float32Array(0),
+    alphaParamData: new Float32Array(8),
+    runtimeContributors: [],
+    runtimeConicSources: [
+      { covariancePx: { xx: 16, xy: 0, yy: 0.25 } },
+      { covariancePx: { xx: 4, xy: 0, yy: 1 } },
+    ],
+  });
+
+  assert.equal(summary.conicShape.maxMajorRadiusPx, 4);
+  assert.equal(summary.conicShape.minMinorRadiusPx, 0.5);
+  assert.equal(summary.conicShape.maxAnisotropyRatio, 8);
+  assert.equal(summary.conicShape.source, "projected-source-frontier-conics");
+});
+
 test("tile-local diagnostic summary uses GPU custody and opacity estimates when CPU tile arrays are absent", () => {
   const summary = summarizeTileLocalDiagnostics({
     debugMode: "accumulated-alpha",

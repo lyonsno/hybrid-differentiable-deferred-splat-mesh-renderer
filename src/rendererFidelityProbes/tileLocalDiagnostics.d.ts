@@ -15,6 +15,18 @@ export interface TileLocalDiagnosticSummaryInput {
     readonly splatIndex?: number;
     readonly originalId?: number;
     readonly tileIndex?: number;
+    readonly inverseConic?: readonly [number, number, number] | {
+      readonly xx?: number;
+      readonly xy?: number;
+      readonly yy?: number;
+    };
+  }[];
+  readonly runtimeConicSources?: readonly {
+    readonly covariancePx?: {
+      readonly xx?: number;
+      readonly xy?: number;
+      readonly yy?: number;
+    };
   }[];
   readonly runtimeRefStatsReadback?: {
     readonly status?: string;
