@@ -230,6 +230,71 @@ test("per-pixel final accumulation traces can consume anchor-keyed source-fronti
   assert.equal(traces[0].orderedContributors[0].candidateSourceClassMask, 9);
 });
 
+test("source-frontier foreground support crosses the final alpha bulkhead without changing legacy conic transfer", () => {
+  const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
+  const foregroundSheet = Array.from({ length: 24 }, (_, index) =>
+    accumulationContributor({
+      anchor,
+      tileIndex: tileIndexForAnchor(anchor),
+      splatIndex: 700 + index,
+      originalId: 700 + index,
+      viewRank: index,
+      sourceRole: "foreground-sealing",
+      role: "foreground-sealing",
+      candidateSourceClassMask: 9,
+      coverageWeight: 0.42,
+      centerPx: [anchor.x + 2.5, anchor.y + 0.5],
+      inverseConic: [1, 0, 1],
+      opacity: 0.08,
+    })
+  );
+
+  const sourceColors = new Map(
+    foregroundSheet.map((contributor) => [contributor.splatIndex, [0.75, 0.55, 0.32]])
+  );
+  const sourceFrontier = buildFinalColorAccumulationTraceRecord({
+    anchorPixel: anchor,
+    contributors: foregroundSheet,
+    sourceColors,
+    retainedContributors: foregroundSheet,
+    rendererMetadata: {
+      requestedRenderer: "tile-local-visible",
+      effectiveRenderer: "tile-local-visible-gaussian-compositor",
+      retainedSource: "deterministic-gpu-retention-carrier->gpu-contributor-arena-runtime",
+    },
+    tileSizePx: 16,
+    tileColumns: 216,
+  });
+  const legacyConicOnly = buildFinalColorAccumulationTraceRecord({
+    anchorPixel: anchor,
+    contributors: foregroundSheet.map(({ sourceRole, role, candidateSourceClassMask, ...contributor }) => contributor),
+    sourceColors,
+    retainedContributors: foregroundSheet,
+    rendererMetadata: {
+      requestedRenderer: "tile-local-visible",
+      effectiveRenderer: "tile-local-visible-gaussian-compositor",
+      retainedSource: "legacy-identity",
+    },
+    tileSizePx: 16,
+    tileColumns: 216,
+  });
+
+  assert.ok(
+    sourceFrontier.finalColorAccumulation.remainingTransmittance < 0.36,
+    `expected source-frontier foreground support to become optical mass, saw ${sourceFrontier.finalColorAccumulation.remainingTransmittance}`,
+  );
+  assert.ok(
+    legacyConicOnly.finalColorAccumulation.remainingTransmittance > 0.96,
+    `legacy conic-only transfer should stay weak for this off-center fixture, saw ${legacyConicOnly.finalColorAccumulation.remainingTransmittance}`,
+  );
+  assert.ok(
+    sourceFrontier.finalColorAccumulation.remainingTransmittance < legacyConicOnly.finalColorAccumulation.remainingTransmittance * 0.5,
+    "source-frontier foreground support should not be trapped behind the same conic-only alpha transfer as legacy refs",
+  );
+  assert.equal(sourceFrontier.finalColorAccumulation.steps[0].sourceFrontierAlphaSupport, "foreground-support-floor");
+  assert.equal(legacyConicOnly.finalColorAccumulation.steps[0].sourceFrontierAlphaSupport, "none");
+});
+
 function accumulationContributor(overrides = {}) {
   const anchor = overrides.anchor ?? BLACK_BAND_FINAL_ACCUMULATION_ANCHOR;
   return {

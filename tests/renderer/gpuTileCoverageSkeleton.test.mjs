@@ -230,6 +230,57 @@ test("WGSL source-frontier election consumes candidate class masks from the comp
   assert.match(shader, /gpu_live_retention_pool_slot\([\s\S]*candidateSourceClassMask[\s\S]*tileCapacity/);
 });
 
+test("WGSL source-frontier foreground support carries class masks across the final alpha bulkhead", () => {
+  const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
+
+  assert.match(
+    shader,
+    /const SOURCE_FRONTIER_ALPHA_CLASS_MASK_SENTINEL = -1024\.0/,
+    "source-frontier class-mask payloads need a sentinel namespace so legacy view-rank evidence cannot be mistaken for a class mask",
+  );
+  assert.match(
+    shader,
+    /let alphaPayload = select\(f32\(splatId\),\s*SOURCE_FRONTIER_ALPHA_CLASS_MASK_SENTINEL - f32\(candidateSourceClassMask\),\s*candidateSourceClassMask != 0u\)/,
+    "source-frontier retained refs must preserve legacy splat/rank payloads unless a real class mask is present",
+  );
+  assert.match(
+    shader,
+    /alphaParams\[refIndex\] = vec4f\(sourceOpacity,\s*centerPx\.x,\s*centerPx\.y,\s*alphaPayload\)/,
+    "source-frontier retained refs must write the tagged alpha payload instead of erasing sidecar evidence",
+  );
+  assert.match(
+    shader,
+    /fn gpu_live_try_commit_retained_ref\([\s\S]*candidateSourceClassMask:\s*u32[\s\S]*\)/,
+    "the retained-ref write helper must receive the candidate class mask instead of relying on an out-of-scope build_tile_refs local",
+  );
+  assert.match(
+    shader,
+    /gpu_live_try_commit_retained_ref\([\s\S]*candidateSourceClassMask,\s*[\s\S]*conic\.inverseConic[\s\S]*\)/,
+    "build_tile_refs must thread the candidate class mask into retained-ref writes",
+  );
+  assert.match(shader, /fn source_frontier_alpha_transfer_weight\(/);
+  assert.match(
+    shader,
+    /if \(alphaParam\.w > SOURCE_FRONTIER_ALPHA_CLASS_MASK_SENTINEL\) \{\s*return 0u;\s*\}/,
+    "source-frontier compositor must not decode legacy splat/rank payloads as class masks",
+  );
+  assert.match(
+    shader,
+    /let sourceFrontierClassMask = u32\(max\(SOURCE_FRONTIER_ALPHA_CLASS_MASK_SENTINEL - alphaParam\.w,\s*0\.0\)\)/,
+    "source-frontier compositor must recover the carried candidate-source class mask from the sentinel-tagged payload",
+  );
+  assert.match(
+    shader,
+    /let alphaTransferWeight = source_frontier_alpha_transfer_weight\(pixelCoverageWeight,\s*tileCoverageWeight,\s*sourceFrontierClassMask\)/,
+    "source-frontier alpha transfer must use the role-aware support weight instead of raw conic pixel weight",
+  );
+  assert.match(
+    shader,
+    /pow\(1\.0\s*-\s*sourceOpacity,\s*alphaTransferWeight\)/,
+    "the role-aware weight must drive final optical alpha",
+  );
+});
+
 test("WGSL source-frontier overflow keeps retained slot and score pool coherent", () => {
   const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
 

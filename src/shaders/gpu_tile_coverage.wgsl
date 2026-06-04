@@ -49,6 +49,8 @@ const CANDIDATE_SOURCE_CLASS_RETENTION_MASK = 1u;
 const CANDIDATE_SOURCE_CLASS_OCCLUSION_MASK = 2u;
 const CANDIDATE_SOURCE_CLASS_COVERAGE_MASK = 4u;
 const CANDIDATE_SOURCE_CLASS_SUPPORT_MASK = 8u;
+const SOURCE_FRONTIER_ALPHA_CLASS_MASK_SENTINEL = -1024.0;
+const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE = 2.0;
 
 struct SplatShape {
   axis0: vec3f,
@@ -458,6 +460,7 @@ fn gpu_live_try_commit_retained_ref(
   tileCoverageWeight: f32,
   sourceOpacity: f32,
   centerPx: vec2f,
+  candidateSourceClassMask: u32,
   inverseConic: vec3f,
 ) {
   let scoreIndex = tile_ref_word_index(refIndex, 1u);
@@ -478,7 +481,8 @@ fn gpu_live_try_commit_retained_ref(
       atomicStore(&tileRefs[tile_ref_word_index(refIndex, 2u)], tileId);
       atomicStore(&tileRefs[tile_ref_word_index(refIndex, 3u)], refIndex);
       tileCoverageWeights[refIndex] = tileCoverageWeight;
-      alphaParams[refIndex] = vec4f(sourceOpacity, centerPx.x, centerPx.y, f32(splatId));
+      let alphaPayload = select(f32(splatId), SOURCE_FRONTIER_ALPHA_CLASS_MASK_SENTINEL - f32(candidateSourceClassMask), candidateSourceClassMask != 0u);
+      alphaParams[refIndex] = vec4f(sourceOpacity, centerPx.x, centerPx.y, alphaPayload);
       alphaParams[refIndex + frame.maxTileRefs] = vec4f(inverseConic, 0.0);
       atomicStore(&tileRefs[scoreIndex], score);
       break;
@@ -497,6 +501,22 @@ fn conic_pixel_weight(alphaParam: vec4f, conicParam: vec4f, pixelCenter: vec2f) 
     + 2.0 * conicParam.y * delta.x * delta.y
     + conicParam.z * delta.y * delta.y;
   return exp(-conic_falloff_scale() * mahalanobis2);
+}
+
+fn source_frontier_alpha_class_mask(alphaParam: vec4f) -> u32 {
+  if (alphaParam.w > SOURCE_FRONTIER_ALPHA_CLASS_MASK_SENTINEL) {
+    return 0u;
+  }
+  let sourceFrontierClassMask = u32(max(SOURCE_FRONTIER_ALPHA_CLASS_MASK_SENTINEL - alphaParam.w, 0.0));
+  return sourceFrontierClassMask;
+}
+
+fn source_frontier_alpha_transfer_weight(pixelCoverageWeight: f32, tileCoverageWeight: f32, sourceFrontierClassMask: u32) -> f32 {
+  if ((sourceFrontierClassMask & (CANDIDATE_SOURCE_CLASS_RETENTION_MASK | CANDIDATE_SOURCE_CLASS_SUPPORT_MASK)) == 0u) {
+    return pixelCoverageWeight;
+  }
+  let supportWeight = min(max(tileCoverageWeight, 0.0) * SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE, 1.0);
+  return max(pixelCoverageWeight, supportWeight);
 }
 
 fn inverse_conic_radii(conicParam: vec4f) -> vec2f {
@@ -674,6 +694,7 @@ fn debug_heatmap_color(
         tileCoverageWeight,
         sourceOpacity,
         centerPx,
+        candidateSourceClassMask,
         conic.inverseConic
       );
     }
@@ -768,7 +789,9 @@ fn debug_heatmap_color(
     maxMajorRadiusPx = max(maxMajorRadiusPx, conicRadii.x);
     minMinorRadiusPx = min(minMinorRadiusPx, conicRadii.y);
     let sourceOpacity = min(clamp(alphaParam.x, 0.0, 1.0), 0.999);
-    let coverageAlpha = clamp(1.0 - pow(1.0 - sourceOpacity, pixelCoverageWeight), 0.0, 1.0);
+    let sourceFrontierClassMask = source_frontier_alpha_class_mask(alphaParam);
+    let alphaTransferWeight = source_frontier_alpha_transfer_weight(pixelCoverageWeight, tileCoverageWeight, sourceFrontierClassMask);
+    let coverageAlpha = clamp(1.0 - pow(1.0 - sourceOpacity, alphaTransferWeight), 0.0, 1.0);
     let colorBase = tileRef.x * 3u;
     let sourceColor = vec3f(colors[colorBase], colors[colorBase + 1u], colors[colorBase + 2u]);
     composedColor = sourceColor * coverageAlpha + composedColor * (1.0 - coverageAlpha);

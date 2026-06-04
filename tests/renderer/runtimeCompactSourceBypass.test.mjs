@@ -568,6 +568,21 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
     /tileRefPayloadEncoding === "source-frontier-score"[\s\S]*retentionScore/,
     "source-frontier readback must expose packed retention score under score metadata",
   );
+  assert.match(
+    readCompositorInputAnchorSource,
+    /const alphaTransferWeight = sourceFrontierAlphaTransferWeight\(\s*pixelCoverageWeight,\s*tileCoverageWeight,\s*candidateSourceClassMask,\s*\)/,
+    "source-frontier live compositor-input readback must use the same class-aware alpha-transfer weight as final composition",
+  );
+  assert.match(
+    readCompositorInputAnchorSource,
+    /Math\.pow\(1 - sourceOpacity,\s*alphaTransferWeight\)/,
+    "source-frontier live compositor-input readback coverage alpha must be driven by the class-aware transfer weight",
+  );
+  assert.doesNotMatch(
+    readCompositorInputAnchorSource,
+    /const coverageAlpha = clamp01\(1 - Math\.pow\(1 - sourceOpacity,\s*pixelCoverageWeight\)\)/,
+    "source-frontier live compositor-input readback must not report stale conic-only alpha after the shader crosses the alpha bulkhead",
+  );
   assert.doesNotMatch(
     readCompositorInputAnchorSource,
     /const originalId = tileRefs\[tileRefBase \+ 1\] \?\? splatIndex;/,

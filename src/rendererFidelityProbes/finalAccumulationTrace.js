@@ -20,6 +20,8 @@ const DEFAULT_DEFERRED_FIELDS = Object.freeze({
   deferredSurface: null,
   missingReason: "production deferred G-buffer voting is outside the trace packet scope",
 });
+const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_MASK = 1 | 8;
+const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE = 2;
 
 export function buildFinalColorAccumulationTraceRecord({
   anchorPixel = BLACK_BAND_FINAL_ACCUMULATION_ANCHOR,
@@ -196,8 +198,13 @@ function composeFinalColorAccumulationSteps({
     const pixelCoverageWeight = tileCoverageWeight > 0
       ? conicPixelWeight(contributor.centerPx, contributor.inverseConic, pixelCenter)
       : 0;
+    const alphaTransfer = sourceFrontierAlphaTransferWeight({
+      pixelCoverageWeight,
+      tileCoverageWeight,
+      contributor,
+    });
     const coverageAlpha = tileCoverageWeight > 0
-      ? clamp01(1 - Math.pow(1 - opacity, pixelCoverageWeight))
+      ? clamp01(1 - Math.pow(1 - opacity, alphaTransfer.weight))
       : 0;
     const contributionColor = sourceColor.map((channel) => round(channel * coverageAlpha));
     const nextRunningColor = tileCoverageWeight > 0
@@ -214,6 +221,8 @@ function composeFinalColorAccumulationSteps({
       originalId: nonNegativeInteger(contributor.originalId ?? contributor.splatIndex, "contributor.originalId"),
       orderIndex,
       coverageWeight: round(pixelCoverageWeight),
+      alphaTransferWeight: round(alphaTransfer.weight),
+      sourceFrontierAlphaSupport: alphaTransfer.support,
       opacity: round(opacity),
       coverageAlpha: round(coverageAlpha),
       transmittanceBefore: round(transmittanceBefore),
@@ -240,6 +249,30 @@ function composeFinalColorAccumulationSteps({
     clearColor: normalizeColor(clearColor, "clearColor").map(round),
     remainingTransmittance: round(remainingTransmission),
   };
+}
+
+function sourceFrontierAlphaTransferWeight({
+  pixelCoverageWeight,
+  tileCoverageWeight,
+  contributor,
+}) {
+  const normalizedPixelWeight = Math.max(Number.isFinite(pixelCoverageWeight) ? pixelCoverageWeight : 0, 0);
+  const candidateSourceClassMask = Number.isInteger(contributor?.candidateSourceClassMask)
+    ? contributor.candidateSourceClassMask
+    : 0;
+  if ((candidateSourceClassMask & SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_MASK) === 0) {
+    return { weight: normalizedPixelWeight, support: "none" };
+  }
+
+  const supportWeight = Math.min(
+    Math.max(Number.isFinite(tileCoverageWeight) ? tileCoverageWeight : 0, 0) *
+      SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE,
+    1,
+  );
+  if (supportWeight <= normalizedPixelWeight) {
+    return { weight: normalizedPixelWeight, support: "none" };
+  }
+  return { weight: supportWeight, support: "foreground-support-floor" };
 }
 
 function selectAccumulationContributors(contributors, anchorPixel, tileAddress) {

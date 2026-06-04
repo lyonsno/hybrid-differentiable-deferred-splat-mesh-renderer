@@ -178,6 +178,10 @@ const COMPACT_SOURCE_PRESENTATION_TILE_NEIGHBORHOOD_RADIUS = 5;
 const COMPACT_SOURCE_FULL_SCENE_MAX_TILES_PER_SPLAT = 9;
 const COMPACT_SOURCE_ANCHOR_PREFILTER_MIN_MARGIN_PX = 96;
 const COMPACT_SOURCE_ANCHOR_PREFILTER_MAX_MARGIN_PX = 384;
+const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_MASK =
+  GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.retention |
+  GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.support;
+const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE = 2;
 const COMPACT_SOURCE_RETENTION_SUPPORT_SAMPLES_PER_AXIS = 4;
 const COMPACT_SOURCE_EPSILON = 1e-9;
 const TILE_LOCAL_UNSAFE = selectedTileLocalUnsafeMode();
@@ -6178,7 +6182,12 @@ function readCompositorInputAnchor({
     const conicParam = readVec4(alphaParams, alphaParamIndex + plan.maxTileRefs);
     const sourceOpacity = Math.min(clamp01(alphaParam[0]), 0.999);
     const pixelCoverageWeight = conicPixelWeightFromParams(alphaParam, conicParam, pixelCenter);
-    const coverageAlpha = clamp01(1 - Math.pow(1 - sourceOpacity, pixelCoverageWeight));
+    const alphaTransferWeight = sourceFrontierAlphaTransferWeight(
+      pixelCoverageWeight,
+      tileCoverageWeight,
+      candidateSourceClassMask,
+    );
+    const coverageAlpha = clamp01(1 - Math.pow(1 - sourceOpacity, alphaTransferWeight));
     const sourceColor = readSourceColor(sourceColors, splatIndex);
     const transmittanceBefore = remainingTransmission;
     runningColor = sourceColor.map((channel, index) =>
@@ -6361,6 +6370,23 @@ function conicPixelWeightFromParams(
   const dy = pixelCenter[1] - alphaParam[2];
   const mahalanobis2 = conicParam[0] * dx * dx + 2 * conicParam[1] * dx * dy + conicParam[2] * dy * dy;
   return Math.exp(-2 * mahalanobis2);
+}
+
+function sourceFrontierAlphaTransferWeight(
+  pixelCoverageWeight: number,
+  tileCoverageWeight: number,
+  candidateSourceClassMask: number,
+): number {
+  const normalizedPixelWeight = Math.max(Number.isFinite(pixelCoverageWeight) ? pixelCoverageWeight : 0, 0);
+  if ((candidateSourceClassMask & SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_MASK) === 0) {
+    return normalizedPixelWeight;
+  }
+  const supportWeight = Math.min(
+    Math.max(Number.isFinite(tileCoverageWeight) ? tileCoverageWeight : 0, 0) *
+      SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE,
+    1,
+  );
+  return Math.max(normalizedPixelWeight, supportWeight);
 }
 
 function clamp01(value: number): number {

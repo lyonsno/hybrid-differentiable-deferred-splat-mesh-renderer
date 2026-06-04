@@ -32,7 +32,8 @@ test("tile-local visible conic coverage feeds sample-local Gaussian weight to al
 
   const shader = shaderSource();
   assert.match(shader, /let pixelCoverageWeight = conic_pixel_weight\(alphaParam, conicParam, pixelCenter\)/);
-  assert.match(shader, /pow\(1\.0\s*-\s*sourceOpacity,\s*pixelCoverageWeight\)/);
+  assert.match(shader, /let alphaTransferWeight = source_frontier_alpha_transfer_weight\(pixelCoverageWeight,\s*tileCoverageWeight,\s*sourceFrontierClassMask\)/);
+  assert.match(shader, /pow\(1\.0\s*-\s*sourceOpacity,\s*alphaTransferWeight\)/);
   assert.doesNotMatch(
     shader,
     /tileCoverageWeights\[selectedRefIndex\][^;]*\*\s*conic_pixel_weight/,
