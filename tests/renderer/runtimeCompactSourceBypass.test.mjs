@@ -843,6 +843,16 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
     /function publishTileLocalCompositorInputReadback[\s\S]*buildPerPixelFinalColorAccumulationTraces\([\s\S]*contributorsByAnchorId:\s*sourceFrontierContributorsByAnchorId[\s\S]*buildRetainedToOrderedSurvivalLedger\(/,
     "source-frontier readback publication must refresh final accumulation and retained-to-ordered survival from live anchor rows",
   );
+  assert.match(
+    mainSource,
+    /function publishTileLocalCompositorInputReadback[\s\S]*projectedContributorsByAnchorId:\s*mergeAnchorContributorLists\(\s*traceContributorListByAnchorId\(\s*state\.perPixelProjectedContributors,\s*"projectedContributors",\s*\),\s*sourceFrontierContributorsByAnchorId,\s*\)/,
+    "source-frontier readback publication must let same-frame compositor-input rows backfill projected foreground support instead of leaving retained/ordered survivors with zero projected authority",
+  );
+  assert.match(
+    runtimeEvidenceSource,
+    /projectedContributorsByAnchorId:\s*mergeAnchorContributorLists\(\s*traceContributorListByAnchorId\(\s*tileLocalState\.perPixelProjectedContributors,\s*"projectedContributors",\s*\),\s*compositorInputContributorsByAnchorId,\s*\)/,
+    "source-frontier runtime evidence must let live compositor-input rows backfill projected foreground support when compact projected traces are sparse",
+  );
   assert.match(renderLoopSource, /else \{\s*tileLocalState\.pipeline\.dispatch\(tileLocalComputePass,\s*tileLocalState\.bindGroup,\s*tileLocalState\.plan\);/);
   assert.match(
     mainSource,

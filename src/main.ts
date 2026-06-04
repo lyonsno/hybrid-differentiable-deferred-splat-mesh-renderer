@@ -5451,9 +5451,12 @@ function publishTileLocalCompositorInputReadback(
         contributors: state.gpuArenaProjectedContributors,
         contributorsByAnchorId: sourceFrontierContributorsByAnchorId,
         sourceColors,
-        projectedContributorsByAnchorId: traceContributorListByAnchorId(
-          state.perPixelProjectedContributors,
-          "projectedContributors",
+        projectedContributorsByAnchorId: mergeAnchorContributorLists(
+          traceContributorListByAnchorId(
+            state.perPixelProjectedContributors,
+            "projectedContributors",
+          ),
+          sourceFrontierContributorsByAnchorId,
         ),
         retainedContributorsByAnchorId: mergeAnchorContributorLists(
           traceContributorListByAnchorId(
@@ -7489,9 +7492,12 @@ function exposeTileLocalRuntimeEvidence(
         contributors: tileLocalState.gpuArenaProjectedContributors,
         sourceColors,
         contributorsByAnchorId: compositorInputContributorsByAnchorId,
-        projectedContributorsByAnchorId: traceContributorListByAnchorId(
-          tileLocalState.perPixelProjectedContributors,
-          "projectedContributors",
+        projectedContributorsByAnchorId: mergeAnchorContributorLists(
+          traceContributorListByAnchorId(
+            tileLocalState.perPixelProjectedContributors,
+            "projectedContributors",
+          ),
+          compositorInputContributorsByAnchorId,
         ),
         retainedContributorsByAnchorId: mergeAnchorContributorLists(
           traceContributorListByAnchorId(
