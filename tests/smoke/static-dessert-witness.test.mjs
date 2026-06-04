@@ -402,6 +402,45 @@ test("static dessert witness classifier refuses incomplete visual gap trace evid
   assert.equal(result.findings.some((finding) => finding.kind === "visual-gap-trace-incomplete"), true);
 });
 
+test("static dessert witness classifier refuses visual gap traces missing alpha transfer evidence", () => {
+  const anchors = [
+    { id: "visual-gap-1", kind: "plate-covered-tile-local-missing", x: 640, y: 342, score: 71, plateDelta: 88, tileLocalDelta: 9 },
+  ];
+  const result = classifyStaticDessertWitness({
+    captures: [
+      ...staticDessertRequiredCaptures(),
+      witnessCapture("visual-gap-trace", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        visualGapAnchors: anchors,
+        perPixelFinalColorAccumulation: [
+          {
+            status: "present",
+            anchorPixel: { id: "visual-gap-1", x: 640, y: 342 },
+            finalColorAccumulation: { steps: [{ splatIndex: 1 }] },
+          },
+        ],
+        perPixelRetainedToOrderedSurvivalLedger: {
+          anchorLedgers: [
+            {
+              anchorPixel: { id: "visual-gap-1", x: 640, y: 342 },
+              category: "ordered-present",
+              mechanism: "retained-foreground-identity-survives-to-final-accumulation",
+              counts: { retainedForeground: 2, orderedForeground: 3 },
+              metrics: {},
+            },
+          ],
+        },
+      }),
+    ],
+  });
+
+  assert.equal(result.closeable, false);
+  assert.equal(result.metrics.visualGapTrace.status, "partial");
+  assert.equal(result.metrics.visualGapTrace.anchors[0].traceStatus, "missing-alpha-transfer-evidence");
+  assert.notEqual(result.metrics.plateSeepageClassification.category, "alpha-under-accumulation");
+  assert.equal(result.findings.some((finding) => finding.kind === "visual-gap-trace-incomplete"), true);
+});
+
 test("static dessert witness classifier refuses absent or empty visual gap trace evidence", () => {
   const absent = classifyStaticDessertWitness({
     captures: staticDessertRequiredCaptures(),

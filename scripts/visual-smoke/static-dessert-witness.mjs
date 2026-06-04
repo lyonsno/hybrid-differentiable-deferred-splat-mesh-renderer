@@ -553,31 +553,42 @@ function summarizeVisualGapTrace(capture, expectedRoute = {}) {
     const hasSurvivalLedger = Boolean(ledger);
     const accumulationAnchorMatches = anchorPixelMatches(anchor, accumulation?.anchorPixel);
     const ledgerAnchorMatches = anchorPixelMatches(anchor, ledger?.anchorPixel);
+    const outputAlpha = finiteNumber(accumulation?.finalColorAccumulation?.outputColor?.[3]);
+    const remainingTransmittance = finiteNumber(accumulation?.finalColorAccumulation?.remainingTransmittance);
+    const category = ledger?.category || "unclassified";
+    const finalForegroundAlpha = finiteNumber(ledger?.metrics?.finalForegroundAlpha);
+    const hasAlphaTransferEvidence = (
+      outputAlpha !== undefined &&
+      remainingTransmittance !== undefined &&
+      (category !== "ordered-present" || finalForegroundAlpha !== undefined)
+    );
     const traceStatus = !accumulation
       ? "missing-final-accumulation"
       : !hasFinalAccumulation
         ? "missing-final-accumulation-record"
         : !hasSurvivalLedger
           ? "missing-survival-ledger"
-          : !accumulationAnchorMatches
-            ? "final-accumulation-anchor-mismatch"
-            : !ledgerAnchorMatches
-              ? "survival-ledger-anchor-mismatch"
-              : accumulation.status || "present";
+            : !accumulationAnchorMatches
+              ? "final-accumulation-anchor-mismatch"
+              : !ledgerAnchorMatches
+                ? "survival-ledger-anchor-mismatch"
+                : !hasAlphaTransferEvidence
+                  ? "missing-alpha-transfer-evidence"
+                  : accumulation.status || "present";
     return {
       ...anchor,
       traceStatus,
-      traceComplete: hasFinalAccumulation && hasSurvivalLedger && accumulationAnchorMatches && ledgerAnchorMatches,
+      traceComplete: hasFinalAccumulation && hasSurvivalLedger && accumulationAnchorMatches && ledgerAnchorMatches && hasAlphaTransferEvidence,
       finalStepCount: Array.isArray(accumulation?.finalColorAccumulation?.steps)
         ? accumulation.finalColorAccumulation.steps.length
         : 0,
-      outputAlpha: finiteNumber(accumulation?.finalColorAccumulation?.outputColor?.[3]) ?? 0,
-      remainingTransmittance: finiteNumber(accumulation?.finalColorAccumulation?.remainingTransmittance) ?? 1,
-      category: ledger?.category || "unclassified",
+      outputAlpha: outputAlpha ?? null,
+      remainingTransmittance: remainingTransmittance ?? null,
+      category,
       mechanism: ledger?.mechanism || "unclassified",
       retainedForegroundCount: finiteNumber(ledger?.counts?.retainedForeground) ?? 0,
       orderedForegroundCount: finiteNumber(ledger?.counts?.orderedForeground) ?? 0,
-      finalForegroundAlpha: finiteNumber(ledger?.metrics?.finalForegroundAlpha) ?? 0,
+      finalForegroundAlpha: finalForegroundAlpha ?? null,
     };
   });
   return {
