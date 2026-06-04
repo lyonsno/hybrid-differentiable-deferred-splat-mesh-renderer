@@ -284,8 +284,8 @@ test("static dessert witness classifier requires one asset, one viewport, final 
               anchorPixel: { id: "visual-gap-1", x: 640, y: 342 },
               category: "ordered-present",
               mechanism: "retained-foreground-identity-survives-to-final-accumulation",
-              counts: { retainedForeground: 2, orderedForeground: 3 },
-              metrics: { finalForegroundAlpha: 0.44 },
+              counts: { projectedForeground: 3, retainedForeground: 2, orderedForeground: 3 },
+              metrics: { projectedForegroundOcclusionWeight: 1.25, finalForegroundAlpha: 0.44 },
             },
           ],
         },
@@ -379,6 +379,61 @@ test("static dessert witness classifier classifies source-frontier plate seepage
   });
   assert.equal(result.observations.plateSeepage.status, "classified-for-review");
   assert.equal(result.observations.plateSeepage.boundary.includes("retention-election"), true);
+});
+
+test("static dessert witness classifier does not blame alpha transfer without projected foreground authority", () => {
+  const anchors = [
+    { id: "visual-gap-1", kind: "plate-through-dessert", x: 640, y: 342, score: 71, plateDelta: 88, tileLocalDelta: 9 },
+  ];
+  const result = classifyStaticDessertWitness({
+    captures: [
+      witnessCapture("final-color", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        routeIdentity: {
+          ...visualGapTraceRoute([]),
+          traceAnchors: "",
+          wgslProjectedRefStream: "source-frontier",
+        },
+      }),
+      ...staticDessertRequiredCaptures().filter((capture) => capture.id !== "final-color"),
+      witnessCapture("visual-gap-trace", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        routeIdentity: {
+          ...visualGapTraceRoute(anchors),
+          wgslProjectedRefStream: "source-frontier",
+        },
+        visualGapAnchors: anchors,
+        perPixelFinalColorAccumulation: finalAccumulationRowsFor(anchors),
+        perPixelRetainedToOrderedSurvivalLedger: survivalLedgerFor(anchors, {
+          category: "ordered-present",
+          mechanism: "retained-foreground-identity-survives-to-final-accumulation",
+          counts: { projectedForeground: 0, retainedForeground: 30, orderedForeground: 30 },
+          metrics: {
+            retainedForegroundOcclusionWeight: 0.947383,
+            orderedForegroundOcclusionWeight: 0.947383,
+            finalForegroundAlpha: 0.407436,
+          },
+        }),
+      }),
+    ],
+  });
+
+  assert.equal(result.closeable, true);
+  assert.deepEqual(result.metrics.plateSeepageClassification, {
+    status: "classified",
+    category: "coverage-underfill",
+    stage: "source-frontier-coverage",
+    sourceRoute: "wgsl-projected-ref-stream-source-frontier",
+    anchorCount: 1,
+    classifiedAnchorCount: 1,
+    mechanismCounts: {
+      "retained-foreground-identity-survives-to-final-accumulation": 1,
+    },
+    blockerCount: 0,
+  });
+  assert.equal(result.observations.plateSeepage.status, "classified-for-review");
+  assert.equal(result.observations.plateSeepage.boundary.includes("source-frontier-coverage"), true);
+  assert.notEqual(result.metrics.plateSeepageClassification.category, "alpha-under-accumulation");
 });
 
 test("static dessert witness classifier refuses incomplete visual gap trace evidence", () => {

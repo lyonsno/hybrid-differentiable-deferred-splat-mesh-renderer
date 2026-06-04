@@ -556,6 +556,8 @@ function summarizeVisualGapTrace(capture, expectedRoute = {}) {
     const outputAlpha = finiteNumber(accumulation?.finalColorAccumulation?.outputColor?.[3]);
     const remainingTransmittance = finiteNumber(accumulation?.finalColorAccumulation?.remainingTransmittance);
     const category = ledger?.category || "unclassified";
+    const ledgerCounts = ledger?.counts && typeof ledger.counts === "object" ? ledger.counts : {};
+    const ledgerMetrics = ledger?.metrics && typeof ledger.metrics === "object" ? ledger.metrics : {};
     const finalForegroundAlpha = finiteNumber(ledger?.metrics?.finalForegroundAlpha);
     const hasAlphaTransferEvidence = (
       outputAlpha !== undefined &&
@@ -586,8 +588,16 @@ function summarizeVisualGapTrace(capture, expectedRoute = {}) {
       remainingTransmittance: remainingTransmittance ?? null,
       category,
       mechanism: ledger?.mechanism || "unclassified",
-      retainedForegroundCount: finiteNumber(ledger?.counts?.retainedForeground) ?? 0,
-      orderedForegroundCount: finiteNumber(ledger?.counts?.orderedForeground) ?? 0,
+      projectedForegroundCount: finiteNumber(ledgerCounts.projectedForeground) ?? 0,
+      projectedForegroundDroppedBeforeRetentionCount: finiteNumber(ledgerCounts.projectedForegroundDroppedBeforeRetention) ?? 0,
+      retainedForegroundCount: finiteNumber(ledgerCounts.retainedForeground) ?? 0,
+      orderedForegroundCount: finiteNumber(ledgerCounts.orderedForeground) ?? 0,
+      projectedForegroundOcclusionWeight: finiteNumber(ledgerMetrics.projectedForegroundOcclusionWeight) ?? 0,
+      projectedForegroundDroppedBeforeRetentionOcclusionWeight: finiteNumber(
+        ledgerMetrics.projectedForegroundDroppedBeforeRetentionOcclusionWeight
+      ) ?? 0,
+      retainedForegroundOcclusionWeight: finiteNumber(ledgerMetrics.retainedForegroundOcclusionWeight) ?? 0,
+      orderedForegroundOcclusionWeight: finiteNumber(ledgerMetrics.orderedForegroundOcclusionWeight) ?? 0,
       finalForegroundAlpha: finalForegroundAlpha ?? null,
     };
   });
@@ -821,6 +831,9 @@ function classifyPlateSeepageFromVisualGapTrace(visualGapTrace = {}, expectedRou
 function plateSeepageCategoryForAnchor(anchor = {}) {
   const category = anchor.category || "unclassified";
   if (category === "ordered-present" && visualGapAnchorHasWeakFinalAlpha(anchor)) {
+    if (!visualGapAnchorHasProjectedForegroundAuthority(anchor)) {
+      return "ordered-present-foreground-support-underfilled";
+    }
     return "ordered-present-final-alpha-weak";
   }
   return category;
@@ -839,6 +852,19 @@ function visualGapAnchorHasWeakFinalAlpha(anchor = {}) {
   return finalForegroundAlpha !== undefined && finalForegroundAlpha < MIN_VISUAL_GAP_ALPHA_FOR_SEALED;
 }
 
+function visualGapAnchorHasProjectedForegroundAuthority(anchor = {}) {
+  const projectedForegroundCount = finiteNumber(anchor.projectedForegroundCount) ?? 0;
+  const projectedForegroundDroppedCount = finiteNumber(anchor.projectedForegroundDroppedBeforeRetentionCount) ?? 0;
+  const projectedForegroundWeight = finiteNumber(anchor.projectedForegroundOcclusionWeight) ?? 0;
+  const projectedForegroundDroppedWeight = finiteNumber(anchor.projectedForegroundDroppedBeforeRetentionOcclusionWeight) ?? 0;
+  return (
+    projectedForegroundCount > 0 ||
+    projectedForegroundDroppedCount > 0 ||
+    projectedForegroundWeight > 0 ||
+    projectedForegroundDroppedWeight > 0
+  );
+}
+
 function classifyPlateSeepageCategories(categories) {
   if (categories.has("narrower-role-source-blocker") || categories.has("no-retained-foreground-role-support")) {
     return { category: "source-role-loss", stage: "source-construction" };
@@ -848,6 +874,9 @@ function classifyPlateSeepageCategories(categories) {
   }
   if (categories.has("retained-missing-from-order")) {
     return { category: "ordering-loss", stage: "compositor-order" };
+  }
+  if (categories.has("ordered-present-foreground-support-underfilled")) {
+    return { category: "coverage-underfill", stage: "source-frontier-coverage" };
   }
   if (categories.has("ordered-present-final-alpha-weak")) {
     return { category: "alpha-under-accumulation", stage: "alpha-transfer" };
