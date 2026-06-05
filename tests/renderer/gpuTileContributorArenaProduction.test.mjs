@@ -12,6 +12,7 @@ import {
   buildDeterministicGpuTileProjectionRetentionArena,
   buildGpuProjectionRetentionCandidateSourceInputs,
   buildGpuProjectionRetentionCandidateSourceElectionTable,
+  buildGpuProjectionRetentionCandidateSourceProductionElection,
   createGpuTileCoveragePlan,
   createGpuTileContributorArenaLayout,
   GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS,
@@ -310,6 +311,114 @@ test("candidate-source election sidecar rejects unknown packed class codes", () 
   );
 });
 
+test("candidate-source production election consumes packed records and groups without collapsing overlapping pools", () => {
+  const maxRefsPerTile = 4;
+  const sharedForeground = contributor({
+    splatIndex: 51,
+    originalId: 151,
+    tileIndex: 0,
+    retentionWeight: 100,
+    occlusionWeight: 95,
+    occlusionDensity: 95,
+    coverageWeight: 20,
+  });
+  const retentionOnly = contributor({
+    splatIndex: 52,
+    originalId: 152,
+    tileIndex: 0,
+    retentionWeight: 80,
+    occlusionWeight: 1,
+    coverageWeight: 15,
+  });
+  const occlusionOnly = contributor({
+    splatIndex: 53,
+    originalId: 153,
+    tileIndex: 0,
+    retentionWeight: 1,
+    occlusionWeight: 90,
+    occlusionDensity: 90,
+    coverageWeight: 10,
+  });
+  const coverageOnly = contributor({
+    splatIndex: 54,
+    originalId: 154,
+    tileIndex: 0,
+    retentionWeight: 1,
+    occlusionWeight: 1,
+    coverageWeight: 85,
+  });
+  const supportOnly = contributor({
+    splatIndex: 55,
+    originalId: 155,
+    tileIndex: 0,
+    retentionWeight: 10,
+    occlusionWeight: 1,
+    coverageWeight: 10,
+    supportSampleWeight: 200,
+    supportSampleRetentionWeight: 200,
+  });
+  const backfillOnly = contributor({
+    splatIndex: 56,
+    originalId: 156,
+    tileIndex: 0,
+    retentionWeight: 0.1,
+    occlusionWeight: 0.1,
+    coverageWeight: 0.1,
+  });
+  const records = [
+    sharedForeground,
+    retentionOnly,
+    occlusionOnly,
+    coverageOnly,
+    supportOnly,
+    backfillOnly,
+  ];
+  const candidateSources = {
+    retentionRecords: [sharedForeground, retentionOnly],
+    occlusionRecords: [sharedForeground, occlusionOnly],
+    coverageRecords: [coverageOnly, sharedForeground],
+    supportSampleRecordGroups: [[supportOnly]],
+  };
+  const inputs = buildGpuProjectionRetentionCandidateSourceInputs(candidateSources);
+  const productionElection = buildGpuProjectionRetentionCandidateSourceProductionElection({
+    records,
+    maxRefsPerTile,
+    candidateSourceInputs: inputs,
+  });
+  const expectedRetained = selectCompactProjectionRetentionRecords(records, maxRefsPerTile, candidateSources);
+
+  assert.equal(productionElection.consumptionPath, "candidate-source-record-group-production-election-contract");
+  assert.equal(
+    productionElection.falseClosureGuard,
+    "packed-production-election-contract-is-not-live-wgsl-compositor-consumption",
+  );
+  assert.deepEqual(productionElection.sourceInputConsumption, [
+    "candidate-source-record-u32",
+    "candidate-source-group-u32",
+    "projected-contributor-score-table",
+  ]);
+  assert.equal(productionElection.recordCount, inputs.recordCount);
+  assert.equal(productionElection.groupCount, inputs.groupCount);
+  assert.equal(productionElection.crossPoolDuplicateSuppressedCount, 2);
+  assert.deepEqual(
+    productionElection.retainedOriginalIds,
+    expectedRetained.map((record) => record.originalId),
+  );
+  assert.deepEqual(productionElection.retainedOriginalIds, [
+    sharedForeground.originalId,
+    occlusionOnly.originalId,
+    coverageOnly.originalId,
+    supportOnly.originalId,
+  ]);
+  assert.deepEqual(productionElection.retainedPoolCounts, {
+    retention: 1,
+    occlusion: 1,
+    coverage: 1,
+    support: 1,
+    backfill: 0,
+  });
+});
+
 test("candidate-source buffer preflight rejects records/groups beyond the storage binding limit", () => {
   const inputs = buildGpuProjectionRetentionCandidateSourceInputs({
     retentionRecords: Array.from({ length: 2 }, (_, index) =>
@@ -391,10 +500,12 @@ test("WGSL source-frontier witness names missing production pool seats without c
     supportSampleRecords: supportRecords,
     supportSampleRecordGroups: [supportRecords],
   };
+  const candidateSourceInputs = buildGpuProjectionRetentionCandidateSourceInputs(candidateSources);
   const witness = inspectWgslSourceFrontierProductionPoolSeatGap({
     records,
     maxRefsPerTile,
     candidateSources,
+    candidateSourceInputs,
   });
 
   assert.equal(witness.status, "structural-gap");
@@ -407,16 +518,15 @@ test("WGSL source-frontier witness names missing production pool seats without c
   assert.ok(witness.productionRetainedIds.some((id) => id >= 100 && id < 200));
   assert.ok(witness.productionRetainedIds.some((id) => id >= 300 && id < 400));
   assert.deepEqual(witness.missingStructures, [
-    "candidate-source-record-group-election",
-    "cross-pool-duplicate-suppression",
+    "live-wgsl-production-election-consumer",
   ]);
-  assert.equal(witness.candidateSourceIdentityStatus, "class-mask-consumed-record-groups-not-yet-consumed");
-  assert.equal(witness.wgslAvailableIdentity, "class-tagged-source-index-table");
+  assert.equal(witness.candidateSourceIdentityStatus, "production-election-contract-consumed");
+  assert.equal(witness.wgslAvailableIdentity, "record-group-production-election-contract");
   assert.deepEqual(witness.requiredWgslCandidateSourceInputs, [
-    "candidate-source-record-group-election-consumer",
+    "live-wgsl-production-election-consumer",
   ]);
   assert.equal(witness.falseClosureGuard, "source-frontier-score-witness-is-not-production-pool-seat-election");
-  assert.equal(witness.nextGpuOffloadStage, "production-candidate-source-election-consumption");
+  assert.equal(witness.nextGpuOffloadStage, "live-wgsl-production-candidate-source-election");
 });
 
 test("WGSL source-frontier retention election uses bounded priority and support pool slots", () => {

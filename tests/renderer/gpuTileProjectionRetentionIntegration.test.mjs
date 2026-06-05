@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   buildDeterministicGpuTileProjectionRetentionArena,
+  buildGpuProjectionRetentionCandidateSourceInputs,
   inspectWgslSourceFrontierProductionPoolSeatGap,
 } from "../../node_modules/.cache/renderer-tests/src/gpuTileCoverage.js";
 import {
@@ -105,30 +106,26 @@ test("GPU projection/retention builder preserves source-frontier foreground supp
     temptingCoverageOnlySupport,
     ...slate,
   ];
+  const candidateSources = {
+    retentionRecords: [retentionCandidate],
+    occlusionRecords: [occlusionCandidate],
+    coverageRecords: [coverageCandidate],
+    supportSampleRecords: [foregroundSupportCandidate, temptingCoverageOnlySupport],
+    supportSampleRecordGroups: [[foregroundSupportCandidate, temptingCoverageOnlySupport]],
+  };
 
   const arena = buildDeterministicGpuTileProjectionRetentionArena({
     tileCount: 1,
     maxContributors: projectedContributors.length,
     maxRefsPerTile,
     contributors: projectedContributors,
-    candidateSources: {
-      retentionRecords: [retentionCandidate],
-      occlusionRecords: [occlusionCandidate],
-      coverageRecords: [coverageCandidate],
-      supportSampleRecords: [foregroundSupportCandidate, temptingCoverageOnlySupport],
-      supportSampleRecordGroups: [[foregroundSupportCandidate, temptingCoverageOnlySupport]],
-    },
+    candidateSources,
   });
   const wgslGap = inspectWgslSourceFrontierProductionPoolSeatGap({
     records: projectedContributors,
     maxRefsPerTile,
-    candidateSources: {
-      retentionRecords: [retentionCandidate],
-      occlusionRecords: [occlusionCandidate],
-      coverageRecords: [coverageCandidate],
-      supportSampleRecords: [foregroundSupportCandidate, temptingCoverageOnlySupport],
-      supportSampleRecordGroups: [[foregroundSupportCandidate, temptingCoverageOnlySupport]],
-    },
+    candidateSources,
+    candidateSourceInputs: buildGpuProjectionRetentionCandidateSourceInputs(candidateSources),
   });
 
   const retainedIds = arena.retainedRecords.map((record) => record.originalId);
@@ -137,8 +134,8 @@ test("GPU projection/retention builder preserves source-frontier foreground supp
   assert.deepEqual(retainedIds, [1000, 2000, 3000, 4000]);
   assert.deepEqual(wgslGap.productionRetainedIds, retainedIds);
   assert.equal(wgslGap.status, "structural-gap");
-  assert.equal(wgslGap.candidateSourceIdentityStatus, "class-mask-consumed-record-groups-not-yet-consumed");
-  assert.equal(wgslGap.nextGpuOffloadStage, "production-candidate-source-election-consumption");
+  assert.equal(wgslGap.candidateSourceIdentityStatus, "production-election-contract-consumed");
+  assert.equal(wgslGap.nextGpuOffloadStage, "live-wgsl-production-candidate-source-election");
   assert.equal(wgslGap.falseClosureGuard, "source-frontier-score-witness-is-not-production-pool-seat-election");
   assert.deepEqual(wgslGap.retainedPoolCounts, {
     retention: 1,

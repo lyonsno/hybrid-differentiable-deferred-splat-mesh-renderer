@@ -241,6 +241,35 @@ export interface GpuProjectionRetentionCandidateSourceElectionTable {
   readonly falseClosureGuard: "candidate-source-sidecar-is-not-production-retention-election";
 }
 
+export interface GpuProjectionRetentionCandidateSourceProductionElectionInput {
+  readonly records: readonly GpuTileContributorArenaProjectedContributor[];
+  readonly maxRefsPerTile: number;
+  readonly candidateSourceInputs: GpuProjectionRetentionCandidateSourceInputs;
+}
+
+export interface GpuProjectionRetentionCandidateSourceProductionElection {
+  readonly status: "production-election-contract-consumed";
+  readonly retainedRecords: readonly GpuTileContributorArenaProjectedContributor[];
+  readonly retainedOriginalIds: readonly number[];
+  readonly retainedPoolCounts: {
+    readonly retention: number;
+    readonly occlusion: number;
+    readonly coverage: number;
+    readonly support: number;
+    readonly backfill: number;
+  };
+  readonly crossPoolDuplicateSuppressedCount: number;
+  readonly recordCount: number;
+  readonly groupCount: number;
+  readonly sourceInputConsumption: readonly [
+    "candidate-source-record-u32",
+    "candidate-source-group-u32",
+    "projected-contributor-score-table",
+  ];
+  readonly consumptionPath: "candidate-source-record-group-production-election-contract";
+  readonly falseClosureGuard: "packed-production-election-contract-is-not-live-wgsl-compositor-consumption";
+}
+
 export function buildGpuProjectionRetentionCandidateSourceInputs(
   candidateSources: GpuProjectionRetentionCandidateSources = {},
 ): GpuProjectionRetentionCandidateSourceInputs {
@@ -320,6 +349,77 @@ export function buildGpuProjectionRetentionCandidateSourceInputs(
     classesPresent: (["retention", "occlusion", "coverage", "support"] as const).filter((className) =>
       classesPresent.has(className)
     ),
+  };
+}
+
+export function buildGpuProjectionRetentionCandidateSourceProductionElection(
+  input: GpuProjectionRetentionCandidateSourceProductionElectionInput,
+): GpuProjectionRetentionCandidateSourceProductionElection {
+  const maxRefsPerTile = assertPositiveInteger(
+    input.maxRefsPerTile,
+    "candidate source production election max refs per tile",
+  );
+  const records = input.records.map(validateProjectedContributor);
+  const recordByKey = new Map<bigint, GpuTileContributorArenaProjectedContributor>();
+  let maxTileIndex = 0;
+  for (const record of records) {
+    recordByKey.set(gpuProjectionRetentionRecordKey(record), record);
+    maxTileIndex = Math.max(maxTileIndex, record.tileIndex);
+  }
+
+  const candidateSources = decodeGpuProjectionRetentionCandidateSourcesFromInputs(
+    input.candidateSourceInputs,
+    recordByKey,
+  );
+  const candidateSourcesByTile = indexGpuProjectionRetentionCandidateSourcesByTile(
+    candidateSources,
+    maxTileIndex + 1,
+  );
+  const recordsByTile = Array.from(
+    { length: maxTileIndex + 1 },
+    () => [] as GpuTileContributorArenaProjectedContributor[],
+  );
+  for (const record of records) {
+    recordsByTile[record.tileIndex].push(record);
+  }
+
+  const retainedRecords: GpuTileContributorArenaProjectedContributor[] = [];
+  const retainedPoolCounts = {
+    retention: 0,
+    occlusion: 0,
+    coverage: 0,
+    support: 0,
+    backfill: 0,
+  };
+  for (let tileIndex = 0; tileIndex < recordsByTile.length; tileIndex += 1) {
+    const tileRecords = recordsByTile[tileIndex].sort(compareGpuProjectionRetentionCoverageOrder);
+    const tileCandidateSources = candidateSourcesByTile[tileIndex];
+    const selected = selectGpuProjectionRetentionRecords(tileRecords, maxRefsPerTile, tileCandidateSources);
+    const poolSeats = assignGpuProjectionRetentionPoolSeats(tileRecords, maxRefsPerTile, tileCandidateSources);
+    retainedRecords.push(...selected);
+    for (const record of selected) {
+      const seat = poolSeats.get(gpuProjectionRetentionRecordKey(record)) ?? "backfill";
+      retainedPoolCounts[seat] += 1;
+    }
+  }
+
+  return {
+    status: "production-election-contract-consumed",
+    retainedRecords,
+    retainedOriginalIds: retainedRecords.map((record) => record.originalId),
+    retainedPoolCounts,
+    crossPoolDuplicateSuppressedCount: countGpuProjectionRetentionCandidateSourceDuplicateRows(
+      input.candidateSourceInputs,
+    ),
+    recordCount: input.candidateSourceInputs.recordCount,
+    groupCount: input.candidateSourceInputs.groupCount,
+    sourceInputConsumption: [
+      "candidate-source-record-u32",
+      "candidate-source-group-u32",
+      "projected-contributor-score-table",
+    ],
+    consumptionPath: "candidate-source-record-group-production-election-contract",
+    falseClosureGuard: "packed-production-election-contract-is-not-live-wgsl-compositor-consumption",
   };
 }
 
@@ -455,6 +555,156 @@ function candidateSourceClassMaskForCode(classCode: number): number {
   }
 }
 
+function candidateSourceClassNameForCode(classCode: number): GpuProjectionRetentionCandidateSourceClass {
+  switch (classCode) {
+    case GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_CODES.retention:
+      return "retention";
+    case GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_CODES.occlusion:
+      return "occlusion";
+    case GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_CODES.coverage:
+      return "coverage";
+    case GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_CODES.support:
+      return "support";
+    default:
+      throw new RangeError(`unknown candidate source class code: ${classCode}`);
+  }
+}
+
+function decodeGpuProjectionRetentionCandidateSourcesFromInputs(
+  inputs: GpuProjectionRetentionCandidateSourceInputs,
+  recordByKey: ReadonlyMap<bigint, GpuTileContributorArenaProjectedContributor>,
+): GpuProjectionRetentionCandidateSources {
+  const decodedRecords = decodeGpuProjectionRetentionCandidateSourceRows(inputs, recordByKey);
+  const candidateSources: {
+    coverageRecords: GpuTileContributorArenaProjectedContributor[];
+    retentionRecords: GpuTileContributorArenaProjectedContributor[];
+    occlusionRecords: GpuTileContributorArenaProjectedContributor[];
+    supportSampleRecords: GpuTileContributorArenaProjectedContributor[];
+    supportSampleRecordGroups: GpuTileContributorArenaProjectedContributor[][];
+  } = {
+    coverageRecords: [],
+    retentionRecords: [],
+    occlusionRecords: [],
+    supportSampleRecords: [],
+    supportSampleRecordGroups: [],
+  };
+
+  for (const decoded of decodedRecords) {
+    if (decoded.className === "retention") {
+      candidateSources.retentionRecords.push(decoded.record);
+    } else if (decoded.className === "occlusion") {
+      candidateSources.occlusionRecords.push(decoded.record);
+    } else if (decoded.className === "coverage") {
+      candidateSources.coverageRecords.push(decoded.record);
+    } else {
+      candidateSources.supportSampleRecords.push(decoded.record);
+    }
+  }
+
+  for (let groupIndex = 0; groupIndex < inputs.groupCount; groupIndex += 1) {
+    const groupOffset = groupIndex * 4;
+    const firstRecord = assertNonNegativeInteger(
+      inputs.groupU32[groupOffset + 1] ?? 0,
+      "candidate source production election support group first record",
+    );
+    const recordCount = assertNonNegativeInteger(
+      inputs.groupU32[groupOffset + 2] ?? 0,
+      "candidate source production election support group record count",
+    );
+    const classCode = assertNonNegativeInteger(
+      inputs.groupU32[groupOffset + 3] ?? 0,
+      "candidate source production election support group class code",
+    );
+    if (firstRecord + recordCount > inputs.recordCount) {
+      throw new RangeError("candidate source production election support group range exceeds candidate records");
+    }
+    if (candidateSourceClassNameForCode(classCode) !== "support") {
+      continue;
+    }
+    candidateSources.supportSampleRecordGroups.push(
+      decodedRecords
+        .slice(firstRecord, firstRecord + recordCount)
+        .map((decoded) => decoded.record),
+    );
+  }
+
+  return candidateSources;
+}
+
+function decodeGpuProjectionRetentionCandidateSourceRows(
+  inputs: GpuProjectionRetentionCandidateSourceInputs,
+  recordByKey: ReadonlyMap<bigint, GpuTileContributorArenaProjectedContributor>,
+): readonly {
+  readonly record: GpuTileContributorArenaProjectedContributor;
+  readonly className: GpuProjectionRetentionCandidateSourceClass;
+}[] {
+  const decodedRecords: {
+    record: GpuTileContributorArenaProjectedContributor;
+    className: GpuProjectionRetentionCandidateSourceClass;
+  }[] = [];
+  for (let recordIndex = 0; recordIndex < inputs.recordCount; recordIndex += 1) {
+    const recordOffset = recordIndex * 4;
+    const tileIndex = assertNonNegativeInteger(
+      inputs.recordU32[recordOffset] ?? 0,
+      "candidate source production election record tile id",
+    );
+    const splatIndex = assertNonNegativeInteger(
+      inputs.recordU32[recordOffset + 1] ?? 0,
+      "candidate source production election record splat id",
+    );
+    const originalId = assertNonNegativeInteger(
+      inputs.recordU32[recordOffset + 2] ?? 0,
+      "candidate source production election record original id",
+    );
+    const classCode = assertNonNegativeInteger(
+      inputs.recordU32[recordOffset + 3] ?? 0,
+      "candidate source production election record class code",
+    );
+    const record = recordByKey.get(gpuProjectionRetentionRecordIdentityKey(tileIndex, splatIndex, originalId));
+    if (!record) {
+      throw new RangeError("candidate source production election record is absent from projected contributor table");
+    }
+    decodedRecords.push({
+      record,
+      className: candidateSourceClassNameForCode(classCode),
+    });
+  }
+  return decodedRecords;
+}
+
+function countGpuProjectionRetentionCandidateSourceDuplicateRows(
+  inputs: GpuProjectionRetentionCandidateSourceInputs,
+): number {
+  const seenKeys = new Set<bigint>();
+  let duplicateRows = 0;
+  for (let recordIndex = 0; recordIndex < inputs.recordCount; recordIndex += 1) {
+    const recordOffset = recordIndex * 4;
+    const key = gpuProjectionRetentionRecordIdentityKey(
+      inputs.recordU32[recordOffset] ?? 0,
+      inputs.recordU32[recordOffset + 1] ?? 0,
+      inputs.recordU32[recordOffset + 2] ?? 0,
+    );
+    if (seenKeys.has(key)) {
+      duplicateRows += 1;
+    } else {
+      seenKeys.add(key);
+    }
+  }
+  return duplicateRows;
+}
+
+function gpuProjectionRetentionRecordIdentityKey(
+  tileIndex: number,
+  splatIndex: number,
+  originalId: number,
+): bigint {
+  return (
+    (BigInt(tileIndex) << 128n) |
+    (BigInt(splatIndex) << 64n) |
+    BigInt(originalId)
+  );
+}
+
 export function gpuProjectionRetentionCandidateSourceBufferUnavailableReason(
   inputs: GpuProjectionRetentionCandidateSourceInputs,
   maxStorageBindingBytes: number,
@@ -496,6 +746,7 @@ export interface WgslSourceFrontierProductionPoolSeatGapInput {
   readonly records: readonly GpuTileContributorArenaProjectedContributor[];
   readonly maxRefsPerTile: number;
   readonly candidateSources?: GpuProjectionRetentionCandidateSources;
+  readonly candidateSourceInputs?: GpuProjectionRetentionCandidateSourceInputs;
 }
 
 export interface WgslSourceFrontierProductionPoolSeatGapWitness {
@@ -505,17 +756,20 @@ export interface WgslSourceFrontierProductionPoolSeatGapWitness {
   readonly candidateSourceIdentityStatus:
     | "blocked-missing-wgsl-candidate-source-inputs"
     | "class-mask-consumed-record-groups-not-yet-consumed"
+    | "production-election-contract-consumed"
     | "not-needed-without-cap-pressure";
   readonly wgslAvailableIdentity:
     | "selected-slot-pool-only"
     | "class-tagged-source-index-table"
+    | "record-group-production-election-contract"
     | "all-projected-sources-retained";
   readonly requiredWgslCandidateSourceInputs: readonly string[];
   readonly missingStructures: readonly string[];
   readonly falseClosureGuard: "source-frontier-score-witness-is-not-production-pool-seat-election";
   readonly nextGpuOffloadStage:
     | "production-candidate-source-pool-identity"
-    | "production-candidate-source-election-consumption";
+    | "production-candidate-source-election-consumption"
+    | "live-wgsl-production-candidate-source-election";
   readonly projectedCount: number;
   readonly maxRefsPerTile: number;
   readonly supportTarget: number;
@@ -780,6 +1034,14 @@ export function inspectWgslSourceFrontierProductionPoolSeatGap(
   const maxRefsPerTile = assertPositiveInteger(input.maxRefsPerTile, "source-frontier pool-seat witness max refs per tile");
   const records = input.records.map(validateProjectedContributor);
   const isCapPressured = records.length > maxRefsPerTile;
+  const productionElectionContract =
+    isCapPressured && input.candidateSourceInputs
+      ? buildGpuProjectionRetentionCandidateSourceProductionElection({
+          records,
+          maxRefsPerTile,
+          candidateSourceInputs: input.candidateSourceInputs,
+        })
+      : undefined;
   const candidateSourceClassMasks = buildGpuProjectionRetentionCandidateSourceClassMasks(
     records.map((record) => record.splatIndex),
     input.candidateSources,
@@ -790,9 +1052,18 @@ export function inspectWgslSourceFrontierProductionPoolSeatGap(
     ? Math.max(1, Math.floor(maxRefsPerTile * 0.25))
     : 0;
   const priorityTarget = maxRefsPerTile - supportTarget;
-  const productionRetained = selectGpuProjectionRetentionRecords(records, maxRefsPerTile, input.candidateSources);
+  const productionRetained = productionElectionContract?.retainedRecords ??
+    selectGpuProjectionRetentionRecords(records, maxRefsPerTile, input.candidateSources);
+  const retainedPoolCounts = productionElectionContract?.retainedPoolCounts ??
+    countGpuProjectionRetentionPoolSeats(
+      productionRetained,
+      records,
+      input.candidateSources,
+    );
   const requiredWgslCandidateSourceInputs = isCapPressured
-    ? (hasClassTaggedCandidateSourceIdentity
+    ? (productionElectionContract
+        ? ["live-wgsl-production-election-consumer"]
+        : hasClassTaggedCandidateSourceIdentity
         ? ["candidate-source-record-group-election-consumer"]
         : [
             "retention-candidate-records",
@@ -802,7 +1073,9 @@ export function inspectWgslSourceFrontierProductionPoolSeatGap(
           ])
     : [];
   const missingStructures = isCapPressured
-    ? (hasClassTaggedCandidateSourceIdentity
+    ? (productionElectionContract
+        ? ["live-wgsl-production-election-consumer"]
+        : hasClassTaggedCandidateSourceIdentity
         ? [
             "candidate-source-record-group-election",
             "cross-pool-duplicate-suppression",
@@ -818,19 +1091,25 @@ export function inspectWgslSourceFrontierProductionPoolSeatGap(
     wgslElectionShape: "bounded-priority-support-pool-slot-competition",
     productionElectionShape: "round-robin-priority-pools-plus-support-quota",
     candidateSourceIdentityStatus: isCapPressured
-      ? (hasClassTaggedCandidateSourceIdentity
+      ? (productionElectionContract
+          ? "production-election-contract-consumed"
+          : hasClassTaggedCandidateSourceIdentity
           ? "class-mask-consumed-record-groups-not-yet-consumed"
           : "blocked-missing-wgsl-candidate-source-inputs")
       : "not-needed-without-cap-pressure",
     wgslAvailableIdentity: isCapPressured
-      ? (hasClassTaggedCandidateSourceIdentity
+      ? (productionElectionContract
+          ? "record-group-production-election-contract"
+          : hasClassTaggedCandidateSourceIdentity
           ? "class-tagged-source-index-table"
           : "selected-slot-pool-only")
       : "all-projected-sources-retained",
     requiredWgslCandidateSourceInputs,
     missingStructures,
     falseClosureGuard: "source-frontier-score-witness-is-not-production-pool-seat-election",
-    nextGpuOffloadStage: hasClassTaggedCandidateSourceIdentity
+    nextGpuOffloadStage: productionElectionContract
+      ? "live-wgsl-production-candidate-source-election"
+      : hasClassTaggedCandidateSourceIdentity
       ? "production-candidate-source-election-consumption"
       : "production-candidate-source-pool-identity",
     projectedCount: records.length,
@@ -838,11 +1117,7 @@ export function inspectWgslSourceFrontierProductionPoolSeatGap(
     supportTarget,
     priorityTarget,
     productionRetainedIds: productionRetained.map((record) => record.originalId),
-    retainedPoolCounts: countGpuProjectionRetentionPoolSeats(
-      productionRetained,
-      records,
-      input.candidateSources,
-    ),
+    retainedPoolCounts,
   };
 }
 
