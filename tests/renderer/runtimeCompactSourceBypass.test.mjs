@@ -625,8 +625,13 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     mainSource,
-    /function sourceFrontierCandidateSourceIdentityEvidence\(\s*candidateSourceInputs[\s\S]*status:\s*"class-mask-consumed-record-groups-not-yet-consumed"[\s\S]*availableIdentity:\s*"class-tagged-wgsl-candidate-source-inputs"[\s\S]*consumptionPath:\s*"source-index-table-class-mask"/,
-    "candidate-source evidence must distinguish class-mask consumption from full record/group consumption",
+    /function sourceFrontierCandidateSourceIdentityEvidence\(\s*candidateSourceInputs[\s\S]*status:\s*"record-group-election-sidecar-consumed"[\s\S]*availableIdentity:\s*"class-tagged-wgsl-candidate-source-inputs"[\s\S]*consumptionPath:\s*"candidate-source-record-group-election-sidecar"/,
+    "candidate-source evidence must distinguish packed sidecar consumption from full production retention election",
+  );
+  assert.match(
+    mainSource,
+    /buildGpuProjectionRetentionCandidateSourceElectionTable\(\s*frontierSource\.candidateSplatIndexes,\s*candidateSourceInputs,\s*\)/,
+    "source-frontier tile headers must consume the packed candidate-source record/group sidecar",
   );
   assert.match(
     mainSource,

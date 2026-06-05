@@ -232,6 +232,15 @@ export interface GpuProjectionRetentionCandidateSourceInputs {
   readonly classesPresent: readonly GpuProjectionRetentionCandidateSourceClass[];
 }
 
+export interface GpuProjectionRetentionCandidateSourceElectionTable {
+  readonly classMasks: Uint32Array;
+  readonly supportGroupRanges: Uint32Array;
+  readonly recordCount: number;
+  readonly groupCount: number;
+  readonly consumptionPath: "candidate-source-record-group-election-sidecar";
+  readonly falseClosureGuard: "candidate-source-sidecar-is-not-production-retention-election";
+}
+
 export function buildGpuProjectionRetentionCandidateSourceInputs(
   candidateSources: GpuProjectionRetentionCandidateSources = {},
 ): GpuProjectionRetentionCandidateSourceInputs {
@@ -346,10 +355,104 @@ export function buildGpuProjectionRetentionCandidateSourceClassMasks(
   return classMasks;
 }
 
+export function buildGpuProjectionRetentionCandidateSourceElectionTable(
+  candidateSplatIndexes: ArrayLike<number>,
+  inputs: GpuProjectionRetentionCandidateSourceInputs,
+): GpuProjectionRetentionCandidateSourceElectionTable {
+  const sourceOrdinalBySplat = new Map<number, number>();
+  for (let index = 0; index < candidateSplatIndexes.length; index += 1) {
+    const splatIndex = assertNonNegativeInteger(candidateSplatIndexes[index], "candidate source election sidecar splat id");
+    sourceOrdinalBySplat.set(splatIndex, index);
+  }
+
+  const classMasks = new Uint32Array(candidateSplatIndexes.length);
+  for (let recordIndex = 0; recordIndex < inputs.recordCount; recordIndex += 1) {
+    const recordOffset = recordIndex * 4;
+    const splatIndex = assertNonNegativeInteger(
+      inputs.recordU32[recordOffset + 1] ?? 0,
+      "candidate source election sidecar record splat id",
+    );
+    const classCode = assertNonNegativeInteger(
+      inputs.recordU32[recordOffset + 3] ?? 0,
+      "candidate source election sidecar record class code",
+    );
+    if (classCode === GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_CODES.support) {
+      continue;
+    }
+    const sourceOrdinal = sourceOrdinalBySplat.get(splatIndex);
+    if (sourceOrdinal !== undefined) {
+      classMasks[sourceOrdinal] |= candidateSourceClassMaskForCode(classCode);
+    }
+  }
+
+  const supportGroupRanges = new Uint32Array(inputs.groupCount * 4);
+  for (let groupIndex = 0; groupIndex < inputs.groupCount; groupIndex += 1) {
+    const groupOffset = groupIndex * 4;
+    const tileIndex = assertNonNegativeInteger(
+      inputs.groupU32[groupOffset] ?? 0,
+      "candidate source election sidecar support group tile id",
+    );
+    const firstRecord = assertNonNegativeInteger(
+      inputs.groupU32[groupOffset + 1] ?? 0,
+      "candidate source election sidecar support group first record",
+    );
+    const recordCount = assertNonNegativeInteger(
+      inputs.groupU32[groupOffset + 2] ?? 0,
+      "candidate source election sidecar support group record count",
+    );
+    const classCode = assertNonNegativeInteger(
+      inputs.groupU32[groupOffset + 3] ?? 0,
+      "candidate source election sidecar support group class code",
+    );
+    if (firstRecord + recordCount > inputs.recordCount) {
+      throw new RangeError("candidate source election sidecar support group range exceeds candidate records");
+    }
+    supportGroupRanges.set([tileIndex, firstRecord, recordCount, classCode], groupOffset);
+    if (classCode !== GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_CODES.support) {
+      continue;
+    }
+    for (let rangeRecordIndex = firstRecord; rangeRecordIndex < firstRecord + recordCount; rangeRecordIndex += 1) {
+      const recordOffset = rangeRecordIndex * 4;
+      const splatIndex = assertNonNegativeInteger(
+        inputs.recordU32[recordOffset + 1] ?? 0,
+        "candidate source election sidecar support record splat id",
+      );
+      const sourceOrdinal = sourceOrdinalBySplat.get(splatIndex);
+      if (sourceOrdinal !== undefined) {
+        classMasks[sourceOrdinal] |= GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.support;
+      }
+    }
+  }
+
+  return {
+    classMasks,
+    supportGroupRanges,
+    recordCount: inputs.recordCount,
+    groupCount: inputs.groupCount,
+    consumptionPath: "candidate-source-record-group-election-sidecar",
+    falseClosureGuard: "candidate-source-sidecar-is-not-production-retention-election",
+  };
+}
+
 function candidateSourceU32Buffer(words: readonly number[]): Uint32Array {
   const buffer = new Uint32Array(Math.max(words.length, 4));
   buffer.set(words);
   return buffer;
+}
+
+function candidateSourceClassMaskForCode(classCode: number): number {
+  switch (classCode) {
+    case GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_CODES.retention:
+      return GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.retention;
+    case GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_CODES.occlusion:
+      return GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.occlusion;
+    case GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_CODES.coverage:
+      return GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.coverage;
+    case GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_CODES.support:
+      return GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.support;
+    default:
+      throw new RangeError(`unknown candidate source class code: ${classCode}`);
+  }
 }
 
 export function gpuProjectionRetentionCandidateSourceBufferUnavailableReason(

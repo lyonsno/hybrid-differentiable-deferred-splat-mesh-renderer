@@ -11,8 +11,10 @@ import {
   buildDeterministicGpuTileContributorArena,
   buildDeterministicGpuTileProjectionRetentionArena,
   buildGpuProjectionRetentionCandidateSourceInputs,
+  buildGpuProjectionRetentionCandidateSourceElectionTable,
   createGpuTileCoveragePlan,
   createGpuTileContributorArenaLayout,
+  GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS,
   GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_CODES,
   gpuProjectionRetentionCandidateSourceBufferUnavailableReason,
   inspectWgslSourceFrontierProductionPoolSeatGap,
@@ -259,6 +261,53 @@ test("candidate-source support groups split mixed-tile ranges for WGSL consumpti
     0, 0, 2, 4,
     1, 2, 1, 4,
   ]);
+});
+
+test("candidate-source election sidecar consumes packed records and support groups for the source table", () => {
+  const retention = contributor({ splatIndex: 31, originalId: 131, tileIndex: 0, retentionWeight: 90 });
+  const occlusion = contributor({ splatIndex: 32, originalId: 132, tileIndex: 0, occlusionWeight: 80 });
+  const coverage = contributor({ splatIndex: 31, originalId: 133, tileIndex: 1, coverageWeight: 70 });
+  const supportA = contributor({ splatIndex: 33, originalId: 134, tileIndex: 1, supportSampleRetentionWeight: 60 });
+  const supportB = contributor({ splatIndex: 34, originalId: 135, tileIndex: 1, supportSampleRetentionWeight: 50 });
+  const inputs = buildGpuProjectionRetentionCandidateSourceInputs({
+    retentionRecords: [retention],
+    occlusionRecords: [occlusion],
+    coverageRecords: [coverage],
+    supportSampleRecordGroups: [[supportA, supportB]],
+  });
+
+  const election = buildGpuProjectionRetentionCandidateSourceElectionTable(
+    Uint32Array.of(31, 32, 33, 34, 99),
+    inputs,
+  );
+
+  assert.equal(election.consumptionPath, "candidate-source-record-group-election-sidecar");
+  assert.equal(election.recordCount, 5);
+  assert.equal(election.groupCount, 1);
+  assert.deepEqual([...election.classMasks], [
+    GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.retention |
+      GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.coverage,
+    GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.occlusion,
+    GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.support,
+    GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.support,
+    0,
+  ]);
+  assert.deepEqual([...election.supportGroupRanges], [1, 3, 2, 4]);
+});
+
+test("candidate-source election sidecar rejects unknown packed class codes", () => {
+  const retention = contributor({ splatIndex: 41, originalId: 141, tileIndex: 0, retentionWeight: 90 });
+  const inputs = buildGpuProjectionRetentionCandidateSourceInputs({ retentionRecords: [retention] });
+  const malformedInputs = {
+    ...inputs,
+    recordU32: new Uint32Array(inputs.recordU32),
+  };
+  malformedInputs.recordU32[3] = 999;
+
+  assert.throws(
+    () => buildGpuProjectionRetentionCandidateSourceElectionTable(Uint32Array.of(41), malformedInputs),
+    /unknown candidate source class code/i,
+  );
 });
 
 test("candidate-source buffer preflight rejects records/groups beyond the storage binding limit", () => {
