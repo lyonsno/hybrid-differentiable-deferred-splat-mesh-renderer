@@ -624,17 +624,10 @@ interface SourceFrontierCandidateSourceIdentityEvidence {
     | "blocked-missing-wgsl-candidate-source-inputs"
     | "present-not-consumed"
     | "class-mask-consumed-record-groups-not-yet-consumed"
-    | "record-group-election-sidecar-consumed"
-    | "production-election-contract-consumed";
+    | "record-group-election-sidecar-consumed";
   readonly source: "wgsl-source-frontier-candidate-source-identity-contract";
-  readonly availableIdentity:
-    | "selected-slot-pool-only"
-    | "class-tagged-wgsl-candidate-source-inputs"
-    | "record-group-production-election-contract";
-  readonly consumptionPath?:
-    | "source-index-table-class-mask"
-    | "candidate-source-record-group-election-sidecar"
-    | "candidate-source-record-group-production-election-contract";
+  readonly availableIdentity: "selected-slot-pool-only" | "class-tagged-wgsl-candidate-source-inputs";
+  readonly consumptionPath?: "source-index-table-class-mask" | "candidate-source-record-group-election-sidecar";
   readonly requiredWgslInputs: readonly string[];
   readonly presentWgslInputs?: readonly string[];
   readonly recordCount?: number;
@@ -643,8 +636,7 @@ interface SourceFrontierCandidateSourceIdentityEvidence {
   readonly falseClosureGuard:
     | "bounded-pool-seats-are-not-production-candidate-source-identity"
     | "source-index-class-masks-do-not-consume-full-candidate-record-groups"
-    | "candidate-source-sidecar-is-not-production-retention-election"
-    | "packed-production-election-contract-is-not-live-wgsl-compositor-consumption";
+    | "candidate-source-sidecar-is-not-production-retention-election";
 }
 
 interface SourceFrontierRetainedRowsEvidence {
@@ -2897,10 +2889,10 @@ function sourceFrontierCandidateSourceIdentityEvidence(
 ): SourceFrontierCandidateSourceIdentityEvidence {
   if (candidateSourceInputs && candidateSourceInputs.recordCount > 0) {
     return {
-      status: "production-election-contract-consumed",
+      status: "record-group-election-sidecar-consumed",
       source: "wgsl-source-frontier-candidate-source-identity-contract",
-      availableIdentity: "record-group-production-election-contract",
-      consumptionPath: "candidate-source-record-group-production-election-contract",
+      availableIdentity: "class-tagged-wgsl-candidate-source-inputs",
+      consumptionPath: "candidate-source-record-group-election-sidecar",
       requiredWgslInputs: ["live-wgsl-production-election-consumer"],
       presentWgslInputs: [
         "retention-candidate-records",
@@ -2911,7 +2903,7 @@ function sourceFrontierCandidateSourceIdentityEvidence(
       recordCount: candidateSourceInputs.recordCount,
       groupCount: candidateSourceInputs.groupCount,
       classesPresent: candidateSourceInputs.classesPresent,
-      falseClosureGuard: "packed-production-election-contract-is-not-live-wgsl-compositor-consumption",
+      falseClosureGuard: "candidate-source-sidecar-is-not-production-retention-election",
     };
   }
   return {

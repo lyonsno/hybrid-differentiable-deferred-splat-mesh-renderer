@@ -625,13 +625,23 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     mainSource,
-    /function sourceFrontierCandidateSourceIdentityEvidence\(\s*candidateSourceInputs[\s\S]*status:\s*"production-election-contract-consumed"[\s\S]*availableIdentity:\s*"record-group-production-election-contract"[\s\S]*consumptionPath:\s*"candidate-source-record-group-production-election-contract"/,
-    "candidate-source evidence must distinguish deterministic production-election contract consumption from live WGSL compositor consumption",
+    /function sourceFrontierCandidateSourceIdentityEvidence\(\s*candidateSourceInputs[\s\S]*status:\s*"record-group-election-sidecar-consumed"[\s\S]*availableIdentity:\s*"class-tagged-wgsl-candidate-source-inputs"[\s\S]*consumptionPath:\s*"candidate-source-record-group-election-sidecar"/,
+    "candidate-source evidence must keep the runtime sidecar claim narrower than deterministic production-election contract consumption",
+  );
+  assert.doesNotMatch(
+    mainSource,
+    /sourceFrontierCandidateSourceIdentityEvidence[\s\S]*status:\s*"production-election-contract-consumed"/,
+    "runtime source-frontier evidence must not claim production-election contract consumption until main consumes the production election helper",
   );
   assert.match(
     mainSource,
     /buildGpuProjectionRetentionCandidateSourceElectionTable\(\s*frontierSource\.candidateSplatIndexes,\s*candidateSourceInputs,\s*\)/,
     "source-frontier tile headers must consume the packed candidate-source record/group sidecar",
+  );
+  assert.doesNotMatch(
+    mainSource,
+    /buildGpuProjectionRetentionCandidateSourceProductionElection\(/,
+    "this slice must not launder the deterministic production-election helper into a runtime claim without full projected score-table custody",
   );
   assert.match(
     mainSource,
