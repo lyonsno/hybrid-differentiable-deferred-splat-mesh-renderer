@@ -606,7 +606,8 @@ interface RetainedSourceConstructionEvidence {
   readonly nextGpuOffloadStage:
     | "wgsl-projected-ref-stream"
     | "production-candidate-source-pool-identity"
-    | "production-candidate-source-election-consumption";
+    | "production-candidate-source-election-consumption"
+    | "live-wgsl-production-candidate-source-election";
   readonly accountingSource?: "cpu-compact-source" | "gpu-ref-stats-readback-pending" | "gpu-ref-stats-readback-present" | "gpu-ref-stats-readback-blocked";
   readonly frontierBlockedStages?: readonly string[];
   readonly projectedRefs: number;
@@ -623,10 +624,17 @@ interface SourceFrontierCandidateSourceIdentityEvidence {
     | "blocked-missing-wgsl-candidate-source-inputs"
     | "present-not-consumed"
     | "class-mask-consumed-record-groups-not-yet-consumed"
-    | "record-group-election-sidecar-consumed";
+    | "record-group-election-sidecar-consumed"
+    | "production-election-contract-consumed";
   readonly source: "wgsl-source-frontier-candidate-source-identity-contract";
-  readonly availableIdentity: "selected-slot-pool-only" | "class-tagged-wgsl-candidate-source-inputs";
-  readonly consumptionPath?: "source-index-table-class-mask" | "candidate-source-record-group-election-sidecar";
+  readonly availableIdentity:
+    | "selected-slot-pool-only"
+    | "class-tagged-wgsl-candidate-source-inputs"
+    | "record-group-production-election-contract";
+  readonly consumptionPath?:
+    | "source-index-table-class-mask"
+    | "candidate-source-record-group-election-sidecar"
+    | "candidate-source-record-group-production-election-contract";
   readonly requiredWgslInputs: readonly string[];
   readonly presentWgslInputs?: readonly string[];
   readonly recordCount?: number;
@@ -635,7 +643,8 @@ interface SourceFrontierCandidateSourceIdentityEvidence {
   readonly falseClosureGuard:
     | "bounded-pool-seats-are-not-production-candidate-source-identity"
     | "source-index-class-masks-do-not-consume-full-candidate-record-groups"
-    | "candidate-source-sidecar-is-not-production-retention-election";
+    | "candidate-source-sidecar-is-not-production-retention-election"
+    | "packed-production-election-contract-is-not-live-wgsl-compositor-consumption";
 }
 
 interface SourceFrontierRetainedRowsEvidence {
@@ -2866,7 +2875,7 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
       "wgsl-source-frontier-retained-row-prefix-scatter",
       "tile-local-visible-gaussian-compositor",
     ],
-    nextGpuOffloadStage: "production-candidate-source-election-consumption",
+    nextGpuOffloadStage: "live-wgsl-production-candidate-source-election",
     accountingSource: "gpu-ref-stats-readback-pending",
     projectedRefs: frontierSource.projectedRefEstimate,
     retainedRefs: 0,
@@ -2878,7 +2887,7 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
     frontierBlockedStages: [
       compactSourceStreamRetentionBlockedStage,
       "compact-source-pixel-traces",
-      "production-candidate-source-election-consumption",
+      "live-wgsl-production-candidate-source-election",
     ],
   };
 }
@@ -2888,11 +2897,11 @@ function sourceFrontierCandidateSourceIdentityEvidence(
 ): SourceFrontierCandidateSourceIdentityEvidence {
   if (candidateSourceInputs && candidateSourceInputs.recordCount > 0) {
     return {
-      status: "record-group-election-sidecar-consumed",
+      status: "production-election-contract-consumed",
       source: "wgsl-source-frontier-candidate-source-identity-contract",
-      availableIdentity: "class-tagged-wgsl-candidate-source-inputs",
-      consumptionPath: "candidate-source-record-group-election-sidecar",
-      requiredWgslInputs: [],
+      availableIdentity: "record-group-production-election-contract",
+      consumptionPath: "candidate-source-record-group-production-election-contract",
+      requiredWgslInputs: ["live-wgsl-production-election-consumer"],
       presentWgslInputs: [
         "retention-candidate-records",
         "occlusion-candidate-records",
@@ -2902,7 +2911,7 @@ function sourceFrontierCandidateSourceIdentityEvidence(
       recordCount: candidateSourceInputs.recordCount,
       groupCount: candidateSourceInputs.groupCount,
       classesPresent: candidateSourceInputs.classesPresent,
-      falseClosureGuard: "candidate-source-sidecar-is-not-production-retention-election",
+      falseClosureGuard: "packed-production-election-contract-is-not-live-wgsl-compositor-consumption",
     };
   }
   return {
@@ -3157,7 +3166,7 @@ function refreshWgslSourceFrontierRetainedRowsEvidence(
     state.retainedSourceConstruction = {
       ...retainedSourceConstruction,
       retainedRows: retainedRowsReadback,
-      nextGpuOffloadStage: "production-candidate-source-election-consumption",
+      nextGpuOffloadStage: "live-wgsl-production-candidate-source-election",
     };
     return;
   }
@@ -3168,7 +3177,7 @@ function refreshWgslSourceFrontierRetainedRowsEvidence(
     droppedRefs: retainedRowsReadback.droppedRows,
     retainedBudgetRefs: retainedRowsReadback.retainedBudgetRefs,
     maxRefsPerTile: retainedRowsReadback.maxRefsPerTile,
-    nextGpuOffloadStage: "production-candidate-source-election-consumption",
+    nextGpuOffloadStage: "live-wgsl-production-candidate-source-election",
   };
 }
 

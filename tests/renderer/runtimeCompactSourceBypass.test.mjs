@@ -615,8 +615,8 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     retainedSourceEvidence,
-    /nextGpuOffloadStage:\s*"production-candidate-source-election-consumption"/,
-    "after class-tagged WGSL candidate-source inputs land, the next retained-source frontier must be election consumption rather than input identity",
+    /nextGpuOffloadStage:\s*"live-wgsl-production-candidate-source-election"/,
+    "after the packed production-election contract lands, the next retained-source frontier must be the live WGSL election consumer rather than the deterministic contract",
   );
   assert.match(
     retainedSourceEvidence,
@@ -625,8 +625,8 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     mainSource,
-    /function sourceFrontierCandidateSourceIdentityEvidence\(\s*candidateSourceInputs[\s\S]*status:\s*"record-group-election-sidecar-consumed"[\s\S]*availableIdentity:\s*"class-tagged-wgsl-candidate-source-inputs"[\s\S]*consumptionPath:\s*"candidate-source-record-group-election-sidecar"/,
-    "candidate-source evidence must distinguish packed sidecar consumption from full production retention election",
+    /function sourceFrontierCandidateSourceIdentityEvidence\(\s*candidateSourceInputs[\s\S]*status:\s*"production-election-contract-consumed"[\s\S]*availableIdentity:\s*"record-group-production-election-contract"[\s\S]*consumptionPath:\s*"candidate-source-record-group-production-election-contract"/,
+    "candidate-source evidence must distinguish deterministic production-election contract consumption from live WGSL compositor consumption",
   );
   assert.match(
     mainSource,
@@ -670,8 +670,8 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     retainedSourceEvidence,
-    /nextGpuOffloadStage:\s*"production-candidate-source-election-consumption"/,
-    "once candidate-source input substrate exists, the next frontier is election consumption rather than input identity",
+    /nextGpuOffloadStage:\s*"live-wgsl-production-candidate-source-election"/,
+    "once the deterministic production-election contract exists, the next frontier is live WGSL production election rather than repeated sidecar consumption",
   );
   assert.match(
     shaderSource,
@@ -815,8 +815,8 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     retainedRowsRefreshSource,
-    /nextGpuOffloadStage:\s*"production-candidate-source-election-consumption"/,
-    "retained-row evidence must keep the next frontier pointed at candidate-source election consumption after input substrate is live",
+    /nextGpuOffloadStage:\s*"live-wgsl-production-candidate-source-election"/,
+    "retained-row evidence must keep the next frontier pointed at live WGSL production election after the deterministic contract is live",
   );
   assert.match(
     retainedRowsRefreshSource,
