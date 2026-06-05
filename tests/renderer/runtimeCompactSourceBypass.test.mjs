@@ -465,6 +465,16 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     shaderSource,
+    /const SOURCE_FRONTIER_FOREGROUND_RETENTION_SCORE_FLOOR = 224u/,
+    "source-frontier foreground/support candidates need a bounded primary-score floor instead of losing election solely on tile-center coverage",
+  );
+  assert.match(
+    retentionScoreSource,
+    /candidateSourceClassMask:\s*u32[\s\S]*source_frontier_retention_primary_bucket\([\s\S]*candidateSourceClassMask[\s\S]*pool[\s\S]*CANDIDATE_SOURCE_CLASS_RETENTION_MASK \| CANDIDATE_SOURCE_CLASS_SUPPORT_MASK/,
+    "source-frontier retention scoring must consume the candidate class mask and protect foreground/support candidates inside their bounded pool",
+  );
+  assert.match(
+    shaderSource,
     /fn gpu_live_source_luminance\([\s\S]*colors\[colorBase\][\s\S]*0\.2126[\s\S]*0\.7152[\s\S]*0\.0722/,
     "source-frontier GPU retention election must derive a luminance term from live source colors instead of scoring only coverage and depth",
   );
@@ -485,8 +495,8 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     shaderSource,
-    /let sourceDepthNdc = centerClip\.z \/ max\(centerClip\.w, 0\.000001\)[\s\S]*let sourceLuminance = gpu_live_source_luminance\(splatId\)[\s\S]*gpu_live_retention_pool_score\([\s\S]*sourceLuminance[\s\S]*sourceDepthNdc[\s\S]*poolSlot\.pool/,
-    "source-frontier build must pass the current projected depth and selected pool into the retained-ref pool score",
+    /let sourceDepthNdc = centerClip\.z \/ max\(centerClip\.w, 0\.000001\)[\s\S]*let sourceLuminance = gpu_live_source_luminance\(splatId\)[\s\S]*gpu_live_retention_pool_score\([\s\S]*sourceLuminance[\s\S]*sourceDepthNdc[\s\S]*candidateSourceClassMask[\s\S]*poolSlot\.pool/,
+    "source-frontier build must pass projected depth, source class identity, and selected pool into the retained-ref pool score",
   );
   assert.match(
     shaderSource,

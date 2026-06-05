@@ -51,6 +51,7 @@ const CANDIDATE_SOURCE_CLASS_COVERAGE_MASK = 4u;
 const CANDIDATE_SOURCE_CLASS_SUPPORT_MASK = 8u;
 const SOURCE_FRONTIER_ALPHA_CLASS_MASK_SENTINEL = -1024.0;
 const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE = 2.0;
+const SOURCE_FRONTIER_FOREGROUND_RETENTION_SCORE_FLOOR = 224u;
 
 struct SplatShape {
   axis0: vec3f,
@@ -403,6 +404,7 @@ fn gpu_live_retention_pool_score(
   sourceLuminance: f32,
   sourceDepthNdc: f32,
   splatId: u32,
+  candidateSourceClassMask: u32,
   pool: u32,
 ) -> u32 {
   let coverageBucket = min(u32(clamp(tileCoverageWeight, 0.0, 1.0) * 255.0), 255u);
@@ -421,9 +423,29 @@ fn gpu_live_retention_pool_score(
     return max((coverageBucket << 23u) | (retentionBucket << 15u) | (occlusionWeightBucket << 7u) | (depthBucket << 2u) | splatTie, 1u);
   }
   if (pool == RETENTION_POOL_SUPPORT) {
-    return max((max(retentionBucket, coverageBucket) << 23u) | (occlusionWeightBucket << 15u) | (depthBucket << 2u) | splatTie, 1u);
+    let supportBucket = source_frontier_retention_primary_bucket(
+      candidateSourceClassMask,
+      pool,
+      max(retentionBucket, coverageBucket)
+    );
+    return max((supportBucket << 23u) | (occlusionWeightBucket << 15u) | (depthBucket << 2u) | splatTie, 1u);
   }
-  return max((retentionBucket << 23u) | (coverageBucket << 15u) | (occlusionWeightBucket << 7u) | (depthBucket << 2u) | splatTie, 1u);
+  let primaryRetentionBucket = source_frontier_retention_primary_bucket(candidateSourceClassMask, pool, retentionBucket);
+  return max((primaryRetentionBucket << 23u) | (coverageBucket << 15u) | (occlusionWeightBucket << 7u) | (depthBucket << 2u) | splatTie, 1u);
+}
+
+fn source_frontier_retention_primary_bucket(
+  candidateSourceClassMask: u32,
+  pool: u32,
+  primaryBucket: u32,
+) -> u32 {
+  if ((candidateSourceClassMask & (CANDIDATE_SOURCE_CLASS_RETENTION_MASK | CANDIDATE_SOURCE_CLASS_SUPPORT_MASK)) == 0u) {
+    return primaryBucket;
+  }
+  if (pool == RETENTION_POOL_RETENTION || pool == RETENTION_POOL_SUPPORT) {
+    return max(primaryBucket, SOURCE_FRONTIER_FOREGROUND_RETENTION_SCORE_FLOOR);
+  }
+  return primaryBucket;
 }
 
 fn gpu_live_overflow_election_slot(tileId: u32, splatId: u32, tileCapacity: u32) -> u32 {
@@ -684,6 +706,7 @@ fn debug_heatmap_color(
         sourceLuminance,
         sourceDepthNdc,
         orderingKey,
+        candidateSourceClassMask,
         poolSlot.pool
       );
       gpu_live_try_commit_retained_ref(
