@@ -835,13 +835,23 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     retainedRowsRefreshSource,
-    /nextGpuOffloadStage:\s*"live-wgsl-production-election-prefix-scatter"/,
-    "retained-row evidence must keep the next frontier pointed at live WGSL prefix scatter after the runtime production-election contract is live",
+    /retainedRows:\s*retainedRowsReadback[\s\S]*nextGpuOffloadStage:\s*"live-wgsl-production-election-prefix-scatter"/,
+    "pending or blocked retained-row evidence must keep the next frontier pointed at live WGSL prefix scatter",
   );
   assert.match(
     retainedRowsRefreshSource,
-    /retainedRowsReadback\.status !== "present"[\s\S]*retainedRows:\s*retainedRowsReadback[\s\S]*return/,
-    "blocked or pending retained-row evidence must not overwrite already-live top-level retained/dropped ref accounting",
+    /retainedRowsReadback\.status === "present"[\s\S]*accountingSource:\s*"gpu-compositor-input-readback-present"[\s\S]*nextGpuOffloadStage:\s*"live-wgsl-production-election-candidate-source-bindings"/,
+    "present live retained-row readback proves prefix/scatter consumption, so the next frontier must advance to production candidate-source bindings",
+  );
+  assert.match(
+    retainedRowsRefreshSource,
+    /frontierBlockedStages:\s*\[[\s\S]*"live-wgsl-production-election-candidate-source-bindings"[\s\S]*\]/,
+    "present retained-row evidence must replace the stale prefix/scatter blocker with the next production-election binding frontier",
+  );
+  assert.match(
+    retainedRowsRefreshSource,
+    /return;\s*\}\s*state\.retainedSourceConstruction = \{[\s\S]*retainedRows:\s*retainedRowsReadback[\s\S]*nextGpuOffloadStage:\s*"live-wgsl-production-election-prefix-scatter"/,
+    "blocked or pending retained-row evidence must be handled only after the present branch returns",
   );
   assert.match(
     refStatsPublisherSource,

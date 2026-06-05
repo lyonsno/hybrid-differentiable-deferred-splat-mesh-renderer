@@ -615,8 +615,14 @@ interface RetainedSourceConstructionEvidence {
     | "production-candidate-source-pool-identity"
     | "production-candidate-source-election-consumption"
     | "live-wgsl-production-candidate-source-election"
-    | "live-wgsl-production-election-prefix-scatter";
-  readonly accountingSource?: "cpu-compact-source" | "gpu-ref-stats-readback-pending" | "gpu-ref-stats-readback-present" | "gpu-ref-stats-readback-blocked";
+    | "live-wgsl-production-election-prefix-scatter"
+    | "live-wgsl-production-election-candidate-source-bindings";
+  readonly accountingSource?:
+    | "cpu-compact-source"
+    | "gpu-ref-stats-readback-pending"
+    | "gpu-ref-stats-readback-present"
+    | "gpu-ref-stats-readback-blocked"
+    | "gpu-compositor-input-readback-present";
   readonly frontierBlockedStages?: readonly string[];
   readonly projectedRefs: number;
   readonly retainedRefs: number;
@@ -3248,21 +3254,27 @@ function refreshWgslSourceFrontierRetainedRowsEvidence(
   ) {
     return;
   }
-  if (retainedRowsReadback.status !== "present") {
+  if (retainedRowsReadback.status === "present") {
     state.retainedSourceConstruction = {
       ...retainedSourceConstruction,
+      accountingSource: "gpu-compositor-input-readback-present",
       retainedRows: retainedRowsReadback,
-      nextGpuOffloadStage: "live-wgsl-production-election-prefix-scatter",
+      retainedRefs: retainedRowsReadback.retainedRows,
+      droppedRefs: retainedRowsReadback.droppedRows,
+      retainedBudgetRefs: retainedRowsReadback.retainedBudgetRefs,
+      maxRefsPerTile: retainedRowsReadback.maxRefsPerTile,
+      nextGpuOffloadStage: "live-wgsl-production-election-candidate-source-bindings",
+      frontierBlockedStages: [
+        "compact-source-stream-retention",
+        "compact-source-pixel-traces",
+        "live-wgsl-production-election-candidate-source-bindings",
+      ],
     };
     return;
   }
   state.retainedSourceConstruction = {
     ...retainedSourceConstruction,
     retainedRows: retainedRowsReadback,
-    retainedRefs: retainedRowsReadback.retainedRows,
-    droppedRefs: retainedRowsReadback.droppedRows,
-    retainedBudgetRefs: retainedRowsReadback.retainedBudgetRefs,
-    maxRefsPerTile: retainedRowsReadback.maxRefsPerTile,
     nextGpuOffloadStage: "live-wgsl-production-election-prefix-scatter",
   };
 }
