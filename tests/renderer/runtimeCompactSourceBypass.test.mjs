@@ -685,6 +685,26 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     retainedSourceEvidence,
+    /candidateSourceRuntimeBuffers:\s*candidateSourceRuntimeBuffersEvidence/,
+    "source-frontier construction evidence must carry runtime candidate-source buffer custody separately from identity/provenance evidence",
+  );
+  assert.match(
+    mainSource,
+    /const candidateSourceRuntimeBuffersEvidence = sourceFrontierCandidateSourceRuntimeBufferEvidence\(candidateSourceBuffers\)/,
+    "candidate-source buffer evidence must be produced from the actual runtime GPU buffer bundle after allocation",
+  );
+  assert.match(
+    mainSource,
+    /function sourceFrontierCandidateSourceRuntimeBufferEvidence\([\s\S]*status:\s*"runtime-state-buffers-present"[\s\S]*currentCompositorBinding:\s*"forbidden-current-compositor-bind-group-full"[\s\S]*nextConsumer:\s*"narrow-production-election-consumer"/,
+    "candidate-source runtime evidence must prove buffer custody without pretending the current compositor bind group consumes those buffers",
+  );
+  assert.match(
+    mainSource,
+    /falseClosureGuard:\s*"candidate-source-runtime-buffers-do-not-imply-current-compositor-bind-group-consumption"/,
+    "candidate-source runtime evidence must explicitly block bind-group proof substitution",
+  );
+  assert.match(
+    retainedSourceEvidence,
     /candidateSourceIdentity:\s*sourceFrontierCandidateSourceIdentityEvidence\([\s\S]*candidateSourceInputs/,
     "source-frontier evidence must be driven by actual candidate-source input substrate, not a hardcoded missing-input claim",
   );
@@ -840,8 +860,23 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     retainedRowsRefreshSource,
-    /retainedRowsReadback\.status === "present"[\s\S]*accountingSource:\s*"gpu-compositor-input-readback-present"[\s\S]*nextGpuOffloadStage:\s*"live-wgsl-production-election-candidate-source-bindings"/,
-    "present live retained-row readback proves prefix/scatter consumption, so the next frontier must advance to production candidate-source bindings",
+    /retainedRowsReadback\.status === "present"[\s\S]*accountingSource:\s*"gpu-compositor-input-readback-present"[\s\S]*nextGpuOffloadStage:\s*candidateSourceRuntimeBuffers\.status/,
+    "present live retained-row readback proves prefix/scatter consumption, so the next frontier must be selected from runtime candidate-source buffer custody",
+  );
+  assert.match(
+    retainedRowsRefreshSource,
+    /const candidateSourceRuntimeBuffers = sourceFrontierCandidateSourceRuntimeBufferEvidence\(state\)/,
+    "retained-row refresh must re-read candidate-source buffer custody from live runtime state before advancing the source frontier",
+  );
+  assert.match(
+    retainedRowsRefreshSource,
+    /nextGpuOffloadStage:\s*candidateSourceRuntimeBuffers\.status === "runtime-state-buffers-present"\s*\?\s*"live-wgsl-production-candidate-source-election"\s*:\s*"live-wgsl-production-election-candidate-source-bindings"/,
+    "present retained rows plus seated candidate-source buffers must advance to the production-election consumer instead of looping on bindings",
+  );
+  assert.match(
+    retainedRowsRefreshSource,
+    /candidateSourceRuntimeBuffers[\s\S]*frontierBlockedStages:\s*\[[\s\S]*candidateSourceRuntimeBuffers\.status === "runtime-state-buffers-present"[\s\S]*"live-wgsl-production-candidate-source-election"[\s\S]*"live-wgsl-production-election-candidate-source-bindings"/,
+    "frontier blockers must name the consumer when runtime candidate-source buffers are present and name bindings only when they are missing",
   );
   assert.match(
     retainedRowsRefreshSource,

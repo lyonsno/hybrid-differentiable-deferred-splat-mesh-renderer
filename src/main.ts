@@ -631,6 +631,7 @@ interface RetainedSourceConstructionEvidence {
   readonly maxRefsPerTile?: number;
   readonly retainedRows?: SourceFrontierRetainedRowsEvidence;
   readonly candidateSourceIdentity?: SourceFrontierCandidateSourceIdentityEvidence;
+  readonly candidateSourceRuntimeBuffers?: SourceFrontierCandidateSourceRuntimeBufferEvidence;
 }
 
 interface SourceFrontierCandidateSourceIdentityEvidence {
@@ -662,6 +663,23 @@ interface SourceFrontierCandidateSourceIdentityEvidence {
     | "source-index-class-masks-do-not-consume-full-candidate-record-groups"
     | "candidate-source-sidecar-is-not-production-retention-election"
     | "packed-production-election-contract-is-not-live-wgsl-compositor-consumption";
+}
+
+interface SourceFrontierCandidateSourceRuntimeBufferEvidence {
+  readonly status: "runtime-state-buffers-present" | "blocked-missing-runtime-state-buffers";
+  readonly source: "wgsl-source-frontier-candidate-source-runtime-buffers";
+  readonly recordCount: number;
+  readonly groupCount: number;
+  readonly presentRuntimeBuffers: readonly string[];
+  readonly currentCompositorBinding:
+    | "forbidden-current-compositor-bind-group-full"
+    | "blocked-missing-runtime-state-buffers";
+  readonly nextConsumer:
+    | "narrow-production-election-consumer"
+    | "candidate-source-runtime-buffer-allocation";
+  readonly falseClosureGuard:
+    | "candidate-source-runtime-buffers-do-not-imply-current-compositor-bind-group-consumption"
+    | "missing-candidate-source-runtime-buffers-block-production-election-consumer";
 }
 
 interface SourceFrontierRetainedRowsEvidence {
@@ -1978,6 +1996,7 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     "wgsl_source_frontier",
     candidateSourceInputs,
   );
+  const candidateSourceRuntimeBuffersEvidence = sourceFrontierCandidateSourceRuntimeBufferEvidence(candidateSourceBuffers);
   const bindGroup = pipeline.createBindGroup({
     frameUniformBuffer,
     positionBuffer: buffers.positionBuffer,
@@ -2019,6 +2038,7 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     plan,
     candidateSourceBuffers.candidateSourceInputs,
     productionElection,
+    candidateSourceRuntimeBuffersEvidence,
   );
   const wgslProjectedRefStreamEvidence = buildWgslProjectedRefStreamEvidence(compactSource, null);
 
@@ -2917,6 +2937,7 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
   plan: GpuTileCoveragePlan,
   candidateSourceInputs: GpuProjectionRetentionCandidateSourceInputs,
   productionElection: GpuProjectionRetentionCandidateSourceProductionElection,
+  candidateSourceRuntimeBuffersEvidence: SourceFrontierCandidateSourceRuntimeBufferEvidence,
 ): RetainedSourceConstructionEvidence {
   const compactSourceStreamRetentionBlockedStage = "compact-source-stream-retention";
   return {
@@ -2952,11 +2973,52 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
     maxRefsPerTile: gpuLiveEffectiveRefsPerTile(plan),
     retainedRows: pendingWgslSourceFrontierRetainedRowsEvidence(plan),
     candidateSourceIdentity: sourceFrontierCandidateSourceIdentityEvidence(candidateSourceInputs, productionElection),
+    candidateSourceRuntimeBuffers: candidateSourceRuntimeBuffersEvidence,
     frontierBlockedStages: [
       compactSourceStreamRetentionBlockedStage,
       "compact-source-pixel-traces",
       "live-wgsl-production-election-prefix-scatter",
     ],
+  };
+}
+
+function sourceFrontierCandidateSourceRuntimeBufferEvidence(
+  source: {
+    readonly candidateSourceInputs?: GpuProjectionRetentionCandidateSourceInputs;
+    readonly candidateSourceRecordsBuffer?: GPUBuffer;
+    readonly candidateSourceGroupsBuffer?: GPUBuffer;
+  },
+): SourceFrontierCandidateSourceRuntimeBufferEvidence {
+  const candidateSourceInputs = source.candidateSourceInputs;
+  if (
+    candidateSourceInputs &&
+    candidateSourceInputs.recordCount > 0 &&
+    source.candidateSourceRecordsBuffer &&
+    source.candidateSourceGroupsBuffer
+  ) {
+    return {
+      status: "runtime-state-buffers-present",
+      source: "wgsl-source-frontier-candidate-source-runtime-buffers",
+      recordCount: candidateSourceInputs.recordCount,
+      groupCount: candidateSourceInputs.groupCount,
+      presentRuntimeBuffers: [
+        "candidate-source-records-storage-buffer",
+        "candidate-source-groups-storage-buffer",
+      ],
+      currentCompositorBinding: "forbidden-current-compositor-bind-group-full",
+      nextConsumer: "narrow-production-election-consumer",
+      falseClosureGuard: "candidate-source-runtime-buffers-do-not-imply-current-compositor-bind-group-consumption",
+    };
+  }
+  return {
+    status: "blocked-missing-runtime-state-buffers",
+    source: "wgsl-source-frontier-candidate-source-runtime-buffers",
+    recordCount: candidateSourceInputs?.recordCount ?? 0,
+    groupCount: candidateSourceInputs?.groupCount ?? 0,
+    presentRuntimeBuffers: [],
+    currentCompositorBinding: "blocked-missing-runtime-state-buffers",
+    nextConsumer: "candidate-source-runtime-buffer-allocation",
+    falseClosureGuard: "missing-candidate-source-runtime-buffers-block-production-election-consumer",
   };
 }
 
@@ -3262,6 +3324,7 @@ function refreshWgslSourceFrontierRetainedRowsEvidence(
     return;
   }
   if (retainedRowsReadback.status === "present") {
+    const candidateSourceRuntimeBuffers = sourceFrontierCandidateSourceRuntimeBufferEvidence(state);
     state.retainedSourceConstruction = {
       ...retainedSourceConstruction,
       accountingSource: "gpu-compositor-input-readback-present",
@@ -3270,11 +3333,16 @@ function refreshWgslSourceFrontierRetainedRowsEvidence(
       droppedRefs: retainedRowsReadback.droppedRows,
       retainedBudgetRefs: retainedRowsReadback.retainedBudgetRefs,
       maxRefsPerTile: retainedRowsReadback.maxRefsPerTile,
-      nextGpuOffloadStage: "live-wgsl-production-election-candidate-source-bindings",
+      candidateSourceRuntimeBuffers,
+      nextGpuOffloadStage: candidateSourceRuntimeBuffers.status === "runtime-state-buffers-present"
+        ? "live-wgsl-production-candidate-source-election"
+        : "live-wgsl-production-election-candidate-source-bindings",
       frontierBlockedStages: [
         "compact-source-stream-retention",
         "compact-source-pixel-traces",
-        "live-wgsl-production-election-candidate-source-bindings",
+        candidateSourceRuntimeBuffers.status === "runtime-state-buffers-present"
+          ? "live-wgsl-production-candidate-source-election"
+          : "live-wgsl-production-election-candidate-source-bindings",
       ],
     };
     return;
