@@ -3213,6 +3213,13 @@ function refreshWgslSourceFrontierRetainedSourceConstructionEvidence(
   ) {
     return;
   }
+  if (
+    retainedSourceConstruction.accountingSource === "gpu-compositor-input-readback-present" &&
+    retainedSourceConstruction.retainedRows?.status === "present" &&
+    retainedSourceConstruction.retainedRows.frameId === readback.frameId
+  ) {
+    return;
+  }
   if (readback.status === "blocked") {
     state.retainedSourceConstruction = {
       ...retainedSourceConstruction,
@@ -3276,6 +3283,11 @@ function refreshWgslSourceFrontierRetainedRowsEvidence(
     ...retainedSourceConstruction,
     retainedRows: retainedRowsReadback,
     nextGpuOffloadStage: "live-wgsl-production-election-prefix-scatter",
+    frontierBlockedStages: [
+      "compact-source-stream-retention",
+      "compact-source-pixel-traces",
+      "live-wgsl-production-election-prefix-scatter",
+    ],
   };
 }
 

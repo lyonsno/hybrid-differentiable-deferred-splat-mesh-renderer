@@ -854,6 +854,16 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
     "blocked or pending retained-row evidence must be handled only after the present branch returns",
   );
   assert.match(
+    retainedRowsRefreshSource,
+    /state\.retainedSourceConstruction = \{[\s\S]*retainedRows:\s*retainedRowsReadback[\s\S]*nextGpuOffloadStage:\s*"live-wgsl-production-election-prefix-scatter"[\s\S]*frontierBlockedStages:\s*\[[\s\S]*"live-wgsl-production-election-prefix-scatter"[\s\S]*\]/,
+    "blocked or pending retained-row evidence must restore prefix/scatter blockers instead of preserving stale candidate-source blockers",
+  );
+  assert.match(
+    retainedSourceRefreshSource,
+    /retainedSourceConstruction\.accountingSource === "gpu-compositor-input-readback-present"[\s\S]*retainedSourceConstruction\.retainedRows\?\.status === "present"[\s\S]*return;/,
+    "ref-stats publication must not overwrite the compositor-input retained-row proof that advanced the source frontier",
+  );
+  assert.match(
     refStatsPublisherSource,
     /refreshWgslSourceFrontierRetainedSourceConstructionEvidence\(state,\s*readback\)/,
     "source-frontier live ref-stat publication must update retained-source construction evidence before exposing smoke state",
