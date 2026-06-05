@@ -632,6 +632,7 @@ interface RetainedSourceConstructionEvidence {
   readonly retainedRows?: SourceFrontierRetainedRowsEvidence;
   readonly candidateSourceIdentity?: SourceFrontierCandidateSourceIdentityEvidence;
   readonly candidateSourceRuntimeBuffers?: SourceFrontierCandidateSourceRuntimeBufferEvidence;
+  readonly productionElectionConsumer?: SourceFrontierProductionElectionConsumerEvidence;
 }
 
 interface SourceFrontierCandidateSourceIdentityEvidence {
@@ -680,6 +681,29 @@ interface SourceFrontierCandidateSourceRuntimeBufferEvidence {
   readonly falseClosureGuard:
     | "candidate-source-runtime-buffers-do-not-imply-current-compositor-bind-group-consumption"
     | "missing-candidate-source-runtime-buffers-block-production-election-consumer";
+}
+
+interface SourceFrontierProductionElectionConsumerEvidence {
+  readonly status: "narrow-consumer-contract-present" | "blocked-missing-production-election-consumer-input";
+  readonly source: "wgsl-source-frontier-production-election-consumer";
+  readonly productionElectionStatus?: "production-election-contract-consumed";
+  readonly runtimeBufferSource:
+    | "candidate-source-runtime-state-buffers"
+    | "missing-candidate-source-runtime-state-buffers";
+  readonly recordCount: number;
+  readonly groupCount: number;
+  readonly retainedRecordCount: number;
+  readonly crossPoolDuplicateSuppressedCount: number;
+  readonly sourceInputConsumption: readonly string[];
+  readonly currentCompositorBinding:
+    | "forbidden-current-compositor-bind-group-full"
+    | "blocked-missing-production-election-consumer-input";
+  readonly nextConsumerBoundary:
+    | "wgsl-production-election-compute-consumer"
+    | "candidate-source-runtime-buffer-allocation";
+  readonly falseClosureGuard:
+    | "production-election-consumer-contract-is-not-current-compositor-bind-group-consumption"
+    | "missing-production-election-consumer-input-blocks-narrow-consumer-claim";
 }
 
 interface SourceFrontierRetainedRowsEvidence {
@@ -2960,6 +2984,7 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
       "wgsl-source-frontier-occlusion-density-retention-score",
       "wgsl-source-frontier-bounded-pool-seat-election",
       "wgsl-source-frontier-candidate-source-input-buffers",
+      "wgsl-source-frontier-production-election-consumer",
       "wgsl-source-frontier-depth-bucket-compositor-order",
       "wgsl-source-frontier-retained-row-prefix-scatter",
       "tile-local-visible-gaussian-compositor",
@@ -2974,11 +2999,50 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
     retainedRows: pendingWgslSourceFrontierRetainedRowsEvidence(plan),
     candidateSourceIdentity: sourceFrontierCandidateSourceIdentityEvidence(candidateSourceInputs, productionElection),
     candidateSourceRuntimeBuffers: candidateSourceRuntimeBuffersEvidence,
+    productionElectionConsumer: sourceFrontierProductionElectionConsumerEvidence(
+      productionElection,
+      candidateSourceRuntimeBuffersEvidence,
+    ),
     frontierBlockedStages: [
       compactSourceStreamRetentionBlockedStage,
       "compact-source-pixel-traces",
       "live-wgsl-production-election-prefix-scatter",
     ],
+  };
+}
+
+function sourceFrontierProductionElectionConsumerEvidence(
+  productionElection: GpuProjectionRetentionCandidateSourceProductionElection | undefined,
+  runtimeBuffers: SourceFrontierCandidateSourceRuntimeBufferEvidence,
+): SourceFrontierProductionElectionConsumerEvidence {
+  if (productionElection && runtimeBuffers.status === "runtime-state-buffers-present") {
+    return {
+      status: "narrow-consumer-contract-present",
+      source: "wgsl-source-frontier-production-election-consumer",
+      productionElectionStatus: productionElection.status,
+      runtimeBufferSource: "candidate-source-runtime-state-buffers",
+      recordCount: productionElection.recordCount,
+      groupCount: productionElection.groupCount,
+      retainedRecordCount: productionElection.retainedRecords.length,
+      crossPoolDuplicateSuppressedCount: productionElection.crossPoolDuplicateSuppressedCount,
+      sourceInputConsumption: productionElection.sourceInputConsumption,
+      currentCompositorBinding: "forbidden-current-compositor-bind-group-full",
+      nextConsumerBoundary: "wgsl-production-election-compute-consumer",
+      falseClosureGuard: "production-election-consumer-contract-is-not-current-compositor-bind-group-consumption",
+    };
+  }
+  return {
+    status: "blocked-missing-production-election-consumer-input",
+    source: "wgsl-source-frontier-production-election-consumer",
+    runtimeBufferSource: "missing-candidate-source-runtime-state-buffers",
+    recordCount: productionElection?.recordCount ?? runtimeBuffers.recordCount,
+    groupCount: productionElection?.groupCount ?? runtimeBuffers.groupCount,
+    retainedRecordCount: productionElection?.retainedRecords.length ?? 0,
+    crossPoolDuplicateSuppressedCount: productionElection?.crossPoolDuplicateSuppressedCount ?? 0,
+    sourceInputConsumption: productionElection?.sourceInputConsumption ?? [],
+    currentCompositorBinding: "blocked-missing-production-election-consumer-input",
+    nextConsumerBoundary: "candidate-source-runtime-buffer-allocation",
+    falseClosureGuard: "missing-production-election-consumer-input-blocks-narrow-consumer-claim",
   };
 }
 

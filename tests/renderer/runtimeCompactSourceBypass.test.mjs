@@ -705,6 +705,31 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     retainedSourceEvidence,
+    /productionElectionConsumer:\s*sourceFrontierProductionElectionConsumerEvidence\(\s*productionElection,\s*candidateSourceRuntimeBuffersEvidence,\s*\)/,
+    "source-frontier construction evidence must expose a narrow production-election consumer separately from runtime buffer custody",
+  );
+  assert.match(
+    mainSource,
+    /interface SourceFrontierProductionElectionConsumerEvidence[\s\S]*status:\s*"narrow-consumer-contract-present" \| "blocked-missing-production-election-consumer-input"/,
+    "production-election consumer evidence must carry an explicit present/blocked contract",
+  );
+  assert.match(
+    mainSource,
+    /function sourceFrontierProductionElectionConsumerEvidence\([\s\S]*status:\s*"narrow-consumer-contract-present"[\s\S]*source:\s*"wgsl-source-frontier-production-election-consumer"[\s\S]*runtimeBufferSource:\s*"candidate-source-runtime-state-buffers"/,
+    "production-election consumer evidence must consume the runtime candidate-source buffers instead of repeating static identity provenance",
+  );
+  assert.match(
+    mainSource,
+    /currentCompositorBinding:\s*"forbidden-current-compositor-bind-group-full"[\s\S]*nextConsumerBoundary:\s*"wgsl-production-election-compute-consumer"/,
+    "production-election consumer evidence must name the next narrower consumer without expanding the current compositor bind group",
+  );
+  assert.match(
+    mainSource,
+    /falseClosureGuard:\s*"production-election-consumer-contract-is-not-current-compositor-bind-group-consumption"/,
+    "production-election consumer evidence must not launder the narrow consumer contract into current compositor consumption",
+  );
+  assert.match(
+    retainedSourceEvidence,
     /candidateSourceIdentity:\s*sourceFrontierCandidateSourceIdentityEvidence\([\s\S]*candidateSourceInputs/,
     "source-frontier evidence must be driven by actual candidate-source input substrate, not a hardcoded missing-input claim",
   );
