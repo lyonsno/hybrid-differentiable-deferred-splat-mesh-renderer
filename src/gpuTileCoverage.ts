@@ -769,7 +769,8 @@ export interface WgslSourceFrontierProductionPoolSeatGapWitness {
   readonly nextGpuOffloadStage:
     | "production-candidate-source-pool-identity"
     | "production-candidate-source-election-consumption"
-    | "live-wgsl-production-candidate-source-election";
+    | "live-wgsl-production-candidate-source-election"
+    | "live-wgsl-production-election-prefix-scatter";
   readonly projectedCount: number;
   readonly maxRefsPerTile: number;
   readonly supportTarget: number;
@@ -1062,7 +1063,7 @@ export function inspectWgslSourceFrontierProductionPoolSeatGap(
     );
   const requiredWgslCandidateSourceInputs = isCapPressured
     ? (productionElectionContract
-        ? ["live-wgsl-production-election-consumer"]
+        ? ["live-wgsl-production-election-prefix-scatter"]
         : hasClassTaggedCandidateSourceIdentity
         ? ["candidate-source-record-group-election-consumer"]
         : [
@@ -1074,7 +1075,7 @@ export function inspectWgslSourceFrontierProductionPoolSeatGap(
     : [];
   const missingStructures = isCapPressured
     ? (productionElectionContract
-        ? ["live-wgsl-production-election-consumer"]
+        ? ["live-wgsl-production-election-prefix-scatter"]
         : hasClassTaggedCandidateSourceIdentity
         ? [
             "candidate-source-record-group-election",
@@ -1108,7 +1109,7 @@ export function inspectWgslSourceFrontierProductionPoolSeatGap(
     missingStructures,
     falseClosureGuard: "source-frontier-score-witness-is-not-production-pool-seat-election",
     nextGpuOffloadStage: productionElectionContract
-      ? "live-wgsl-production-candidate-source-election"
+      ? "live-wgsl-production-election-prefix-scatter"
       : hasClassTaggedCandidateSourceIdentity
       ? "production-candidate-source-election-consumption"
       : "production-candidate-source-pool-identity",

@@ -135,7 +135,7 @@ test("GPU projection/retention builder preserves source-frontier foreground supp
   assert.deepEqual(wgslGap.productionRetainedIds, retainedIds);
   assert.equal(wgslGap.status, "structural-gap");
   assert.equal(wgslGap.candidateSourceIdentityStatus, "production-election-contract-consumed");
-  assert.equal(wgslGap.nextGpuOffloadStage, "live-wgsl-production-candidate-source-election");
+  assert.equal(wgslGap.nextGpuOffloadStage, "live-wgsl-production-election-prefix-scatter");
   assert.equal(wgslGap.falseClosureGuard, "source-frontier-score-witness-is-not-production-pool-seat-election");
   assert.deepEqual(wgslGap.retainedPoolCounts, {
     retention: 1,
