@@ -20,6 +20,7 @@ import {
   buildDeterministicGpuTileProjectionRetentionArena,
   buildGpuProjectionRetentionCandidateSourceInputs,
   buildGpuProjectionRetentionCandidateSourceElectionTable,
+  buildGpuProjectionRetentionCandidateSourceProductionElection,
   createGpuTileCoveragePlan,
   GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS,
   GPU_TILE_COVERAGE_ALPHA_PARAM_FLOATS_PER_REF,
@@ -30,6 +31,7 @@ import {
   writeGpuTileCoverageFrameUniforms,
   writeGpuTileCoverageSourceIndexTable,
   type GpuProjectionRetentionCandidateSourceInputs,
+  type GpuProjectionRetentionCandidateSourceProductionElection,
   type GpuProjectionRetentionCandidateSources,
   type GpuTileContributorArenaProjectedContributor,
   type GpuTileCoverageDebugMode,
@@ -550,6 +552,11 @@ interface WgslProjectedSourceFrontierSource {
   readonly tileCount: number;
 }
 
+interface WgslSourceFrontierCandidateSourceSubstrate {
+  readonly candidateSources: GpuProjectionRetentionCandidateSources;
+  readonly projectedCandidateRecords: readonly GpuTileContributorArenaProjectedContributor[];
+}
+
 interface WgslProjectedSourceFrontierTileLocalSceneStateInput {
   readonly device: GPUDevice;
   readonly attributes: SplatAttributes;
@@ -607,7 +614,8 @@ interface RetainedSourceConstructionEvidence {
     | "wgsl-projected-ref-stream"
     | "production-candidate-source-pool-identity"
     | "production-candidate-source-election-consumption"
-    | "live-wgsl-production-candidate-source-election";
+    | "live-wgsl-production-candidate-source-election"
+    | "live-wgsl-production-election-prefix-scatter";
   readonly accountingSource?: "cpu-compact-source" | "gpu-ref-stats-readback-pending" | "gpu-ref-stats-readback-present" | "gpu-ref-stats-readback-blocked";
   readonly frontierBlockedStages?: readonly string[];
   readonly projectedRefs: number;
@@ -624,19 +632,30 @@ interface SourceFrontierCandidateSourceIdentityEvidence {
     | "blocked-missing-wgsl-candidate-source-inputs"
     | "present-not-consumed"
     | "class-mask-consumed-record-groups-not-yet-consumed"
-    | "record-group-election-sidecar-consumed";
+    | "record-group-election-sidecar-consumed"
+    | "production-election-contract-consumed";
   readonly source: "wgsl-source-frontier-candidate-source-identity-contract";
-  readonly availableIdentity: "selected-slot-pool-only" | "class-tagged-wgsl-candidate-source-inputs";
-  readonly consumptionPath?: "source-index-table-class-mask" | "candidate-source-record-group-election-sidecar";
+  readonly availableIdentity:
+    | "selected-slot-pool-only"
+    | "class-tagged-wgsl-candidate-source-inputs"
+    | "record-group-production-election-contract";
+  readonly consumptionPath?:
+    | "source-index-table-class-mask"
+    | "candidate-source-record-group-election-sidecar"
+    | "candidate-source-record-group-production-election-contract";
   readonly requiredWgslInputs: readonly string[];
   readonly presentWgslInputs?: readonly string[];
+  readonly sourceInputConsumption?: readonly string[];
   readonly recordCount?: number;
   readonly groupCount?: number;
+  readonly retainedRecordCount?: number;
+  readonly crossPoolDuplicateSuppressedCount?: number;
   readonly classesPresent?: readonly string[];
   readonly falseClosureGuard:
     | "bounded-pool-seats-are-not-production-candidate-source-identity"
     | "source-index-class-masks-do-not-consume-full-candidate-record-groups"
-    | "candidate-source-sidecar-is-not-production-retention-election";
+    | "candidate-source-sidecar-is-not-production-retention-election"
+    | "packed-production-election-contract-is-not-live-wgsl-compositor-consumption";
 }
 
 interface SourceFrontierRetainedRowsEvidence {
@@ -1877,7 +1896,7 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     "wgsl_source_frontier_frame_uniforms"
   );
   const frameUniformData = new Float32Array(GPU_TILE_COVERAGE_FRAME_UNIFORM_BYTES / Float32Array.BYTES_PER_ELEMENT);
-  const candidateSources = timeOptionalFrameStage(frameTiming, "wgsl-source-frontier-pack-candidate-source-inputs", () =>
+  const candidateSourceSubstrate = timeOptionalFrameStage(frameTiming, "wgsl-source-frontier-pack-candidate-source-inputs", () =>
     buildWgslSourceFrontierCandidateSources({
       frontierSource,
       attributes,
@@ -1890,10 +1909,18 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
       maxRefsPerTile: gpuLiveEffectiveRefsPerTile(plan),
     })
   );
+  const candidateSources = candidateSourceSubstrate.candidateSources;
   const candidateSourceInputs = buildGpuProjectionRetentionCandidateSourceInputs(candidateSources);
   const candidateSourceElection = buildGpuProjectionRetentionCandidateSourceElectionTable(
     frontierSource.candidateSplatIndexes,
     candidateSourceInputs,
+  );
+  const productionElection = timeOptionalFrameStage(frameTiming, "wgsl-source-frontier-production-election-runtime", () =>
+    buildGpuProjectionRetentionCandidateSourceProductionElection({
+      records: candidateSourceSubstrate.projectedCandidateRecords,
+      maxRefsPerTile: gpuLiveEffectiveRefsPerTile(plan),
+      candidateSourceInputs,
+    })
   );
   const tileHeaderBuffer = createTileHeaderStorageBuffer(
     device,
@@ -1935,7 +1962,9 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
   const compactSource = compactRetainedSourceForWgslProjectedSourceFrontier(
     frontierSource,
     compactSourceConstruction,
-    plan
+    plan,
+    candidateSourceSubstrate.projectedCandidateRecords,
+    productionElection,
   );
   const candidateSourceBuffers = createCandidateSourceInputBuffers(
     device,
@@ -1983,6 +2012,7 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     frontierSource,
     plan,
     candidateSourceBuffers.candidateSourceInputs,
+    productionElection,
   );
   const wgslProjectedRefStreamEvidence = buildWgslProjectedRefStreamEvidence(compactSource, null);
 
@@ -2090,15 +2120,49 @@ function compactRetainedSourceForWgslProjectedSourceFrontier(
   frontierSource: WgslProjectedSourceFrontierSource,
   compactSourceConstruction: CompactSourceConstructionEvidence,
   plan: GpuTileCoveragePlan,
+  projectedCandidateRecords: readonly GpuTileContributorArenaProjectedContributor[],
+  productionElection: GpuProjectionRetentionCandidateSourceProductionElection,
 ): CompactRetainedSourceForRuntime {
+  const retainedRecords = [...productionElection.retainedRecords];
+  const projectedContributorCount = projectedCandidateRecords.length;
+  const droppedContributorCount = Math.max(0, projectedContributorCount - retainedRecords.length);
+  const effectiveMaxRefsPerTile = gpuLiveEffectiveRefsPerTile(plan);
+  const projectedCountsByTile = new Uint32Array(Math.max(0, plan.tileCount));
+  const retainedCountsByTile = new Uint32Array(Math.max(0, plan.tileCount));
+  for (const record of projectedCandidateRecords) {
+    if (record.tileIndex < projectedCountsByTile.length) {
+      projectedCountsByTile[record.tileIndex] += 1;
+    }
+  }
+  for (const record of retainedRecords) {
+    if (record.tileIndex < retainedCountsByTile.length) {
+      retainedCountsByTile[record.tileIndex] += 1;
+    }
+  }
+  let cappedTileCount = 0;
+  let saturatedRetainedTileCount = 0;
+  let maxProjectedRefsPerTile = 0;
+  let maxRetainedRefsPerTile = 0;
+  for (let tileIndex = 0; tileIndex < retainedCountsByTile.length; tileIndex += 1) {
+    const projectedCount = projectedCountsByTile[tileIndex] ?? 0;
+    const retainedCount = retainedCountsByTile[tileIndex] ?? 0;
+    maxProjectedRefsPerTile = Math.max(maxProjectedRefsPerTile, projectedCount);
+    maxRetainedRefsPerTile = Math.max(maxRetainedRefsPerTile, retainedCount);
+    if (projectedCount > retainedCount) {
+      cappedTileCount += 1;
+    }
+    if (retainedCount >= effectiveMaxRefsPerTile) {
+      saturatedRetainedTileCount += 1;
+    }
+  }
   return {
-    projectedRecords: [],
-    retainedRecords: [],
+    projectedRecords: projectedCandidateRecords,
+    retainedRecords,
     droppedRecords: [],
     candidateSplatIndexes: frontierSource.candidateSplatIndexes,
-    projectedContributorCount: frontierSource.projectedRefEstimate,
-    retainedContributorCount: 0,
-    droppedContributorCount: 0,
+    projectedContributorCount,
+    retainedContributorCount: retainedRecords.length,
+    droppedContributorCount,
     projectedRefBudgetOverflow: frontierSource.projectedRefEstimate > TILE_LOCAL_PROVISIONAL_MAX_TILE_ENTRIES
       ? {
           projectedRefs: frontierSource.projectedRefEstimate,
@@ -2108,14 +2172,14 @@ function compactRetainedSourceForWgslProjectedSourceFrontier(
       : null,
     compactSourceConstruction,
     tileRefCustody: {
-      projectedTileEntryCount: frontierSource.projectedRefEstimate,
-      retainedTileEntryCount: 0,
-      evictedTileEntryCount: 0,
-      cappedTileCount: 0,
-      saturatedRetainedTileCount: 0,
-      maxProjectedRefsPerTile: gpuLiveEffectiveRefsPerTile(plan),
-      maxRetainedRefsPerTile: 0,
-      headerRefCount: 0,
+      projectedTileEntryCount: projectedContributorCount,
+      retainedTileEntryCount: retainedRecords.length,
+      evictedTileEntryCount: droppedContributorCount,
+      cappedTileCount,
+      saturatedRetainedTileCount,
+      maxProjectedRefsPerTile,
+      maxRetainedRefsPerTile,
+      headerRefCount: retainedRecords.length,
       headerAccountingMatches: true,
     },
     perPixelProjectedContributors: [],
@@ -2143,7 +2207,7 @@ function buildWgslSourceFrontierCandidateSources({
   readonly tileSizePx: number;
   readonly tileColumns: number;
   readonly maxRefsPerTile: number;
-}): GpuProjectionRetentionCandidateSources {
+}): WgslSourceFrontierCandidateSourceSubstrate {
   const buckets = new Map<number, CompactStreamingTileBucket>();
   const { ranks, depths } = compactSourceBackToFrontDepthEvidence(attributes, viewMatrix);
   const splatsByIndex = new Map(frontierSource.splats.map((splat) => [splat.splatIndex, splat]));
@@ -2198,8 +2262,10 @@ function buildWgslSourceFrontierCandidateSources({
   const occlusionRecords: GpuTileContributorArenaProjectedContributor[] = [];
   const supportSampleRecords: GpuTileContributorArenaProjectedContributor[] = [];
   const supportSampleRecordGroups: (readonly GpuTileContributorArenaProjectedContributor[])[] = [];
+  const projectedCandidateRecords: GpuTileContributorArenaProjectedContributor[] = [];
 
   for (const bucket of buckets.values()) {
+    projectedCandidateRecords.push(...compactMergedTileCandidateRecords(bucket).sort(compareCompactProjectionRetentionCoverageOrder));
     coverageRecords.push(...bucket.coverageRecords.records);
     retentionRecords.push(...bucket.retentionRecords.records);
     occlusionRecords.push(...bucket.occlusionRecords.records);
@@ -2208,11 +2274,14 @@ function buildWgslSourceFrontierCandidateSources({
   }
 
   return {
-    coverageRecords,
-    retentionRecords,
-    occlusionRecords,
-    supportSampleRecords,
-    supportSampleRecordGroups,
+    candidateSources: {
+      coverageRecords,
+      retentionRecords,
+      occlusionRecords,
+      supportSampleRecords,
+      supportSampleRecordGroups,
+    },
+    projectedCandidateRecords,
   };
 }
 
@@ -2841,6 +2910,7 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
   frontierSource: WgslProjectedSourceFrontierSource,
   plan: GpuTileCoveragePlan,
   candidateSourceInputs: GpuProjectionRetentionCandidateSourceInputs,
+  productionElection: GpuProjectionRetentionCandidateSourceProductionElection,
 ): RetainedSourceConstructionEvidence {
   const compactSourceStreamRetentionBlockedStage = "compact-source-stream-retention";
   return {
@@ -2867,26 +2937,50 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
       "wgsl-source-frontier-retained-row-prefix-scatter",
       "tile-local-visible-gaussian-compositor",
     ],
-    nextGpuOffloadStage: "live-wgsl-production-candidate-source-election",
+    nextGpuOffloadStage: "live-wgsl-production-election-prefix-scatter",
     accountingSource: "gpu-ref-stats-readback-pending",
     projectedRefs: frontierSource.projectedRefEstimate,
-    retainedRefs: 0,
-    droppedRefs: 0,
+    retainedRefs: productionElection.retainedRecords.length,
+    droppedRefs: Math.max(0, frontierSource.projectedRefEstimate - productionElection.retainedRecords.length),
     retainedBudgetRefs: plan.maxTileRefs,
     maxRefsPerTile: gpuLiveEffectiveRefsPerTile(plan),
     retainedRows: pendingWgslSourceFrontierRetainedRowsEvidence(plan),
-    candidateSourceIdentity: sourceFrontierCandidateSourceIdentityEvidence(candidateSourceInputs),
+    candidateSourceIdentity: sourceFrontierCandidateSourceIdentityEvidence(candidateSourceInputs, productionElection),
     frontierBlockedStages: [
       compactSourceStreamRetentionBlockedStage,
       "compact-source-pixel-traces",
-      "live-wgsl-production-candidate-source-election",
+      "live-wgsl-production-election-prefix-scatter",
     ],
   };
 }
 
 function sourceFrontierCandidateSourceIdentityEvidence(
   candidateSourceInputs?: GpuProjectionRetentionCandidateSourceInputs,
+  productionElection?: GpuProjectionRetentionCandidateSourceProductionElection,
 ): SourceFrontierCandidateSourceIdentityEvidence {
+  if (candidateSourceInputs && productionElection && candidateSourceInputs.recordCount > 0) {
+    return {
+      status: "production-election-contract-consumed",
+      source: "wgsl-source-frontier-candidate-source-identity-contract",
+      availableIdentity: "record-group-production-election-contract",
+      consumptionPath: "candidate-source-record-group-production-election-contract",
+      requiredWgslInputs: ["live-wgsl-production-election-prefix-scatter"],
+      presentWgslInputs: [
+        "retention-candidate-records",
+        "occlusion-candidate-records",
+        "coverage-candidate-records",
+        "support-sample-record-groups",
+        "projected-contributor-score-table",
+      ],
+      sourceInputConsumption: productionElection.sourceInputConsumption,
+      recordCount: productionElection.recordCount,
+      groupCount: productionElection.groupCount,
+      retainedRecordCount: productionElection.retainedRecords.length,
+      crossPoolDuplicateSuppressedCount: productionElection.crossPoolDuplicateSuppressedCount,
+      classesPresent: candidateSourceInputs.classesPresent,
+      falseClosureGuard: "packed-production-election-contract-is-not-live-wgsl-compositor-consumption",
+    };
+  }
   if (candidateSourceInputs && candidateSourceInputs.recordCount > 0) {
     return {
       status: "record-group-election-sidecar-consumed",
@@ -3158,7 +3252,7 @@ function refreshWgslSourceFrontierRetainedRowsEvidence(
     state.retainedSourceConstruction = {
       ...retainedSourceConstruction,
       retainedRows: retainedRowsReadback,
-      nextGpuOffloadStage: "live-wgsl-production-candidate-source-election",
+      nextGpuOffloadStage: "live-wgsl-production-election-prefix-scatter",
     };
     return;
   }
@@ -3169,7 +3263,7 @@ function refreshWgslSourceFrontierRetainedRowsEvidence(
     droppedRefs: retainedRowsReadback.droppedRows,
     retainedBudgetRefs: retainedRowsReadback.retainedBudgetRefs,
     maxRefsPerTile: retainedRowsReadback.maxRefsPerTile,
-    nextGpuOffloadStage: "live-wgsl-production-candidate-source-election",
+    nextGpuOffloadStage: "live-wgsl-production-election-prefix-scatter",
   };
 }
 
