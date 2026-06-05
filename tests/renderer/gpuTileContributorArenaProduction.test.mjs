@@ -358,19 +358,16 @@ test("WGSL source-frontier witness names missing production pool seats without c
   assert.ok(witness.productionRetainedIds.some((id) => id >= 100 && id < 200));
   assert.ok(witness.productionRetainedIds.some((id) => id >= 300 && id < 400));
   assert.deepEqual(witness.missingStructures, [
-    "candidate-source-pool-identity",
+    "candidate-source-record-group-election",
     "cross-pool-duplicate-suppression",
   ]);
-  assert.equal(witness.candidateSourceIdentityStatus, "blocked-missing-wgsl-candidate-source-inputs");
-  assert.equal(witness.wgslAvailableIdentity, "selected-slot-pool-only");
+  assert.equal(witness.candidateSourceIdentityStatus, "class-mask-consumed-record-groups-not-yet-consumed");
+  assert.equal(witness.wgslAvailableIdentity, "class-tagged-source-index-table");
   assert.deepEqual(witness.requiredWgslCandidateSourceInputs, [
-    "retention-candidate-records",
-    "occlusion-candidate-records",
-    "coverage-candidate-records",
-    "support-sample-record-groups",
+    "candidate-source-record-group-election-consumer",
   ]);
   assert.equal(witness.falseClosureGuard, "source-frontier-score-witness-is-not-production-pool-seat-election");
-  assert.equal(witness.nextGpuOffloadStage, "production-candidate-source-pool-identity");
+  assert.equal(witness.nextGpuOffloadStage, "production-candidate-source-election-consumption");
 });
 
 test("WGSL source-frontier retention election uses bounded priority and support pool slots", () => {

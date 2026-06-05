@@ -399,12 +399,20 @@ export interface WgslSourceFrontierProductionPoolSeatGapWitness {
   readonly status: "structural-gap" | "not-cap-pressured";
   readonly wgslElectionShape: "bounded-priority-support-pool-slot-competition";
   readonly productionElectionShape: "round-robin-priority-pools-plus-support-quota";
-  readonly candidateSourceIdentityStatus: "blocked-missing-wgsl-candidate-source-inputs" | "not-needed-without-cap-pressure";
-  readonly wgslAvailableIdentity: "selected-slot-pool-only" | "all-projected-sources-retained";
+  readonly candidateSourceIdentityStatus:
+    | "blocked-missing-wgsl-candidate-source-inputs"
+    | "class-mask-consumed-record-groups-not-yet-consumed"
+    | "not-needed-without-cap-pressure";
+  readonly wgslAvailableIdentity:
+    | "selected-slot-pool-only"
+    | "class-tagged-source-index-table"
+    | "all-projected-sources-retained";
   readonly requiredWgslCandidateSourceInputs: readonly string[];
   readonly missingStructures: readonly string[];
   readonly falseClosureGuard: "source-frontier-score-witness-is-not-production-pool-seat-election";
-  readonly nextGpuOffloadStage: "production-candidate-source-pool-identity";
+  readonly nextGpuOffloadStage:
+    | "production-candidate-source-pool-identity"
+    | "production-candidate-source-election-consumption";
   readonly projectedCount: number;
   readonly maxRefsPerTile: number;
   readonly supportTarget: number;
@@ -668,39 +676,60 @@ export function inspectWgslSourceFrontierProductionPoolSeatGap(
 ): WgslSourceFrontierProductionPoolSeatGapWitness {
   const maxRefsPerTile = assertPositiveInteger(input.maxRefsPerTile, "source-frontier pool-seat witness max refs per tile");
   const records = input.records.map(validateProjectedContributor);
+  const isCapPressured = records.length > maxRefsPerTile;
+  const candidateSourceClassMasks = buildGpuProjectionRetentionCandidateSourceClassMasks(
+    records.map((record) => record.splatIndex),
+    input.candidateSources,
+  );
+  const hasClassTaggedCandidateSourceIdentity = isCapPressured && candidateSourceClassMasks.some((mask) => mask !== 0);
   const supportGroups = gpuProjectionRetentionSupportSampleGroups(records, input.candidateSources);
-  const supportTarget = records.length > maxRefsPerTile && supportGroups.length > 0
+  const supportTarget = isCapPressured && supportGroups.length > 0
     ? Math.max(1, Math.floor(maxRefsPerTile * 0.25))
     : 0;
   const priorityTarget = maxRefsPerTile - supportTarget;
   const productionRetained = selectGpuProjectionRetentionRecords(records, maxRefsPerTile, input.candidateSources);
+  const requiredWgslCandidateSourceInputs = isCapPressured
+    ? (hasClassTaggedCandidateSourceIdentity
+        ? ["candidate-source-record-group-election-consumer"]
+        : [
+            "retention-candidate-records",
+            "occlusion-candidate-records",
+            "coverage-candidate-records",
+            "support-sample-record-groups",
+          ])
+    : [];
+  const missingStructures = isCapPressured
+    ? (hasClassTaggedCandidateSourceIdentity
+        ? [
+            "candidate-source-record-group-election",
+            "cross-pool-duplicate-suppression",
+          ]
+        : [
+            "candidate-source-pool-identity",
+            "cross-pool-duplicate-suppression",
+          ])
+    : [];
 
   return {
-    status: records.length > maxRefsPerTile ? "structural-gap" : "not-cap-pressured",
+    status: isCapPressured ? "structural-gap" : "not-cap-pressured",
     wgslElectionShape: "bounded-priority-support-pool-slot-competition",
     productionElectionShape: "round-robin-priority-pools-plus-support-quota",
-    candidateSourceIdentityStatus: records.length > maxRefsPerTile
-      ? "blocked-missing-wgsl-candidate-source-inputs"
+    candidateSourceIdentityStatus: isCapPressured
+      ? (hasClassTaggedCandidateSourceIdentity
+          ? "class-mask-consumed-record-groups-not-yet-consumed"
+          : "blocked-missing-wgsl-candidate-source-inputs")
       : "not-needed-without-cap-pressure",
-    wgslAvailableIdentity: records.length > maxRefsPerTile
-      ? "selected-slot-pool-only"
+    wgslAvailableIdentity: isCapPressured
+      ? (hasClassTaggedCandidateSourceIdentity
+          ? "class-tagged-source-index-table"
+          : "selected-slot-pool-only")
       : "all-projected-sources-retained",
-    requiredWgslCandidateSourceInputs: records.length > maxRefsPerTile
-      ? [
-          "retention-candidate-records",
-          "occlusion-candidate-records",
-          "coverage-candidate-records",
-          "support-sample-record-groups",
-        ]
-      : [],
-    missingStructures: records.length > maxRefsPerTile
-      ? [
-          "candidate-source-pool-identity",
-          "cross-pool-duplicate-suppression",
-        ]
-      : [],
+    requiredWgslCandidateSourceInputs,
+    missingStructures,
     falseClosureGuard: "source-frontier-score-witness-is-not-production-pool-seat-election",
-    nextGpuOffloadStage: "production-candidate-source-pool-identity",
+    nextGpuOffloadStage: hasClassTaggedCandidateSourceIdentity
+      ? "production-candidate-source-election-consumption"
+      : "production-candidate-source-pool-identity",
     projectedCount: records.length,
     maxRefsPerTile,
     supportTarget,
