@@ -947,28 +947,59 @@ async function captureTimeoutFailure({ page, canvas, options, capture, clip, rep
 
 async function waitForVisualSmokeCaptureReady(page, expectedRendererLabel, timeoutMs, readiness = {}) {
   const startedAt = Date.now();
+  let pollCount = 0;
+  const readinessPolls = [];
   let lastEvidence = {};
   while (Date.now() - startedAt < timeoutMs) {
     let rawEvidence;
+    const pollStartedAt = Date.now();
     try {
       rawEvidence = await collectPageEvidenceWithTimeout(page, timeoutMs);
     } catch (evidenceError) {
+      const pollDurationMs = Date.now() - pollStartedAt;
+      pollCount++;
+      const readinessDiagnostics = {
+        ready: false,
+        blockers: ["page-evidence-collection-error"],
+        pollCount,
+        pollDurationMs,
+        elapsedMs: Date.now() - startedAt,
+        evidenceCollectionError: evidenceError.message,
+      };
+      readinessPolls.push(readinessDiagnostics);
       lastEvidence = {
         ...lastEvidence,
         evidenceCollectionError: evidenceError.message,
+        readinessDiagnostics: {
+          ...readinessDiagnostics,
+          ...summarizeReadinessPollHistory(readinessPolls),
+        },
       };
       await page.waitForTimeout(100);
       continue;
     }
+    const pollDurationMs = Date.now() - pollStartedAt;
+    pollCount++;
     lastEvidence = {
       ...rawEvidence,
       ...extractTileLocalPageMetrics(rawEvidence),
     };
-    if (
-      isVisualSmokeCaptureReady(lastEvidence, { expectedRendererLabel }) &&
-      operatorWitnessReadinessMatches(lastEvidence, readiness.operatorWitness) &&
-      tileLocalDiagnosticsReadinessMatches(lastEvidence, readiness.tileLocalDiagnostics)
-    ) {
+    const readinessDiagnostics = describeVisualSmokeReadiness(lastEvidence, {
+      expectedRendererLabel,
+      readiness,
+      pollCount,
+      pollDurationMs,
+      elapsedMs: Date.now() - startedAt,
+    });
+    readinessPolls.push(readinessDiagnostics);
+    lastEvidence = {
+      ...lastEvidence,
+      readinessDiagnostics: {
+        ...readinessDiagnostics,
+        ...summarizeReadinessPollHistory(readinessPolls),
+      },
+    };
+    if (readinessDiagnostics.ready) {
       return lastEvidence;
     }
     await page.waitForTimeout(100);
@@ -981,29 +1012,83 @@ async function waitForVisualSmokeCaptureReady(page, expectedRendererLabel, timeo
   );
   error.name = "VisualSmokeTimeoutError";
   error.lastEvidence = lastEvidence;
+  error.readinessDiagnostics = lastEvidence.readinessDiagnostics;
   error.elapsedMs = Date.now() - startedAt;
   throw error;
 }
 
+function describeVisualSmokeReadiness(pageEvidence, { expectedRendererLabel, readiness = {}, pollCount = 0, pollDurationMs = 0, elapsedMs = 0 } = {}) {
+  const operatorWitnessBlockers = operatorWitnessReadinessBlockers(pageEvidence, readiness.operatorWitness);
+  const tileLocalBlockers = tileLocalDiagnosticsReadinessBlockers(pageEvidence, readiness.tileLocalDiagnostics);
+  const visualSmokeReady = isVisualSmokeCaptureReady(pageEvidence, { expectedRendererLabel });
+  const blockers = [
+    ...(visualSmokeReady ? [] : ["visual-smoke-not-ready"]),
+    ...operatorWitnessBlockers,
+    ...tileLocalBlockers,
+  ];
+  const tileLocal = pageEvidence.tileLocal && typeof pageEvidence.tileLocal === "object"
+    ? pageEvidence.tileLocal
+    : {};
+  const diagnostics = tileLocal.diagnostics && typeof tileLocal.diagnostics === "object"
+    ? tileLocal.diagnostics
+    : pageEvidence.tileLocalDiagnostics && typeof pageEvidence.tileLocalDiagnostics === "object"
+      ? pageEvidence.tileLocalDiagnostics
+      : undefined;
+  const witness = pageEvidence.operatorWitness && typeof pageEvidence.operatorWitness === "object"
+    ? pageEvidence.operatorWitness
+    : {};
+  return {
+    ready: blockers.length === 0,
+    blockers,
+    pollCount,
+    pollDurationMs,
+    elapsedMs,
+    expectedRendererLabel: expectedRendererLabel ?? "",
+    rendererLabel: pageEvidence.rendererLabel ?? pageEvidence.tileLocal?.rendererLabel ?? "",
+    operatorWitness: {
+      witnessView: witness.witnessView ?? "",
+      revision: finiteNumber(witness.revision) ?? 0,
+      expectedWitnessView: readiness.operatorWitness?.witnessView ?? "",
+      minRevision: finiteNumber(readiness.operatorWitness?.minRevision) ?? 0,
+    },
+    tileLocal: {
+      hasDiagnostics: Boolean(diagnostics),
+      retainedRefs: diagnostics ? tileLocalRetainedRefs(pageEvidence, diagnostics) : 0,
+      debugMode: diagnostics?.debugMode ?? "",
+      requiredDebugMode: readiness.tileLocalDiagnostics?.debugMode ?? "",
+    },
+  };
+}
+
 function operatorWitnessReadinessMatches(pageEvidence, expectation) {
+  return operatorWitnessReadinessBlockers(pageEvidence, expectation).length === 0;
+}
+
+function operatorWitnessReadinessBlockers(pageEvidence, expectation) {
+  const blockers = [];
   if (!expectation) {
-    return true;
+    return blockers;
   }
   const witness = pageEvidence.operatorWitness && typeof pageEvidence.operatorWitness === "object"
     ? pageEvidence.operatorWitness
     : {};
   if (expectation.witnessView && witness.witnessView !== expectation.witnessView) {
-    return false;
+    blockers.push("operator-witness-view-mismatch");
   }
   if (Number.isFinite(expectation.minRevision) && !(Number(witness.revision) >= expectation.minRevision)) {
-    return false;
+    blockers.push("operator-witness-revision-pending");
   }
-  return true;
+  return blockers;
 }
 
 function tileLocalDiagnosticsReadinessMatches(pageEvidence, expectation) {
+  return tileLocalDiagnosticsReadinessBlockers(pageEvidence, expectation).length === 0;
+}
+
+function tileLocalDiagnosticsReadinessBlockers(pageEvidence, expectation) {
+  const blockers = [];
   if (!expectation) {
-    return true;
+    return blockers;
   }
   const tileLocal = pageEvidence.tileLocal && typeof pageEvidence.tileLocal === "object"
     ? pageEvidence.tileLocal
@@ -1014,22 +1099,22 @@ function tileLocalDiagnosticsReadinessMatches(pageEvidence, expectation) {
       ? pageEvidence.tileLocalDiagnostics
       : undefined;
   if (!diagnostics) {
-    return false;
+    return ["tile-local-diagnostics-missing"];
   }
   if (expectation.debugMode && diagnostics.debugMode !== expectation.debugMode) {
-    return false;
+    blockers.push("tile-local-debug-mode-mismatch");
   }
   if (expectation.requireTileRefs && tileLocalRetainedRefs(pageEvidence, diagnostics) <= 0) {
-    return false;
+    blockers.push("tile-local-retained-refs-missing");
   }
   if (expectation.requireDiagnostics && Object.keys(diagnostics).length <= 0) {
-    return false;
+    blockers.push("tile-local-diagnostics-empty");
   }
   if (expectation.requireAlpha && positiveNumber(diagnostics.alpha?.estimatedMaxAccumulatedAlpha) === undefined) {
-    return false;
+    blockers.push("tile-local-alpha-missing");
   }
   if (expectation.requireTransmittance && finiteNumber(diagnostics.alpha?.estimatedMinTransmittance) === undefined) {
-    return false;
+    blockers.push("tile-local-transmittance-missing");
   }
   if (
     expectation.requireRefDensity &&
@@ -1038,12 +1123,51 @@ function tileLocalDiagnosticsReadinessMatches(pageEvidence, expectation) {
       positiveNumber(diagnostics.tileRefs?.maxPerTile) === undefined
     )
   ) {
-    return false;
+    blockers.push("tile-local-ref-density-missing");
   }
   if (expectation.requireConicShape && positiveNumber(diagnostics.conicShape?.maxMajorRadiusPx) === undefined) {
-    return false;
+    blockers.push("tile-local-conic-shape-missing");
   }
-  return true;
+  return blockers;
+}
+
+function summarizeReadinessPollHistory(readinessPolls) {
+  const polls = Array.isArray(readinessPolls) ? readinessPolls : [];
+  const failedPolls = polls.filter((poll) => !poll.ready);
+  const lastFailedPoll = failedPolls.at(-1);
+  const slowestPoll = polls.reduce((slowest, poll) => {
+    const pollDurationMs = finiteNumber(poll.pollDurationMs) ?? 0;
+    const slowestDurationMs = finiteNumber(slowest?.pollDurationMs) ?? -1;
+    return pollDurationMs > slowestDurationMs ? poll : slowest;
+  }, undefined);
+  return {
+    failedPolls: failedPolls.length,
+    slowestPoll: slowestPoll
+      ? {
+        pollCount: slowestPoll.pollCount,
+        pollDurationMs: slowestPoll.pollDurationMs,
+        elapsedMs: slowestPoll.elapsedMs,
+        ready: Boolean(slowestPoll.ready),
+        blockers: Array.isArray(slowestPoll.blockers) ? slowestPoll.blockers : [],
+      }
+      : undefined,
+    lastFailedPoll: lastFailedPoll
+      ? {
+        pollCount: lastFailedPoll.pollCount,
+        pollDurationMs: lastFailedPoll.pollDurationMs,
+        elapsedMs: lastFailedPoll.elapsedMs,
+        blockers: Array.isArray(lastFailedPoll.blockers) ? lastFailedPoll.blockers : [],
+      }
+      : undefined,
+    lastFailedBlockers: Array.isArray(lastFailedPoll?.blockers) ? lastFailedPoll.blockers : [],
+    pollHistory: polls.slice(-5).map((poll) => ({
+      pollCount: poll.pollCount,
+      pollDurationMs: poll.pollDurationMs,
+      elapsedMs: poll.elapsedMs,
+      ready: Boolean(poll.ready),
+      blockers: Array.isArray(poll.blockers) ? poll.blockers : [],
+    })),
+  };
 }
 
 function tileLocalRetainedRefs(pageEvidence, diagnostics) {
@@ -1580,6 +1704,7 @@ ${result.captures
 - Real splat evidence: ${capture.classification.realSplatEvidence}
 - Changed pixels: ${capture.imageAnalysis.changedPixels} / ${capture.imageAnalysis.totalPixels} (${formatPercent(capture.imageAnalysis.changedPixelRatio)})
 - Total capture ms: ${capture.timing?.totalMs ?? "not reported"}
+- Readiness diagnostics: ${formatReadinessDiagnostics(capture.pageEvidence.readinessDiagnostics)}
 `
   )
   .join("\n")}
@@ -1758,6 +1883,22 @@ function formatOperatorReadinessComparison(comparison = {}) {
     return `${comparison.status} (${comparison.readinessMs}ms readiness)`;
   }
   return comparison.status;
+}
+
+function formatReadinessDiagnostics(diagnostics) {
+  if (!diagnostics || typeof diagnostics !== "object") {
+    return "not reported";
+  }
+  const blockers = Array.isArray(diagnostics.blockers) && diagnostics.blockers.length > 0
+    ? diagnostics.blockers.join(",")
+    : "none";
+  const lastFailed = Array.isArray(diagnostics.lastFailedBlockers) && diagnostics.lastFailedBlockers.length > 0
+    ? diagnostics.lastFailedBlockers.join(",")
+    : "none";
+  const slowestPoll = diagnostics.slowestPoll && typeof diagnostics.slowestPoll === "object"
+    ? `${diagnostics.slowestPoll.pollDurationMs ?? "not reported"}ms@${diagnostics.slowestPoll.pollCount ?? "?"}`
+    : "not reported";
+  return `ready=${Boolean(diagnostics.ready)} polls=${diagnostics.pollCount ?? "not reported"} failed=${diagnostics.failedPolls ?? "not reported"} elapsed=${diagnostics.elapsedMs ?? "not reported"}ms slowestPoll=${slowestPoll} blockers=${blockers} lastFailed=${lastFailed}`;
 }
 
 function printSummary(result) {

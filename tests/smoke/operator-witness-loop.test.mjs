@@ -591,6 +591,60 @@ test("operator witness readiness polling uses the capture timeout instead of the
   assert.match(waitSource, /collectPageEvidenceWithTimeout\(page, timeoutMs\)/);
 });
 
+test("operator witness readiness polling records poll diagnostics on returned evidence", () => {
+  const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
+  const waitStart = source.indexOf("async function waitForVisualSmokeCaptureReady");
+  const waitEnd = source.indexOf("function describeVisualSmokeReadiness", waitStart);
+  const waitSource = source.slice(waitStart, waitEnd);
+
+  assert.match(waitSource, /let pollCount = 0/);
+  assert.match(waitSource, /const readinessPolls = \[\]/);
+  assert.match(waitSource, /pollCount\+\+/);
+  assert.match(waitSource, /const pollStartedAt = Date\.now\(\)/);
+  assert.match(waitSource, /pollDurationMs/);
+  assert.match(waitSource, /describeVisualSmokeReadiness\(lastEvidence,\s*\{/);
+  assert.match(waitSource, /readinessPolls\.push/);
+  assert.match(waitSource, /summarizeReadinessPollHistory\(readinessPolls\)/);
+  assert.match(waitSource, /readinessDiagnostics/);
+  assert.match(waitSource, /return lastEvidence/);
+  assert.match(waitSource, /error\.readinessDiagnostics = lastEvidence\.readinessDiagnostics/);
+});
+
+test("operator witness readiness diagnostics name blocker classes", () => {
+  const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
+  const helperStart = source.indexOf("function describeVisualSmokeReadiness");
+  const helperEnd = source.indexOf("function tileLocalRetainedRefs", helperStart);
+  const helperSource = source.slice(helperStart, helperEnd);
+
+  assert.match(helperSource, /visual-smoke-not-ready/);
+  assert.match(helperSource, /operator-witness-view-mismatch/);
+  assert.match(helperSource, /operator-witness-revision-pending/);
+  assert.match(helperSource, /tile-local-diagnostics-missing/);
+  assert.match(helperSource, /tile-local-retained-refs-missing/);
+  assert.match(helperSource, /tile-local-ref-density-missing/);
+  assert.match(helperSource, /pollCount/);
+  assert.match(helperSource, /elapsedMs/);
+  assert.match(helperSource, /failedPolls/);
+  assert.match(helperSource, /lastFailedBlockers/);
+  assert.match(helperSource, /slowestPoll/);
+});
+
+test("operator witness report renders readiness diagnostics per capture", () => {
+  const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
+  const reportStart = source.indexOf("function renderOperatorWitnessLoopReport");
+  const reportEnd = source.indexOf("function renderGpuLiveParityMugshotReport", reportStart);
+  const reportSource = source.slice(reportStart, reportEnd);
+  const formatterStart = source.indexOf("function formatReadinessDiagnostics");
+  const formatterEnd = source.indexOf("function printSummary", formatterStart);
+  const formatterSource = source.slice(formatterStart, formatterEnd);
+
+  assert.match(reportSource, /Readiness diagnostics:/);
+  assert.match(reportSource, /formatReadinessDiagnostics\(capture\.pageEvidence\.readinessDiagnostics\)/);
+  assert.match(formatterSource, /failed=/);
+  assert.match(formatterSource, /lastFailed=/);
+  assert.match(formatterSource, /slowestPoll=/);
+});
+
 test("operator witness frame refreshes settled evidence after readiness and settle wait", () => {
   const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
   const frameStart = source.indexOf("async function captureOperatorWitnessFrame");
