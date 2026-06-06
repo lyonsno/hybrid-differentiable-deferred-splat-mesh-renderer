@@ -2311,6 +2311,10 @@ function compactRetainedSourceForWgslProjectedSourceFrontier(
   productionElection: GpuProjectionRetentionCandidateSourceProductionElection,
 ): CompactRetainedSourceForRuntime {
   const retainedRecords = [...productionElection.retainedRecords].sort(compareCompactProjectionRetentionCompositorOrder);
+  const retainedRecordKeys = new Set(retainedRecords.map(runtimeCompactSourceRecordKey));
+  const droppedRecords = projectedCandidateRecords.filter((record) =>
+    !retainedRecordKeys.has(runtimeCompactSourceRecordKey(record))
+  );
   const projectedContributorCount = projectedCandidateRecords.length;
   const droppedContributorCount = Math.max(0, projectedContributorCount - retainedRecords.length);
   const effectiveMaxRefsPerTile = gpuLiveEffectiveRefsPerTile(plan);
@@ -2345,7 +2349,7 @@ function compactRetainedSourceForWgslProjectedSourceFrontier(
   return {
     projectedRecords: projectedCandidateRecords,
     retainedRecords,
-    droppedRecords: [],
+    droppedRecords,
     candidateSplatIndexes: frontierSource.candidateSplatIndexes,
     projectedContributorCount,
     retainedContributorCount: retainedRecords.length,
@@ -2372,6 +2376,14 @@ function compactRetainedSourceForWgslProjectedSourceFrontier(
     perPixelProjectedContributors: [],
     perPixelRetainedContributors: [],
   };
+}
+
+function runtimeCompactSourceRecordKey(contributor: GpuTileContributorArenaProjectedContributor): bigint {
+  return (
+    (BigInt(contributor.tileIndex) << 128n) |
+    (BigInt(contributor.splatIndex) << 64n) |
+    BigInt(contributor.originalId)
+  );
 }
 
 function buildWgslSourceFrontierCandidateSources({

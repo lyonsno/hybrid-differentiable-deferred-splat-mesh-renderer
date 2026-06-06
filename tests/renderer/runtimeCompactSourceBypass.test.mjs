@@ -61,6 +61,30 @@ test("requested GPU arena runtime routes presentation through compact retained s
   assert.doesNotMatch(gpuFactorySource, /estimatedGpuLiveBudgetDiagnostics/);
 });
 
+test("production-election compact source preserves dropped records beside counts", () => {
+  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const productionCompactSource = extractFunctionSource(
+    mainSource,
+    "compactRetainedSourceForWgslProjectedSourceFrontier",
+  );
+
+  assert.match(
+    productionCompactSource,
+    /const\s+retainedRecordKeys\s*=\s*new Set\(retainedRecords\.map\(runtimeCompactSourceRecordKey\)\)/,
+    "production-election compact source must key retained records before computing dropped rows",
+  );
+  assert.match(
+    productionCompactSource,
+    /const\s+droppedRecords\s*=\s*projectedCandidateRecords\.filter\(\(record\)\s*=>\s*!retainedRecordKeys\.has\(runtimeCompactSourceRecordKey\(record\)\)\s*\)/,
+    "droppedRecords must be the projected records not retained, not an empty placeholder",
+  );
+  assert.doesNotMatch(
+    productionCompactSource,
+    /droppedRecords:\s*\[\]/,
+    "a populated droppedContributorCount must not be paired with an empty droppedRecords list",
+  );
+});
+
 test("CPU reference compact source preserves projected overflow diagnostics for retained handoff", () => {
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const compactSourceStart = mainSource.indexOf("function buildCompactRetainedSourceForRuntime");
