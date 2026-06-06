@@ -52,6 +52,10 @@ import {
   projectGpuArenaToLegacyCompositorBuffers,
   type GpuTileContributorArenaRuntime,
 } from "./gpuTileContributorArenaRuntime.js";
+import {
+  createGpuProductionElectionConsumerContract,
+  type GpuProductionElectionConsumerContract,
+} from "./gpuProductionElectionConsumer.js";
 import { adaptGpuArenaRetainedContributors } from "./gpuArenaRetainedListAdapter.js";
 import {
   createGpuTileCoveragePipelineSkeleton,
@@ -236,6 +240,7 @@ interface TileLocalSceneState {
   alphaParamBuffer: GPUBuffer;
   candidateSourceRecordsBuffer?: GPUBuffer;
   candidateSourceGroupsBuffer?: GPUBuffer;
+  productionElectionComputeConsumer?: GpuProductionElectionConsumerContract;
   alphaParamData: Float32Array;
   candidateSourceInputs?: GpuProjectionRetentionCandidateSourceInputs;
   sourceViewDepths: Float32Array;
@@ -684,8 +689,11 @@ interface SourceFrontierCandidateSourceRuntimeBufferEvidence {
 }
 
 interface SourceFrontierProductionElectionConsumerEvidence {
-  readonly status: "narrow-consumer-contract-present" | "blocked-missing-production-election-consumer-input";
-  readonly source: "wgsl-source-frontier-production-election-consumer";
+  readonly status:
+    | "narrow-consumer-contract-present"
+    | "compute-consumer-contract-present"
+    | "blocked-missing-production-election-consumer-input";
+  readonly source: "wgsl-source-frontier-production-election-consumer" | "wgsl-production-election-compute-consumer";
   readonly productionElectionStatus?: "production-election-contract-consumed";
   readonly runtimeBufferSource:
     | "candidate-source-runtime-state-buffers"
@@ -695,14 +703,18 @@ interface SourceFrontierProductionElectionConsumerEvidence {
   readonly retainedRecordCount: number;
   readonly crossPoolDuplicateSuppressedCount: number;
   readonly sourceInputConsumption: readonly string[];
+  readonly consumedRuntimeBuffers?: readonly string[];
+  readonly outputWitness?: "production-election-consumer-witness-buffer";
   readonly currentCompositorBinding:
     | "forbidden-current-compositor-bind-group-full"
     | "blocked-missing-production-election-consumer-input";
   readonly nextConsumerBoundary:
     | "wgsl-production-election-compute-consumer"
+    | "wgsl-production-election-prefix-scatter"
     | "candidate-source-runtime-buffer-allocation";
   readonly falseClosureGuard:
     | "production-election-consumer-contract-is-not-current-compositor-bind-group-consumption"
+    | "wgsl-production-election-compute-consumer-is-not-current-compositor-bind-group-consumption"
     | "missing-production-election-consumer-input-blocks-narrow-consumer-claim";
 }
 
@@ -2020,6 +2032,12 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     "wgsl_source_frontier",
     candidateSourceInputs,
   );
+  const productionElectionComputeConsumer = createGpuProductionElectionConsumerContract({
+    device,
+    candidateSourceRecordsBuffer: candidateSourceBuffers.candidateSourceRecordsBuffer,
+    candidateSourceGroupsBuffer: candidateSourceBuffers.candidateSourceGroupsBuffer,
+    productionElection,
+  });
   const candidateSourceRuntimeBuffersEvidence = sourceFrontierCandidateSourceRuntimeBufferEvidence(candidateSourceBuffers);
   const bindGroup = pipeline.createBindGroup({
     frameUniformBuffer,
@@ -2063,6 +2081,7 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     candidateSourceBuffers.candidateSourceInputs,
     productionElection,
     candidateSourceRuntimeBuffersEvidence,
+    productionElectionComputeConsumer,
   );
   const wgslProjectedRefStreamEvidence = buildWgslProjectedRefStreamEvidence(compactSource, null);
 
@@ -2086,6 +2105,7 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     alphaParamBuffer,
     candidateSourceRecordsBuffer: candidateSourceBuffers.candidateSourceRecordsBuffer,
     candidateSourceGroupsBuffer: candidateSourceBuffers.candidateSourceGroupsBuffer,
+    productionElectionComputeConsumer,
     alphaParamData,
     candidateSourceInputs: candidateSourceBuffers.candidateSourceInputs,
     sourceViewDepths: sourceDepthEvidence.depths,
@@ -2962,6 +2982,7 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
   candidateSourceInputs: GpuProjectionRetentionCandidateSourceInputs,
   productionElection: GpuProjectionRetentionCandidateSourceProductionElection,
   candidateSourceRuntimeBuffersEvidence: SourceFrontierCandidateSourceRuntimeBufferEvidence,
+  productionElectionComputeConsumer: GpuProductionElectionConsumerContract | undefined,
 ): RetainedSourceConstructionEvidence {
   const compactSourceStreamRetentionBlockedStage = "compact-source-stream-retention";
   return {
@@ -2985,6 +3006,7 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
       "wgsl-source-frontier-bounded-pool-seat-election",
       "wgsl-source-frontier-candidate-source-input-buffers",
       "wgsl-source-frontier-production-election-consumer",
+      "wgsl-production-election-compute-consumer",
       "wgsl-source-frontier-depth-bucket-compositor-order",
       "wgsl-source-frontier-retained-row-prefix-scatter",
       "tile-local-visible-gaussian-compositor",
@@ -3002,6 +3024,7 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
     productionElectionConsumer: sourceFrontierProductionElectionConsumerEvidence(
       productionElection,
       candidateSourceRuntimeBuffersEvidence,
+      productionElectionComputeConsumer,
     ),
     frontierBlockedStages: [
       compactSourceStreamRetentionBlockedStage,
@@ -3014,7 +3037,31 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
 function sourceFrontierProductionElectionConsumerEvidence(
   productionElection: GpuProjectionRetentionCandidateSourceProductionElection | undefined,
   runtimeBuffers: SourceFrontierCandidateSourceRuntimeBufferEvidence,
+  productionElectionComputeConsumer?: GpuProductionElectionConsumerContract,
 ): SourceFrontierProductionElectionConsumerEvidence {
+  if (
+    productionElection &&
+    runtimeBuffers.status === "runtime-state-buffers-present" &&
+    productionElectionComputeConsumer
+  ) {
+    return {
+      status: productionElectionComputeConsumer.status,
+      source: productionElectionComputeConsumer.source,
+      productionElectionStatus: productionElection.status,
+      runtimeBufferSource: "candidate-source-runtime-state-buffers",
+      recordCount: productionElectionComputeConsumer.recordCount,
+      groupCount: productionElectionComputeConsumer.groupCount,
+      retainedRecordCount: productionElectionComputeConsumer.retainedRecordCount,
+      crossPoolDuplicateSuppressedCount:
+        productionElectionComputeConsumer.crossPoolDuplicateSuppressedCount,
+      sourceInputConsumption: productionElection.sourceInputConsumption,
+      consumedRuntimeBuffers: productionElectionComputeConsumer.consumedRuntimeBuffers,
+      outputWitness: productionElectionComputeConsumer.outputWitness,
+      currentCompositorBinding: productionElectionComputeConsumer.currentCompositorBinding,
+      nextConsumerBoundary: productionElectionComputeConsumer.nextConsumerBoundary,
+      falseClosureGuard: productionElectionComputeConsumer.falseClosureGuard,
+    };
+  }
   if (productionElection && runtimeBuffers.status === "runtime-state-buffers-present") {
     return {
       status: "narrow-consumer-contract-present",
@@ -7185,6 +7232,8 @@ function destroyTileLocalSceneState(state: TileLocalSceneState): void {
   }
   state.candidateSourceRecordsBuffer?.destroy();
   state.candidateSourceGroupsBuffer?.destroy();
+  state.productionElectionComputeConsumer?.paramsBuffer.destroy();
+  state.productionElectionComputeConsumer?.witnessBuffer.destroy();
   if (state.wgslProjectedRefStream) {
     if (state.wgslProjectedRefStream.pendingReadback) {
       state.wgslProjectedRefStream.pendingReadback.cancelled = true;

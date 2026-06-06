@@ -364,6 +364,14 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const shaderSource = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
   const coverageRendererSource = readFileSync(new URL("../../src/gpuTileCoverageRenderer.ts", import.meta.url), "utf8");
+  const productionElectionConsumerSource = readFileSync(
+    new URL("../../src/gpuProductionElectionConsumer.ts", import.meta.url),
+    "utf8",
+  );
+  const productionElectionConsumerShader = readFileSync(
+    new URL("../../src/shaders/gpu_production_election_consumer.wgsl", import.meta.url),
+    "utf8",
+  );
   const renderLoopStart = mainSource.indexOf("const tileLocalComputePass = encoder.beginComputePass");
   const renderLoopEnd = mainSource.indexOf("tileLocalComputePass.end()", renderLoopStart);
   const renderLoopSource = mainSource.slice(renderLoopStart, renderLoopEnd);
@@ -705,28 +713,28 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     retainedSourceEvidence,
-    /productionElectionConsumer:\s*sourceFrontierProductionElectionConsumerEvidence\(\s*productionElection,\s*candidateSourceRuntimeBuffersEvidence,\s*\)/,
+    /productionElectionConsumer:\s*sourceFrontierProductionElectionConsumerEvidence\(\s*productionElection,\s*candidateSourceRuntimeBuffersEvidence,\s*productionElectionComputeConsumer,\s*\)/,
     "source-frontier construction evidence must expose a narrow production-election consumer separately from runtime buffer custody",
   );
   assert.match(
     mainSource,
-    /interface SourceFrontierProductionElectionConsumerEvidence[\s\S]*status:\s*"narrow-consumer-contract-present" \| "blocked-missing-production-election-consumer-input"/,
-    "production-election consumer evidence must carry an explicit present/blocked contract",
+    /interface SourceFrontierProductionElectionConsumerEvidence[\s\S]*"compute-consumer-contract-present"[\s\S]*"blocked-missing-production-election-consumer-input"/,
+    "production-election consumer evidence must carry an explicit compute-present/blocked contract",
   );
   assert.match(
     mainSource,
-    /function sourceFrontierProductionElectionConsumerEvidence\([\s\S]*status:\s*"narrow-consumer-contract-present"[\s\S]*source:\s*"wgsl-source-frontier-production-election-consumer"[\s\S]*runtimeBufferSource:\s*"candidate-source-runtime-state-buffers"/,
-    "production-election consumer evidence must consume the runtime candidate-source buffers instead of repeating static identity provenance",
+    /function sourceFrontierProductionElectionConsumerEvidence\([\s\S]*status:\s*productionElectionComputeConsumer\.status[\s\S]*source:\s*productionElectionComputeConsumer\.source[\s\S]*consumedRuntimeBuffers:\s*productionElectionComputeConsumer\.consumedRuntimeBuffers/,
+    "production-election consumer evidence must expose the dedicated compute-consumer contract instead of stopping at static identity provenance",
   );
   assert.match(
     mainSource,
-    /currentCompositorBinding:\s*"forbidden-current-compositor-bind-group-full"[\s\S]*nextConsumerBoundary:\s*"wgsl-production-election-compute-consumer"/,
-    "production-election consumer evidence must name the next narrower consumer without expanding the current compositor bind group",
+    /currentCompositorBinding:\s*productionElectionComputeConsumer\.currentCompositorBinding[\s\S]*nextConsumerBoundary:\s*productionElectionComputeConsumer\.nextConsumerBoundary/,
+    "production-election compute-consumer evidence must name prefix scatter as the next narrower consumer without expanding the current compositor bind group",
   );
   assert.match(
     mainSource,
-    /falseClosureGuard:\s*"production-election-consumer-contract-is-not-current-compositor-bind-group-consumption"/,
-    "production-election consumer evidence must not launder the narrow consumer contract into current compositor consumption",
+    /falseClosureGuard:\s*productionElectionComputeConsumer\.falseClosureGuard/,
+    "production-election compute-consumer evidence must not launder the narrow consumer contract into current compositor consumption",
   );
   assert.match(
     retainedSourceEvidence,
@@ -737,6 +745,36 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
     retainedSourceEvidence,
     /nextGpuOffloadStage:\s*"live-wgsl-production-election-prefix-scatter"/,
     "once the runtime production-election contract is consumed, the next frontier is live WGSL prefix scatter rather than repeated election consumption",
+  );
+  assert.match(
+    mainSource,
+    /createGpuProductionElectionConsumerContract/,
+    "source-frontier runtime must create the narrow production-election compute-consumer contract after candidate-source buffers are seated",
+  );
+  assert.match(
+    frontierFactorySource,
+    /const productionElectionComputeConsumer = createGpuProductionElectionConsumerContract\(\{[\s\S]*candidateSourceRecordsBuffer:\s*candidateSourceBuffers\.candidateSourceRecordsBuffer[\s\S]*candidateSourceGroupsBuffer:\s*candidateSourceBuffers\.candidateSourceGroupsBuffer[\s\S]*productionElection,[\s\S]*\}\);/,
+    "source-frontier runtime must pass runtime candidate-source buffers plus production-election counts into the narrow compute consumer",
+  );
+  assert.match(
+    frontierFactorySource,
+    /return \{[\s\S]*productionElectionComputeConsumer,[\s\S]*retainedSourceConstruction/,
+    "source-frontier runtime must carry the narrow production-election compute consumer on scene state without treating it as compositor input",
+  );
+  assert.match(
+    productionElectionConsumerSource,
+    /createBindGroupLayout\(\{[\s\S]*label:\s*"gpu_production_election_consumer_bind_group_layout"[\s\S]*GPUShaderStage\.COMPUTE[\s\S]*candidateSourceRecordsBuffer[\s\S]*candidateSourceGroupsBuffer[\s\S]*witnessBuffer/,
+    "production-election compute consumer must own a dedicated bind group layout instead of expanding the current compositor layout",
+  );
+  assert.match(
+    productionElectionConsumerShader,
+    /@binding\(0\)\s*var<storage,\s*read>\s+candidateSourceRecords:[\s\S]*@binding\(1\)\s*var<storage,\s*read>\s+candidateSourceGroups:[\s\S]*@compute @workgroup_size\(64\)\s*fn witness_production_election_consumer/,
+    "narrow WGSL consumer must read candidate-source record/group buffers in a dedicated compute entrypoint",
+  );
+  assert.doesNotMatch(
+    coverageRendererSource,
+    /gpu_production_election_consumer|createGpuProductionElectionConsumerContract/,
+    "the production-election consumer witness must remain separate from the current tile-local compositor renderer",
   );
   assert.match(
     shaderSource,
