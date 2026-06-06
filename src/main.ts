@@ -56,6 +56,10 @@ import {
   createGpuProductionElectionConsumerContract,
   type GpuProductionElectionConsumerContract,
 } from "./gpuProductionElectionConsumer.js";
+import {
+  createGpuProductionElectionPrefixScatterContract,
+  type GpuProductionElectionPrefixScatterContract,
+} from "./gpuProductionElectionPrefixScatter.js";
 import { adaptGpuArenaRetainedContributors } from "./gpuArenaRetainedListAdapter.js";
 import {
   createGpuTileCoveragePipelineSkeleton,
@@ -241,6 +245,7 @@ interface TileLocalSceneState {
   candidateSourceRecordsBuffer?: GPUBuffer;
   candidateSourceGroupsBuffer?: GPUBuffer;
   productionElectionComputeConsumer?: GpuProductionElectionConsumerContract;
+  productionElectionPrefixScatter?: GpuProductionElectionPrefixScatterContract;
   alphaParamData: Float32Array;
   candidateSourceInputs?: GpuProjectionRetentionCandidateSourceInputs;
   sourceViewDepths: Float32Array;
@@ -621,6 +626,7 @@ interface RetainedSourceConstructionEvidence {
     | "production-candidate-source-election-consumption"
     | "live-wgsl-production-candidate-source-election"
     | "live-wgsl-production-election-prefix-scatter"
+    | "live-wgsl-production-election-compositor-consumption"
     | "live-wgsl-production-election-candidate-source-bindings";
   readonly accountingSource?:
     | "cpu-compact-source"
@@ -638,6 +644,7 @@ interface RetainedSourceConstructionEvidence {
   readonly candidateSourceIdentity?: SourceFrontierCandidateSourceIdentityEvidence;
   readonly candidateSourceRuntimeBuffers?: SourceFrontierCandidateSourceRuntimeBufferEvidence;
   readonly productionElectionConsumer?: SourceFrontierProductionElectionConsumerEvidence;
+  readonly productionElectionPrefixScatter?: SourceFrontierProductionElectionPrefixScatterEvidence;
 }
 
 interface SourceFrontierCandidateSourceIdentityEvidence {
@@ -716,6 +723,33 @@ interface SourceFrontierProductionElectionConsumerEvidence {
     | "production-election-consumer-contract-is-not-current-compositor-bind-group-consumption"
     | "wgsl-production-election-compute-consumer-is-not-current-compositor-bind-group-consumption"
     | "missing-production-election-consumer-input-blocks-narrow-consumer-claim";
+}
+
+interface SourceFrontierProductionElectionPrefixScatterEvidence {
+  readonly status:
+    | "prefix-scatter-contract-present"
+    | "blocked-missing-production-election-prefix-scatter-input";
+  readonly source: "wgsl-production-election-prefix-scatter";
+  readonly computeConsumerSource?:
+    | "wgsl-production-election-compute-consumer"
+    | "missing-production-election-compute-consumer";
+  readonly recordCount: number;
+  readonly groupCount: number;
+  readonly retainedRecordCount: number;
+  readonly tileCount: number;
+  readonly consumedComputeConsumer?: "wgsl-production-election-compute-consumer";
+  readonly consumedRuntimeBuffers?: readonly string[];
+  readonly outputBuffers?: readonly string[];
+  readonly outputWitness?: "production-election-prefix-scatter-witness-buffer";
+  readonly currentCompositorBinding:
+    | "forbidden-current-compositor-bind-group-full"
+    | "blocked-missing-production-election-prefix-scatter-input";
+  readonly nextConsumerBoundary:
+    | "current-compositor-bind-group-consumption"
+    | "wgsl-production-election-prefix-scatter";
+  readonly falseClosureGuard:
+    | "wgsl-production-election-prefix-scatter-is-not-current-compositor-bind-group-consumption"
+    | "missing-production-election-prefix-scatter-input-blocks-compositor-consumption-claim";
 }
 
 interface SourceFrontierRetainedRowsEvidence {
@@ -2038,6 +2072,14 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     candidateSourceGroupsBuffer: candidateSourceBuffers.candidateSourceGroupsBuffer,
     productionElection,
   });
+  const productionElectionPrefixScatter = createGpuProductionElectionPrefixScatterContract({
+    device,
+    candidateSourceRecordsBuffer: candidateSourceBuffers.candidateSourceRecordsBuffer,
+    candidateSourceGroupsBuffer: candidateSourceBuffers.candidateSourceGroupsBuffer,
+    productionElectionComputeConsumer,
+    productionElection,
+    tileCount: plan.tileCount,
+  });
   const candidateSourceRuntimeBuffersEvidence = sourceFrontierCandidateSourceRuntimeBufferEvidence(candidateSourceBuffers);
   const bindGroup = pipeline.createBindGroup({
     frameUniformBuffer,
@@ -2082,6 +2124,7 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     productionElection,
     candidateSourceRuntimeBuffersEvidence,
     productionElectionComputeConsumer,
+    productionElectionPrefixScatter,
   );
   const wgslProjectedRefStreamEvidence = buildWgslProjectedRefStreamEvidence(compactSource, null);
 
@@ -2106,6 +2149,7 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     candidateSourceRecordsBuffer: candidateSourceBuffers.candidateSourceRecordsBuffer,
     candidateSourceGroupsBuffer: candidateSourceBuffers.candidateSourceGroupsBuffer,
     productionElectionComputeConsumer,
+    productionElectionPrefixScatter,
     alphaParamData,
     candidateSourceInputs: candidateSourceBuffers.candidateSourceInputs,
     sourceViewDepths: sourceDepthEvidence.depths,
@@ -2983,8 +3027,12 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
   productionElection: GpuProjectionRetentionCandidateSourceProductionElection,
   candidateSourceRuntimeBuffersEvidence: SourceFrontierCandidateSourceRuntimeBufferEvidence,
   productionElectionComputeConsumer: GpuProductionElectionConsumerContract | undefined,
+  productionElectionPrefixScatter: GpuProductionElectionPrefixScatterContract | undefined,
 ): RetainedSourceConstructionEvidence {
   const compactSourceStreamRetentionBlockedStage = "compact-source-stream-retention";
+  const nextGpuOffloadStage = productionElectionPrefixScatter
+    ? "live-wgsl-production-election-compositor-consumption"
+    : "live-wgsl-production-election-prefix-scatter";
   return {
     requestedSourceBackend: "gpu-retained-source-substrate",
     effectiveSourceBackend: "wgsl-projected-ref-stream-source-frontier",
@@ -3011,7 +3059,7 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
       "wgsl-source-frontier-retained-row-prefix-scatter",
       "tile-local-visible-gaussian-compositor",
     ],
-    nextGpuOffloadStage: "live-wgsl-production-election-prefix-scatter",
+    nextGpuOffloadStage,
     accountingSource: "gpu-ref-stats-readback-pending",
     projectedRefs: frontierSource.projectedRefEstimate,
     retainedRefs: productionElection.retainedRecords.length,
@@ -3026,11 +3074,51 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
       candidateSourceRuntimeBuffersEvidence,
       productionElectionComputeConsumer,
     ),
+    productionElectionPrefixScatter: sourceFrontierProductionElectionPrefixScatterEvidence(
+      productionElectionComputeConsumer,
+      productionElectionPrefixScatter,
+    ),
     frontierBlockedStages: [
       compactSourceStreamRetentionBlockedStage,
       "compact-source-pixel-traces",
-      "live-wgsl-production-election-prefix-scatter",
+      nextGpuOffloadStage,
     ],
+  };
+}
+
+function sourceFrontierProductionElectionPrefixScatterEvidence(
+  productionElectionComputeConsumer: GpuProductionElectionConsumerContract | undefined,
+  productionElectionPrefixScatter: GpuProductionElectionPrefixScatterContract | undefined,
+): SourceFrontierProductionElectionPrefixScatterEvidence {
+  if (productionElectionComputeConsumer && productionElectionPrefixScatter) {
+    return {
+      status: productionElectionPrefixScatter.status,
+      source: productionElectionPrefixScatter.source,
+      computeConsumerSource: productionElectionComputeConsumer.source,
+      recordCount: productionElectionPrefixScatter.recordCount,
+      groupCount: productionElectionPrefixScatter.groupCount,
+      retainedRecordCount: productionElectionPrefixScatter.retainedRecordCount,
+      tileCount: productionElectionPrefixScatter.tileCount,
+      consumedComputeConsumer: productionElectionPrefixScatter.consumedComputeConsumer,
+      consumedRuntimeBuffers: productionElectionPrefixScatter.consumedRuntimeBuffers,
+      outputBuffers: productionElectionPrefixScatter.outputBuffers,
+      outputWitness: productionElectionPrefixScatter.outputWitness,
+      currentCompositorBinding: productionElectionPrefixScatter.currentCompositorBinding,
+      nextConsumerBoundary: productionElectionPrefixScatter.nextConsumerBoundary,
+      falseClosureGuard: productionElectionPrefixScatter.falseClosureGuard,
+    };
+  }
+  return {
+    status: "blocked-missing-production-election-prefix-scatter-input",
+    source: "wgsl-production-election-prefix-scatter",
+    computeConsumerSource: productionElectionComputeConsumer?.source ?? "missing-production-election-compute-consumer",
+    recordCount: productionElectionComputeConsumer?.recordCount ?? 0,
+    groupCount: productionElectionComputeConsumer?.groupCount ?? 0,
+    retainedRecordCount: productionElectionComputeConsumer?.retainedRecordCount ?? 0,
+    tileCount: 0,
+    currentCompositorBinding: "blocked-missing-production-election-prefix-scatter-input",
+    nextConsumerBoundary: "wgsl-production-election-prefix-scatter",
+    falseClosureGuard: "missing-production-election-prefix-scatter-input-blocks-compositor-consumption-claim",
   };
 }
 
@@ -3436,12 +3524,16 @@ function refreshWgslSourceFrontierRetainedRowsEvidence(
   }
   if (retainedRowsReadback.status === "present") {
     const candidateSourceRuntimeBuffers = sourceFrontierCandidateSourceRuntimeBufferEvidence(state);
-    const nextGpuOffloadStage = state.productionElectionComputeConsumer
+    const nextGpuOffloadStage = state.productionElectionPrefixScatter
+      ? "live-wgsl-production-election-compositor-consumption"
+      : state.productionElectionComputeConsumer
       ? "live-wgsl-production-election-prefix-scatter"
       : candidateSourceRuntimeBuffers.status === "runtime-state-buffers-present"
         ? "live-wgsl-production-candidate-source-election"
         : "live-wgsl-production-election-candidate-source-bindings";
-    const nextBlockedStage = state.productionElectionComputeConsumer
+    const nextBlockedStage = state.productionElectionPrefixScatter
+      ? "live-wgsl-production-election-compositor-consumption"
+      : state.productionElectionComputeConsumer
       ? "live-wgsl-production-election-prefix-scatter"
       : candidateSourceRuntimeBuffers.status === "runtime-state-buffers-present"
         ? "live-wgsl-production-candidate-source-election"
@@ -7240,6 +7332,12 @@ function destroyTileLocalSceneState(state: TileLocalSceneState): void {
   state.candidateSourceGroupsBuffer?.destroy();
   state.productionElectionComputeConsumer?.paramsBuffer.destroy();
   state.productionElectionComputeConsumer?.witnessBuffer.destroy();
+  state.productionElectionPrefixScatter?.paramsBuffer.destroy();
+  state.productionElectionPrefixScatter?.retainedRecordTileIndexesBuffer.destroy();
+  state.productionElectionPrefixScatter?.prefixCountsBuffer.destroy();
+  state.productionElectionPrefixScatter?.prefixOffsetsBuffer.destroy();
+  state.productionElectionPrefixScatter?.retainedRecordIndicesBuffer.destroy();
+  state.productionElectionPrefixScatter?.witnessBuffer.destroy();
   if (state.wgslProjectedRefStream) {
     if (state.wgslProjectedRefStream.pendingReadback) {
       state.wgslProjectedRefStream.pendingReadback.cancelled = true;
