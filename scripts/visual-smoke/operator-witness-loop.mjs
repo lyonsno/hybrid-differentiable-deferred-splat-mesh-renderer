@@ -34,6 +34,11 @@ const DEFAULT_OPERATOR_VISUAL_ROUTE = Object.freeze({
 });
 const OPERATOR_CAPTURE_TIMEOUT_MS = 15000;
 const OPERATOR_TIMEOUT_CANVAS_CLIP_MS = 1500;
+const OPERATOR_READINESS_STAGE_NAMES = Object.freeze(new Set([
+  "initial-readiness",
+  "view-readiness",
+  "interaction-readiness",
+]));
 
 export function buildOperatorWitnessLoopPlan(baseUrl, { timeoutMs = OPERATOR_CAPTURE_TIMEOUT_MS } = {}) {
   return [
@@ -167,6 +172,17 @@ export function summarizeOperatorWitnessTiming(captures = []) {
     }
     return slowest;
   }, null);
+  const slowestOperatorReadiness = timedCaptures.reduce((slowest, capture) => {
+    for (const stage of capture.stages) {
+      if (!OPERATOR_READINESS_STAGE_NAMES.has(stage.name)) continue;
+      const elapsedMs = finiteNumber(stage.elapsedMs);
+      if (elapsedMs === null) continue;
+      if (!slowest || elapsedMs > slowest.elapsedMs) {
+        slowest = { captureId: capture.id, name: stage.name, elapsedMs };
+      }
+    }
+    return slowest;
+  }, null);
   const appFrameCaptures = captures
     .map((capture) => ({
       id: capture.id,
@@ -191,16 +207,45 @@ export function summarizeOperatorWitnessTiming(captures = []) {
     }
     return slowest;
   }, null);
+  const operatorReadinessVsAppFrameStage = compareOperatorReadinessToAppFrameStage(
+    slowestOperatorReadiness,
+    slowestAppFrameStage
+  );
   return {
     totalCaptureMs,
     slowestCapture,
     slowestStage,
+    slowestOperatorReadiness,
     slowestAppFrameStage,
+    operatorReadinessVsAppFrameStage,
     captures: timedCaptures.map((capture) => ({
       id: capture.id,
       totalMs: capture.totalMs ?? 0,
       stages: capture.stages,
     })),
+  };
+}
+
+function compareOperatorReadinessToAppFrameStage(slowestOperatorReadiness, slowestAppFrameStage) {
+  const readinessMs = finiteNumber(slowestOperatorReadiness?.elapsedMs);
+  const appFrameStageMs = finiteNumber(slowestAppFrameStage?.elapsedMs);
+  if (readinessMs === null) {
+    return { status: "operator-readiness-not-reported" };
+  }
+  if (appFrameStageMs === null) {
+    return {
+      status: "app-frame-stage-not-reported",
+      readinessMs,
+    };
+  }
+  const gapMs = roundMs(readinessMs - appFrameStageMs);
+  return {
+    status: readinessMs > appFrameStageMs
+      ? "operator-readiness-exceeds-app-frame-stage"
+      : "app-frame-stage-covers-operator-readiness",
+    readinessMs,
+    appFrameStageMs,
+    gapMs,
   };
 }
 
@@ -407,4 +452,8 @@ function unique(values) {
 function finiteNumber(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+function roundMs(value) {
+  return Math.round(value * 1000) / 1000;
 }

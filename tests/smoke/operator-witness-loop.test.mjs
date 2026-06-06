@@ -229,6 +229,53 @@ test("operator witness timing summary preserves app-side frame stage attribution
   });
 });
 
+test("operator witness timing summary exposes operator-visible readiness latency above app frame stages", () => {
+  const timing = summarizeOperatorWitnessTiming([
+    witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.wholeRender, {
+      timing: {
+        totalMs: 3277,
+        stages: [
+          { name: "apply-view", elapsedMs: 1 },
+          { name: "view-readiness", elapsedMs: 1148 },
+          { name: "screenshot", elapsedMs: 34 },
+        ],
+      },
+      pageEvidence: {
+        operatorWitness: {
+          frameSerial: 3,
+          frameTimings: {
+            stages: [
+              { name: "wgsl-source-frontier-pack-candidate-source-inputs", elapsedMs: 875.7 },
+            ],
+          },
+        },
+      },
+    }),
+    witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.porousOrbitLeft, {
+      timing: {
+        totalMs: 14592,
+        stages: [
+          { name: "view-readiness", elapsedMs: 4976 },
+          { name: "interactions", elapsedMs: 2 },
+          { name: "interaction-readiness", elapsedMs: 5426 },
+        ],
+      },
+    }),
+  ]);
+
+  assert.deepEqual(timing.slowestOperatorReadiness, {
+    captureId: OPERATOR_WITNESS_CAPTURE_IDS.porousOrbitLeft,
+    name: "interaction-readiness",
+    elapsedMs: 5426,
+  });
+  assert.deepEqual(timing.operatorReadinessVsAppFrameStage, {
+    status: "operator-readiness-exceeds-app-frame-stage",
+    readinessMs: 5426,
+    appFrameStageMs: 875.7,
+    gapMs: 4550.3,
+  });
+});
+
 test("operator witness report prints the slowest app-side frame stage", () => {
   const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
   const reportStart = source.indexOf("function renderOperatorWitnessLoopReport");
@@ -237,6 +284,17 @@ test("operator witness report prints the slowest app-side frame stage", () => {
 
   assert.match(reportSource, /Slowest app frame stage:/);
   assert.match(reportSource, /timing\.slowestAppFrameStage/);
+});
+
+test("operator witness report prints operator readiness separately from app frame stage timing", () => {
+  const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
+  const reportStart = source.indexOf("function renderOperatorWitnessLoopReport");
+  const reportEnd = source.indexOf("function renderOperatorTimingTable", reportStart);
+  const reportSource = source.slice(reportStart, reportEnd);
+
+  assert.match(reportSource, /Slowest operator readiness:/);
+  assert.match(reportSource, /Operator readiness vs app frame stage:/);
+  assert.match(reportSource, /operatorReadinessVsAppFrameStage/);
 });
 
 test("operator witness app frame timing routes requested GPU presentation through compact retained source runtime", () => {

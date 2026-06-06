@@ -1553,7 +1553,9 @@ ${renderSmokeHandoffSection(result.smokeHandoff)}
 - Total capture ms: ${timing.totalCaptureMs ?? "not reported"}
 - Slowest capture: ${timing.slowestCapture ? `${timing.slowestCapture.id} (${timing.slowestCapture.totalMs}ms)` : "not reported"}
 - Slowest stage: ${timing.slowestStage ? `${timing.slowestStage.captureId}/${timing.slowestStage.name} (${timing.slowestStage.elapsedMs}ms)` : "not reported"}
+- Slowest operator readiness: ${timing.slowestOperatorReadiness ? `${timing.slowestOperatorReadiness.captureId}/${timing.slowestOperatorReadiness.name} (${timing.slowestOperatorReadiness.elapsedMs}ms)` : "not reported"}
 - Slowest app frame stage: ${timing.slowestAppFrameStage ? `${timing.slowestAppFrameStage.captureId}/${timing.slowestAppFrameStage.name} (${timing.slowestAppFrameStage.elapsedMs}ms, frame ${timing.slowestAppFrameStage.frameSerial})` : "not reported"}
+- Operator readiness vs app frame stage: ${formatOperatorReadinessComparison(timing.operatorReadinessVsAppFrameStage)}
 
 ${renderOperatorTimingTable(timing)}
 
@@ -1736,6 +1738,22 @@ function renderOperatorTimingTable(timing = {}) {
       return `- ${capture.id}: ${capture.totalMs}ms${stages ? ` (${stages})` : ""}`;
     })
     .join("\n");
+}
+
+function formatOperatorReadinessComparison(comparison = {}) {
+  if (!comparison || !comparison.status) {
+    return "not reported";
+  }
+  if (comparison.status === "operator-readiness-exceeds-app-frame-stage") {
+    return `${comparison.status} (${comparison.readinessMs}ms readiness vs ${comparison.appFrameStageMs}ms app-frame stage; gap ${comparison.gapMs}ms)`;
+  }
+  if (comparison.status === "app-frame-stage-covers-operator-readiness") {
+    return `${comparison.status} (${comparison.readinessMs}ms readiness vs ${comparison.appFrameStageMs}ms app-frame stage; gap ${comparison.gapMs}ms)`;
+  }
+  if (comparison.status === "app-frame-stage-not-reported") {
+    return `${comparison.status} (${comparison.readinessMs}ms readiness)`;
+  }
+  return comparison.status;
 }
 
 function printSummary(result) {
