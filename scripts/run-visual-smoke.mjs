@@ -470,6 +470,7 @@ async function runOperatorWitnessLoop({ browser, options, baseUrl, reportDir, an
     options: publicOptions(options),
     plan,
     captures,
+    readinessDiagnosticsByStage: session.readinessDiagnosticsByStage,
     classification,
   };
 }
@@ -536,12 +537,13 @@ async function runGpuLiveParityMugshot({ browser, options, baseUrl, reportDir, a
 async function captureOperatorWitnessSession({ browser, options, plan, reportDir }) {
   const timing = startTiming();
   if (plan.length === 0) {
-    return { captures: [], timing: finishTiming(timing) };
+    return { captures: [], timing: finishTiming(timing), readinessDiagnosticsByStage: {} };
   }
 
   const timeoutMs = Math.max(...plan.map((capture) => capture.timeoutMs ?? options.timeoutMs));
   const consoleMessages = [];
   const pageErrors = [];
+  const readinessDiagnosticsByStage = {};
   const page = await timeStage(timing, "new-page", () =>
     browser.newPage({
       viewport: options.viewport,
@@ -561,7 +563,10 @@ async function captureOperatorWitnessSession({ browser, options, plan, reportDir
     await timeStage(timing, "hide-overlays", () => page.addStyleTag({
       content: "#stats,[data-visual-smoke-ignore]{visibility:hidden!important}",
     }));
-    await timeStage(timing, "initial-readiness", () => waitForVisualSmokeCaptureReady(page, plan[0].expectedRendererLabel, timeoutMs));
+    const initialReadinessEvidence = await timeStage(timing, "initial-readiness", () =>
+      waitForVisualSmokeCaptureReady(page, plan[0].expectedRendererLabel, timeoutMs)
+    );
+    readinessDiagnosticsByStage.initialReadiness = initialReadinessEvidence.readinessDiagnostics;
 
     const captures = [];
     for (const capture of plan) {
@@ -580,10 +585,13 @@ async function captureOperatorWitnessSession({ browser, options, plan, reportDir
         break;
       }
     }
-    return { captures, timing: finishTiming(timing) };
+    return { captures, timing: finishTiming(timing), readinessDiagnosticsByStage };
   } catch (error) {
     if (!isRecoverableVisualSmokeTimeout(error)) {
       throw error;
+    }
+    if (error.readinessDiagnostics) {
+      readinessDiagnosticsByStage.initialReadiness = error.readinessDiagnostics;
     }
     const captures = [await captureTimeoutFailureWithRoute({
       page,
@@ -597,7 +605,7 @@ async function captureOperatorWitnessSession({ browser, options, plan, reportDir
       timing: finishTiming(timing),
       clip,
     })];
-    return { captures, timing: finishTiming(timing) };
+    return { captures, timing: finishTiming(timing), readinessDiagnosticsByStage };
   } finally {
     await timeStage(timing, "page-close", () => page.close()).catch(() => undefined);
   }
@@ -617,6 +625,7 @@ async function captureOperatorWitnessFrame({
   const timing = startTiming();
   try {
     let readinessEvidence;
+    const readinessDiagnosticsByStage = {};
     const viewRevision = await timeStage(timing, "apply-view", () =>
       applyOperatorWitnessView(page, capture.witnessView ?? "default", timeoutMs)
     );
@@ -627,6 +636,7 @@ async function captureOperatorWitnessFrame({
         minRevision: viewRevision,
       },
     }));
+    readinessDiagnosticsByStage.viewReadiness = readinessEvidence.readinessDiagnostics;
     await timeStage(timing, "settle-before-interaction", () => page.waitForTimeout(options.settleMs));
     if (Array.isArray(capture.interactions) && capture.interactions.length > 0) {
       const interactionRevision = await timeStage(timing, "interactions", () =>
@@ -641,6 +651,7 @@ async function captureOperatorWitnessFrame({
             },
           }
         : capture.readiness ?? {}));
+      readinessDiagnosticsByStage.interactionReadiness = readinessEvidence.readinessDiagnostics;
       await timeStage(timing, "settle-after-interaction", () => page.waitForTimeout(options.settleMs));
     }
 
@@ -651,6 +662,8 @@ async function captureOperatorWitnessFrame({
       ...readinessEvidence,
       ...settledEvidence,
       ...extractTileLocalPageMetrics(settledEvidence),
+      readinessDiagnostics: readinessEvidence.readinessDiagnostics,
+      readinessDiagnosticsByStage,
     };
     const screenshotPath = path.join(reportDir, `${capture.id}.png`);
     const screenshot = await timeStage(timing, "screenshot", () => page.screenshot({
@@ -1684,6 +1697,7 @@ ${renderSmokeHandoffSection(result.smokeHandoff)}
 - Slowest operator readiness: ${timing.slowestOperatorReadiness ? `${timing.slowestOperatorReadiness.captureId}/${timing.slowestOperatorReadiness.name} (${timing.slowestOperatorReadiness.elapsedMs}ms)` : "not reported"}
 - Slowest app frame stage: ${timing.slowestAppFrameStage ? `${timing.slowestAppFrameStage.captureId}/${timing.slowestAppFrameStage.name} (${timing.slowestAppFrameStage.elapsedMs}ms, frame ${timing.slowestAppFrameStage.frameSerial})` : "not reported"}
 - Operator readiness vs app frame stage: ${formatOperatorReadinessComparison(timing.operatorReadinessVsAppFrameStage)}
+- Initial readiness diagnostics: ${formatReadinessDiagnostics(result.readinessDiagnosticsByStage?.initialReadiness)}
 
 ${renderOperatorTimingTable(timing)}
 
@@ -1705,6 +1719,7 @@ ${result.captures
 - Changed pixels: ${capture.imageAnalysis.changedPixels} / ${capture.imageAnalysis.totalPixels} (${formatPercent(capture.imageAnalysis.changedPixelRatio)})
 - Total capture ms: ${capture.timing?.totalMs ?? "not reported"}
 - Readiness diagnostics: ${formatReadinessDiagnostics(capture.pageEvidence.readinessDiagnostics)}
+- Readiness stages: ${formatReadinessDiagnosticsByStage(capture.pageEvidence.readinessDiagnosticsByStage)}
 `
   )
   .join("\n")}
@@ -1899,6 +1914,23 @@ function formatReadinessDiagnostics(diagnostics) {
     ? `${diagnostics.slowestPoll.pollDurationMs ?? "not reported"}ms@${diagnostics.slowestPoll.pollCount ?? "?"}`
     : "not reported";
   return `ready=${Boolean(diagnostics.ready)} polls=${diagnostics.pollCount ?? "not reported"} failed=${diagnostics.failedPolls ?? "not reported"} elapsed=${diagnostics.elapsedMs ?? "not reported"}ms slowestPoll=${slowestPoll} blockers=${blockers} lastFailed=${lastFailed}`;
+}
+
+function formatReadinessDiagnosticsByStage(stageDiagnostics) {
+  if (!stageDiagnostics || typeof stageDiagnostics !== "object") {
+    return "not reported";
+  }
+  const stages = [
+    ["initialReadiness", stageDiagnostics.initialReadiness],
+    ["viewReadiness", stageDiagnostics.viewReadiness],
+    ["interactionReadiness", stageDiagnostics.interactionReadiness],
+  ].filter(([, diagnostics]) => diagnostics && typeof diagnostics === "object");
+  if (stages.length === 0) {
+    return "not reported";
+  }
+  return stages
+    .map(([stage, diagnostics]) => `${stage}{${formatReadinessDiagnostics(diagnostics)}}`)
+    .join(" | ");
 }
 
 function printSummary(result) {

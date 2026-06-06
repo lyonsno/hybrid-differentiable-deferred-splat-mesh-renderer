@@ -645,6 +645,48 @@ test("operator witness report renders readiness diagnostics per capture", () => 
   assert.match(formatterSource, /slowestPoll=/);
 });
 
+test("operator witness session preserves initial readiness diagnostics by stage", () => {
+  const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
+  const sessionStart = source.indexOf("async function captureOperatorWitnessSession");
+  const sessionEnd = source.indexOf("async function captureOperatorWitnessFrame", sessionStart);
+  const sessionSource = source.slice(sessionStart, sessionEnd);
+  const loopStart = source.indexOf("async function runOperatorWitnessLoop");
+  const loopEnd = source.indexOf("async function runGpuLiveParityMugshot", loopStart);
+  const loopSource = source.slice(loopStart, loopEnd);
+  const reportStart = source.indexOf("function renderOperatorWitnessLoopReport");
+  const reportEnd = source.indexOf("function renderGpuLiveParityMugshotReport", reportStart);
+  const reportSource = source.slice(reportStart, reportEnd);
+
+  assert.match(sessionSource, /const readinessDiagnosticsByStage = \{\}/);
+  assert.match(sessionSource, /const initialReadinessEvidence = await timeStage\(timing, "initial-readiness"/);
+  assert.match(sessionSource, /readinessDiagnosticsByStage\.initialReadiness = initialReadinessEvidence\.readinessDiagnostics/);
+  assert.match(sessionSource, /readinessDiagnosticsByStage/);
+  assert.match(loopSource, /readinessDiagnosticsByStage: session\.readinessDiagnosticsByStage/);
+  assert.match(reportSource, /Initial readiness diagnostics:/);
+});
+
+test("operator witness frame preserves view and interaction readiness diagnostics by stage", () => {
+  const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
+  const frameStart = source.indexOf("async function captureOperatorWitnessFrame");
+  const frameEnd = source.indexOf("async function captureVisualSmoke", frameStart);
+  const frameSource = source.slice(frameStart, frameEnd);
+  const reportStart = source.indexOf("function renderOperatorWitnessLoopReport");
+  const reportEnd = source.indexOf("function renderGpuLiveParityMugshotReport", reportStart);
+  const reportSource = source.slice(reportStart, reportEnd);
+  const formatterStart = source.indexOf("function formatReadinessDiagnosticsByStage");
+  const formatterEnd = source.indexOf("function printSummary", formatterStart);
+  const formatterSource = source.slice(formatterStart, formatterEnd);
+
+  assert.match(frameSource, /const readinessDiagnosticsByStage = \{\}/);
+  assert.match(frameSource, /readinessDiagnosticsByStage\.viewReadiness = readinessEvidence\.readinessDiagnostics/);
+  assert.match(frameSource, /readinessDiagnosticsByStage\.interactionReadiness = readinessEvidence\.readinessDiagnostics/);
+  assert.match(frameSource, /readinessDiagnosticsByStage,/);
+  assert.match(reportSource, /Readiness stages:/);
+  assert.match(reportSource, /formatReadinessDiagnosticsByStage\(capture\.pageEvidence\.readinessDiagnosticsByStage\)/);
+  assert.match(formatterSource, /viewReadiness/);
+  assert.match(formatterSource, /interactionReadiness/);
+});
+
 test("operator witness frame refreshes settled evidence after readiness and settle wait", () => {
   const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
   const frameStart = source.indexOf("async function captureOperatorWitnessFrame");
