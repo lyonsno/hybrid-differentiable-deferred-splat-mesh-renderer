@@ -82,7 +82,7 @@ export function buildOperatorWitnessLoopPlan(baseUrl, { timeoutMs = OPERATOR_CAP
   ];
 }
 
-export function classifyOperatorWitnessLoop({ captures = [], contactSheetPath } = {}) {
+export function classifyOperatorWitnessLoop({ captures = [], contactSheetPath, sessionTiming } = {}) {
   const byId = new Map(captures.map((capture) => [capture.id, capture]));
   const findings = [];
 
@@ -140,13 +140,13 @@ export function classifyOperatorWitnessLoop({ captures = [], contactSheetPath } 
           .filter(Boolean)
       ),
       contactSheetPath: contactSheetPath ?? "",
-      timing: summarizeOperatorWitnessTiming(captures),
+      timing: summarizeOperatorWitnessTiming(captures, sessionTiming),
     },
     findings,
   };
 }
 
-export function summarizeOperatorWitnessTiming(captures = []) {
+export function summarizeOperatorWitnessTiming(captures = [], sessionTiming = {}) {
   const timedCaptures = captures
     .map((capture) => ({
       id: capture.id,
@@ -172,14 +172,9 @@ export function summarizeOperatorWitnessTiming(captures = []) {
     }
     return slowest;
   }, null);
-  const slowestOperatorReadiness = timedCaptures.reduce((slowest, capture) => {
-    for (const stage of capture.stages) {
-      if (!OPERATOR_READINESS_STAGE_NAMES.has(stage.name)) continue;
-      const elapsedMs = finiteNumber(stage.elapsedMs);
-      if (elapsedMs === null) continue;
-      if (!slowest || elapsedMs > slowest.elapsedMs) {
-        slowest = { captureId: capture.id, name: stage.name, elapsedMs };
-      }
+  const slowestOperatorReadiness = operatorReadinessStages(timedCaptures, sessionTiming).reduce((slowest, stage) => {
+    if (!slowest || stage.elapsedMs > slowest.elapsedMs) {
+      return stage;
     }
     return slowest;
   }, null);
@@ -224,6 +219,34 @@ export function summarizeOperatorWitnessTiming(captures = []) {
       stages: capture.stages,
     })),
   };
+}
+
+function operatorReadinessStages(timedCaptures, sessionTiming) {
+  const stages = [];
+  if (Array.isArray(sessionTiming?.stages)) {
+    for (const stage of sessionTiming.stages) {
+      const readinessStage = operatorReadinessStage("session", stage);
+      if (readinessStage) stages.push(readinessStage);
+    }
+  }
+  for (const capture of timedCaptures) {
+    for (const stage of capture.stages) {
+      const readinessStage = operatorReadinessStage(capture.id, stage);
+      if (readinessStage) stages.push(readinessStage);
+    }
+  }
+  return stages;
+}
+
+function operatorReadinessStage(captureId, stage) {
+  if (!OPERATOR_READINESS_STAGE_NAMES.has(stage?.name)) {
+    return null;
+  }
+  const elapsedMs = finiteNumber(stage.elapsedMs);
+  if (elapsedMs === null) {
+    return null;
+  }
+  return { captureId, name: stage.name, elapsedMs };
 }
 
 function compareOperatorReadinessToAppFrameStage(slowestOperatorReadiness, slowestAppFrameStage) {

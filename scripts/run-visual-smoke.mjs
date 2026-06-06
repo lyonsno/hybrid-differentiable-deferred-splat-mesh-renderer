@@ -448,7 +448,11 @@ async function runOperatorWitnessLoop({ browser, options, baseUrl, reportDir, an
     appRoot: options.appRoot,
     reportDir,
   });
-  const classification = classifyOperatorWitnessLoop({ captures, contactSheetPath });
+  const classification = classifyOperatorWitnessLoop({
+    captures,
+    contactSheetPath,
+    sessionTiming: session.timing,
+  });
 
   return {
     generatedAt,

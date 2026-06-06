@@ -276,6 +276,50 @@ test("operator witness timing summary exposes operator-visible readiness latency
   });
 });
 
+test("operator witness timing summary includes session-level initial readiness", () => {
+  const timing = summarizeOperatorWitnessTiming(
+    [
+      witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.wholeRender, {
+        timing: {
+          totalMs: 3277,
+          stages: [
+            { name: "apply-view", elapsedMs: 1 },
+            { name: "view-readiness", elapsedMs: 1148 },
+          ],
+        },
+        pageEvidence: {
+          operatorWitness: {
+            frameSerial: 3,
+            frameTimings: {
+              stages: [
+                { name: "wgsl-source-frontier-pack-candidate-source-inputs", elapsedMs: 875.7 },
+              ],
+            },
+          },
+        },
+      }),
+    ],
+    {
+      stages: [
+        { name: "new-page", elapsedMs: 22 },
+        { name: "initial-readiness", elapsedMs: 6120 },
+      ],
+    }
+  );
+
+  assert.deepEqual(timing.slowestOperatorReadiness, {
+    captureId: "session",
+    name: "initial-readiness",
+    elapsedMs: 6120,
+  });
+  assert.deepEqual(timing.operatorReadinessVsAppFrameStage, {
+    status: "operator-readiness-exceeds-app-frame-stage",
+    readinessMs: 6120,
+    appFrameStageMs: 875.7,
+    gapMs: 5244.3,
+  });
+});
+
 test("operator witness report prints the slowest app-side frame stage", () => {
   const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
   const reportStart = source.indexOf("function renderOperatorWitnessLoopReport");
