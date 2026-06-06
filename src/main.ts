@@ -3436,6 +3436,16 @@ function refreshWgslSourceFrontierRetainedRowsEvidence(
   }
   if (retainedRowsReadback.status === "present") {
     const candidateSourceRuntimeBuffers = sourceFrontierCandidateSourceRuntimeBufferEvidence(state);
+    const nextGpuOffloadStage = state.productionElectionComputeConsumer
+      ? "live-wgsl-production-election-prefix-scatter"
+      : candidateSourceRuntimeBuffers.status === "runtime-state-buffers-present"
+        ? "live-wgsl-production-candidate-source-election"
+        : "live-wgsl-production-election-candidate-source-bindings";
+    const nextBlockedStage = state.productionElectionComputeConsumer
+      ? "live-wgsl-production-election-prefix-scatter"
+      : candidateSourceRuntimeBuffers.status === "runtime-state-buffers-present"
+        ? "live-wgsl-production-candidate-source-election"
+        : "live-wgsl-production-election-candidate-source-bindings";
     state.retainedSourceConstruction = {
       ...retainedSourceConstruction,
       accountingSource: "gpu-compositor-input-readback-present",
@@ -3445,15 +3455,11 @@ function refreshWgslSourceFrontierRetainedRowsEvidence(
       retainedBudgetRefs: retainedRowsReadback.retainedBudgetRefs,
       maxRefsPerTile: retainedRowsReadback.maxRefsPerTile,
       candidateSourceRuntimeBuffers,
-      nextGpuOffloadStage: candidateSourceRuntimeBuffers.status === "runtime-state-buffers-present"
-        ? "live-wgsl-production-candidate-source-election"
-        : "live-wgsl-production-election-candidate-source-bindings",
+      nextGpuOffloadStage,
       frontierBlockedStages: [
         "compact-source-stream-retention",
         "compact-source-pixel-traces",
-        candidateSourceRuntimeBuffers.status === "runtime-state-buffers-present"
-          ? "live-wgsl-production-candidate-source-election"
-          : "live-wgsl-production-election-candidate-source-bindings",
+        nextBlockedStage,
       ],
     };
     return;

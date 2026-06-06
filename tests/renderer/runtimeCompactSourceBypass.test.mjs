@@ -923,8 +923,8 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     retainedRowsRefreshSource,
-    /retainedRowsReadback\.status === "present"[\s\S]*accountingSource:\s*"gpu-compositor-input-readback-present"[\s\S]*nextGpuOffloadStage:\s*candidateSourceRuntimeBuffers\.status/,
-    "present live retained-row readback proves prefix/scatter consumption, so the next frontier must be selected from runtime candidate-source buffer custody",
+    /retainedRowsReadback\.status === "present"[\s\S]*const nextGpuOffloadStage = state\.productionElectionComputeConsumer[\s\S]*accountingSource:\s*"gpu-compositor-input-readback-present"[\s\S]*nextGpuOffloadStage,/,
+    "present live retained-row readback must select the next frontier from seated production-election compute-consumer custody before falling back to runtime candidate-source buffer custody",
   );
   assert.match(
     retainedRowsRefreshSource,
@@ -933,18 +933,28 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     retainedRowsRefreshSource,
-    /nextGpuOffloadStage:\s*candidateSourceRuntimeBuffers\.status === "runtime-state-buffers-present"\s*\?\s*"live-wgsl-production-candidate-source-election"\s*:\s*"live-wgsl-production-election-candidate-source-bindings"/,
-    "present retained rows plus seated candidate-source buffers must advance to the production-election consumer instead of looping on bindings",
+    /const nextGpuOffloadStage = state\.productionElectionComputeConsumer\s*\?\s*"live-wgsl-production-election-prefix-scatter"[\s\S]*:\s*candidateSourceRuntimeBuffers\.status === "runtime-state-buffers-present"[\s\S]*"live-wgsl-production-candidate-source-election"/,
+    "present retained rows plus a seated production-election compute consumer must preserve prefix scatter as the next frontier",
   );
   assert.match(
     retainedRowsRefreshSource,
-    /candidateSourceRuntimeBuffers[\s\S]*frontierBlockedStages:\s*\[[\s\S]*candidateSourceRuntimeBuffers\.status === "runtime-state-buffers-present"[\s\S]*"live-wgsl-production-candidate-source-election"[\s\S]*"live-wgsl-production-election-candidate-source-bindings"/,
-    "frontier blockers must name the consumer when runtime candidate-source buffers are present and name bindings only when they are missing",
+    /const nextBlockedStage = state\.productionElectionComputeConsumer\s*\?\s*"live-wgsl-production-election-prefix-scatter"[\s\S]*:\s*candidateSourceRuntimeBuffers\.status === "runtime-state-buffers-present"[\s\S]*"live-wgsl-production-candidate-source-election"/,
+    "frontier blockers must preserve prefix scatter when compute-consumer state is present and name older frontiers only when it is missing",
   );
   assert.match(
     retainedRowsRefreshSource,
-    /frontierBlockedStages:\s*\[[\s\S]*"live-wgsl-production-election-candidate-source-bindings"[\s\S]*\]/,
-    "present retained-row evidence must replace the stale prefix/scatter blocker with the next production-election binding frontier",
+    /nextGpuOffloadStage,[\s\S]*frontierBlockedStages:\s*\[[\s\S]*nextBlockedStage[\s\S]*\]/,
+    "present retained-row refresh must publish the same compute-consumer-aware boundary in next stage and blockers",
+  );
+  assert.doesNotMatch(
+    retainedRowsRefreshSource,
+    /nextGpuOffloadStage:\s*candidateSourceRuntimeBuffers\.status === "runtime-state-buffers-present"\s*\?\s*"live-wgsl-production-candidate-source-election"/,
+    "present retained-row refresh must not regress directly from seated candidate-source buffers to the old production-election boundary",
+  );
+  assert.match(
+    retainedRowsRefreshSource,
+    /frontierBlockedStages:\s*\[[\s\S]*nextBlockedStage[\s\S]*\]/,
+    "present retained-row evidence must publish the compute-consumer-aware next blocked stage instead of a stale literal frontier",
   );
   assert.match(
     retainedRowsRefreshSource,
