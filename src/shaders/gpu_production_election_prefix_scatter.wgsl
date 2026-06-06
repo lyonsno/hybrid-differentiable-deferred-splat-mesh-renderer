@@ -8,7 +8,7 @@ struct PrefixScatterParams {
 @group(0) @binding(0) var<storage, read> candidateSourceRecords: array<u32>;
 @group(0) @binding(1) var<storage, read> candidateSourceGroups: array<u32>;
 @group(0) @binding(2) var<storage, read_write> prefixCounts: array<atomic<u32>>;
-@group(0) @binding(3) var<storage, read_write> prefixOffsets: array<u32>;
+@group(0) @binding(3) var<storage, read_write> prefixOffsets: array<atomic<u32>>;
 @group(0) @binding(4) var<storage, read_write> retainedRecordIndices: array<u32>;
 @group(0) @binding(5) var<storage, read> retainedRecordTileIndexes: array<u32>;
 @group(0) @binding(6) var<uniform> prefixScatterParams: PrefixScatterParams;
@@ -22,7 +22,7 @@ fn scatter_production_election_prefix(@builtin(global_invocation_id) globalId: v
     if (tileIndex < prefixScatterParams.tileCount) {
       let slot = atomicAdd(&prefixCounts[tileIndex], 1u);
       retainedRecordIndices[retainedRecordIndex] = retainedRecordIndex;
-      prefixOffsets[tileIndex] = max(prefixOffsets[tileIndex], slot + 1u);
+      atomicMax(&prefixOffsets[tileIndex], slot + 1u);
     }
   }
 

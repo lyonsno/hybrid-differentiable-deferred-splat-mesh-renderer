@@ -41,6 +41,7 @@ export interface GpuProductionElectionPrefixScatterContract {
     "production-election-retained-record-indices-buffer",
   ];
   readonly outputWitness: "production-election-prefix-scatter-witness-buffer";
+  readonly dispatchWorkgroups: number;
   readonly nextConsumerBoundary: "current-compositor-bind-group-consumption";
   readonly currentCompositorBinding: "forbidden-current-compositor-bind-group-full";
   readonly falseClosureGuard: "wgsl-production-election-prefix-scatter-is-not-current-compositor-bind-group-consumption";
@@ -178,10 +179,39 @@ export function createGpuProductionElectionPrefixScatterContract(
       "production-election-retained-record-indices-buffer",
     ],
     outputWitness: "production-election-prefix-scatter-witness-buffer",
+    dispatchWorkgroups: Math.max(1, Math.ceil(retainedRecordCount / 64)),
     nextConsumerBoundary: "current-compositor-bind-group-consumption",
     currentCompositorBinding: "forbidden-current-compositor-bind-group-full",
     falseClosureGuard: "wgsl-production-election-prefix-scatter-is-not-current-compositor-bind-group-consumption",
   };
+}
+
+export function dispatchGpuProductionElectionPrefixScatter(
+  pass: GPUComputePassEncoder,
+  contract: GpuProductionElectionPrefixScatterContract | undefined,
+): void {
+  if (!contract) {
+    return;
+  }
+  pass.setPipeline(contract.pipeline);
+  pass.setBindGroup(0, contract.bindGroup);
+  pass.dispatchWorkgroups(contract.dispatchWorkgroups);
+}
+
+export function resetGpuProductionElectionPrefixScatter(
+  queue: GPUQueue,
+  contract: GpuProductionElectionPrefixScatterContract | undefined,
+): void {
+  if (!contract) {
+    return;
+  }
+  queue.writeBuffer(contract.prefixCountsBuffer, 0, new Uint32Array(Math.max(contract.tileCount, 1)));
+  queue.writeBuffer(contract.prefixOffsetsBuffer, 0, new Uint32Array(Math.max(contract.tileCount, 1)));
+  queue.writeBuffer(
+    contract.witnessBuffer,
+    0,
+    new Uint32Array(GPU_PRODUCTION_ELECTION_PREFIX_SCATTER_WITNESS_WORDS),
+  );
 }
 
 function createInitializedStorageBuffer(

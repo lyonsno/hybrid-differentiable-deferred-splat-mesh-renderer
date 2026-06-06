@@ -57,7 +57,10 @@ import {
   type GpuProductionElectionConsumerContract,
 } from "./gpuProductionElectionConsumer.js";
 import {
+  GPU_PRODUCTION_ELECTION_PREFIX_SCATTER_WITNESS_WORDS,
   createGpuProductionElectionPrefixScatterContract,
+  dispatchGpuProductionElectionPrefixScatter,
+  resetGpuProductionElectionPrefixScatter,
   type GpuProductionElectionPrefixScatterContract,
 } from "./gpuProductionElectionPrefixScatter.js";
 import { adaptGpuArenaRetainedContributors } from "./gpuArenaRetainedListAdapter.js";
@@ -287,6 +290,8 @@ interface TileLocalSceneState {
   pendingCompositorInputReadback?: PendingTileLocalCompositorInputReadback;
   refStatsReadback?: TileLocalRefStatsReadback;
   pendingRefStatsReadback?: PendingTileLocalRefStatsReadback;
+  prefixScatterReadback?: ProductionElectionPrefixScatterReadback;
+  pendingPrefixScatterReadback?: PendingProductionElectionPrefixScatterReadback;
   disposed: boolean;
 }
 
@@ -535,6 +540,41 @@ interface PendingTileLocalRefStatsReadback {
   cancelled: boolean;
 }
 
+interface ProductionElectionPrefixScatterReadback {
+  readonly status: "pending" | "present" | "blocked";
+  readonly source: "wgsl-production-election-prefix-scatter-readback";
+  readonly frameId: number;
+  readonly recordCount: number;
+  readonly groupCount: number;
+  readonly retainedRecordCount: number;
+  readonly tileCount: number;
+  readonly witnessSentinel: number;
+  readonly witnessRecordCount: number;
+  readonly witnessGroupCount: number;
+  readonly witnessRetainedRecordCount: number;
+  readonly witnessTileCount: number;
+  readonly firstRecordWord: number;
+  readonly firstGroupWord: number;
+  readonly firstRetainedTileIndex: number;
+  readonly retainedRows: number;
+  readonly nonEmptyTiles: number;
+  readonly maxRowsPerTile: number;
+  readonly firstRetainedRecordIndex: number;
+  readonly outputBuffers: readonly string[];
+  readonly falseClosureGuard: "prefix-scatter-readback-is-not-current-compositor-consumption";
+  readonly blockedReason?: string;
+}
+
+interface PendingProductionElectionPrefixScatterReadback {
+  readonly frameId: number;
+  readonly contract: GpuProductionElectionPrefixScatterContract;
+  readonly witnessBuffer: GPUBuffer;
+  readonly prefixCountsBuffer: GPUBuffer;
+  readonly retainedRecordIndicesBuffer: GPUBuffer;
+  mapStarted: boolean;
+  cancelled: boolean;
+}
+
 interface CompactRetainedSourceForRuntime {
   readonly projectedRecords: readonly GpuTileContributorArenaProjectedContributor[];
   readonly retainedRecords: readonly GpuTileContributorArenaProjectedContributor[];
@@ -741,6 +781,7 @@ interface SourceFrontierProductionElectionPrefixScatterEvidence {
   readonly consumedRuntimeBuffers?: readonly string[];
   readonly outputBuffers?: readonly string[];
   readonly outputWitness?: "production-election-prefix-scatter-witness-buffer";
+  readonly readback?: ProductionElectionPrefixScatterReadback;
   readonly currentCompositorBinding:
     | "forbidden-current-compositor-bind-group-full"
     | "blocked-missing-production-election-prefix-scatter-input";
@@ -1320,7 +1361,12 @@ async function main() {
             }
           );
           gpu.device.queue.writeBuffer(tileLocalState.frameUniformBuffer, 0, tileLocalState.frameUniformData);
+          resetGpuProductionElectionPrefixScatter(
+            gpu.device.queue,
+            tileLocalState.productionElectionPrefixScatter
+          );
           const tileLocalComputePass = encoder.beginComputePass();
+          dispatchGpuProductionElectionPrefixScatter(tileLocalComputePass, tileLocalState.productionElectionPrefixScatter);
           const gpuDispatchEnqueueStartedAtMs = tileLocalState.arenaBackend === "gpu"
             ? performance.now()
             : undefined;
@@ -1373,6 +1419,7 @@ async function main() {
           enqueueTileLocalCompositorInputReadback(gpu.device, encoder, tileLocalState, frameSerial, scene.attributes.colors);
           enqueueTileLocalRefStatsReadback(gpu.device, encoder, tileLocalState, frameSerial);
           enqueueWgslProjectedRefStreamReadback(gpu.device, encoder, tileLocalState, frameSerial);
+          enqueueProductionElectionPrefixScatterReadback(gpu.device, encoder, tileLocalState, frameSerial);
         });
         tileLocalState.bandDispatchCacheTrace = buildBandDispatchCacheTrace({
           tileColumns: tileLocalState.plan.tileColumns,
@@ -1468,6 +1515,7 @@ async function main() {
         resolveTileLocalCompositorInputReadback(scene.tileLocalState!);
         resolveTileLocalRefStatsReadback(scene.tileLocalState!);
         resolveWgslProjectedRefStreamReadback(scene.tileLocalState!);
+        resolveProductionElectionPrefixScatterReadback(scene.tileLocalState!);
       });
     }
 
@@ -6399,6 +6447,258 @@ function publishWgslProjectedRefStreamReadback(
   };
 }
 
+function enqueueProductionElectionPrefixScatterReadback(
+  device: GPUDevice,
+  encoder: GPUCommandEncoder,
+  state: TileLocalSceneState,
+  frameId: number
+): void {
+  if (!state.productionElectionPrefixScatter || frameId < 0 || state.disposed) {
+    return;
+  }
+  if (state.pendingPrefixScatterReadback || state.prefixScatterReadback?.frameId === frameId) {
+    return;
+  }
+  const witnessBytes = GPU_PRODUCTION_ELECTION_PREFIX_SCATTER_WITNESS_WORDS * Uint32Array.BYTES_PER_ELEMENT;
+  const prefixCountsBytes = Math.max(
+    16,
+    state.productionElectionPrefixScatter.tileCount * Uint32Array.BYTES_PER_ELEMENT
+  );
+  const retainedRecordIndicesBytes = Math.max(
+    16,
+    Math.max(state.productionElectionPrefixScatter.retainedRecordCount, 1) * Uint32Array.BYTES_PER_ELEMENT
+  );
+  const witnessBuffer = createReadbackBuffer(
+    device,
+    witnessBytes,
+    "production_election_prefix_scatter_witness_readback"
+  );
+  const prefixCountsBuffer = createReadbackBuffer(
+    device,
+    prefixCountsBytes,
+    "production_election_prefix_scatter_prefix_counts_readback"
+  );
+  const retainedRecordIndicesBuffer = createReadbackBuffer(
+    device,
+    retainedRecordIndicesBytes,
+    "production_election_prefix_scatter_retained_indices_readback"
+  );
+  encoder.copyBufferToBuffer(state.productionElectionPrefixScatter.witnessBuffer, 0, witnessBuffer, 0, witnessBytes);
+  encoder.copyBufferToBuffer(state.productionElectionPrefixScatter.prefixCountsBuffer, 0, prefixCountsBuffer, 0, prefixCountsBytes);
+  encoder.copyBufferToBuffer(state.productionElectionPrefixScatter.retainedRecordIndicesBuffer, 0, retainedRecordIndicesBuffer, 0, retainedRecordIndicesBytes);
+  const contract = state.productionElectionPrefixScatter;
+  state.pendingPrefixScatterReadback = {
+    frameId,
+    contract,
+    witnessBuffer,
+    prefixCountsBuffer,
+    retainedRecordIndicesBuffer,
+    mapStarted: false,
+    cancelled: false,
+  };
+  state.prefixScatterReadback = {
+    status: "pending",
+    source: "wgsl-production-election-prefix-scatter-readback",
+    frameId,
+    recordCount: contract.recordCount,
+    groupCount: contract.groupCount,
+    retainedRecordCount: contract.retainedRecordCount,
+    tileCount: contract.tileCount,
+    witnessSentinel: 0,
+    witnessRecordCount: 0,
+    witnessGroupCount: 0,
+    witnessRetainedRecordCount: 0,
+    witnessTileCount: 0,
+    firstRecordWord: 0,
+    firstGroupWord: 0,
+    firstRetainedTileIndex: 0,
+    retainedRows: 0,
+    nonEmptyTiles: 0,
+    maxRowsPerTile: 0,
+    firstRetainedRecordIndex: 0,
+    outputBuffers: contract.outputBuffers,
+    falseClosureGuard: "prefix-scatter-readback-is-not-current-compositor-consumption",
+  };
+  refreshProductionElectionPrefixScatterReadbackEvidence(state, state.prefixScatterReadback);
+}
+
+function resolveProductionElectionPrefixScatterReadback(state: TileLocalSceneState): void {
+  const pending = state.pendingPrefixScatterReadback;
+  if (!pending || pending.mapStarted) {
+    return;
+  }
+  pending.mapStarted = true;
+  state.pendingPrefixScatterReadback = undefined;
+  const buffers = [
+    pending.witnessBuffer,
+    pending.prefixCountsBuffer,
+    pending.retainedRecordIndicesBuffer,
+  ];
+  void Promise.all(buffers.map((buffer) => buffer.mapAsync(GPUMapMode.READ)))
+    .then(() => {
+      const witness = new Uint32Array(pending.witnessBuffer.getMappedRange());
+      const prefixCounts = new Uint32Array(pending.prefixCountsBuffer.getMappedRange());
+      const retainedRecordIndices = new Uint32Array(pending.retainedRecordIndicesBuffer.getMappedRange());
+      const readback = summarizeProductionElectionPrefixScatterReadback(
+        pending,
+        witness,
+        prefixCounts,
+        retainedRecordIndices
+      );
+      if (productionElectionPrefixScatterReadbackCanPublish(state, pending)) {
+        state.prefixScatterReadback = readback;
+        refreshProductionElectionPrefixScatterReadbackEvidence(state, readback);
+        publishProductionElectionPrefixScatterReadback(state, readback);
+      }
+      destroyMappedReadbackBuffers(buffers);
+    })
+    .catch((error) => {
+      const readback = blockedProductionElectionPrefixScatterReadback(pending, error);
+      if (productionElectionPrefixScatterReadbackCanPublish(state, pending)) {
+        state.prefixScatterReadback = readback;
+        refreshProductionElectionPrefixScatterReadbackEvidence(state, readback);
+        publishProductionElectionPrefixScatterReadback(state, readback);
+      }
+      destroyReadbackBuffers(buffers);
+    });
+}
+
+function summarizeProductionElectionPrefixScatterReadback(
+  pending: PendingProductionElectionPrefixScatterReadback,
+  witness: Uint32Array,
+  prefixCounts: Uint32Array,
+  retainedRecordIndices: Uint32Array,
+): ProductionElectionPrefixScatterReadback {
+  let retainedRows = 0;
+  let nonEmptyTiles = 0;
+  let maxRowsPerTile = 0;
+  for (let tileIndex = 0; tileIndex < pending.contract.tileCount; tileIndex += 1) {
+    const rows = prefixCounts[tileIndex] ?? 0;
+    retainedRows += rows;
+    maxRowsPerTile = Math.max(maxRowsPerTile, rows);
+    if (rows > 0) {
+      nonEmptyTiles += 1;
+    }
+  }
+  return {
+    status: "present",
+    source: "wgsl-production-election-prefix-scatter-readback",
+    frameId: pending.frameId,
+    recordCount: pending.contract.recordCount,
+    groupCount: pending.contract.groupCount,
+    retainedRecordCount: pending.contract.retainedRecordCount,
+    tileCount: pending.contract.tileCount,
+    witnessSentinel: witness[7] ?? 0,
+    witnessRecordCount: witness[0] ?? 0,
+    witnessGroupCount: witness[1] ?? 0,
+    witnessRetainedRecordCount: witness[2] ?? 0,
+    witnessTileCount: witness[3] ?? 0,
+    firstRecordWord: witness[4] ?? 0,
+    firstGroupWord: witness[5] ?? 0,
+    firstRetainedTileIndex: witness[6] ?? 0,
+    retainedRows,
+    nonEmptyTiles,
+    maxRowsPerTile,
+    firstRetainedRecordIndex: pending.contract.retainedRecordCount > 0
+      ? retainedRecordIndices[0] ?? 0
+      : 0,
+    outputBuffers: pending.contract.outputBuffers,
+    falseClosureGuard: "prefix-scatter-readback-is-not-current-compositor-consumption",
+  };
+}
+
+function blockedProductionElectionPrefixScatterReadback(
+  pending: PendingProductionElectionPrefixScatterReadback,
+  error: unknown
+): ProductionElectionPrefixScatterReadback {
+  return {
+    status: "blocked",
+    source: "wgsl-production-election-prefix-scatter-readback",
+    frameId: pending.frameId,
+    recordCount: pending.contract.recordCount,
+    groupCount: pending.contract.groupCount,
+    retainedRecordCount: pending.contract.retainedRecordCount,
+    tileCount: pending.contract.tileCount,
+    witnessSentinel: 0,
+    witnessRecordCount: 0,
+    witnessGroupCount: 0,
+    witnessRetainedRecordCount: 0,
+    witnessTileCount: 0,
+    firstRecordWord: 0,
+    firstGroupWord: 0,
+    firstRetainedTileIndex: 0,
+    retainedRows: 0,
+    nonEmptyTiles: 0,
+    maxRowsPerTile: 0,
+    firstRetainedRecordIndex: 0,
+    outputBuffers: pending.contract.outputBuffers,
+    falseClosureGuard: "prefix-scatter-readback-is-not-current-compositor-consumption",
+    blockedReason: errorMessage(error),
+  };
+}
+
+function productionElectionPrefixScatterReadbackCanPublish(
+  state: TileLocalSceneState,
+  pending: PendingProductionElectionPrefixScatterReadback
+): boolean {
+  return (
+    !state.disposed &&
+    !pending.cancelled &&
+    pending.frameId === state.lastCompositedFrame &&
+    state.productionElectionPrefixScatter === pending.contract
+  );
+}
+
+function refreshProductionElectionPrefixScatterReadbackEvidence(
+  state: TileLocalSceneState,
+  readback: ProductionElectionPrefixScatterReadback
+): void {
+  const retainedSourceConstruction = state.retainedSourceConstruction;
+  if (
+    !retainedSourceConstruction ||
+    retainedSourceConstruction.effectiveSourceBackend !== "wgsl-projected-ref-stream-source-frontier" ||
+    !retainedSourceConstruction.productionElectionPrefixScatter
+  ) {
+    return;
+  }
+  const productionElectionPrefixScatter = retainedSourceConstruction.productionElectionPrefixScatter;
+  state.retainedSourceConstruction = {
+    ...retainedSourceConstruction,
+    productionElectionPrefixScatter: {
+      ...productionElectionPrefixScatter,
+      readback,
+    },
+  };
+}
+
+function publishProductionElectionPrefixScatterReadback(
+  state: TileLocalSceneState,
+  readback: ProductionElectionPrefixScatterReadback
+): void {
+  const runtimeWindow = window as unknown as { __MESH_SPLAT_SMOKE__?: Record<string, unknown> };
+  const smoke = runtimeWindow.__MESH_SPLAT_SMOKE__;
+  if (!smoke || typeof smoke !== "object") {
+    return;
+  }
+  const tileLocal = smoke.tileLocal && typeof smoke.tileLocal === "object"
+    ? smoke.tileLocal as Record<string, unknown>
+    : {};
+  smoke.tileLocal = {
+    ...tileLocal,
+    prefixScatterReadback: readback,
+    retainedSourceConstruction: state.retainedSourceConstruction,
+  };
+  const arenaRuntime = smoke.arenaRuntime && typeof smoke.arenaRuntime === "object"
+    ? smoke.arenaRuntime as Record<string, unknown>
+    : undefined;
+  if (arenaRuntime) {
+    smoke.arenaRuntime = {
+      ...arenaRuntime,
+      retainedSourceConstruction: state.retainedSourceConstruction,
+    };
+  }
+}
+
 function sameFramePublishedTileLocalRefStatsReadback(
   smoke: Record<string, unknown> | undefined,
   frameId: number
@@ -7332,6 +7632,15 @@ function destroyTileLocalSceneState(state: TileLocalSceneState): void {
   state.candidateSourceGroupsBuffer?.destroy();
   state.productionElectionComputeConsumer?.paramsBuffer.destroy();
   state.productionElectionComputeConsumer?.witnessBuffer.destroy();
+  if (state.pendingPrefixScatterReadback) {
+    state.pendingPrefixScatterReadback.cancelled = true;
+    destroyReadbackBuffers([
+      state.pendingPrefixScatterReadback.witnessBuffer,
+      state.pendingPrefixScatterReadback.prefixCountsBuffer,
+      state.pendingPrefixScatterReadback.retainedRecordIndicesBuffer,
+    ]);
+    state.pendingPrefixScatterReadback = undefined;
+  }
   state.productionElectionPrefixScatter?.paramsBuffer.destroy();
   state.productionElectionPrefixScatter?.retainedRecordTileIndexesBuffer.destroy();
   state.productionElectionPrefixScatter?.prefixCountsBuffer.destroy();

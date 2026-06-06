@@ -806,8 +806,58 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     productionElectionPrefixScatterSource,
+    /export function dispatchGpuProductionElectionPrefixScatter\([\s\S]*pass\.setPipeline\(contract\.pipeline\)[\s\S]*pass\.setBindGroup\(0,\s*contract\.bindGroup\)[\s\S]*pass\.dispatchWorkgroups\(contract\.dispatchWorkgroups\)/,
+    "prefix-scatter contract must expose a dedicated dispatch helper instead of relying on inert pipeline construction",
+  );
+  assert.match(
+    productionElectionPrefixScatterSource,
+    /dispatchWorkgroups:\s*Math\.max\(1,\s*Math\.ceil\(retainedRecordCount \/ 64\)\)/,
+    "prefix-scatter dispatch must be bounded by retained record count, not viewport tiles or compositor capacity",
+  );
+  assert.match(
+    productionElectionPrefixScatterSource,
     /outputBuffers:[\s\S]*"production-election-prefix-counts-buffer"[\s\S]*"production-election-prefix-offsets-buffer"[\s\S]*"production-election-retained-record-indices-buffer"/,
     "prefix scatter must own concrete output buffers for counts, offsets, and retained record indices",
+  );
+  assert.match(
+    renderLoopSource,
+    /dispatchGpuProductionElectionPrefixScatter\(tileLocalComputePass,\s*tileLocalState\.productionElectionPrefixScatter\)/,
+    "source-frontier render loop must dispatch prefix scatter after seating the contract",
+  );
+  assert.ok(
+    renderLoopSource.indexOf("dispatchGpuProductionElectionPrefixScatter") >= 0 &&
+      renderLoopSource.indexOf("dispatchGpuProductionElectionPrefixScatter") < renderLoopSource.indexOf("tileLocalState.pipeline.dispatch"),
+    "prefix scatter must run before the current tile-local compositor path, not after presentation",
+  );
+  assert.match(
+    mainSource,
+    /enqueueProductionElectionPrefixScatterReadback\(gpu\.device,\s*encoder,\s*tileLocalState,\s*frameSerial\)/,
+    "source-frontier runtime must enqueue prefix-scatter readback evidence after dispatch",
+  );
+  assert.match(
+    mainSource,
+    /interface ProductionElectionPrefixScatterReadback[\s\S]*source:\s*"wgsl-production-election-prefix-scatter-readback"[\s\S]*witnessSentinel:\s*number[\s\S]*retainedRows:\s*number[\s\S]*nonEmptyTiles:\s*number[\s\S]*falseClosureGuard:\s*"prefix-scatter-readback-is-not-current-compositor-consumption"/,
+    "prefix-scatter readback evidence must carry live witness/count fields and a compositor non-consumption guard",
+  );
+  assert.match(
+    mainSource,
+    /function enqueueProductionElectionPrefixScatterReadback[\s\S]*copyBufferToBuffer\(state\.productionElectionPrefixScatter\.witnessBuffer[\s\S]*copyBufferToBuffer\(state\.productionElectionPrefixScatter\.prefixCountsBuffer[\s\S]*copyBufferToBuffer\(state\.productionElectionPrefixScatter\.retainedRecordIndicesBuffer/,
+    "prefix-scatter readback must copy the witness, counts, and retained index outputs from live GPU buffers",
+  );
+  assert.match(
+    mainSource,
+    /function summarizeProductionElectionPrefixScatterReadback[\s\S]*witnessSentinel:\s*witness\[7\][\s\S]*source:\s*"wgsl-production-election-prefix-scatter-readback"/,
+    "prefix-scatter readback must summarize the WGSL witness sentinel rather than only reporting pending state",
+  );
+  assert.match(
+    mainSource,
+    /function refreshProductionElectionPrefixScatterReadbackEvidence[\s\S]*productionElectionPrefixScatter:\s*\{[\s\S]*readback,[\s\S]*\}/,
+    "retained-source construction evidence must embed the live prefix-scatter readback after it resolves",
+  );
+  assert.match(
+    mainSource,
+    /function publishProductionElectionPrefixScatterReadback[\s\S]*prefixScatterReadback:\s*readback[\s\S]*retainedSourceConstruction:\s*state\.retainedSourceConstruction/,
+    "smoke evidence must publish prefix-scatter readback without claiming compositor input consumption",
   );
   assert.match(
     productionElectionPrefixScatterShader,
