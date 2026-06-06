@@ -826,7 +826,7 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.ok(
     renderLoopSource.indexOf("dispatchGpuProductionElectionPrefixScatter") >= 0 &&
-      renderLoopSource.indexOf("dispatchGpuProductionElectionPrefixScatter") < renderLoopSource.indexOf("tileLocalState.pipeline.dispatch"),
+      renderLoopSource.indexOf("dispatchGpuProductionElectionPrefixScatter") < renderLoopSource.indexOf("tileLocalState.pipeline.dispatchComposite"),
     "prefix scatter must run before the current tile-local compositor path, not after presentation",
   );
   assert.match(
@@ -1176,6 +1176,84 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
     mainSource,
     /overlayTileLocalRefStatsReadback\(scene\.tileLocalState,\s*runtimeWindow\.__MESH_SPLAT_SMOKE__\)/,
     "operator overlay must prefer live/published ref stats over pending zero placeholders",
+  );
+});
+
+test("live production-election prefix scatter materializes the current compositor source before final color", () => {
+  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const prefixScatterSource = readFileSync(
+    new URL("../../src/gpuProductionElectionPrefixScatter.ts", import.meta.url),
+    "utf8",
+  );
+  const prefixScatterShader = readFileSync(
+    new URL("../../src/shaders/gpu_production_election_prefix_scatter.wgsl", import.meta.url),
+    "utf8",
+  );
+  const renderLoopStart = mainSource.indexOf("const tileLocalComputePass = encoder.beginComputePass");
+  const renderLoopEnd = mainSource.indexOf("tileLocalComputePass.end()", renderLoopStart);
+  const renderLoopSource = mainSource.slice(renderLoopStart, renderLoopEnd);
+  const compactSourceFallback = extractFunctionSource(mainSource, "compactRetainedSourceForWgslProjectedSourceFrontier");
+  const retainedSourceEvidence = extractFunctionSource(mainSource, "buildWgslProjectedSourceFrontierConstructionEvidence");
+
+  assert.match(
+    prefixScatterSource,
+    /materializeGpuProductionElectionCompositorSource/,
+    "prefix-scatter contract must expose a dedicated compositor-source materialization dispatch",
+  );
+  assert.match(
+    prefixScatterShader,
+    /@compute @workgroup_size\(64\)\s*fn materialize_production_election_compositor_source/,
+    "prefix-scatter WGSL must materialize retained production-election rows into compositor-readable tile buffers",
+  );
+  assert.match(
+    prefixScatterShader,
+    /materializedPrefixCounts\[[\s\S]*tileHeaders\[[\s\S]*tileRefs\[[\s\S]*tileCoverageWeights\[[\s\S]*alphaParams\[/,
+    "materialization must bridge prefix-scatter retained rows into tile headers, refs, weights, and alpha/conic payloads",
+  );
+  assert.match(
+    prefixScatterSource,
+    /retainedRecordPayloadU32\[u32Base \+ 4\] = compositorSlot/,
+    "prefix-scatter payload must carry a deterministic per-tile compositor slot instead of relying on GPU atomic arrival order",
+  );
+  assert.match(
+    prefixScatterShader,
+    /let slot = retainedRecordPayloadU32\[u32Base \+ 4u\]/,
+    "materializer must consume the precomputed compositor slot from sorted retained payload rows",
+  );
+  assert.doesNotMatch(
+    prefixScatterShader,
+    /let slot = materializedRetainedRecordIndices\[retainedRecordIndex\]/,
+    "materializer must not use schedule-dependent prefix-scatter atomic slots as compositor order",
+  );
+  assert.match(
+    prefixScatterSource,
+    /const retainedRecords = \[\.\.\.productionElection\.retainedRecords\]\.sort\(compareCompactProjectionRetentionCompositorOrder\)/,
+    "prefix-scatter compositor materialization must preserve per-tile alpha-compositing order instead of selection order",
+  );
+  assert.match(
+    compactSourceFallback,
+    /const retainedRecords = \[\.\.\.productionElection\.retainedRecords\]\.sort\(compareCompactProjectionRetentionCompositorOrder\)/,
+    "production-election retained-source fallback evidence must use the same compositor ordering contract as the live materializer",
+  );
+  assert.match(
+    renderLoopSource,
+    /dispatchGpuProductionElectionPrefixScatter\(\s*tileLocalComputePass,\s*tileLocalState\.productionElectionPrefixScatter\s*\)[\s\S]*materializeGpuProductionElectionCompositorSource\(\s*tileLocalComputePass,\s*tileLocalState\.productionElectionPrefixScatter[\s\S]*tileLocalState\.pipeline\.dispatchComposite/,
+    "source-frontier render loop must materialize production-election prefix-scatter output before current compositor dispatch",
+  );
+  assert.match(
+    renderLoopSource,
+    /else if \(tileLocalState\.productionElectionPrefixScatter\) \{\s*tileLocalState\.pipeline\.dispatchComposite\(tileLocalComputePass,\s*tileLocalState\.bindGroup,\s*tileLocalState\.plan\);\s*\} else if \(compositePrebuiltCpuTileRefs\)/,
+    "seated production-election prefix scatter must choose the compositor over the all-candidate projected-ref-stream pipeline",
+  );
+  assert.match(
+    retainedSourceEvidence,
+    /currentCompositorBinding:\s*productionElectionPrefixScatter\s*\?\s*"production-election-prefix-scatter-materialized-current-compositor-source"[\s\S]*:\s*"forbidden-current-compositor-bind-group-full"/,
+    "retained-source evidence must state that the current compositor source is materialized from production-election prefix scatter",
+  );
+  assert.match(
+    retainedSourceEvidence,
+    /falseClosureGuard:\s*productionElectionPrefixScatter\s*\?\s*"production-election-compositor-consumption-is-not-visual-quality-or-performance-closure"[\s\S]*:\s*"wgsl-source-frontier-gpu-retention-election-is-not-exact-plate-parity-or-production-retention"/,
+    "compositor-consumption evidence must keep visual quality and performance closure separate from source-routing closure",
   );
 });
 
