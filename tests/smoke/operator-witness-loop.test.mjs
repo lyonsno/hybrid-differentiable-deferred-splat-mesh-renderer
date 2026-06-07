@@ -952,7 +952,7 @@ test("compact stream retention scores local conic support separately from tile i
   const bucketStart = source.indexOf("interface CompactStreamingTileBucket");
   const bucketEnd = source.indexOf("function compactMergedTileCandidateRecords", bucketStart);
   const bucketSource = source.slice(bucketStart, bucketEnd);
-  const contributorStart = source.indexOf("function compactCoverageEntryToRuntimeContributor");
+  const contributorStart = source.indexOf("interface CompactRuntimeContributorTemplate");
   const contributorEnd = source.indexOf("function compactSourceAnchorTileIndexes", contributorStart);
   const contributorSource = source.slice(contributorStart, contributorEnd);
 
@@ -964,10 +964,10 @@ test("compact stream retention scores local conic support separately from tile i
   assert.match(bucketSource, /const supportSampleRetentionWeight = supportSampleWeight \* Math\.max\(0,\s*finiteOrZero\(supportLuminance\)\)/);
   assert.match(bucketSource, /compareCompactProjectionSupportSamplePriority/);
   assert.match(streamSource, /const localSupportWeight = compactSourceTileLocalSupportWeight\(\{/);
-  assert.match(streamSource, /onEntry\(\{ splat, tileIndex, tileX, tileY, coverageWeight, localSupportWeight \}\)/);
-  assert.match(contributorSource, /const retentionSupportWeight = Math\.max\(coverageWeight,\s*localSupportWeight\)/);
-  assert.match(contributorSource, /retentionWeight:\s*retentionSupportWeight \* opacity \* luminance/);
-  assert.match(contributorSource, /occlusionWeight:\s*retentionSupportWeight \* opacity/);
+  assert.match(streamSource, /onEntry\(\{ splatOrdinal, splat, tileIndex, tileX, tileY, coverageWeight, localSupportWeight \}\)/);
+  assert.match(contributorSource, /const retentionSupportWeight = Math\.max\(safeCoverageWeight,\s*safeLocalSupportWeight\)/);
+  assert.match(contributorSource, /retentionWeight:\s*retentionSupportWeight \* template\.opacity \* template\.luminance/);
+  assert.match(contributorSource, /occlusionWeight:\s*retentionSupportWeight \* template\.opacity/);
 });
 
 test("source-frontier candidate packing reuses flattened support samples per bucket", () => {
@@ -1060,6 +1060,61 @@ test("source-frontier support sample retention clones records only after capped-
     supportRecordRetainSource,
     /const\s+supportRecord:\s*GpuTileContributorArenaProjectedContributor\s*=\s*\{\s*\.\.\.record,\s*supportSampleWeight,\s*supportSampleRetentionWeight,?\s*\}/,
     "support sample helper should clone only after the candidate is known to enter the retained list",
+  );
+});
+
+test("source-frontier stream packing reuses per-splat contributor templates", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const sourceFrontierStart = source.indexOf("function buildWgslSourceFrontierCandidateSources");
+  const sourceFrontierEnd = source.indexOf("function createWgslProjectedRefStreamState", sourceFrontierStart);
+  const sourceFrontierSource = source.slice(sourceFrontierStart, sourceFrontierEnd);
+  const streamStart = source.indexOf("function streamCompactProjectedTileRefs");
+  const streamEnd = source.indexOf("function compactSourceBoundedTileRefCount", streamStart);
+  const streamSource = source.slice(streamStart, streamEnd);
+  const templateSource = source.slice(
+    source.indexOf("interface CompactRuntimeContributorTemplate"),
+    source.indexOf("function compactCoverageEntryToRuntimeContributor"),
+  );
+
+  assert.match(
+    streamSource,
+    /splatOrdinal/,
+    "projected tile ref streaming should expose the source splat ordinal for allocation-free per-splat lookup",
+  );
+  assert.match(
+    templateSource,
+    /function compactRuntimeContributorTemplateForSplat/,
+    "runtime contributor template construction should be a named pre-stream helper",
+  );
+  assert.match(
+    templateSource,
+    /function compactRuntimeContributorFromTemplate/,
+    "runtime contributor materialization should reuse the precomputed static splat fields",
+  );
+  assert.match(
+    sourceFrontierSource,
+    /const contributorTemplates = frontierSource\.splats\.map\(\(splat\) => compactRuntimeContributorTemplateForSplat/,
+    "source-frontier packing should precompute one contributor template per source splat",
+  );
+  assert.match(
+    sourceFrontierSource,
+    /onEntry\(\{ splatOrdinal, tileIndex, tileX, tileY, coverageWeight, localSupportWeight \}\)/,
+    "source-frontier packing should consume the streaming splat ordinal instead of map-looking up by splat id",
+  );
+  assert.match(
+    sourceFrontierSource,
+    /compactRuntimeContributorFromTemplate\(\{\s*template: contributorTemplates\[splatOrdinal\]/,
+    "source-frontier packing should materialize projected contributors from the precomputed template",
+  );
+  assert.doesNotMatch(
+    sourceFrontierSource,
+    /new Map\(frontierSource\.splats\.map/,
+    "source-frontier packing should not allocate a splat-index lookup map in the stream hot path",
+  );
+  assert.doesNotMatch(
+    sourceFrontierSource,
+    /compactCoverageEntryToRuntimeContributor\(\{\s*entry:/,
+    "source-frontier packing should not rebuild static contributor fields from coverage entries per projected tile ref",
   );
 });
 

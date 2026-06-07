@@ -2428,7 +2428,13 @@ function buildWgslSourceFrontierCandidateSources({
 }): WgslSourceFrontierCandidateSourceSubstrate {
   const buckets = new Map<number, CompactStreamingTileBucket>();
   const { ranks, depths } = compactSourceBackToFrontDepthEvidence(attributes, viewMatrix);
-  const splatsByIndex = new Map(frontierSource.splats.map((splat) => [splat.splatIndex, splat]));
+  const contributorTemplates = frontierSource.splats.map((splat) => compactRuntimeContributorTemplateForSplat({
+    splat,
+    ranks,
+    depths,
+    attributes,
+    effectiveOpacities,
+  }));
   let projectedIndex = 0;
 
   timeOptionalFrameStage(frameTiming, "wgsl-source-frontier-pack/stream-projected-tile-refs", () => {
@@ -2440,23 +2446,15 @@ function buildWgslSourceFrontierCandidateSources({
       tileColumns,
       samplesPerAxis: TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES,
       maxTilesPerSplat: frontierSource.maxTilesPerSplat,
-      onEntry({ splat, tileIndex, tileX, tileY, coverageWeight, localSupportWeight }) {
-        const record = compactCoverageEntryToRuntimeContributor({
-          entry: {
-            tileIndex,
-            tileX,
-            tileY,
-            splatIndex: splat.splatIndex,
-            originalId: splat.originalId,
-            coverageWeight,
-            localSupportWeight,
-          },
+      onEntry({ splatOrdinal, tileIndex, tileX, tileY, coverageWeight, localSupportWeight }) {
+        const record = compactRuntimeContributorFromTemplate({
+          template: contributorTemplates[splatOrdinal],
           projectedIndex,
-          splatsByIndex,
-          ranks,
-          depths,
-          attributes,
-          effectiveOpacities,
+          tileIndex,
+          tileX,
+          tileY,
+          coverageWeight,
+          localSupportWeight,
         });
         projectedIndex += 1;
 
@@ -4144,6 +4142,7 @@ function streamCompactProjectedTileRefs({
   readonly onlyTileIndexes?: ReadonlySet<number> | null;
   readonly maxTilesPerSplat?: number | null;
   readonly onEntry: (entry: {
+    readonly splatOrdinal: number;
     readonly splat: RuntimeCompactTileCoverage["splats"][number];
     readonly tileIndex: number;
     readonly tileX: number;
@@ -4156,7 +4155,8 @@ function streamCompactProjectedTileRefs({
   if (onlyTileIndexes && !selectedTileRows) {
     return;
   }
-  for (const splat of splats) {
+  for (let splatOrdinal = 0; splatOrdinal < splats.length; splatOrdinal += 1) {
+    const splat = splats[splatOrdinal];
     const covariance = compactSourceCovariance(splat.covariancePx);
     const densityParams = compactSourceCovarianceDensityParams(covariance);
     const tileBounds = compactSourceTileBoundsForSplat({
@@ -4202,7 +4202,7 @@ function streamCompactProjectedTileRefs({
         tileMaxX,
         tileMaxY,
       });
-      onEntry({ splat, tileIndex, tileX, tileY, coverageWeight, localSupportWeight });
+      onEntry({ splatOrdinal, splat, tileIndex, tileX, tileY, coverageWeight, localSupportWeight });
     };
     for (let tileY = minTileY; tileY <= maxTileY; tileY += 1) {
       const rowTileXs = selectedTileRows?.tileXsByRow.get(tileY);
@@ -4932,6 +4932,92 @@ function projectedCoverageToRuntimeContributors({
   }));
 }
 
+interface CompactRuntimeContributorTemplateSource {
+  readonly splatIndex: number;
+  readonly originalId: number;
+  readonly centerPx: readonly [number, number];
+  readonly covariancePx?: RuntimeCompactTileCoverage["splats"][number]["covariancePx"];
+}
+
+interface CompactRuntimeContributorTemplate {
+  readonly splatIndex: number;
+  readonly originalId: number;
+  readonly viewRank: number;
+  readonly viewDepth: number;
+  readonly centerPx: readonly [number, number];
+  readonly inverseConic: readonly [number, number, number];
+  readonly opacity: number;
+  readonly luminance: number;
+}
+
+function compactRuntimeContributorTemplateForSplat({
+  splat,
+  ranks,
+  depths,
+  attributes,
+  effectiveOpacities,
+}: {
+  readonly splat: CompactRuntimeContributorTemplateSource;
+  readonly ranks: ArrayLike<number>;
+  readonly depths: ArrayLike<number>;
+  readonly attributes: SplatAttributes;
+  readonly effectiveOpacities: Float32Array;
+}): CompactRuntimeContributorTemplate {
+  const inverseConic = invertCompactSourceCovariance(splat.covariancePx);
+  return {
+    splatIndex: splat.splatIndex,
+    originalId: splat.originalId,
+    viewRank: ranks[splat.splatIndex] ?? splat.splatIndex,
+    viewDepth: depths[splat.splatIndex] ?? 0,
+    centerPx: splat.centerPx,
+    inverseConic,
+    opacity: readCompactSourceOpacity(attributes, effectiveOpacities, splat.splatIndex),
+    luminance: readCompactSourceLuminance(attributes, splat.splatIndex),
+  };
+}
+
+function compactRuntimeContributorFromTemplate({
+  template,
+  projectedIndex,
+  tileIndex,
+  tileX,
+  tileY,
+  coverageWeight,
+  localSupportWeight,
+}: {
+  readonly template: CompactRuntimeContributorTemplate;
+  readonly projectedIndex: number;
+  readonly tileIndex: number;
+  readonly tileX: number;
+  readonly tileY: number;
+  readonly coverageWeight: number;
+  readonly localSupportWeight?: number;
+}): GpuTileContributorArenaProjectedContributor {
+  const safeCoverageWeight = Math.max(0, finiteOrZero(coverageWeight));
+  const safeLocalSupportWeight = Math.max(0, finiteOrZero(localSupportWeight));
+  const retentionSupportWeight = Math.max(safeCoverageWeight, safeLocalSupportWeight);
+  return {
+    splatIndex: template.splatIndex,
+    originalId: template.originalId,
+    tileIndex,
+    tileX,
+    tileY,
+    projectedIndex,
+    viewRank: template.viewRank,
+    viewDepth: template.viewDepth,
+    depthBand: 0,
+    coverageWeight: safeCoverageWeight,
+    centerPx: template.centerPx,
+    inverseConic: template.inverseConic,
+    opacity: template.opacity,
+    coverageAlpha: transferCompactSourceCoverageAlpha(template.opacity, safeCoverageWeight),
+    transmittanceBefore: 1,
+    retentionWeight: retentionSupportWeight * template.opacity * template.luminance,
+    occlusionWeight: retentionSupportWeight * template.opacity,
+    occlusionDensity: template.opacity,
+  };
+}
+
 function compactCoverageEntryToRuntimeContributor({
   entry,
   projectedIndex,
@@ -4950,32 +5036,27 @@ function compactCoverageEntryToRuntimeContributor({
   readonly effectiveOpacities: Float32Array;
 }): GpuTileContributorArenaProjectedContributor {
   const splat = splatsByIndex.get(entry.splatIndex);
-  const inverseConic = invertCompactSourceCovariance(splat?.covariancePx);
-  const opacity = readCompactSourceOpacity(attributes, effectiveOpacities, entry.splatIndex);
-  const coverageWeight = Math.max(0, finiteOrZero(entry.coverageWeight));
-  const localSupportWeight = Math.max(0, finiteOrZero(entry.localSupportWeight));
-  const retentionSupportWeight = Math.max(coverageWeight, localSupportWeight);
-  const luminance = readCompactSourceLuminance(attributes, entry.splatIndex);
-  return {
-    splatIndex: entry.splatIndex,
-    originalId: entry.originalId,
+  const template = compactRuntimeContributorTemplateForSplat({
+    splat: {
+      splatIndex: entry.splatIndex,
+      originalId: entry.originalId,
+      centerPx: splat?.centerPx ?? [0, 0],
+      covariancePx: splat?.covariancePx,
+    },
+    ranks,
+    depths,
+    attributes,
+    effectiveOpacities,
+  });
+  return compactRuntimeContributorFromTemplate({
+    template,
+    projectedIndex,
     tileIndex: entry.tileIndex,
     tileX: entry.tileX,
     tileY: entry.tileY,
-    projectedIndex,
-    viewRank: ranks[entry.splatIndex] ?? entry.splatIndex,
-    viewDepth: depths[entry.splatIndex] ?? 0,
-    depthBand: 0,
-    coverageWeight,
-    centerPx: splat?.centerPx ?? [0, 0],
-    inverseConic,
-    opacity,
-    coverageAlpha: transferCompactSourceCoverageAlpha(opacity, coverageWeight),
-    transmittanceBefore: 1,
-    retentionWeight: retentionSupportWeight * opacity * luminance,
-    occlusionWeight: retentionSupportWeight * opacity,
-    occlusionDensity: opacity,
-  };
+    coverageWeight: entry.coverageWeight,
+    localSupportWeight: entry.localSupportWeight,
+  });
 }
 
 function compactSourceAnchorTileIndexes({
