@@ -39,6 +39,8 @@ const OPERATOR_READINESS_STAGE_NAMES = Object.freeze(new Set([
   "view-readiness",
   "interaction-readiness",
 ]));
+const SOURCE_FRONTIER_PACK_STAGE_PREFIX = "wgsl-source-frontier-pack/";
+const SOURCE_FRONTIER_PACK_COUNTS_STAGE = "wgsl-source-frontier-pack/counts";
 
 export function buildOperatorWitnessLoopPlan(baseUrl, { timeoutMs = OPERATOR_CAPTURE_TIMEOUT_MS } = {}) {
   return [
@@ -173,7 +175,8 @@ export function summarizeOperatorWitnessTiming(captures = [], sessionTiming = {}
     }
     return slowest;
   }, null);
-  const slowestOperatorReadiness = operatorReadinessStages(timedCaptures, sessionTiming).reduce((slowest, stage) => {
+  const readinessStages = operatorReadinessStages(timedCaptures, sessionTiming);
+  const slowestOperatorReadiness = readinessStages.reduce((slowest, stage) => {
     if (!slowest || stage.elapsedMs > slowest.elapsedMs) {
       return stage;
     }
@@ -235,6 +238,7 @@ export function summarizeOperatorWitnessTiming(captures = [], sessionTiming = {}
   const operatorReadinessVsObservedAppFrameTotal = compareOperatorReadinessToObservedAppFrameTotal(
     slowestOperatorReadiness
   );
+  const sourceFrontierPack = summarizeSourceFrontierPackTiming(appFrameCaptures, readinessStages);
   return {
     totalCaptureMs,
     slowestCapture,
@@ -245,12 +249,146 @@ export function summarizeOperatorWitnessTiming(captures = [], sessionTiming = {}
     operatorReadinessVsAppFrameStage,
     operatorReadinessVsAppFrameTotal,
     operatorReadinessVsObservedAppFrameTotal,
+    sourceFrontierPack,
     captures: timedCaptures.map((capture) => ({
       id: capture.id,
       totalMs: capture.totalMs ?? 0,
       stages: capture.stages,
     })),
   };
+}
+
+function summarizeSourceFrontierPackTiming(appFrameCaptures, readinessStages = []) {
+  const observations = [
+    ...appFrameCaptures.map(sourceFrontierPackObservationFromAppFrameCapture).filter(Boolean),
+    ...readinessStages.map(sourceFrontierPackObservationFromReadinessStage).filter(Boolean),
+  ];
+  const readinessSlowestSubstage = observations.reduce((slowest, observation) => {
+    const substage = observation.slowestSubstage;
+    if (!substage) {
+      return slowest;
+    }
+    return !slowest || substage.elapsedMs > slowest.elapsedMs ? substage : slowest;
+  }, null);
+  const matchingCounts = observations.find((observation) =>
+    observation.counts &&
+    observation.captureId === readinessSlowestSubstage?.captureId &&
+    observation.frameSerial === readinessSlowestSubstage?.frameSerial
+  )?.counts ?? null;
+  const fallbackCounts = observations.reduce((selected, observation) => {
+    const counts = observation.counts;
+    if (!counts) {
+      return selected;
+    }
+    const selectedProjectedTileRefs = finiteNumber(selected?.projectedTileRefs) ?? -1;
+    const candidateProjectedTileRefs = finiteNumber(counts.projectedTileRefs) ?? -1;
+    return !selected || candidateProjectedTileRefs >= selectedProjectedTileRefs ? counts : selected;
+  }, null);
+  return {
+    slowestSubstage: readinessSlowestSubstage,
+    counts: matchingCounts ?? fallbackCounts,
+  };
+}
+
+function sourceFrontierPackObservationFromAppFrameCapture(capture) {
+  const frameSerial = capture.frameSerial ?? 0;
+  let slowestSubstage = null;
+  let counts = null;
+  for (const stage of capture.stages) {
+    if (typeof stage?.name !== "string" || !stage.name.startsWith(SOURCE_FRONTIER_PACK_STAGE_PREFIX)) {
+      continue;
+    }
+    if (stage.name === SOURCE_FRONTIER_PACK_COUNTS_STAGE) {
+      const countSummary = sourceFrontierPackCountsFromDetail(
+        stage.detail && typeof stage.detail === "object" ? stage.detail : {}
+      );
+      if (countSummary) {
+        counts = {
+          captureId: capture.id,
+          frameSerial,
+          ...countSummary,
+        };
+      }
+      continue;
+    }
+    const elapsedMs = finiteNumber(stage.elapsedMs);
+    if (elapsedMs === null) continue;
+    if (!slowestSubstage || elapsedMs > slowestSubstage.elapsedMs) {
+      slowestSubstage = {
+        captureId: capture.id,
+        frameSerial,
+        name: stage.name,
+        elapsedMs,
+      };
+    }
+  }
+  return slowestSubstage || counts
+    ? {
+        captureId: capture.id,
+        frameSerial,
+        slowestSubstage,
+        counts,
+      }
+    : null;
+}
+
+function sourceFrontierPackObservationFromReadinessStage(stage) {
+  const pack = stage?.observedAppFrame?.sourceFrontierPack;
+  if (!pack || typeof pack !== "object") {
+    return null;
+  }
+  const frameSerial = finiteNumber(pack.slowestSubstage?.frameSerial) ??
+    finiteNumber(pack.counts?.frameSerial) ??
+    finiteNumber(stage.observedAppFrame?.frameSerial) ??
+    0;
+  const elapsedMs = finiteNumber(pack.slowestSubstage?.elapsedMs);
+  const slowestSubstage = elapsedMs !== null
+    ? {
+        captureId: stage.captureId,
+        frameSerial,
+        name: typeof pack.slowestSubstage?.name === "string" ? pack.slowestSubstage.name : "unknown",
+        elapsedMs,
+      }
+    : null;
+  const countSummary = pack.counts && typeof pack.counts === "object"
+    ? sourceFrontierPackCountsFromDetail(pack.counts)
+    : null;
+  const counts = countSummary
+    ? {
+        captureId: stage.captureId,
+        frameSerial,
+        ...countSummary,
+      }
+    : null;
+  return slowestSubstage || counts
+    ? {
+        captureId: stage.captureId,
+        frameSerial,
+        slowestSubstage,
+        counts,
+      }
+    : null;
+}
+
+function sourceFrontierPackCountsFromDetail(detail) {
+  const countNames = [
+    "bucketCount",
+    "projectedTileRefs",
+    "candidateRecordCount",
+    "coverageRecordCount",
+    "retentionRecordCount",
+    "occlusionRecordCount",
+    "supportSampleRecordCount",
+    "supportSampleGroupCount",
+  ];
+  const counts = {};
+  for (const name of countNames) {
+    const value = finiteNumber(detail?.[name]);
+    if (value !== null) {
+      counts[name] = value;
+    }
+  }
+  return Object.keys(counts).length > 0 ? counts : null;
 }
 
 function operatorReadinessStages(timedCaptures, sessionTiming) {
@@ -319,10 +457,14 @@ function observedAppFrameForReadinessStage(stageName, readinessDiagnosticsByStag
   if (frameSerial === null && totalMs === null && !slowestStage) {
     return null;
   }
+  const sourceFrontierPack = observed.sourceFrontierPack && typeof observed.sourceFrontierPack === "object"
+    ? observed.sourceFrontierPack
+    : undefined;
   return {
     ...(frameSerial !== null ? { frameSerial } : {}),
     ...(totalMs !== null ? { totalMs } : {}),
     ...(slowestStage ? { slowestStage } : {}),
+    ...(sourceFrontierPack ? { sourceFrontierPack } : {}),
   };
 }
 

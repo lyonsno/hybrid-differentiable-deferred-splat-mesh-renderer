@@ -48,6 +48,8 @@ import { buildLivePixelPatchTraceEvidence } from "../src/rendererFidelityProbes/
 
 const PAGE_EVIDENCE_TIMEOUT_MS = 1000;
 const TIMEOUT_SCREENSHOT_MS = 5000;
+const SOURCE_FRONTIER_PACK_STAGE_PREFIX = "wgsl-source-frontier-pack/";
+const SOURCE_FRONTIER_PACK_COUNTS_STAGE = "wgsl-source-frontier-pack/counts";
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
@@ -1096,7 +1098,72 @@ function summarizeObservedAppFrame(operatorWitness) {
     frameSerial: finiteNumber(operatorWitness?.frameSerial),
     totalMs: finiteNumber(frameTimings.totalMs),
     slowestStage,
+    sourceFrontierPack: summarizeSourceFrontierPackFrame(stages, finiteNumber(operatorWitness?.frameSerial)),
   };
+}
+
+function summarizeSourceFrontierPackFrame(stages, frameSerial) {
+  const slowestSubstage = stages.reduce((slowest, stage) => {
+    if (typeof stage?.name !== "string" || !stage.name.startsWith(SOURCE_FRONTIER_PACK_STAGE_PREFIX)) {
+      return slowest;
+    }
+    if (stage.name === SOURCE_FRONTIER_PACK_COUNTS_STAGE) {
+      return slowest;
+    }
+    const elapsedMs = finiteNumber(stage?.elapsedMs);
+    if (elapsedMs === undefined) return slowest;
+    const slowestElapsedMs = finiteNumber(slowest?.elapsedMs) ?? -1;
+    return elapsedMs > slowestElapsedMs
+      ? {
+          frameSerial,
+          name: stage.name,
+          elapsedMs,
+        }
+      : slowest;
+  }, undefined);
+  const counts = stages.reduce((selected, stage) => {
+    if (stage?.name !== SOURCE_FRONTIER_PACK_COUNTS_STAGE) {
+      return selected;
+    }
+    const detail = stage.detail && typeof stage.detail === "object" ? stage.detail : {};
+    const countSummary = sourceFrontierPackCountsFromDetail(detail);
+    if (!countSummary) {
+      return selected;
+    }
+    const selectedProjectedTileRefs = finiteNumber(selected?.projectedTileRefs) ?? -1;
+    const candidateProjectedTileRefs = finiteNumber(countSummary.projectedTileRefs) ?? -1;
+    return !selected || candidateProjectedTileRefs >= selectedProjectedTileRefs
+      ? {
+          frameSerial,
+          ...countSummary,
+        }
+      : selected;
+  }, undefined);
+  return {
+    slowestSubstage,
+    counts,
+  };
+}
+
+function sourceFrontierPackCountsFromDetail(detail) {
+  const countNames = [
+    "bucketCount",
+    "projectedTileRefs",
+    "candidateRecordCount",
+    "coverageRecordCount",
+    "retentionRecordCount",
+    "occlusionRecordCount",
+    "supportSampleRecordCount",
+    "supportSampleGroupCount",
+  ];
+  const counts = {};
+  for (const name of countNames) {
+    const value = finiteNumber(detail?.[name]);
+    if (value !== undefined) {
+      counts[name] = value;
+    }
+  }
+  return Object.keys(counts).length > 0 ? counts : undefined;
 }
 
 function operatorWitnessReadinessMatches(pageEvidence, expectation) {
@@ -1805,6 +1872,8 @@ ${renderSmokeHandoffSection(result.smokeHandoff)}
 - Slowest operator readiness: ${timing.slowestOperatorReadiness ? `${timing.slowestOperatorReadiness.captureId}/${timing.slowestOperatorReadiness.name} (${timing.slowestOperatorReadiness.elapsedMs}ms)` : "not reported"}
 - Slowest app frame stage: ${timing.slowestAppFrameStage ? `${timing.slowestAppFrameStage.captureId}/${timing.slowestAppFrameStage.name} (${timing.slowestAppFrameStage.elapsedMs}ms, frame ${timing.slowestAppFrameStage.frameSerial})` : "not reported"}
 - Slowest app frame total: ${timing.slowestAppFrameTotal ? `${timing.slowestAppFrameTotal.captureId} (${timing.slowestAppFrameTotal.elapsedMs}ms, frame ${timing.slowestAppFrameTotal.frameSerial})` : "not reported"}
+- Source-frontier pack slowest substage: ${formatSourceFrontierPackSubstage(timing.sourceFrontierPack?.slowestSubstage)}
+- Source-frontier pack counts: ${formatSourceFrontierPackCounts(timing.sourceFrontierPack?.counts)}
 - Operator readiness vs app frame stage: ${formatOperatorReadinessComparison(timing.operatorReadinessVsAppFrameStage)}
 - Operator readiness vs app frame total: ${formatOperatorReadinessTotalComparison(timing.operatorReadinessVsAppFrameTotal)}
 - Operator readiness vs observed poll frame total: ${formatOperatorReadinessTotalComparison(timing.operatorReadinessVsObservedAppFrameTotal)}
@@ -2030,6 +2099,36 @@ function formatOperatorReadinessTotalComparison(comparison = {}) {
   return comparison.status;
 }
 
+function formatSourceFrontierPackSubstage(substage) {
+  if (!substage || typeof substage !== "object") {
+    return "not reported";
+  }
+  const capturePrefix = substage.captureId ? `${substage.captureId}/` : "";
+  const frameSuffix = substage.frameSerial !== undefined ? `, frame ${substage.frameSerial}` : "";
+  return `${capturePrefix}${substage.name ?? "unknown"} (${substage.elapsedMs ?? "not reported"}ms${frameSuffix})`;
+}
+
+function formatSourceFrontierPackCounts(counts) {
+  if (!counts || typeof counts !== "object") {
+    return "not reported";
+  }
+  const parts = [
+    ["capture", counts.captureId],
+    ["frame", counts.frameSerial],
+    ["buckets", counts.bucketCount],
+    ["projectedRefs", counts.projectedTileRefs],
+    ["candidateRecords", counts.candidateRecordCount],
+    ["coverageRecords", counts.coverageRecordCount],
+    ["retentionRecords", counts.retentionRecordCount],
+    ["occlusionRecords", counts.occlusionRecordCount],
+    ["supportSampleRecords", counts.supportSampleRecordCount],
+    ["supportSampleGroups", counts.supportSampleGroupCount],
+  ]
+    .filter(([, value]) => value !== undefined && value !== null)
+    .map(([label, value]) => `${label}=${value}`);
+  return parts.length > 0 ? parts.join(" ") : "not reported";
+}
+
 function formatReadinessDiagnostics(diagnostics) {
   if (!diagnostics || typeof diagnostics !== "object") {
     return "not reported";
@@ -2051,6 +2150,12 @@ function formatReadinessDiagnostics(diagnostics) {
   const observedFrameSlowestStage = observedAppFrame.slowestStage && typeof observedAppFrame.slowestStage === "object"
     ? `${observedAppFrame.slowestStage.name ?? "unknown"}:${observedAppFrame.slowestStage.elapsedMs ?? "not reported"}ms`
     : "not reported";
+  const observedSourceFrontierPackSubstage = formatSourceFrontierPackSubstage(
+    observedAppFrame.sourceFrontierPack?.slowestSubstage
+  );
+  const observedSourceFrontierPackCounts = formatSourceFrontierPackCounts(
+    observedAppFrame.sourceFrontierPack?.counts
+  );
   const slowestPollObservedFrame = diagnostics.slowestPoll?.observedAppFrame && typeof diagnostics.slowestPoll.observedAppFrame === "object"
     ? diagnostics.slowestPoll.observedAppFrame.frameSerial ?? "not reported"
     : "not reported";
@@ -2063,7 +2168,13 @@ function formatReadinessDiagnostics(diagnostics) {
     typeof slowestPollObservedAppFrame.slowestStage === "object"
     ? `${slowestPollObservedAppFrame.slowestStage.name ?? "unknown"}:${slowestPollObservedAppFrame.slowestStage.elapsedMs ?? "not reported"}ms`
     : "not reported";
-  return `ready=${Boolean(diagnostics.ready)} source=${diagnostics.evidenceSource ?? "not reported"} polls=${diagnostics.pollCount ?? "not reported"} failed=${diagnostics.failedPolls ?? "not reported"} elapsed=${diagnostics.elapsedMs ?? "not reported"}ms slowestPoll=${slowestPoll} observedFrame=${observedFrame} observedFrameTotal=${observedFrameTotal}ms observedFrameSlowestStage=${observedFrameSlowestStage} slowestPollObservedFrame=${slowestPollObservedFrame} slowestPollObservedFrameTotal=${slowestPollObservedFrameTotal}ms slowestPollObservedFrameSlowestStage=${slowestPollObservedFrameSlowestStage} blockers=${blockers} lastFailed=${lastFailed}`;
+  const slowestPollSourceFrontierPackSubstage = formatSourceFrontierPackSubstage(
+    slowestPollObservedAppFrame.sourceFrontierPack?.slowestSubstage
+  );
+  const slowestPollSourceFrontierPackCounts = formatSourceFrontierPackCounts(
+    slowestPollObservedAppFrame.sourceFrontierPack?.counts
+  );
+  return `ready=${Boolean(diagnostics.ready)} source=${diagnostics.evidenceSource ?? "not reported"} polls=${diagnostics.pollCount ?? "not reported"} failed=${diagnostics.failedPolls ?? "not reported"} elapsed=${diagnostics.elapsedMs ?? "not reported"}ms slowestPoll=${slowestPoll} observedFrame=${observedFrame} observedFrameTotal=${observedFrameTotal}ms observedFrameSlowestStage=${observedFrameSlowestStage} observedSourceFrontierPackSubstage=${observedSourceFrontierPackSubstage} observedSourceFrontierPackCounts=${observedSourceFrontierPackCounts} slowestPollObservedFrame=${slowestPollObservedFrame} slowestPollObservedFrameTotal=${slowestPollObservedFrameTotal}ms slowestPollObservedFrameSlowestStage=${slowestPollObservedFrameSlowestStage} slowestPollSourceFrontierPackSubstage=${slowestPollSourceFrontierPackSubstage} slowestPollSourceFrontierPackCounts=${slowestPollSourceFrontierPackCounts} blockers=${blockers} lastFailed=${lastFailed}`;
 }
 
 function formatReadinessDiagnosticsByStage(stageDiagnostics) {

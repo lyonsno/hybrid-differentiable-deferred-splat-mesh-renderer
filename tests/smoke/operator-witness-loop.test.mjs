@@ -234,6 +234,268 @@ test("operator witness timing summary preserves app-side frame stage attribution
   });
 });
 
+test("operator witness timing summary exposes source-frontier pack substage attribution", () => {
+  const timing = summarizeOperatorWitnessTiming([
+    witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.porousClose, {
+      timing: {
+        totalMs: 4200,
+        stages: [{ name: "view-readiness", elapsedMs: 3200 }],
+      },
+      pageEvidence: {
+        operatorWitness: {
+          frameSerial: 22,
+          frameTimings: {
+            totalMs: 3010,
+            stages: [
+              { name: "wgsl-source-frontier-pack/stream-projected-tile-refs", elapsedMs: 1210.4 },
+              { name: "wgsl-source-frontier-pack/finalize-candidate-lists", elapsedMs: 348.2 },
+              {
+                name: "wgsl-source-frontier-pack/counts",
+                elapsedMs: 0,
+                detail: {
+                  bucketCount: 471,
+                  projectedTileRefs: 221440,
+                  candidateRecordCount: 91392,
+                  supportSampleRecordCount: 18816,
+                  supportSampleGroupCount: 7530,
+                },
+              },
+              { name: "wgsl-source-frontier-pack-candidate-source-inputs", elapsedMs: 1778.7 },
+              { name: "evidence-exposure", elapsedMs: 3.4 },
+            ],
+          },
+        },
+      },
+    }),
+  ]);
+
+  assert.deepEqual(timing.sourceFrontierPack.slowestSubstage, {
+    captureId: OPERATOR_WITNESS_CAPTURE_IDS.porousClose,
+    frameSerial: 22,
+    name: "wgsl-source-frontier-pack/stream-projected-tile-refs",
+    elapsedMs: 1210.4,
+  });
+  assert.deepEqual(timing.sourceFrontierPack.counts, {
+    captureId: OPERATOR_WITNESS_CAPTURE_IDS.porousClose,
+    frameSerial: 22,
+    bucketCount: 471,
+    projectedTileRefs: 221440,
+    candidateRecordCount: 91392,
+    supportSampleRecordCount: 18816,
+    supportSampleGroupCount: 7530,
+  });
+});
+
+test("operator witness timing summary uses readiness-observed source-frontier pack frames", () => {
+  const timing = summarizeOperatorWitnessTiming([
+    witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.porousClose, {
+      timing: {
+        totalMs: 9200,
+        stages: [{ name: "view-readiness", elapsedMs: 3986 }],
+      },
+      pageEvidence: {
+        readinessDiagnosticsByStage: {
+          viewReadiness: {
+            observedAppFrame: {
+              frameSerial: 45,
+              totalMs: 3818,
+              slowestStage: {
+                name: "wgsl-source-frontier-pack-candidate-source-inputs",
+                elapsedMs: 2076.2,
+              },
+              sourceFrontierPack: {
+                slowestSubstage: {
+                  frameSerial: 45,
+                  name: "wgsl-source-frontier-pack/stream-projected-tile-refs",
+                  elapsedMs: 1934.6,
+                },
+                counts: {
+                  frameSerial: 45,
+                  bucketCount: 1186,
+                  projectedTileRefs: 903112,
+                  candidateRecordCount: 320071,
+                  supportSampleRecordCount: 196340,
+                  supportSampleGroupCount: 18976,
+                },
+              },
+            },
+          },
+        },
+        operatorWitness: {
+          frameSerial: 46,
+          frameTimings: {
+            totalMs: 22.5,
+            stages: [
+              { name: "wgsl-source-frontier-pack/stream-projected-tile-refs", elapsedMs: 8.2 },
+              {
+                name: "wgsl-source-frontier-pack/counts",
+                elapsedMs: 0,
+                detail: {
+                  bucketCount: 12,
+                  projectedTileRefs: 800,
+                  candidateRecordCount: 256,
+                },
+              },
+            ],
+          },
+        },
+      },
+    }),
+  ]);
+
+  assert.deepEqual(timing.sourceFrontierPack.slowestSubstage, {
+    captureId: OPERATOR_WITNESS_CAPTURE_IDS.porousClose,
+    frameSerial: 45,
+    name: "wgsl-source-frontier-pack/stream-projected-tile-refs",
+    elapsedMs: 1934.6,
+  });
+  assert.deepEqual(timing.sourceFrontierPack.counts, {
+    captureId: OPERATOR_WITNESS_CAPTURE_IDS.porousClose,
+    frameSerial: 45,
+    bucketCount: 1186,
+    projectedTileRefs: 903112,
+    candidateRecordCount: 320071,
+    supportSampleRecordCount: 196340,
+    supportSampleGroupCount: 18976,
+  });
+});
+
+test("operator witness timing summary ties source-frontier counts to the slowest substage frame", () => {
+  const timing = summarizeOperatorWitnessTiming([
+    witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.dessertClose, {
+      pageEvidence: {
+        operatorWitness: {
+          frameSerial: 17,
+          frameTimings: {
+            totalMs: 1350,
+            stages: [
+              { name: "wgsl-source-frontier-pack/stream-projected-tile-refs", elapsedMs: 900 },
+              {
+                name: "wgsl-source-frontier-pack/counts",
+                elapsedMs: 0,
+                detail: {
+                  bucketCount: 900,
+                  projectedTileRefs: 900000,
+                  candidateRecordCount: 300000,
+                },
+              },
+            ],
+          },
+        },
+      },
+    }),
+    witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.porousClose, {
+      timing: {
+        stages: [{ name: "view-readiness", elapsedMs: 2600 }],
+      },
+      pageEvidence: {
+        readinessDiagnosticsByStage: {
+          viewReadiness: {
+            observedAppFrame: {
+              frameSerial: 44,
+              totalMs: 2500,
+              sourceFrontierPack: {
+                slowestSubstage: {
+                  frameSerial: 44,
+                  name: "wgsl-source-frontier-pack/stream-projected-tile-refs",
+                  elapsedMs: 2100,
+                },
+                counts: {
+                  frameSerial: 44,
+                  bucketCount: 700,
+                  projectedTileRefs: 700000,
+                  candidateRecordCount: 280000,
+                },
+              },
+            },
+          },
+        },
+      },
+    }),
+  ]);
+
+  assert.deepEqual(timing.sourceFrontierPack.slowestSubstage, {
+    captureId: OPERATOR_WITNESS_CAPTURE_IDS.porousClose,
+    frameSerial: 44,
+    name: "wgsl-source-frontier-pack/stream-projected-tile-refs",
+    elapsedMs: 2100,
+  });
+  assert.deepEqual(timing.sourceFrontierPack.counts, {
+    captureId: OPERATOR_WITNESS_CAPTURE_IDS.porousClose,
+    frameSerial: 44,
+    bucketCount: 700,
+    projectedTileRefs: 700000,
+    candidateRecordCount: 280000,
+  });
+});
+
+test("operator witness timing summary preserves fallback count frame provenance", () => {
+  const timing = summarizeOperatorWitnessTiming([
+    witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.dessertClose, {
+      pageEvidence: {
+        operatorWitness: {
+          frameSerial: 17,
+          frameTimings: {
+            totalMs: 1350,
+            stages: [
+              {
+                name: "wgsl-source-frontier-pack/counts",
+                elapsedMs: 0,
+                detail: {
+                  bucketCount: 900,
+                  projectedTileRefs: 900000,
+                  candidateRecordCount: 300000,
+                },
+              },
+            ],
+          },
+        },
+      },
+    }),
+    witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.porousClose, {
+      timing: {
+        stages: [{ name: "view-readiness", elapsedMs: 2600 }],
+      },
+      pageEvidence: {
+        readinessDiagnosticsByStage: {
+          viewReadiness: {
+            observedAppFrame: {
+              frameSerial: 44,
+              totalMs: 2500,
+              sourceFrontierPack: {
+                slowestSubstage: {
+                  frameSerial: 44,
+                  name: "wgsl-source-frontier-pack/stream-projected-tile-refs",
+                  elapsedMs: 2100,
+                },
+              },
+            },
+          },
+        },
+      },
+    }),
+  ]);
+
+  assert.deepEqual(timing.sourceFrontierPack.slowestSubstage, {
+    captureId: OPERATOR_WITNESS_CAPTURE_IDS.porousClose,
+    frameSerial: 44,
+    name: "wgsl-source-frontier-pack/stream-projected-tile-refs",
+    elapsedMs: 2100,
+  });
+  assert.deepEqual(timing.sourceFrontierPack.counts, {
+    captureId: OPERATOR_WITNESS_CAPTURE_IDS.dessertClose,
+    frameSerial: 17,
+    bucketCount: 900,
+    projectedTileRefs: 900000,
+    candidateRecordCount: 300000,
+  });
+  assert.notEqual(
+    timing.sourceFrontierPack.counts.frameSerial,
+    timing.sourceFrontierPack.slowestSubstage.frameSerial,
+    "fallback counts must carry their own frame provenance instead of looking same-frame",
+  );
+});
+
 test("operator witness timing summary exposes operator-visible readiness latency above app frame stages", () => {
   const timing = summarizeOperatorWitnessTiming([
     witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.wholeRender, {
@@ -529,6 +791,10 @@ test("operator witness report prints the slowest app-side frame stage", () => {
   assert.match(reportSource, /timing\.slowestAppFrameStage/);
   assert.match(reportSource, /Slowest app frame total:/);
   assert.match(reportSource, /timing\.slowestAppFrameTotal/);
+  assert.match(reportSource, /Source-frontier pack slowest substage:/);
+  assert.match(reportSource, /timing\.sourceFrontierPack\?\.slowestSubstage/);
+  assert.match(reportSource, /Source-frontier pack counts:/);
+  assert.match(reportSource, /formatSourceFrontierPackCounts\(timing\.sourceFrontierPack\?\.counts\)/);
   assert.match(reportSource, /Operator readiness vs observed poll frame total:/);
   assert.match(reportSource, /timing\.operatorReadinessVsObservedAppFrameTotal/);
 });

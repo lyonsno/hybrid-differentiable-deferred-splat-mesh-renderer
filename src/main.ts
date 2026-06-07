@@ -832,6 +832,7 @@ interface SortSettleState {
 interface FrameTimingStage {
   readonly name: string;
   readonly elapsedMs: number;
+  readonly detail?: Readonly<Record<string, number | string | boolean | null>>;
 }
 
 interface FrameTimingDraft {
@@ -867,6 +868,21 @@ function timeFrameStage<T>(timing: FrameTimingDraft, name: string, fn: () => T):
 
 function timeOptionalFrameStage<T>(timing: FrameTimingDraft | undefined, name: string, fn: () => T): T {
   return timing ? timeFrameStage(timing, name, fn) : fn();
+}
+
+function recordOptionalFrameStageDetail(
+  timing: FrameTimingDraft | undefined,
+  name: string,
+  detail: Readonly<Record<string, number | string | boolean | null>>
+): void {
+  if (!timing) {
+    return;
+  }
+  timing.stages.push({
+    name,
+    elapsedMs: 0,
+    detail,
+  });
 }
 
 function finishFrameTiming(timing: FrameTimingDraft): FrameTimingSummary {
@@ -2068,6 +2084,7 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
       tileSizePx,
       tileColumns,
       maxRefsPerTile: gpuLiveEffectiveRefsPerTile(plan),
+      frameTiming,
     })
   );
   const candidateSources = candidateSourceSubstrate.candidateSources;
@@ -2396,6 +2413,7 @@ function buildWgslSourceFrontierCandidateSources({
   tileSizePx,
   tileColumns,
   maxRefsPerTile,
+  frameTiming,
 }: {
   readonly frontierSource: WgslProjectedSourceFrontierSource;
   readonly attributes: SplatAttributes;
@@ -2406,54 +2424,57 @@ function buildWgslSourceFrontierCandidateSources({
   readonly tileSizePx: number;
   readonly tileColumns: number;
   readonly maxRefsPerTile: number;
+  readonly frameTiming?: FrameTimingDraft;
 }): WgslSourceFrontierCandidateSourceSubstrate {
   const buckets = new Map<number, CompactStreamingTileBucket>();
   const { ranks, depths } = compactSourceBackToFrontDepthEvidence(attributes, viewMatrix);
   const splatsByIndex = new Map(frontierSource.splats.map((splat) => [splat.splatIndex, splat]));
   let projectedIndex = 0;
 
-  streamCompactProjectedTileRefs({
-    splats: frontierSource.splats,
-    viewportWidth,
-    viewportHeight,
-    tileSizePx,
-    tileColumns,
-    samplesPerAxis: TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES,
-    maxTilesPerSplat: frontierSource.maxTilesPerSplat,
-    onEntry({ splat, tileIndex, tileX, tileY, coverageWeight, localSupportWeight }) {
-      const record = compactCoverageEntryToRuntimeContributor({
-        entry: {
-          tileIndex,
-          tileX,
-          tileY,
-          splatIndex: splat.splatIndex,
-          originalId: splat.originalId,
-          coverageWeight,
-          localSupportWeight,
-        },
-        projectedIndex,
-        splatsByIndex,
-        ranks,
-        depths,
-        attributes,
-        effectiveOpacities,
-      });
-      projectedIndex += 1;
+  timeOptionalFrameStage(frameTiming, "wgsl-source-frontier-pack/stream-projected-tile-refs", () => {
+    streamCompactProjectedTileRefs({
+      splats: frontierSource.splats,
+      viewportWidth,
+      viewportHeight,
+      tileSizePx,
+      tileColumns,
+      samplesPerAxis: TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES,
+      maxTilesPerSplat: frontierSource.maxTilesPerSplat,
+      onEntry({ splat, tileIndex, tileX, tileY, coverageWeight, localSupportWeight }) {
+        const record = compactCoverageEntryToRuntimeContributor({
+          entry: {
+            tileIndex,
+            tileX,
+            tileY,
+            splatIndex: splat.splatIndex,
+            originalId: splat.originalId,
+            coverageWeight,
+            localSupportWeight,
+          },
+          projectedIndex,
+          splatsByIndex,
+          ranks,
+          depths,
+          attributes,
+          effectiveOpacities,
+        });
+        projectedIndex += 1;
 
-      const bucket = compactStreamingTileBucket(buckets, tileIndex);
-      compactRetainTopRecord(bucket.coverageRecords, record, maxRefsPerTile, compareCompactProjectionRetentionCoverageOrder);
-      compactRetainTopRecord(bucket.retentionRecords, record, Math.max(1, Math.floor(maxRefsPerTile / 2)), compareCompactProjectionRetentionPriority);
-      compactRetainTopRecord(bucket.occlusionRecords, record, Math.max(1, Math.floor(maxRefsPerTile / 2)), compareCompactProjectionOcclusionPriority);
-      compactRetainSupportSampleRecords({
-        bucket,
-        record,
-        tileMinX: tileX * tileSizePx,
-        tileMinY: tileY * tileSizePx,
-        tileMaxX: Math.min(viewportWidth, (tileX + 1) * tileSizePx),
-        tileMaxY: Math.min(viewportHeight, (tileY + 1) * tileSizePx),
-        maxRefsPerTile,
-      });
-    },
+        const bucket = compactStreamingTileBucket(buckets, tileIndex);
+        compactRetainTopRecord(bucket.coverageRecords, record, maxRefsPerTile, compareCompactProjectionRetentionCoverageOrder);
+        compactRetainTopRecord(bucket.retentionRecords, record, Math.max(1, Math.floor(maxRefsPerTile / 2)), compareCompactProjectionRetentionPriority);
+        compactRetainTopRecord(bucket.occlusionRecords, record, Math.max(1, Math.floor(maxRefsPerTile / 2)), compareCompactProjectionOcclusionPriority);
+        compactRetainSupportSampleRecords({
+          bucket,
+          record,
+          tileMinX: tileX * tileSizePx,
+          tileMinY: tileY * tileSizePx,
+          tileMaxX: Math.min(viewportWidth, (tileX + 1) * tileSizePx),
+          tileMaxY: Math.min(viewportHeight, (tileY + 1) * tileSizePx),
+          maxRefsPerTile,
+        });
+      },
+    });
   });
 
   const coverageRecords: GpuTileContributorArenaProjectedContributor[] = [];
@@ -2463,18 +2484,31 @@ function buildWgslSourceFrontierCandidateSources({
   const supportSampleRecordGroups: (readonly GpuTileContributorArenaProjectedContributor[])[] = [];
   const projectedCandidateRecords: GpuTileContributorArenaProjectedContributor[] = [];
 
-  for (const bucket of buckets.values()) {
-    const bucketSupportSampleRecordGroups = compactSupportSampleCandidateRecordGroups(bucket);
-    const bucketSupportSampleRecords = compactSupportSampleCandidateRecords(bucketSupportSampleRecordGroups);
-    projectedCandidateRecords.push(
-      ...compactMergedTileCandidateRecords(bucket, bucketSupportSampleRecords).sort(compareCompactProjectionRetentionCoverageOrder),
-    );
-    coverageRecords.push(...bucket.coverageRecords.records);
-    retentionRecords.push(...bucket.retentionRecords.records);
-    occlusionRecords.push(...bucket.occlusionRecords.records);
-    supportSampleRecords.push(...bucketSupportSampleRecords);
-    supportSampleRecordGroups.push(...bucketSupportSampleRecordGroups);
-  }
+  timeOptionalFrameStage(frameTiming, "wgsl-source-frontier-pack/finalize-candidate-lists", () => {
+    for (const bucket of buckets.values()) {
+      const bucketSupportSampleRecordGroups = compactSupportSampleCandidateRecordGroups(bucket);
+      const bucketSupportSampleRecords = compactSupportSampleCandidateRecords(bucketSupportSampleRecordGroups);
+      projectedCandidateRecords.push(
+        ...compactMergedTileCandidateRecords(bucket, bucketSupportSampleRecords).sort(compareCompactProjectionRetentionCoverageOrder),
+      );
+      coverageRecords.push(...bucket.coverageRecords.records);
+      retentionRecords.push(...bucket.retentionRecords.records);
+      occlusionRecords.push(...bucket.occlusionRecords.records);
+      supportSampleRecords.push(...bucketSupportSampleRecords);
+      supportSampleRecordGroups.push(...bucketSupportSampleRecordGroups);
+    }
+  });
+
+  recordOptionalFrameStageDetail(frameTiming, "wgsl-source-frontier-pack/counts", {
+    bucketCount: buckets.size,
+    projectedTileRefs: projectedIndex,
+    candidateRecordCount: projectedCandidateRecords.length,
+    coverageRecordCount: coverageRecords.length,
+    retentionRecordCount: retentionRecords.length,
+    occlusionRecordCount: occlusionRecords.length,
+    supportSampleRecordCount: supportSampleRecords.length,
+    supportSampleGroupCount: supportSampleRecordGroups.length,
+  });
 
   return {
     candidateSources: {
