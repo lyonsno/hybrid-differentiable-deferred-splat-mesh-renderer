@@ -2426,7 +2426,7 @@ function buildWgslSourceFrontierCandidateSources({
   readonly maxRefsPerTile: number;
   readonly frameTiming?: FrameTimingDraft;
 }): WgslSourceFrontierCandidateSourceSubstrate {
-  const buckets = new Map<number, CompactStreamingTileBucket>();
+  const buckets = compactStreamingTileBucketStore(frontierSource.tileCount);
   const { ranks, depths } = compactSourceBackToFrontDepthEvidence(attributes, viewMatrix);
   const contributorTemplates = frontierSource.splats.map((splat) => compactRuntimeContributorTemplateForSplat({
     splat,
@@ -2493,7 +2493,7 @@ function buildWgslSourceFrontierCandidateSources({
   const projectedCandidateRecords: GpuTileContributorArenaProjectedContributor[] = [];
 
   timeOptionalFrameStage(frameTiming, "wgsl-source-frontier-pack/finalize-candidate-lists", () => {
-    for (const bucket of buckets.values()) {
+    for (const bucket of compactStreamingTileBucketValues(buckets)) {
       const bucketSupportSampleRecordGroups = compactSupportSampleCandidateRecordGroups(bucket);
       const bucketSupportSampleRecords = compactSupportSampleCandidateRecords(bucketSupportSampleRecordGroups);
       projectedCandidateRecords.push(
@@ -2508,7 +2508,7 @@ function buildWgslSourceFrontierCandidateSources({
   });
 
   recordOptionalFrameStageDetail(frameTiming, "wgsl-source-frontier-pack/counts", {
-    bucketCount: buckets.size,
+    bucketCount: compactStreamingTileBucketCount(buckets),
     projectedTileRefs: projectedIndex,
     streamSplatCount: streamLedger.splatCount,
     streamDenseRowCount: streamLedger.denseRowCount,
@@ -3866,6 +3866,10 @@ interface CompactStreamingTileBucket {
   readonly supportSampleRecords: readonly CompactRetainedRecordList[];
 }
 
+type CompactStreamingTileBucketStore =
+  | Map<number, CompactStreamingTileBucket>
+  | (CompactStreamingTileBucket | undefined)[];
+
 interface CompactRetainedRecordList {
   readonly records: GpuTileContributorArenaProjectedContributor[];
   worstIndex: number;
@@ -3914,10 +3918,54 @@ function compactRetainedRecordList(): CompactRetainedRecordList {
   };
 }
 
+function compactStreamingTileBucketStore(tileCount: number): CompactStreamingTileBucketStore {
+  return new Array(Math.max(0, Math.floor(tileCount)));
+}
+
+function* compactStreamingTileBucketValues(
+  buckets: CompactStreamingTileBucketStore,
+): Iterable<CompactStreamingTileBucket> {
+  if (Array.isArray(buckets)) {
+    for (const bucket of buckets) {
+      if (bucket) {
+        yield bucket;
+      }
+    }
+    return;
+  }
+  yield* buckets.values();
+}
+
+function compactStreamingTileBucketCount(buckets: CompactStreamingTileBucketStore): number {
+  if (!Array.isArray(buckets)) {
+    return buckets.size;
+  }
+  let count = 0;
+  for (const bucket of buckets) {
+    if (bucket) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
 function compactStreamingTileBucket(
-  buckets: Map<number, CompactStreamingTileBucket>,
+  buckets: CompactStreamingTileBucketStore,
   tileIndex: number,
 ): CompactStreamingTileBucket {
+  if (Array.isArray(buckets)) {
+    let bucket = buckets[tileIndex];
+    if (!bucket) {
+      bucket = {
+        coverageRecords: compactRetainedRecordList(),
+        retentionRecords: compactRetainedRecordList(),
+        occlusionRecords: compactRetainedRecordList(),
+        supportSampleRecords: compactSupportSampleRecordLists(),
+      };
+      buckets[tileIndex] = bucket;
+    }
+    return bucket;
+  }
   let bucket = buckets.get(tileIndex);
   if (!bucket) {
     bucket = {

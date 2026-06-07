@@ -1263,6 +1263,43 @@ test("source-frontier stream packing reuses per-splat contributor templates", ()
   );
 });
 
+test("source-frontier stream packing uses indexed tile buckets instead of hot-path Map lookups", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const sourceFrontierStart = source.indexOf("function buildWgslSourceFrontierCandidateSources");
+  const sourceFrontierEnd = source.indexOf("function createWgslProjectedRefStreamState", sourceFrontierStart);
+  const sourceFrontierSource = source.slice(sourceFrontierStart, sourceFrontierEnd);
+  const bucketSource = source.slice(
+    source.indexOf("interface CompactStreamingTileBucket"),
+    source.indexOf("function compactRetainedRecordList"),
+  );
+
+  assert.match(
+    bucketSource,
+    /type CompactStreamingTileBucketStore =/,
+    "source-frontier stream should have an indexed tile-bucket store for fixed tile-index domains",
+  );
+  assert.match(
+    sourceFrontierSource,
+    /const buckets = compactStreamingTileBucketStore\(frontierSource\.tileCount\)/,
+    "source-frontier candidate packing should allocate indexed bucket storage once per frame",
+  );
+  assert.match(
+    sourceFrontierSource,
+    /compactStreamingTileBucket\(buckets,\s*tileIndex\)/,
+    "projected tile refs should address buckets directly by tile index",
+  );
+  assert.match(
+    sourceFrontierSource,
+    /for \(const bucket of compactStreamingTileBucketValues\(buckets\)\)/,
+    "finalization should iterate only populated indexed buckets",
+  );
+  assert.doesNotMatch(
+    sourceFrontierSource,
+    /const buckets = new Map<number, CompactStreamingTileBucket>\(\)/,
+    "source-frontier hot path should not pay Map lookup overhead for tile-indexed buckets",
+  );
+});
+
 test("compact finalize retention routes bounded priority candidate lists through the GPU carrier", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const electionSource = readFileSync(new URL("../../src/compactRetentionElection.js", import.meta.url), "utf8");
