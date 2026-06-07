@@ -1,7 +1,7 @@
 # Operator Witness Loop Report
 
 - Status: PASS
-- Generated: 2026-06-07T00:30:54.738Z
+- Generated: 2026-06-07T00:57:36.779Z
 - Base URL: http://127.0.0.1:6175/?wgslProjectedRefStream=source-frontier
 - Contact sheet: `operator-witness-contact-sheet.png`
 - Analysis JSON: `analysis.json`
@@ -26,22 +26,22 @@
 
 ## Timing
 
-- Total loop ms: 69551
-- Total capture ms: 64019
-- Slowest capture: porous-close-orbit-left (19772ms)
-- Slowest stage: porous-close-final-color/view-readiness (8911ms)
-- Slowest operator readiness: porous-close-final-color/view-readiness (8911ms)
-- Slowest app frame stage: whole-render-final-color/wgsl-source-frontier-pack-candidate-source-inputs (1655.4ms, frame 3)
-- Slowest app frame total: whole-render-final-color (2155.3ms, frame 3)
-- Operator readiness vs app frame stage: operator-readiness-exceeds-app-frame-stage (8911ms readiness vs 1655.4ms app-frame stage; gap 7255.6ms)
-- Operator readiness vs app frame total: operator-readiness-exceeds-app-frame-total (8911ms readiness vs 2155.3ms app-frame total; gap 6755.7ms)
-- Initial readiness diagnostics: ready=true polls=5 failed=4 elapsed=4838ms slowestPoll=2368ms@3 blockers=none lastFailed=visual-smoke-not-ready
+- Total loop ms: 65892
+- Total capture ms: 60376
+- Slowest capture: porous-close-orbit-right (18777ms)
+- Slowest stage: porous-close-final-color/view-readiness (7738ms)
+- Slowest operator readiness: porous-close-final-color/view-readiness (7738ms)
+- Slowest app frame stage: whole-render-final-color/wgsl-source-frontier-pack-candidate-source-inputs (1446.2ms, frame 3)
+- Slowest app frame total: whole-render-final-color (1899.6ms, frame 3)
+- Operator readiness vs app frame stage: operator-readiness-exceeds-app-frame-stage (7738ms readiness vs 1446.2ms app-frame stage; gap 6291.8ms)
+- Operator readiness vs app frame total: operator-readiness-exceeds-app-frame-total (7738ms readiness vs 30.4ms app-frame total; gap 7707.6ms; readiness capture porous-close-final-color, app-frame capture porous-close-final-color)
+- Initial readiness diagnostics: ready=true polls=4 failed=3 elapsed=4486ms slowestPoll=2264ms@2 blockers=none lastFailed=visual-smoke-not-ready
 
-- whole-render-final-color: 4710ms (apply-view:4ms, view-readiness:2170ms, settle-before-interaction:2003ms, collect-settled-evidence:10ms, screenshot:75ms, image-analysis:391ms, trace-canvas-parity:56ms, classify-smoke:1ms, witness-diagnostics:0ms)
-- dessert-close-final-color: 8881ms (apply-view:83ms, view-readiness:6088ms, settle-before-interaction:2013ms, collect-settled-evidence:60ms, screenshot:187ms, image-analysis:346ms, trace-canvas-parity:103ms, classify-smoke:1ms, witness-diagnostics:0ms)
-- porous-close-final-color: 11650ms (apply-view:22ms, view-readiness:8911ms, settle-before-interaction:2003ms, collect-settled-evidence:8ms, screenshot:185ms, image-analysis:463ms, trace-canvas-parity:57ms, classify-smoke:0ms, witness-diagnostics:0ms)
-- porous-close-orbit-left: 19772ms (apply-view:2ms, view-readiness:7503ms, settle-before-interaction:2008ms, interactions:15ms, interaction-readiness:7833ms, settle-after-interaction:2001ms, collect-settled-evidence:11ms, screenshot:135ms, image-analysis:203ms, trace-canvas-parity:61ms, classify-smoke:0ms, witness-diagnostics:0ms)
-- porous-close-orbit-right: 19006ms (apply-view:15ms, view-readiness:7232ms, settle-before-interaction:2002ms, interactions:10ms, interaction-readiness:7213ms, settle-after-interaction:2002ms, collect-settled-evidence:13ms, screenshot:228ms, image-analysis:245ms, trace-canvas-parity:46ms, classify-smoke:0ms, witness-diagnostics:0ms)
+- whole-render-final-color: 4442ms (apply-view:2ms, view-readiness:1919ms, settle-before-interaction:2002ms, collect-settled-evidence:12ms, screenshot:48ms, image-analysis:394ms, trace-canvas-parity:64ms, classify-smoke:0ms, witness-diagnostics:1ms)
+- dessert-close-final-color: 7959ms (apply-view:19ms, view-readiness:5482ms, settle-before-interaction:2002ms, collect-settled-evidence:7ms, screenshot:162ms, image-analysis:240ms, trace-canvas-parity:47ms, classify-smoke:0ms, witness-diagnostics:0ms)
+- porous-close-final-color: 10438ms (apply-view:33ms, view-readiness:7738ms, settle-before-interaction:2001ms, collect-settled-evidence:7ms, screenshot:182ms, image-analysis:425ms, trace-canvas-parity:51ms, classify-smoke:0ms, witness-diagnostics:1ms)
+- porous-close-orbit-left: 18760ms (apply-view:30ms, view-readiness:6428ms, settle-before-interaction:2001ms, interactions:2ms, interaction-readiness:7548ms, settle-after-interaction:2003ms, collect-settled-evidence:32ms, screenshot:273ms, image-analysis:368ms, trace-canvas-parity:75ms, classify-smoke:0ms, witness-diagnostics:0ms)
+- porous-close-orbit-right: 18777ms (apply-view:40ms, view-readiness:7406ms, settle-before-interaction:2002ms, interactions:1ms, interaction-readiness:7055ms, settle-after-interaction:2035ms, collect-settled-evidence:25ms, screenshot:67ms, image-analysis:129ms, trace-canvas-parity:17ms, classify-smoke:0ms, witness-diagnostics:0ms)
 
 ## Captures
 
@@ -57,9 +57,9 @@
 - Nonblank: true
 - Real splat evidence: true
 - Changed pixels: 40593 / 921600 (4.405%)
-- Total capture ms: 4710
-- Readiness diagnostics: ready=true polls=1 failed=0 elapsed=2170ms slowestPoll=2170ms@1 blockers=none lastFailed=none
-- Readiness stages: viewReadiness{ready=true polls=1 failed=0 elapsed=2170ms slowestPoll=2170ms@1 blockers=none lastFailed=none}
+- Total capture ms: 4442
+- Readiness diagnostics: ready=true polls=1 failed=0 elapsed=1918ms slowestPoll=1918ms@1 blockers=none lastFailed=none
+- Readiness stages: viewReadiness{ready=true polls=1 failed=0 elapsed=1918ms slowestPoll=1918ms@1 blockers=none lastFailed=none}
 
 ### Dessert close final color
 
@@ -73,9 +73,9 @@
 - Nonblank: true
 - Real splat evidence: true
 - Changed pixels: 206477 / 921600 (22.404%)
-- Total capture ms: 8881
-- Readiness diagnostics: ready=true polls=2 failed=1 elapsed=6088ms slowestPoll=5849ms@2 blockers=none lastFailed=visual-smoke-not-ready
-- Readiness stages: viewReadiness{ready=true polls=2 failed=1 elapsed=6088ms slowestPoll=5849ms@2 blockers=none lastFailed=visual-smoke-not-ready}
+- Total capture ms: 7959
+- Readiness diagnostics: ready=true polls=3 failed=2 elapsed=5482ms slowestPoll=5198ms@3 blockers=none lastFailed=visual-smoke-not-ready
+- Readiness stages: viewReadiness{ready=true polls=3 failed=2 elapsed=5482ms slowestPoll=5198ms@3 blockers=none lastFailed=visual-smoke-not-ready}
 
 ### Porous close final color
 
@@ -89,9 +89,9 @@
 - Nonblank: true
 - Real splat evidence: true
 - Changed pixels: 921234 / 921600 (99.960%)
-- Total capture ms: 11650
-- Readiness diagnostics: ready=true polls=3 failed=2 elapsed=8911ms slowestPoll=8600ms@3 blockers=none lastFailed=visual-smoke-not-ready
-- Readiness stages: viewReadiness{ready=true polls=3 failed=2 elapsed=8911ms slowestPoll=8600ms@3 blockers=none lastFailed=visual-smoke-not-ready}
+- Total capture ms: 10438
+- Readiness diagnostics: ready=true polls=3 failed=2 elapsed=7737ms slowestPoll=7448ms@3 blockers=none lastFailed=visual-smoke-not-ready
+- Readiness stages: viewReadiness{ready=true polls=3 failed=2 elapsed=7737ms slowestPoll=7448ms@3 blockers=none lastFailed=visual-smoke-not-ready}
 
 ### Porous close orbit frame left
 
@@ -105,9 +105,9 @@
 - Nonblank: true
 - Real splat evidence: true
 - Changed pixels: 921330 / 921600 (99.971%)
-- Total capture ms: 19772
-- Readiness diagnostics: ready=true polls=2 failed=1 elapsed=7832ms slowestPoll=7666ms@2 blockers=none lastFailed=visual-smoke-not-ready
-- Readiness stages: viewReadiness{ready=true polls=1 failed=0 elapsed=7503ms slowestPoll=7503ms@1 blockers=none lastFailed=none} | interactionReadiness{ready=true polls=2 failed=1 elapsed=7832ms slowestPoll=7666ms@2 blockers=none lastFailed=visual-smoke-not-ready}
+- Total capture ms: 18760
+- Readiness diagnostics: ready=true polls=3 failed=2 elapsed=7548ms slowestPoll=7236ms@3 blockers=none lastFailed=visual-smoke-not-ready
+- Readiness stages: viewReadiness{ready=true polls=1 failed=0 elapsed=6427ms slowestPoll=6427ms@1 blockers=none lastFailed=none} | interactionReadiness{ready=true polls=3 failed=2 elapsed=7548ms slowestPoll=7236ms@3 blockers=none lastFailed=visual-smoke-not-ready}
 
 ### Porous close orbit frame right
 
@@ -121,9 +121,9 @@
 - Nonblank: true
 - Real splat evidence: true
 - Changed pixels: 921120 / 921600 (99.948%)
-- Total capture ms: 19006
-- Readiness diagnostics: ready=true polls=3 failed=2 elapsed=7213ms slowestPoll=6931ms@3 blockers=none lastFailed=visual-smoke-not-ready
-- Readiness stages: viewReadiness{ready=true polls=3 failed=2 elapsed=7232ms slowestPoll=6947ms@3 blockers=none lastFailed=visual-smoke-not-ready} | interactionReadiness{ready=true polls=3 failed=2 elapsed=7213ms slowestPoll=6931ms@3 blockers=none lastFailed=visual-smoke-not-ready}
+- Total capture ms: 18777
+- Readiness diagnostics: ready=true polls=3 failed=2 elapsed=7055ms slowestPoll=6732ms@3 blockers=none lastFailed=visual-smoke-not-ready
+- Readiness stages: viewReadiness{ready=true polls=2 failed=1 elapsed=7406ms slowestPoll=7258ms@2 blockers=none lastFailed=visual-smoke-not-ready} | interactionReadiness{ready=true polls=3 failed=2 elapsed=7055ms slowestPoll=6732ms@3 blockers=none lastFailed=visual-smoke-not-ready}
 
 
 ## Findings

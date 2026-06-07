@@ -1906,14 +1906,17 @@ function formatOperatorReadinessTotalComparison(comparison = {}) {
   if (!comparison || !comparison.status) {
     return "not reported";
   }
+  const captureSuffix = comparison.readinessCaptureId || comparison.appFrameTotalCaptureId
+    ? `; readiness capture ${comparison.readinessCaptureId ?? "unknown"}, app-frame capture ${comparison.appFrameTotalCaptureId ?? "unknown"}`
+    : "";
   if (comparison.status === "operator-readiness-exceeds-app-frame-total") {
-    return `${comparison.status} (${comparison.readinessMs}ms readiness vs ${comparison.appFrameTotalMs}ms app-frame total; gap ${comparison.gapMs}ms)`;
+    return `${comparison.status} (${comparison.readinessMs}ms readiness vs ${comparison.appFrameTotalMs}ms app-frame total; gap ${comparison.gapMs}ms${captureSuffix})`;
   }
   if (comparison.status === "app-frame-total-covers-operator-readiness") {
-    return `${comparison.status} (${comparison.readinessMs}ms readiness vs ${comparison.appFrameTotalMs}ms app-frame total; gap ${comparison.gapMs}ms)`;
+    return `${comparison.status} (${comparison.readinessMs}ms readiness vs ${comparison.appFrameTotalMs}ms app-frame total; gap ${comparison.gapMs}ms${captureSuffix})`;
   }
   if (comparison.status === "app-frame-total-not-reported") {
-    return `${comparison.status} (${comparison.readinessMs}ms readiness)`;
+    return `${comparison.status} (${comparison.readinessMs}ms readiness${captureSuffix})`;
   }
   return comparison.status;
 }

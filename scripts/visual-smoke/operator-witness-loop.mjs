@@ -214,13 +214,22 @@ export function summarizeOperatorWitnessTiming(captures = [], sessionTiming = {}
     }
     return slowest;
   }, null);
+  const appFrameTotalForSlowestReadiness = appFrameCaptures.find(
+    (capture) => capture.id === slowestOperatorReadiness?.captureId && capture.totalMs !== null
+  );
   const operatorReadinessVsAppFrameStage = compareOperatorReadinessToAppFrameStage(
     slowestOperatorReadiness,
     slowestAppFrameStage
   );
   const operatorReadinessVsAppFrameTotal = compareOperatorReadinessToAppFrameTotal(
     slowestOperatorReadiness,
-    slowestAppFrameTotal
+    appFrameTotalForSlowestReadiness
+      ? {
+          captureId: appFrameTotalForSlowestReadiness.id,
+          elapsedMs: appFrameTotalForSlowestReadiness.totalMs,
+          frameSerial: appFrameTotalForSlowestReadiness.frameSerial ?? 0,
+        }
+      : null
   );
   return {
     totalCaptureMs,
@@ -299,6 +308,7 @@ function compareOperatorReadinessToAppFrameTotal(slowestOperatorReadiness, slowe
   if (appFrameTotalMs === null) {
     return {
       status: "app-frame-total-not-reported",
+      readinessCaptureId: slowestOperatorReadiness?.captureId ?? "",
       readinessMs,
     };
   }
@@ -307,6 +317,8 @@ function compareOperatorReadinessToAppFrameTotal(slowestOperatorReadiness, slowe
     status: readinessMs > appFrameTotalMs
       ? "operator-readiness-exceeds-app-frame-total"
       : "app-frame-total-covers-operator-readiness",
+    readinessCaptureId: slowestOperatorReadiness?.captureId ?? "",
+    appFrameTotalCaptureId: slowestAppFrameTotal?.captureId ?? "",
     readinessMs,
     appFrameTotalMs,
     gapMs,

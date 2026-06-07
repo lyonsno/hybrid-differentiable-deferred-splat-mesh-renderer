@@ -309,9 +309,60 @@ test("operator witness timing summary compares readiness against whole app-frame
 
   assert.deepEqual(timing.operatorReadinessVsAppFrameTotal, {
     status: "app-frame-total-covers-operator-readiness",
+    readinessCaptureId: OPERATOR_WITNESS_CAPTURE_IDS.wholeRender,
+    appFrameTotalCaptureId: OPERATOR_WITNESS_CAPTURE_IDS.wholeRender,
     readinessMs: 3100,
     appFrameTotalMs: 3300,
     gapMs: -200,
+  });
+});
+
+test("operator witness timing summary does not cover readiness with an unrelated app-frame total", () => {
+  const timing = summarizeOperatorWitnessTiming([
+    witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.dessertClose, {
+      timing: {
+        totalMs: 5300,
+        stages: [{ name: "view-readiness", elapsedMs: 5000 }],
+      },
+      pageEvidence: {
+        operatorWitness: {
+          frameSerial: 11,
+          frameTimings: {
+            totalMs: 1000,
+            stages: [{ name: "source-frontier-pack", elapsedMs: 800 }],
+          },
+        },
+      },
+    }),
+    witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.porousClose, {
+      timing: {
+        totalMs: 900,
+        stages: [{ name: "view-readiness", elapsedMs: 700 }],
+      },
+      pageEvidence: {
+        operatorWitness: {
+          frameSerial: 12,
+          frameTimings: {
+            totalMs: 6000,
+            stages: [{ name: "source-frontier-pack", elapsedMs: 5800 }],
+          },
+        },
+      },
+    }),
+  ]);
+
+  assert.deepEqual(timing.slowestAppFrameTotal, {
+    captureId: OPERATOR_WITNESS_CAPTURE_IDS.porousClose,
+    elapsedMs: 6000,
+    frameSerial: 12,
+  });
+  assert.deepEqual(timing.operatorReadinessVsAppFrameTotal, {
+    status: "operator-readiness-exceeds-app-frame-total",
+    readinessCaptureId: OPERATOR_WITNESS_CAPTURE_IDS.dessertClose,
+    appFrameTotalCaptureId: OPERATOR_WITNESS_CAPTURE_IDS.dessertClose,
+    readinessMs: 5000,
+    appFrameTotalMs: 1000,
+    gapMs: 4000,
   });
 });
 
