@@ -917,7 +917,7 @@ async function runCaptureInteractions({ page, canvas, interactions, timeoutMs })
 }
 
 async function captureTimeoutFailure({ page, canvas, options, capture, clip, reportDir, error, consoleMessages, pageErrors }) {
-  const rawPageEvidence = error.lastEvidence ?? await collectPageEvidence(page).catch(() => ({}));
+  const rawPageEvidence = await collectTimeoutPageEvidence({ page, lastEvidence: error.lastEvidence });
   const pageEvidence = {
     ...rawPageEvidence,
     ...extractTileLocalPageMetrics(rawPageEvidence),
@@ -958,6 +958,27 @@ async function captureTimeoutFailure({ page, canvas, options, capture, clip, rep
     consoleMessages,
     pageErrors,
   });
+}
+
+function isCompactReadinessEvidence(evidence) {
+  return evidence?.readinessEvidence?.source === "compact-readiness";
+}
+
+async function collectTimeoutPageEvidence({ page, lastEvidence }) {
+  if (!isCompactReadinessEvidence(lastEvidence)) {
+    return lastEvidence ?? await collectPageEvidence(page).catch(() => ({}));
+  }
+
+  const fullPageEvidence = await collectPageEvidence(page).catch(() => undefined);
+  if (!fullPageEvidence) {
+    return lastEvidence ?? {};
+  }
+
+  return {
+    ...fullPageEvidence,
+    readinessDiagnostics: lastEvidence?.readinessDiagnostics ?? fullPageEvidence.readinessDiagnostics,
+    readinessEvidence: lastEvidence?.readinessEvidence ?? fullPageEvidence.readinessEvidence,
+  };
 }
 
 async function waitForVisualSmokeCaptureReady(page, expectedRendererLabel, timeoutMs, readiness = {}) {

@@ -1395,6 +1395,24 @@ test("operator witness harness timeouts are routed into failure captures", () =>
   assert.match(frameSource, /error: normalizeVisualSmokeTimeoutError\(error, timeoutMs\),/);
 });
 
+test("operator witness timeout reports refresh full evidence after compact readiness polling", () => {
+  const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
+  const captureSource = extractFunctionSource(source, "captureTimeoutFailure");
+  const helperSource = extractFunctionSource(source, "collectTimeoutPageEvidence");
+  const compactEvidenceCheck = helperSource.indexOf("isCompactReadinessEvidence(lastEvidence)");
+  const fullEvidenceRefresh = helperSource.indexOf("collectPageEvidence(page).catch", compactEvidenceCheck);
+  const preserveReadinessDiagnostics = helperSource.indexOf("readinessDiagnostics:", fullEvidenceRefresh);
+
+  assert.doesNotMatch(captureSource, /error\.lastEvidence \?\? await collectPageEvidence/);
+  assert.match(captureSource, /collectTimeoutPageEvidence\(\{ page, lastEvidence: error\.lastEvidence \}\)/);
+  assert.ok(compactEvidenceCheck !== -1, "timeout evidence must detect compact readiness snapshots");
+  assert.ok(fullEvidenceRefresh > compactEvidenceCheck, "compact timeout evidence must trigger a full page evidence refresh");
+  assert.ok(
+    preserveReadinessDiagnostics > fullEvidenceRefresh,
+    "full timeout evidence must retain the readiness diagnostic history from the compact poll"
+  );
+});
+
 test("operator witness initial page readiness timeouts produce a first-capture failure report", () => {
   const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
   const sessionStart = source.indexOf("async function captureOperatorWitnessSession");
@@ -1450,9 +1468,26 @@ test("operator witness session stops after a timeout capture to avoid racing the
 });
 
 function extractFunctionSource(source, functionName) {
-  const start = source.indexOf(`function ${functionName}`);
+  const match = new RegExp(`(?:async\\s+)?function\\s+${functionName}\\b`).exec(source);
+  const start = match?.index ?? -1;
   assert.notEqual(start, -1, `missing function ${functionName}`);
-  const bodyStart = source.indexOf("{", start);
+  const paramsStart = source.indexOf("(", start);
+  assert.notEqual(paramsStart, -1, `missing function params ${functionName}`);
+  let paramDepth = 0;
+  let paramsEnd = -1;
+  for (let index = paramsStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "(") paramDepth += 1;
+    if (char === ")") {
+      paramDepth -= 1;
+      if (paramDepth === 0) {
+        paramsEnd = index;
+        break;
+      }
+    }
+  }
+  assert.notEqual(paramsEnd, -1, `unterminated function params ${functionName}`);
+  const bodyStart = source.indexOf("{", paramsEnd);
   assert.notEqual(bodyStart, -1, `missing function body ${functionName}`);
   let depth = 0;
   for (let index = bodyStart; index < source.length; index += 1) {
