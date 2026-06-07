@@ -909,6 +909,71 @@ test("operator witness report prints operator readiness separately from app fram
   assert.match(reportSource, /operatorReadinessVsAppFrameTotal/);
 });
 
+test("live stats overlay exposes app-frame latency instead of only GPU render timing", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const overlayStart = source.indexOf("// Stats overlay");
+  const overlayEnd = source.indexOf("statsEl.textContent = statsText;", overlayStart);
+  const overlaySource = source.slice(overlayStart, overlayEnd);
+  const formatterSource = extractFunctionSource(source, "formatFrameTimingOverlay");
+  const retainSource = extractFunctionSource(source, "shouldRetainFrameTimingOverlay");
+
+  assert.match(
+    overlaySource,
+    /formatFrameTimingOverlay\(frameTiming\)/,
+    "stats overlay should render app-frame timing from the live frame timing draft",
+  );
+  assert.match(
+    overlaySource,
+    /statsText \+= ` \| \$\{frameTimingOverlay\}`/,
+    "stats overlay should append app-frame timing before the GPU-only timestamp labels",
+  );
+  assert.match(
+    formatterSource,
+    /app frame: \$\{roundRuntimeMetric\(performance\.now\(\) - timing\.startedAtMs\)\}ms/,
+    "overlay app-frame timing should include wall elapsed since frame start",
+  );
+  assert.match(
+    formatterSource,
+    /slowest app stage:/,
+    "overlay should name the slowest CPU-side frame stage",
+  );
+  assert.match(
+    formatterSource,
+    /source-frontier pack:/,
+    "overlay should expose source-frontier pack cost separately from GPU render timing",
+  );
+  assert.match(
+    formatterSource,
+    /sourceFrontierPackMs = Math\.max\(sourceFrontierPackMs,\s*stage\.elapsedMs\)/,
+    "source-frontier overlay timing should report the dominant pack stage instead of double-counting nested stages",
+  );
+  assert.doesNotMatch(
+    formatterSource,
+    /sourceFrontierPackMs \+= stage\.elapsedMs/,
+    "source-frontier overlay timing must not exceed app-frame time by summing nested stages",
+  );
+  assert.match(
+    source,
+    /let recentSlowFrameTimingOverlay:\s*\{\s*readonly text: string;\s*readonly observedAtMs: number;\s*\} \| null = null/,
+    "live HUD should retain the last slow app frame long enough for a human or settled screenshot to see it",
+  );
+  assert.match(
+    retainSource,
+    /FRAME_TIMING_OVERLAY_RETAIN_THRESHOLD_MS/,
+    "recent-frame retention should have an explicit latency threshold",
+  );
+  assert.match(
+    retainSource,
+    /stage\.name\.startsWith\("wgsl-source-frontier-pack"\)/,
+    "source-frontier pack frames should be retained even if later cheap frames overwrite the live overlay",
+  );
+  assert.match(
+    overlaySource,
+    /recent slow app frame:/,
+    "stats overlay should print the retained slow frame separately from the current frame",
+  );
+});
+
 test("operator witness app frame timing routes requested GPU presentation through compact retained source runtime", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const ensureStart = source.indexOf("function ensureTileLocalSceneState");

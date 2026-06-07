@@ -845,6 +845,9 @@ interface FrameTimingSummary {
   readonly stages: readonly FrameTimingStage[];
 }
 
+const FRAME_TIMING_OVERLAY_RETAIN_THRESHOLD_MS = 50;
+const FRAME_TIMING_OVERLAY_RECENT_SLOW_TTL_MS = 10_000;
+
 interface AlphaDensityState {
   refreshState: AlphaDensityRefreshState;
   summary: AlphaDensityCompensationSummary;
@@ -890,6 +893,34 @@ function finishFrameTiming(timing: FrameTimingDraft): FrameTimingSummary {
     totalMs: roundRuntimeMetric(performance.now() - timing.startedAtMs),
     stages: timing.stages,
   };
+}
+
+function formatFrameTimingOverlay(timing: FrameTimingDraft): string {
+  let slowestStage: FrameTimingStage | null = null;
+  let sourceFrontierPackMs = 0;
+  for (const stage of timing.stages) {
+    if (!slowestStage || stage.elapsedMs > slowestStage.elapsedMs) {
+      slowestStage = stage;
+    }
+    if (stage.name.startsWith("wgsl-source-frontier-pack")) {
+      sourceFrontierPackMs = Math.max(sourceFrontierPackMs, stage.elapsedMs);
+    }
+  }
+  const parts = [`app frame: ${roundRuntimeMetric(performance.now() - timing.startedAtMs)}ms`];
+  if (slowestStage) {
+    parts.push(`slowest app stage: ${slowestStage.name} ${slowestStage.elapsedMs}ms`);
+  }
+  if (sourceFrontierPackMs > 0) {
+    parts.push(`source-frontier pack: ${roundRuntimeMetric(sourceFrontierPackMs)}ms`);
+  }
+  return parts.join(" | ");
+}
+
+function shouldRetainFrameTimingOverlay(timing: FrameTimingDraft): boolean {
+  if (performance.now() - timing.startedAtMs >= FRAME_TIMING_OVERLAY_RETAIN_THRESHOLD_MS) {
+    return true;
+  }
+  return timing.stages.some((stage) => stage.name.startsWith("wgsl-source-frontier-pack"));
 }
 
 function exposeOperatorWitnessFrameTimings(frameTimings: FrameTimingSummary): void {
@@ -960,6 +991,7 @@ async function main() {
   let fpsAccum = 0;
   let displayFps = 0;
   let gpuTimings: Map<string, number> = new Map();
+  let recentSlowFrameTimingOverlay: { readonly text: string; readonly observedAtMs: number; } | null = null;
   let operatorWitnessViewMode: RealScaniverseWitnessViewMode = REAL_SCANIVERSE_WITNESS_VIEW;
   let operatorWitnessRevision = 0;
 
@@ -1650,6 +1682,18 @@ async function main() {
     }
     if (scene.tileLocalLastSkipReason) {
       statsText += ` | tile-local skipped: ${scene.tileLocalLastSkipReason}`;
+    }
+    const frameTimingOverlay = formatFrameTimingOverlay(frameTiming);
+    statsText += ` | ${frameTimingOverlay}`;
+    if (shouldRetainFrameTimingOverlay(frameTiming)) {
+      recentSlowFrameTimingOverlay = { text: frameTimingOverlay, observedAtMs: now };
+    } else if (
+      recentSlowFrameTimingOverlay &&
+      now - recentSlowFrameTimingOverlay.observedAtMs <= FRAME_TIMING_OVERLAY_RECENT_SLOW_TTL_MS
+    ) {
+      statsText += ` | recent slow app frame: ${recentSlowFrameTimingOverlay.text} (${Math.round(now - recentSlowFrameTimingOverlay.observedAtMs)}ms ago)`;
+    } else if (recentSlowFrameTimingOverlay) {
+      recentSlowFrameTimingOverlay = null;
     }
     if (gpuTimings.size > 0) {
       for (const [label, ms] of gpuTimings) {
