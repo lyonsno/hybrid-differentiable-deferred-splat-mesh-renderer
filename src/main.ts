@@ -2473,6 +2473,7 @@ function buildWgslSourceFrontierCandidateSources({
         compactRetainSupportSampleRecords({
           bucket,
           record,
+          localSupportWeight: finiteOrZero(localSupportWeight),
           tileMinX: tileX * tileSizePx,
           tileMinY: tileY * tileSizePx,
           tileMaxX: Math.min(viewportWidth, (tileX + 1) * tileSizePx),
@@ -2523,6 +2524,8 @@ function buildWgslSourceFrontierCandidateSources({
     retentionRecordCount: retentionRecords.length,
     occlusionRecordCount: occlusionRecords.length,
     supportSampleEvaluationCount: streamLedger.supportSampleEvaluationCount,
+    supportSampleSkipCount: streamLedger.supportSampleSkipCount,
+    supportSampleSkippedEvaluationCount: streamLedger.supportSampleSkippedEvaluationCount,
     supportSamplePositiveWeightCount: streamLedger.supportSamplePositiveWeightCount,
     supportSampleRetainCount: streamLedger.supportSampleRetainCount,
     supportSampleRecordCount: supportSampleRecords.length,
@@ -2931,6 +2934,7 @@ function buildStreamingCompactRetainedSourceForRuntime({
           compactRetainSupportSampleRecords({
             bucket,
             record,
+            localSupportWeight: finiteOrZero(localSupportWeight),
             tileMinX: tileX * tileSizePx,
             tileMinY: tileY * tileSizePx,
             tileMaxX: Math.min(viewportWidth, (tileX + 1) * tileSizePx),
@@ -3878,6 +3882,8 @@ interface CompactSourceFrontierStreamLedger {
   retentionRetainCount: number;
   occlusionRetainCount: number;
   supportSampleEvaluationCount: number;
+  supportSampleSkipCount: number;
+  supportSampleSkippedEvaluationCount: number;
   supportSamplePositiveWeightCount: number;
   supportSampleRetainCount: number;
 }
@@ -3894,6 +3900,8 @@ function compactSourceFrontierStreamLedger(): CompactSourceFrontierStreamLedger 
     retentionRetainCount: 0,
     occlusionRetainCount: 0,
     supportSampleEvaluationCount: 0,
+    supportSampleSkipCount: 0,
+    supportSampleSkippedEvaluationCount: 0,
     supportSamplePositiveWeightCount: 0,
     supportSampleRetainCount: 0,
   };
@@ -3970,6 +3978,7 @@ function compactRetainedRecordListWorstIndex(
 function compactRetainSupportSampleRecords({
   bucket,
   record,
+  localSupportWeight,
   tileMinX,
   tileMinY,
   tileMaxX,
@@ -3979,6 +3988,7 @@ function compactRetainSupportSampleRecords({
 }: {
   readonly bucket: CompactStreamingTileBucket;
   readonly record: GpuTileContributorArenaProjectedContributor;
+  readonly localSupportWeight: number;
   readonly tileMinX: number;
   readonly tileMinY: number;
   readonly tileMaxX: number;
@@ -3993,6 +4003,23 @@ function compactRetainSupportSampleRecords({
   }
   const samplesPerAxis = COMPACT_SOURCE_RETENTION_SUPPORT_SAMPLES_PER_AXIS;
   const sampleLimit = Math.max(1, Math.ceil(maxRefsPerTile / (samplesPerAxis * samplesPerAxis * 2)));
+  const supportLuminance = record.occlusionWeight > 0 ? record.retentionWeight / record.occlusionWeight : 0;
+  const safeSupportLuminance = Math.max(0, finiteOrZero(supportLuminance));
+  const supportSampleWeightUpperBound = Math.max(0, finiteOrZero(localSupportWeight)) * record.opacity;
+  const supportSampleRetentionWeightUpperBound = supportSampleWeightUpperBound * safeSupportLuminance;
+  if (compactCanSkipSupportSampleRecords({
+    bucket,
+    record,
+    supportSampleWeightUpperBound,
+    supportSampleRetentionWeightUpperBound,
+    limit: sampleLimit,
+  })) {
+    if (ledger) {
+      ledger.supportSampleSkipCount += 1;
+      ledger.supportSampleSkippedEvaluationCount += samplesPerAxis * samplesPerAxis;
+    }
+    return;
+  }
   for (let sampleY = 0; sampleY < samplesPerAxis; sampleY += 1) {
     const y = tileMinY + ((sampleY + 0.5) / samplesPerAxis) * height;
     for (let sampleX = 0; sampleX < samplesPerAxis; sampleX += 1) {
@@ -4007,8 +4034,7 @@ function compactRetainSupportSampleRecords({
       if (ledger) {
         ledger.supportSamplePositiveWeightCount += 1;
       }
-      const supportLuminance = record.occlusionWeight > 0 ? record.retentionWeight / record.occlusionWeight : 0;
-      const supportSampleRetentionWeight = supportSampleWeight * Math.max(0, finiteOrZero(supportLuminance));
+      const supportSampleRetentionWeight = supportSampleWeight * safeSupportLuminance;
       const sampleIndex = sampleY * samplesPerAxis + sampleX;
       if (compactRetainSupportSampleRecord({
         recordList: bucket.supportSampleRecords[sampleIndex],
@@ -4021,6 +4047,44 @@ function compactRetainSupportSampleRecords({
       }
     }
   }
+}
+
+function compactCanSkipSupportSampleRecords({
+  bucket,
+  record,
+  supportSampleWeightUpperBound,
+  supportSampleRetentionWeightUpperBound,
+  limit,
+}: {
+  readonly bucket: CompactStreamingTileBucket;
+  readonly record: GpuTileContributorArenaProjectedContributor;
+  readonly supportSampleWeightUpperBound: number;
+  readonly supportSampleRetentionWeightUpperBound: number;
+  readonly limit: number;
+}): boolean {
+  for (const recordList of bucket.supportSampleRecords) {
+    const records = recordList.records;
+    if (records.length < limit) {
+      return false;
+    }
+  }
+  if (supportSampleWeightUpperBound <= 1e-8) {
+    return true;
+  }
+  for (const recordList of bucket.supportSampleRecords) {
+    const records = recordList.records;
+    if (
+      compactCompareSupportSampleCandidateToRecord(
+        record,
+        supportSampleWeightUpperBound,
+        supportSampleRetentionWeightUpperBound,
+        records[recordList.worstIndex],
+      ) < 0
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function compactRetainSupportSampleRecord({
@@ -4481,9 +4545,70 @@ function compactSourceTileLocalSupportWeight({
   readonly tileMaxX: number;
   readonly tileMaxY: number;
 }): number {
-  const closestX = compactClamp(centerPx[0], tileMinX, tileMaxX);
-  const closestY = compactClamp(centerPx[1], tileMinY, tileMaxY);
-  return compactSourceConicPixelWeightFromDensityParams(closestX, closestY, centerPx, densityParams);
+  const mahalanobis2 = compactSourceMinimumMahalanobis2InRect({
+    centerPx,
+    densityParams,
+    minX: tileMinX,
+    minY: tileMinY,
+    maxX: tileMaxX,
+    maxY: tileMaxY,
+  });
+  return Math.exp(-2 * Math.max(mahalanobis2, 0));
+}
+
+function compactSourceMinimumMahalanobis2InRect({
+  centerPx,
+  densityParams,
+  minX,
+  minY,
+  maxX,
+  maxY,
+}: {
+  readonly centerPx: readonly [number, number];
+  readonly densityParams: CompactSourceCovarianceDensityParams;
+  readonly minX: number;
+  readonly minY: number;
+  readonly maxX: number;
+  readonly maxY: number;
+}): number {
+  const minDx = minX - centerPx[0];
+  const maxDx = maxX - centerPx[0];
+  const minDy = minY - centerPx[1];
+  const maxDy = maxY - centerPx[1];
+  if (minDx <= 0 && maxDx >= 0 && minDy <= 0 && maxDy >= 0) {
+    return 0;
+  }
+  let best = Number.POSITIVE_INFINITY;
+  const testOffset = (dx: number, dy: number): void => {
+    const mahalanobis2 =
+      densityParams.invXx * dx * dx +
+      2 * densityParams.invXy * dx * dy +
+      densityParams.invYy * dy * dy;
+    if (mahalanobis2 < best) {
+      best = mahalanobis2;
+    }
+  };
+  const testVerticalEdge = (dx: number): void => {
+    const dy = compactClamp(
+      densityParams.invYy !== 0 ? -(densityParams.invXy * dx) / densityParams.invYy : 0,
+      minDy,
+      maxDy,
+    );
+    testOffset(dx, dy);
+  };
+  const testHorizontalEdge = (dy: number): void => {
+    const dx = compactClamp(
+      densityParams.invXx !== 0 ? -(densityParams.invXy * dy) / densityParams.invXx : 0,
+      minDx,
+      maxDx,
+    );
+    testOffset(dx, dy);
+  };
+  testVerticalEdge(minDx);
+  testVerticalEdge(maxDx);
+  testHorizontalEdge(minDy);
+  testHorizontalEdge(maxDy);
+  return best;
 }
 
 interface CompactSourceCovarianceDensityParams {

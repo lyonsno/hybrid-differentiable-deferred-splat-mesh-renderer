@@ -261,6 +261,8 @@ test("operator witness timing summary exposes source-frontier pack substage attr
                   candidateRecordCount: 91392,
                   supportSampleRecordCount: 18816,
                   supportSampleEvaluationCount: 3543040,
+                  supportSampleSkipCount: 8230,
+                  supportSampleSkippedEvaluationCount: 131680,
                   supportSamplePositiveWeightCount: 45612,
                   supportSampleRetainCount: 20491,
                   supportSampleGroupCount: 7530,
@@ -292,6 +294,8 @@ test("operator witness timing summary exposes source-frontier pack substage attr
     candidateRecordCount: 91392,
     supportSampleRecordCount: 18816,
     supportSampleEvaluationCount: 3543040,
+    supportSampleSkipCount: 8230,
+    supportSampleSkippedEvaluationCount: 131680,
     supportSamplePositiveWeightCount: 45612,
     supportSampleRetainCount: 20491,
     supportSampleGroupCount: 7530,
@@ -325,6 +329,8 @@ test("operator witness timing summary carries source-frontier stream inner ledge
                   occlusionRetainCount: 181163,
                   candidateRecordCount: 320071,
                   supportSampleEvaluationCount: 10636080,
+                  supportSampleSkipCount: 419097,
+                  supportSampleSkippedEvaluationCount: 6705552,
                   supportSamplePositiveWeightCount: 1182068,
                   supportSampleRetainCount: 487331,
                   supportSampleRecordCount: 223155,
@@ -354,6 +360,8 @@ test("operator witness timing summary carries source-frontier stream inner ledge
     occlusionRetainCount: 181163,
     candidateRecordCount: 320071,
     supportSampleEvaluationCount: 10636080,
+    supportSampleSkipCount: 419097,
+    supportSampleSkippedEvaluationCount: 6705552,
     supportSamplePositiveWeightCount: 1182068,
     supportSampleRetainCount: 487331,
     supportSampleRecordCount: 223155,
@@ -876,6 +884,8 @@ test("operator witness report prints the slowest app-side frame stage", () => {
   assert.match(formatterSource, /streamTileCandidates/);
   assert.match(formatterSource, /streamCoverageRejects/);
   assert.match(formatterSource, /supportSampleEvaluations/);
+  assert.match(formatterSource, /supportSampleSkips/);
+  assert.match(formatterSource, /supportSampleSkippedEvaluations/);
   assert.match(formatterSource, /supportSamplePositiveWeights/);
   assert.match(reportSource, /Operator readiness vs observed poll frame total:/);
   assert.match(reportSource, /timing\.operatorReadinessVsObservedAppFrameTotal/);
@@ -1043,7 +1053,8 @@ test("compact stream retention scores local conic support separately from tile i
   assert.match(bucketSource, /function compactRetainSupportSampleRecords/);
   assert.match(bucketSource, /const sampleLimit = Math\.max\(1,\s*Math\.ceil\(maxRefsPerTile \/ \(samplesPerAxis \* samplesPerAxis \* 2\)\)\)/);
   assert.match(bucketSource, /const supportSampleWeight = compactSourceConicPixelWeight\(record,\s*\[x,\s*y\]\) \* record\.opacity/);
-  assert.match(bucketSource, /const supportSampleRetentionWeight = supportSampleWeight \* Math\.max\(0,\s*finiteOrZero\(supportLuminance\)\)/);
+  assert.match(bucketSource, /const safeSupportLuminance = Math\.max\(0,\s*finiteOrZero\(supportLuminance\)\)/);
+  assert.match(bucketSource, /const supportSampleRetentionWeight = supportSampleWeight \* safeSupportLuminance/);
   assert.match(bucketSource, /compareCompactProjectionSupportSamplePriority/);
   assert.match(streamSource, /const localSupportWeight = compactSourceTileLocalSupportWeight\(\{/);
   assert.match(streamSource, /onEntry\(\{ splatOrdinal, splat, tileIndex, tileX, tileY, coverageWeight, localSupportWeight \}\)/);
@@ -1142,6 +1153,58 @@ test("source-frontier support sample retention clones records only after capped-
     supportRecordRetainSource,
     /const\s+supportRecord:\s*GpuTileContributorArenaProjectedContributor\s*=\s*\{\s*\.\.\.record,\s*supportSampleWeight,\s*supportSampleRetentionWeight,?\s*\}/,
     "support sample helper should clone only after the candidate is known to enter the retained list",
+  );
+});
+
+test("source-frontier support sample retention skips bounded candidates before per-sample conic evals", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const sourceFrontierSource = extractFunctionSource(source, "buildWgslSourceFrontierCandidateSources");
+  const supportRetainSource = extractFunctionSource(source, "compactRetainSupportSampleRecords");
+  const skipSource = extractFunctionSource(source, "compactCanSkipSupportSampleRecords");
+  const supportBoundSource = extractFunctionSource(source, "compactSourceTileLocalSupportWeight");
+  const metricRectSource = extractFunctionSource(source, "compactSourceMinimumMahalanobis2InRect");
+  const supportLoopIndex = supportRetainSource.indexOf("for (let sampleY");
+  const skipIndex = supportRetainSource.indexOf("compactCanSkipSupportSampleRecords");
+  const fullListGateIndex = skipSource.indexOf("records.length < limit");
+  const zeroBoundIndex = skipSource.indexOf("supportSampleWeightUpperBound <= 1e-8");
+
+  assert.match(
+    sourceFrontierSource,
+    /compactRetainSupportSampleRecords\(\{[\s\S]*?localSupportWeight:\s*finiteOrZero\(localSupportWeight\),/,
+    "source-frontier support retention should pass the tile-local conic support upper bound",
+  );
+  assert.match(
+    supportRetainSource,
+    /readonly localSupportWeight:\s*number/,
+    "support retention should require the existing per-ref local support bound",
+  );
+  assert.match(supportRetainSource, /const supportLuminance =/);
+  assert.match(
+    supportRetainSource,
+    /const supportSampleWeightUpperBound = Math\.max\(0,\s*finiteOrZero\(localSupportWeight\)\) \* record\.opacity/,
+  );
+  assert.match(
+    supportBoundSource,
+    /compactSourceMinimumMahalanobis2InRect/,
+    "support upper bound must minimize the conic metric over the whole tile rectangle, not clamp x/y independently",
+  );
+  assert.match(metricRectSource, /testVerticalEdge\(minDx\)/);
+  assert.match(metricRectSource, /testVerticalEdge\(maxDx\)/);
+  assert.match(metricRectSource, /testHorizontalEdge\(minDy\)/);
+  assert.match(metricRectSource, /testHorizontalEdge\(maxDy\)/);
+  assert.match(metricRectSource, /-\(densityParams\.invXy \* dx\) \/ densityParams\.invYy/);
+  assert.match(metricRectSource, /-\(densityParams\.invXy \* dy\) \/ densityParams\.invXx/);
+  assert.ok(skipIndex >= 0, "support retention should call the bounded skip helper");
+  assert.ok(supportLoopIndex > skipIndex, "bounded skip must run before the per-sample conic loop");
+  assert.match(supportRetainSource, /ledger\.supportSampleSkipCount \+= 1/);
+  assert.match(supportRetainSource, /ledger\.supportSampleSkippedEvaluationCount \+= samplesPerAxis \* samplesPerAxis/);
+  assert.match(skipSource, /if \(records\.length < limit\) \{\s*return false;\s*\}/);
+  assert.ok(fullListGateIndex >= 0, "skip helper should check list saturation");
+  assert.ok(zeroBoundIndex > fullListGateIndex, "zero-bound pruning must not bypass the full-list gate");
+  assert.match(
+    skipSource,
+    /compactCompareSupportSampleCandidateToRecord\(\s*record,\s*supportSampleWeightUpperBound,\s*supportSampleRetentionWeightUpperBound,\s*records\[recordList\.worstIndex\],?\s*\)\s*<\s*0/,
+    "skip helper must refuse to prune if the upper-bound candidate could beat any sample list worst row",
   );
 });
 

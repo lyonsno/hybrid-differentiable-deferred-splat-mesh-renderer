@@ -388,6 +388,8 @@ function sourceFrontierPackCountsFromDetail(detail) {
     "retentionRecordCount",
     "occlusionRecordCount",
     "supportSampleEvaluationCount",
+    "supportSampleSkipCount",
+    "supportSampleSkippedEvaluationCount",
     "supportSamplePositiveWeightCount",
     "supportSampleRetainCount",
     "supportSampleRecordCount",
