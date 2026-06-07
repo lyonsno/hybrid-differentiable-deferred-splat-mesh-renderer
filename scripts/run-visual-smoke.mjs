@@ -1696,7 +1696,9 @@ ${renderSmokeHandoffSection(result.smokeHandoff)}
 - Slowest stage: ${timing.slowestStage ? `${timing.slowestStage.captureId}/${timing.slowestStage.name} (${timing.slowestStage.elapsedMs}ms)` : "not reported"}
 - Slowest operator readiness: ${timing.slowestOperatorReadiness ? `${timing.slowestOperatorReadiness.captureId}/${timing.slowestOperatorReadiness.name} (${timing.slowestOperatorReadiness.elapsedMs}ms)` : "not reported"}
 - Slowest app frame stage: ${timing.slowestAppFrameStage ? `${timing.slowestAppFrameStage.captureId}/${timing.slowestAppFrameStage.name} (${timing.slowestAppFrameStage.elapsedMs}ms, frame ${timing.slowestAppFrameStage.frameSerial})` : "not reported"}
+- Slowest app frame total: ${timing.slowestAppFrameTotal ? `${timing.slowestAppFrameTotal.captureId} (${timing.slowestAppFrameTotal.elapsedMs}ms, frame ${timing.slowestAppFrameTotal.frameSerial})` : "not reported"}
 - Operator readiness vs app frame stage: ${formatOperatorReadinessComparison(timing.operatorReadinessVsAppFrameStage)}
+- Operator readiness vs app frame total: ${formatOperatorReadinessTotalComparison(timing.operatorReadinessVsAppFrameTotal)}
 - Initial readiness diagnostics: ${formatReadinessDiagnostics(result.readinessDiagnosticsByStage?.initialReadiness)}
 
 ${renderOperatorTimingTable(timing)}
@@ -1895,6 +1897,22 @@ function formatOperatorReadinessComparison(comparison = {}) {
     return `${comparison.status} (${comparison.readinessMs}ms readiness vs ${comparison.appFrameStageMs}ms app-frame stage; gap ${comparison.gapMs}ms)`;
   }
   if (comparison.status === "app-frame-stage-not-reported") {
+    return `${comparison.status} (${comparison.readinessMs}ms readiness)`;
+  }
+  return comparison.status;
+}
+
+function formatOperatorReadinessTotalComparison(comparison = {}) {
+  if (!comparison || !comparison.status) {
+    return "not reported";
+  }
+  if (comparison.status === "operator-readiness-exceeds-app-frame-total") {
+    return `${comparison.status} (${comparison.readinessMs}ms readiness vs ${comparison.appFrameTotalMs}ms app-frame total; gap ${comparison.gapMs}ms)`;
+  }
+  if (comparison.status === "app-frame-total-covers-operator-readiness") {
+    return `${comparison.status} (${comparison.readinessMs}ms readiness vs ${comparison.appFrameTotalMs}ms app-frame total; gap ${comparison.gapMs}ms)`;
+  }
+  if (comparison.status === "app-frame-total-not-reported") {
     return `${comparison.status} (${comparison.readinessMs}ms readiness)`;
   }
   return comparison.status;

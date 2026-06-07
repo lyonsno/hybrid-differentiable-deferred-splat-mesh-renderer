@@ -182,11 +182,12 @@ export function summarizeOperatorWitnessTiming(captures = [], sessionTiming = {}
     .map((capture) => ({
       id: capture.id,
       frameSerial: finiteNumber(capture.pageEvidence?.operatorWitness?.frameSerial),
+      totalMs: finiteNumber(capture.pageEvidence?.operatorWitness?.frameTimings?.totalMs),
       stages: Array.isArray(capture.pageEvidence?.operatorWitness?.frameTimings?.stages)
         ? capture.pageEvidence.operatorWitness.frameTimings.stages
         : [],
     }))
-    .filter((capture) => capture.stages.length > 0);
+    .filter((capture) => capture.totalMs !== null || capture.stages.length > 0);
   const slowestAppFrameStage = appFrameCaptures.reduce((slowest, capture) => {
     for (const stage of capture.stages) {
       const elapsedMs = finiteNumber(stage.elapsedMs);
@@ -202,9 +203,24 @@ export function summarizeOperatorWitnessTiming(captures = [], sessionTiming = {}
     }
     return slowest;
   }, null);
+  const slowestAppFrameTotal = appFrameCaptures.reduce((slowest, capture) => {
+    if (capture.totalMs === null) return slowest;
+    if (!slowest || capture.totalMs > slowest.elapsedMs) {
+      return {
+        captureId: capture.id,
+        elapsedMs: capture.totalMs,
+        frameSerial: capture.frameSerial ?? 0,
+      };
+    }
+    return slowest;
+  }, null);
   const operatorReadinessVsAppFrameStage = compareOperatorReadinessToAppFrameStage(
     slowestOperatorReadiness,
     slowestAppFrameStage
+  );
+  const operatorReadinessVsAppFrameTotal = compareOperatorReadinessToAppFrameTotal(
+    slowestOperatorReadiness,
+    slowestAppFrameTotal
   );
   return {
     totalCaptureMs,
@@ -212,7 +228,9 @@ export function summarizeOperatorWitnessTiming(captures = [], sessionTiming = {}
     slowestStage,
     slowestOperatorReadiness,
     slowestAppFrameStage,
+    slowestAppFrameTotal,
     operatorReadinessVsAppFrameStage,
+    operatorReadinessVsAppFrameTotal,
     captures: timedCaptures.map((capture) => ({
       id: capture.id,
       totalMs: capture.totalMs ?? 0,
@@ -268,6 +286,29 @@ function compareOperatorReadinessToAppFrameStage(slowestOperatorReadiness, slowe
       : "app-frame-stage-covers-operator-readiness",
     readinessMs,
     appFrameStageMs,
+    gapMs,
+  };
+}
+
+function compareOperatorReadinessToAppFrameTotal(slowestOperatorReadiness, slowestAppFrameTotal) {
+  const readinessMs = finiteNumber(slowestOperatorReadiness?.elapsedMs);
+  const appFrameTotalMs = finiteNumber(slowestAppFrameTotal?.elapsedMs);
+  if (readinessMs === null) {
+    return { status: "operator-readiness-not-reported" };
+  }
+  if (appFrameTotalMs === null) {
+    return {
+      status: "app-frame-total-not-reported",
+      readinessMs,
+    };
+  }
+  const gapMs = roundMs(readinessMs - appFrameTotalMs);
+  return {
+    status: readinessMs > appFrameTotalMs
+      ? "operator-readiness-exceeds-app-frame-total"
+      : "app-frame-total-covers-operator-readiness",
+    readinessMs,
+    appFrameTotalMs,
     gapMs,
   };
 }

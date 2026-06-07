@@ -227,6 +227,11 @@ test("operator witness timing summary preserves app-side frame stage attribution
     elapsedMs: 1310,
     frameSerial: 7,
   });
+  assert.deepEqual(timing.slowestAppFrameTotal, {
+    captureId: OPERATOR_WITNESS_CAPTURE_IDS.dessertClose,
+    elapsedMs: 1420,
+    frameSerial: 7,
+  });
 });
 
 test("operator witness timing summary exposes operator-visible readiness latency above app frame stages", () => {
@@ -273,6 +278,40 @@ test("operator witness timing summary exposes operator-visible readiness latency
     readinessMs: 5426,
     appFrameStageMs: 875.7,
     gapMs: 4550.3,
+  });
+});
+
+test("operator witness timing summary compares readiness against whole app-frame total", () => {
+  const timing = summarizeOperatorWitnessTiming([
+    witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.wholeRender, {
+      timing: {
+        totalMs: 3277,
+        stages: [
+          { name: "apply-view", elapsedMs: 1 },
+          { name: "view-readiness", elapsedMs: 3100 },
+          { name: "screenshot", elapsedMs: 34 },
+        ],
+      },
+      pageEvidence: {
+        operatorWitness: {
+          frameSerial: 3,
+          frameTimings: {
+            totalMs: 3300,
+            stages: [
+              { name: "wgsl-source-frontier-pack-candidate-source-inputs", elapsedMs: 875.7 },
+              { name: "evidence-exposure", elapsedMs: 4 },
+            ],
+          },
+        },
+      },
+    }),
+  ]);
+
+  assert.deepEqual(timing.operatorReadinessVsAppFrameTotal, {
+    status: "app-frame-total-covers-operator-readiness",
+    readinessMs: 3100,
+    appFrameTotalMs: 3300,
+    gapMs: -200,
   });
 });
 
@@ -328,6 +367,8 @@ test("operator witness report prints the slowest app-side frame stage", () => {
 
   assert.match(reportSource, /Slowest app frame stage:/);
   assert.match(reportSource, /timing\.slowestAppFrameStage/);
+  assert.match(reportSource, /Slowest app frame total:/);
+  assert.match(reportSource, /timing\.slowestAppFrameTotal/);
 });
 
 test("operator witness report prints operator readiness separately from app frame stage timing", () => {
@@ -339,6 +380,8 @@ test("operator witness report prints operator readiness separately from app fram
   assert.match(reportSource, /Slowest operator readiness:/);
   assert.match(reportSource, /Operator readiness vs app frame stage:/);
   assert.match(reportSource, /operatorReadinessVsAppFrameStage/);
+  assert.match(reportSource, /Operator readiness vs app frame total:/);
+  assert.match(reportSource, /operatorReadinessVsAppFrameTotal/);
 });
 
 test("operator witness app frame timing routes requested GPU presentation through compact retained source runtime", () => {
