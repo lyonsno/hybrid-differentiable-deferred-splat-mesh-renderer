@@ -383,6 +383,7 @@ function sourceFrontierPackCountsFromDetail(detail) {
     "coverageRetainCount",
     "retentionRetainCount",
     "occlusionRetainCount",
+    "materializationSkipCount",
     "candidateRecordCount",
     "coverageRecordCount",
     "retentionRecordCount",

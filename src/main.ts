@@ -2449,18 +2449,32 @@ function buildWgslSourceFrontierCandidateSources({
       maxTilesPerSplat: frontierSource.maxTilesPerSplat,
       ledger: streamLedger,
       onEntry({ splatOrdinal, tileIndex, tileX, tileY, coverageWeight, localSupportWeight }) {
+        const template = contributorTemplates[splatOrdinal];
+        const bucket = compactStreamingTileBucket(buckets, tileIndex);
+        const candidateProjectedIndex = projectedIndex;
+        projectedIndex += 1;
+        const needsRecord = compactSourceFrontierCandidateNeedsMaterialization({
+          bucket,
+          template,
+          tileIndex,
+          coverageWeight,
+          localSupportWeight: finiteOrZero(localSupportWeight),
+          maxRefsPerTile,
+        });
+        if (!needsRecord) {
+          streamLedger.materializationSkipCount += 1;
+          return;
+        }
         const record = compactRuntimeContributorFromTemplate({
-          template: contributorTemplates[splatOrdinal],
-          projectedIndex,
+          template,
+          projectedIndex: candidateProjectedIndex,
           tileIndex,
           tileX,
           tileY,
           coverageWeight,
           localSupportWeight,
         });
-        projectedIndex += 1;
 
-        const bucket = compactStreamingTileBucket(buckets, tileIndex);
         if (compactRetainTopRecord(bucket.coverageRecords, record, maxRefsPerTile, compareCompactProjectionRetentionCoverageOrder)) {
           streamLedger.coverageRetainCount += 1;
         }
@@ -2519,6 +2533,7 @@ function buildWgslSourceFrontierCandidateSources({
     coverageRetainCount: streamLedger.coverageRetainCount,
     retentionRetainCount: streamLedger.retentionRetainCount,
     occlusionRetainCount: streamLedger.occlusionRetainCount,
+    materializationSkipCount: streamLedger.materializationSkipCount,
     candidateRecordCount: projectedCandidateRecords.length,
     coverageRecordCount: coverageRecords.length,
     retentionRecordCount: retentionRecords.length,
@@ -3885,6 +3900,7 @@ interface CompactSourceFrontierStreamLedger {
   coverageRetainCount: number;
   retentionRetainCount: number;
   occlusionRetainCount: number;
+  materializationSkipCount: number;
   supportSampleEvaluationCount: number;
   supportSampleSkipCount: number;
   supportSampleSkippedEvaluationCount: number;
@@ -3903,6 +3919,7 @@ function compactSourceFrontierStreamLedger(): CompactSourceFrontierStreamLedger 
     coverageRetainCount: 0,
     retentionRetainCount: 0,
     occlusionRetainCount: 0,
+    materializationSkipCount: 0,
     supportSampleEvaluationCount: 0,
     supportSampleSkipCount: 0,
     supportSampleSkippedEvaluationCount: 0,
@@ -4023,6 +4040,158 @@ function compactRetainedRecordListWorstIndex(
   return worstIndex;
 }
 
+function compactSourceFrontierCandidateNeedsMaterialization({
+  bucket,
+  template,
+  tileIndex,
+  coverageWeight,
+  localSupportWeight,
+  maxRefsPerTile,
+}: {
+  readonly bucket: CompactStreamingTileBucket;
+  readonly template: CompactRuntimeContributorTemplate;
+  readonly tileIndex: number;
+  readonly coverageWeight: number;
+  readonly localSupportWeight: number;
+  readonly maxRefsPerTile: number;
+}): boolean {
+  const safeCoverageWeight = Math.max(0, finiteOrZero(coverageWeight));
+  const safeLocalSupportWeight = Math.max(0, finiteOrZero(localSupportWeight));
+  const retentionSupportWeight = Math.max(safeCoverageWeight, safeLocalSupportWeight);
+  const opacity = Math.max(0, finiteOrZero(template.opacity));
+  const luminance = Math.max(0, finiteOrZero(template.luminance));
+  const retentionWeight = retentionSupportWeight * opacity * luminance;
+  const occlusionWeight = retentionSupportWeight * opacity;
+  if (compactCandidateCanEnterCoverageRecordList({
+    recordList: bucket.coverageRecords,
+    limit: maxRefsPerTile,
+    tileIndex,
+    coverageWeight: safeCoverageWeight,
+    template,
+  })) {
+    return true;
+  }
+  if (compactCandidateCanEnterRetentionRecordList({
+    recordList: bucket.retentionRecords,
+    limit: Math.max(1, Math.floor(maxRefsPerTile / 2)),
+    coverageWeight: safeCoverageWeight,
+    retentionWeight,
+    template,
+  })) {
+    return true;
+  }
+  if (compactCandidateCanEnterOcclusionRecordList({
+    recordList: bucket.occlusionRecords,
+    limit: Math.max(1, Math.floor(maxRefsPerTile / 2)),
+    coverageWeight: safeCoverageWeight,
+    occlusionWeight,
+    occlusionDensity: opacity,
+    template,
+  })) {
+    return true;
+  }
+
+  const samplesPerAxis = COMPACT_SOURCE_RETENTION_SUPPORT_SAMPLES_PER_AXIS;
+  const sampleLimit = Math.max(1, Math.ceil(maxRefsPerTile / (samplesPerAxis * samplesPerAxis * 2)));
+  const supportSampleWeightUpperBound = safeLocalSupportWeight * opacity;
+  const supportSampleRetentionWeightUpperBound = supportSampleWeightUpperBound * luminance;
+  return !compactCanSkipSupportSampleCandidate({
+    bucket,
+    supportSampleWeightUpperBound,
+    supportSampleRetentionWeightUpperBound,
+    retentionWeight,
+    occlusionWeight,
+    viewRank: template.viewRank,
+    splatIndex: template.splatIndex,
+    originalId: template.originalId,
+    limit: sampleLimit,
+  });
+}
+
+function compactCandidateCanEnterCoverageRecordList({
+  recordList,
+  limit,
+  tileIndex,
+  coverageWeight,
+  template,
+}: {
+  readonly recordList: CompactRetainedRecordList;
+  readonly limit: number;
+  readonly tileIndex: number;
+  readonly coverageWeight: number;
+  readonly template: CompactRuntimeContributorTemplate;
+}): boolean {
+  return compactCandidateCanEnterRecordList(recordList, limit, (record) => (
+    tileIndex - record.tileIndex ||
+    record.coverageWeight - coverageWeight ||
+    template.viewRank - record.viewRank ||
+    template.splatIndex - record.splatIndex ||
+    template.originalId - record.originalId
+  ));
+}
+
+function compactCandidateCanEnterRetentionRecordList({
+  recordList,
+  limit,
+  coverageWeight,
+  retentionWeight,
+  template,
+}: {
+  readonly recordList: CompactRetainedRecordList;
+  readonly limit: number;
+  readonly coverageWeight: number;
+  readonly retentionWeight: number;
+  readonly template: CompactRuntimeContributorTemplate;
+}): boolean {
+  return compactCandidateCanEnterRecordList(recordList, limit, (record) => (
+    record.retentionWeight - retentionWeight ||
+    record.coverageWeight - coverageWeight ||
+    template.viewRank - record.viewRank ||
+    template.splatIndex - record.splatIndex ||
+    template.originalId - record.originalId
+  ));
+}
+
+function compactCandidateCanEnterOcclusionRecordList({
+  recordList,
+  limit,
+  coverageWeight,
+  occlusionWeight,
+  occlusionDensity,
+  template,
+}: {
+  readonly recordList: CompactRetainedRecordList;
+  readonly limit: number;
+  readonly coverageWeight: number;
+  readonly occlusionWeight: number;
+  readonly occlusionDensity: number;
+  readonly template: CompactRuntimeContributorTemplate;
+}): boolean {
+  return compactCandidateCanEnterRecordList(recordList, limit, (record) => {
+    const recordDensity = finiteOrZero(record.occlusionDensity);
+    return (
+      recordDensity - occlusionDensity ||
+      record.occlusionWeight - occlusionWeight ||
+      record.coverageWeight - coverageWeight ||
+      template.viewRank - record.viewRank ||
+      template.splatIndex - record.splatIndex ||
+      template.originalId - record.originalId
+    );
+  });
+}
+
+function compactCandidateCanEnterRecordList(
+  recordList: CompactRetainedRecordList,
+  limit: number,
+  compareCandidateToRecord: (record: GpuTileContributorArenaProjectedContributor) => number,
+): boolean {
+  const records = recordList.records;
+  if (records.length < limit) {
+    return true;
+  }
+  return compareCandidateToRecord(records[recordList.worstIndex]) < 0;
+}
+
 function compactRetainSupportSampleRecords({
   bucket,
   record,
@@ -4135,6 +4304,56 @@ function compactCanSkipSupportSampleRecords({
   return true;
 }
 
+function compactCanSkipSupportSampleCandidate({
+  bucket,
+  supportSampleWeightUpperBound,
+  supportSampleRetentionWeightUpperBound,
+  retentionWeight,
+  occlusionWeight,
+  viewRank,
+  splatIndex,
+  originalId,
+  limit,
+}: {
+  readonly bucket: CompactStreamingTileBucket;
+  readonly supportSampleWeightUpperBound: number;
+  readonly supportSampleRetentionWeightUpperBound: number;
+  readonly retentionWeight: number;
+  readonly occlusionWeight: number;
+  readonly viewRank: number;
+  readonly splatIndex: number;
+  readonly originalId: number;
+  readonly limit: number;
+}): boolean {
+  for (const recordList of bucket.supportSampleRecords) {
+    const records = recordList.records;
+    if (records.length < limit) {
+      return false;
+    }
+  }
+  if (supportSampleWeightUpperBound <= 1e-8) {
+    return true;
+  }
+  for (const recordList of bucket.supportSampleRecords) {
+    const records = recordList.records;
+    if (
+      compactCompareSupportSampleCandidateScoresToRecord(
+        supportSampleWeightUpperBound,
+        supportSampleRetentionWeightUpperBound,
+        retentionWeight,
+        occlusionWeight,
+        viewRank,
+        splatIndex,
+        originalId,
+        records[recordList.worstIndex],
+      ) < 0
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function compactRetainSupportSampleRecord({
   recordList,
   record,
@@ -4184,14 +4403,36 @@ function compactCompareSupportSampleCandidateToRecord(
   supportSampleRetentionWeight: number,
   retainedRecord: GpuTileContributorArenaProjectedContributor,
 ): number {
+  return compactCompareSupportSampleCandidateScoresToRecord(
+    supportSampleWeight,
+    supportSampleRetentionWeight,
+    record.retentionWeight,
+    record.occlusionWeight,
+    record.viewRank,
+    record.splatIndex,
+    record.originalId,
+    retainedRecord,
+  );
+}
+
+function compactCompareSupportSampleCandidateScoresToRecord(
+  supportSampleWeight: number,
+  supportSampleRetentionWeight: number,
+  retentionWeight: number,
+  occlusionWeight: number,
+  viewRank: number,
+  splatIndex: number,
+  originalId: number,
+  retainedRecord: GpuTileContributorArenaProjectedContributor,
+): number {
   return (
     finiteOrZero(retainedRecord.supportSampleRetentionWeight) - finiteOrZero(supportSampleRetentionWeight) ||
     finiteOrZero(retainedRecord.supportSampleWeight) - finiteOrZero(supportSampleWeight) ||
-    retainedRecord.retentionWeight - record.retentionWeight ||
-    retainedRecord.occlusionWeight - record.occlusionWeight ||
-    record.viewRank - retainedRecord.viewRank ||
-    record.splatIndex - retainedRecord.splatIndex ||
-    record.originalId - retainedRecord.originalId
+    retainedRecord.retentionWeight - retentionWeight ||
+    retainedRecord.occlusionWeight - occlusionWeight ||
+    viewRank - retainedRecord.viewRank ||
+    splatIndex - retainedRecord.splatIndex ||
+    originalId - retainedRecord.originalId
   );
 }
 

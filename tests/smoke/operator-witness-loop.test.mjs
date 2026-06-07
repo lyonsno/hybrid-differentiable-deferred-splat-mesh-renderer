@@ -327,6 +327,7 @@ test("operator witness timing summary carries source-frontier stream inner ledge
                   coverageRetainCount: 400054,
                   retentionRetainCount: 181163,
                   occlusionRetainCount: 181163,
+                  materializationSkipCount: 102304,
                   candidateRecordCount: 320071,
                   supportSampleEvaluationCount: 10636080,
                   supportSampleSkipCount: 419097,
@@ -358,6 +359,7 @@ test("operator witness timing summary carries source-frontier stream inner ledge
     coverageRetainCount: 400054,
     retentionRetainCount: 181163,
     occlusionRetainCount: 181163,
+    materializationSkipCount: 102304,
     candidateRecordCount: 320071,
     supportSampleEvaluationCount: 10636080,
     supportSampleSkipCount: 419097,
@@ -883,6 +885,7 @@ test("operator witness report prints the slowest app-side frame stage", () => {
   assert.match(reportSource, /formatSourceFrontierPackCounts\(timing\.sourceFrontierPack\?\.counts\)/);
   assert.match(formatterSource, /streamTileCandidates/);
   assert.match(formatterSource, /streamCoverageRejects/);
+  assert.match(formatterSource, /materializationSkips/);
   assert.match(formatterSource, /supportSampleEvaluations/);
   assert.match(formatterSource, /supportSampleSkips/);
   assert.match(formatterSource, /supportSampleSkippedEvaluations/);
@@ -1248,7 +1251,7 @@ test("source-frontier stream packing reuses per-splat contributor templates", ()
   );
   assert.match(
     sourceFrontierSource,
-    /compactRuntimeContributorFromTemplate\(\{\s*template: contributorTemplates\[splatOrdinal\]/,
+    /const template = contributorTemplates\[splatOrdinal\][\s\S]*compactRuntimeContributorFromTemplate\(\{\s*template,/,
     "source-frontier packing should materialize projected contributors from the precomputed template",
   );
   assert.doesNotMatch(
@@ -1297,6 +1300,48 @@ test("source-frontier stream packing uses indexed tile buckets instead of hot-pa
     sourceFrontierSource,
     /const buckets = new Map<number, CompactStreamingTileBucket>\(\)/,
     "source-frontier hot path should not pay Map lookup overhead for tile-indexed buckets",
+  );
+});
+
+test("source-frontier stream gates capped-list admission before projected contributor materialization", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const sourceFrontierSource = extractFunctionSource(source, "buildWgslSourceFrontierCandidateSources");
+  const admissionSource = extractFunctionSource(source, "compactSourceFrontierCandidateNeedsMaterialization");
+  const sourceFrontierAdmissionIndex = sourceFrontierSource.indexOf("compactSourceFrontierCandidateNeedsMaterialization");
+  const materializeIndex = sourceFrontierSource.indexOf("compactRuntimeContributorFromTemplate");
+
+  assert.ok(
+    sourceFrontierAdmissionIndex >= 0,
+    "source-frontier hot path should run a scalar capped-list admission gate",
+  );
+  assert.ok(
+    materializeIndex > sourceFrontierAdmissionIndex,
+    "source-frontier hot path must decide admission before building the full projected contributor object",
+  );
+  assert.match(
+    sourceFrontierSource,
+    /if \(!needsRecord\) \{\s*streamLedger\.materializationSkipCount \+= 1;\s*return;\s*\}/,
+    "source-frontier hot path should skip record materialization when the candidate cannot alter any retained source pool",
+  );
+  assert.match(
+    admissionSource,
+    /compactCandidateCanEnterCoverageRecordList/,
+    "admission gate must preserve coverage candidate-source semantics",
+  );
+  assert.match(
+    admissionSource,
+    /compactCandidateCanEnterRetentionRecordList/,
+    "admission gate must preserve retention-priority candidate-source semantics",
+  );
+  assert.match(
+    admissionSource,
+    /compactCandidateCanEnterOcclusionRecordList/,
+    "admission gate must preserve occlusion-priority candidate-source semantics",
+  );
+  assert.match(
+    admissionSource,
+    /compactCanSkipSupportSampleCandidate/,
+    "admission gate must still account for the support-sample upper-bound pools before pruning",
   );
 });
 
