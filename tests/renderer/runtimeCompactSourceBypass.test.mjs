@@ -1240,13 +1240,13 @@ test("live production-election prefix scatter materializes the current composito
   );
   assert.match(
     prefixScatterSource,
-    /retainedRecordPayloadU32\[u32Base \+ 4\] = compositorSlot/,
-    "prefix-scatter payload must carry a deterministic per-tile compositor slot instead of relying on GPU atomic arrival order",
+    /PROJECTED_CONTRIBUTOR_COMPOSITOR_SLOT_FIELD[\s\S]*projectedContributorPayload\.u32\[u32Base \+ PROJECTED_CONTRIBUTOR_COMPOSITOR_SLOT_FIELD\] = compositorSlot/,
+    "prefix-scatter projected contributor payload must carry a deterministic per-tile compositor slot instead of relying on GPU atomic arrival order",
   );
   assert.match(
     prefixScatterShader,
-    /let slot = retainedRecordPayloadU32\[u32Base \+ 4u\]/,
-    "materializer must consume the precomputed compositor slot from sorted retained payload rows",
+    /let slot = projected_u32\(retainedRecordIndex,\s*PROJECTED_CONTRIBUTOR_COMPOSITOR_SLOT_FIELD\)/,
+    "materializer must consume the precomputed compositor slot from sorted projected contributor rows",
   );
   assert.doesNotMatch(
     prefixScatterShader,
@@ -1283,6 +1283,59 @@ test("live production-election prefix scatter materializes the current composito
     /falseClosureGuard:\s*productionElectionPrefixScatter\s*\?\s*"production-election-compositor-consumption-is-not-visual-quality-or-performance-closure"[\s\S]*:\s*"wgsl-source-frontier-gpu-retention-election-is-not-exact-plate-parity-or-production-retention"/,
     "compositor-consumption evidence must keep visual quality and performance closure separate from source-routing closure",
   );
+});
+
+test("live production-election materializer consumes projected contributor payload buffers instead of bespoke retained rows", () => {
+  const prefixScatterSource = readFileSync(
+    new URL("../../src/gpuProductionElectionPrefixScatter.ts", import.meta.url),
+    "utf8",
+  );
+  const prefixScatterShader = readFileSync(
+    new URL("../../src/shaders/gpu_production_election_prefix_scatter.wgsl", import.meta.url),
+    "utf8",
+  );
+  const retainedPayloadLoop = prefixScatterSource.slice(
+    prefixScatterSource.indexOf("const retainedRecords ="),
+    prefixScatterSource.indexOf("const retainedRecordTileIndexesBuffer"),
+  );
+
+  assert.doesNotMatch(
+    prefixScatterSource,
+    /RETAINED_ROW_[UF]32_STRIDE|retainedRecordPayloadU32|retainedRecordPayloadF32/,
+    "live production-election materialization must not build bespoke CPU retained-payload row buffers",
+  );
+  assert.match(
+    prefixScatterSource,
+    /packGpuArenaProjectedContributors\(\s*retainedRecords\s*\)/,
+    "materialization should consume the shared projected-contributor payload packing contract",
+  );
+  assert.match(
+    prefixScatterSource,
+    /const\s+retainedRecords\s*=\s*\[\.\.\.productionElection\.retainedRecords\]\.sort\(compareCompactProjectionRetentionCompositorOrder\)[\s\S]*packGpuArenaProjectedContributors\(\s*retainedRecords\s*\)/,
+    "the reusable projected-contributor payload is lawful only when retained rows are already in the same deterministic storage order",
+  );
+  assert.match(
+    prefixScatterSource,
+    /projectedContributorPayload\.u32\[u32Base \+ PROJECTED_CONTRIBUTOR_CLASS_MASK_FIELD\][\s\S]*projectedContributorPayload\.u32\[u32Base \+ PROJECTED_CONTRIBUTOR_COMPOSITOR_SLOT_FIELD\]/,
+    "source-frontier sidecar fields should annotate the same projected-contributor rows consumed by the materializer",
+  );
+  assert.doesNotMatch(
+    retainedPayloadLoop,
+    /coverageWeight|opacity|centerPx|inverseConic|retentionWeight/,
+    "the live prefix-scatter constructor should not copy retained payload fields into CPU-side materialization rows",
+  );
+  assert.match(
+    prefixScatterShader,
+    /@binding\(8\)\s*var<storage,\s*read>\s+projectedContributorU32:[\s\S]*@binding\(9\)\s*var<storage,\s*read>\s+projectedContributorF32:/,
+    "materializer shader should read the reusable projected-contributor payload source",
+  );
+  for (const field of ["2u", "3u", "4u", "5u", "6u", "7u", "8u", "11u"]) {
+    assert.match(
+      prefixScatterShader,
+      new RegExp(`projected_f32\\(retainedRecordIndex,\\s*${field}\\)`),
+      "coverage, opacity, center/conic, and retention payloads should come from projected contributor fields",
+    );
+  }
 });
 
 function extractFunctionSource(source, name) {

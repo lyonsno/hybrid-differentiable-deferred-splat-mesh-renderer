@@ -9,7 +9,7 @@ struct MaterializeParams {
   retainedRecordCount: u32,
   tileCount: u32,
   maxTileRefs: u32,
-  retainedRowU32Stride: u32,
+  projectedContributorU32Stride: u32,
 };
 
 @group(0) @binding(0) var<storage, read> candidateSourceRecords: array<u32>;
@@ -21,8 +21,8 @@ struct MaterializeParams {
 @group(0) @binding(6) var<uniform> prefixScatterParams: PrefixScatterParams;
 @group(0) @binding(7) var<storage, read_write> witnessBuffer: array<atomic<u32>>;
 
-@group(0) @binding(8) var<storage, read> retainedRecordPayloadU32: array<u32>;
-@group(0) @binding(9) var<storage, read> retainedRecordPayloadF32: array<f32>;
+@group(0) @binding(8) var<storage, read> projectedContributorU32: array<u32>;
+@group(0) @binding(9) var<storage, read> projectedContributorF32: array<f32>;
 @group(0) @binding(10) var<storage, read_write> materializedPrefixCounts: array<atomic<u32>>;
 @group(0) @binding(11) var<storage, read> materializedRetainedRecordIndices: array<u32>;
 @group(0) @binding(12) var<storage, read_write> tileHeaders: array<vec4u>;
@@ -32,6 +32,9 @@ struct MaterializeParams {
 @group(0) @binding(16) var<uniform> materializeParams: MaterializeParams;
 
 const SOURCE_FRONTIER_ALPHA_CLASS_MASK_SENTINEL = -1024.0;
+const PROJECTED_CONTRIBUTOR_F32_STRIDE = 16u;
+const PROJECTED_CONTRIBUTOR_CLASS_MASK_FIELD = 5u;
+const PROJECTED_CONTRIBUTOR_COMPOSITOR_SLOT_FIELD = 6u;
 
 @compute @workgroup_size(64)
 fn scatter_production_election_prefix(@builtin(global_invocation_id) globalId: vec3u) {
@@ -83,6 +86,14 @@ fn materialized_retention_score(retentionWeight: f32) -> u32 {
   return max(min(u32(max(retentionWeight, 0.0) * 65535.0), 0x7fffffffu), 1u);
 }
 
+fn projected_u32(index: u32, field: u32) -> u32 {
+  return projectedContributorU32[index * materializeParams.projectedContributorU32Stride + field];
+}
+
+fn projected_f32(index: u32, field: u32) -> f32 {
+  return projectedContributorF32[index * PROJECTED_CONTRIBUTOR_F32_STRIDE + field];
+}
+
 @compute @workgroup_size(64)
 fn materialize_production_election_compositor_source(@builtin(global_invocation_id) globalId: vec3u) {
   let retainedRecordIndex = globalId.x;
@@ -90,17 +101,15 @@ fn materialize_production_election_compositor_source(@builtin(global_invocation_
     return;
   }
 
-  let u32Base = retainedRecordIndex * materializeParams.retainedRowU32Stride;
-  let f32Base = retainedRecordIndex * 8u;
-  let splatIndex = retainedRecordPayloadU32[u32Base];
-  let tileIndex = retainedRecordPayloadU32[u32Base + 1u];
-  let candidateSourceClassMask = retainedRecordPayloadU32[u32Base + 2u];
+  let splatIndex = projected_u32(retainedRecordIndex, 0u);
+  let tileIndex = projected_u32(retainedRecordIndex, 2u);
+  let candidateSourceClassMask = projected_u32(retainedRecordIndex, PROJECTED_CONTRIBUTOR_CLASS_MASK_FIELD);
   if (tileIndex >= materializeParams.tileCount) {
     return;
   }
 
   let tileCapacity = materialized_tile_ref_capacity_per_tile();
-  let slot = retainedRecordPayloadU32[u32Base + 4u];
+  let slot = projected_u32(retainedRecordIndex, PROJECTED_CONTRIBUTOR_COMPOSITOR_SLOT_FIELD);
   if (slot >= tileCapacity) {
     return;
   }
@@ -116,18 +125,18 @@ fn materialize_production_election_compositor_source(@builtin(global_invocation_
   atomicStore(&tileRefs[materialize_tile_ref_word_index(refIndex, 0u)], splatIndex);
   atomicStore(
     &tileRefs[materialize_tile_ref_word_index(refIndex, 1u)],
-    materialized_retention_score(retainedRecordPayloadF32[f32Base + 7u])
+    materialized_retention_score(projected_f32(retainedRecordIndex, 11u))
   );
   atomicStore(&tileRefs[materialize_tile_ref_word_index(refIndex, 2u)], tileIndex);
   atomicStore(&tileRefs[materialize_tile_ref_word_index(refIndex, 3u)], refIndex);
-  tileCoverageWeights[refIndex] = max(retainedRecordPayloadF32[f32Base], 0.0);
+  tileCoverageWeights[refIndex] = max(projected_f32(retainedRecordIndex, 2u), 0.0);
 
-  let sourceOpacity = clamp(retainedRecordPayloadF32[f32Base + 1u], 0.0, 0.999);
-  let centerPx = vec2f(retainedRecordPayloadF32[f32Base + 2u], retainedRecordPayloadF32[f32Base + 3u]);
+  let sourceOpacity = clamp(projected_f32(retainedRecordIndex, 8u), 0.0, 0.999);
+  let centerPx = vec2f(projected_f32(retainedRecordIndex, 3u), projected_f32(retainedRecordIndex, 4u));
   let inverseConic = vec3f(
-    retainedRecordPayloadF32[f32Base + 4u],
-    retainedRecordPayloadF32[f32Base + 5u],
-    retainedRecordPayloadF32[f32Base + 6u],
+    projected_f32(retainedRecordIndex, 5u),
+    projected_f32(retainedRecordIndex, 6u),
+    projected_f32(retainedRecordIndex, 7u),
   );
   let alphaPayload = select(
     f32(splatIndex),

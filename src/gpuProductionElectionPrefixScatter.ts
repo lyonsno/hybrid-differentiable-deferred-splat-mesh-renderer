@@ -5,10 +5,12 @@ import type {
 } from "./gpuTileCoverage.js";
 import type { GpuProductionElectionConsumerContract } from "./gpuProductionElectionConsumer.js";
 import { compareCompactProjectionRetentionCompositorOrder } from "./compactRetentionElection.js";
+import { packGpuArenaProjectedContributors } from "./gpuTileContributorArenaPacking.js";
 
 export const GPU_PRODUCTION_ELECTION_PREFIX_SCATTER_WITNESS_WORDS = 8;
-const RETAINED_ROW_U32_STRIDE = 5;
-const RETAINED_ROW_F32_STRIDE = 8;
+const PROJECTED_CONTRIBUTOR_U32_STRIDE = 8;
+const PROJECTED_CONTRIBUTOR_CLASS_MASK_FIELD = 5;
+const PROJECTED_CONTRIBUTOR_COMPOSITOR_SLOT_FIELD = 6;
 
 export interface GpuProductionElectionPrefixScatterContractInput {
   readonly device: GPUDevice;
@@ -37,8 +39,8 @@ export interface GpuProductionElectionPrefixScatterContract {
   readonly paramsBuffer: GPUBuffer;
   readonly materializeParamsBuffer: GPUBuffer;
   readonly retainedRecordTileIndexesBuffer: GPUBuffer;
-  readonly retainedRecordPayloadU32Buffer: GPUBuffer;
-  readonly retainedRecordPayloadF32Buffer: GPUBuffer;
+  readonly projectedContributorU32Buffer: GPUBuffer;
+  readonly projectedContributorF32Buffer: GPUBuffer;
   readonly prefixCountsBuffer: GPUBuffer;
   readonly prefixOffsetsBuffer: GPUBuffer;
   readonly retainedRecordIndicesBuffer: GPUBuffer;
@@ -89,32 +91,19 @@ export function createGpuProductionElectionPrefixScatterContract(
     retainedRecords.map((record) => record.tileIndex),
   );
   const retainedRecordClassMasks = retainedRecordClassMaskByIdentity(candidateSourceInputs);
-  const retainedRecordPayloadU32 = new Uint32Array(Math.max(RETAINED_ROW_U32_STRIDE, retainedRecordCount * RETAINED_ROW_U32_STRIDE));
-  const retainedRecordPayloadF32 = new Float32Array(Math.max(RETAINED_ROW_F32_STRIDE, retainedRecordCount * RETAINED_ROW_F32_STRIDE));
+  const projectedContributorPayload = packGpuArenaProjectedContributors(retainedRecords);
   const retainedRecordSlotsByTile = new Uint32Array(Math.max(tileCount, 1));
   for (let index = 0; index < retainedRecordCount; index += 1) {
     const record = retainedRecords[index];
     if (!record) {
       continue;
     }
-    const u32Base = index * RETAINED_ROW_U32_STRIDE;
-    const f32Base = index * RETAINED_ROW_F32_STRIDE;
+    const u32Base = index * PROJECTED_CONTRIBUTOR_U32_STRIDE;
     const compositorSlot =
       record.tileIndex < retainedRecordSlotsByTile.length ? retainedRecordSlotsByTile[record.tileIndex]++ : 0;
-    retainedRecordPayloadU32[u32Base] = record.splatIndex;
-    retainedRecordPayloadU32[u32Base + 1] = record.tileIndex;
-    retainedRecordPayloadU32[u32Base + 2] =
+    projectedContributorPayload.u32[u32Base + PROJECTED_CONTRIBUTOR_CLASS_MASK_FIELD] =
       retainedRecordClassMasks.get(retainedRecordIdentityKey(record.tileIndex, record.splatIndex, record.originalId)) ?? 0;
-    retainedRecordPayloadU32[u32Base + 3] = record.originalId;
-    retainedRecordPayloadU32[u32Base + 4] = compositorSlot;
-    retainedRecordPayloadF32[f32Base] = record.coverageWeight;
-    retainedRecordPayloadF32[f32Base + 1] = record.opacity;
-    retainedRecordPayloadF32[f32Base + 2] = record.centerPx[0];
-    retainedRecordPayloadF32[f32Base + 3] = record.centerPx[1];
-    retainedRecordPayloadF32[f32Base + 4] = record.inverseConic[0];
-    retainedRecordPayloadF32[f32Base + 5] = record.inverseConic[1];
-    retainedRecordPayloadF32[f32Base + 6] = record.inverseConic[2];
-    retainedRecordPayloadF32[f32Base + 7] = record.retentionWeight;
+    projectedContributorPayload.u32[u32Base + PROJECTED_CONTRIBUTOR_COMPOSITOR_SLOT_FIELD] = compositorSlot;
   }
   const retainedRecordTileIndexesBuffer = createInitializedStorageBuffer(
     device,
@@ -137,16 +126,16 @@ export function createGpuProductionElectionPrefixScatterContract(
     "production_election_retained_record_indices",
     Math.max(16, Math.max(retainedRecordCount, 1) * Uint32Array.BYTES_PER_ELEMENT),
   );
-  const retainedRecordPayloadU32Buffer = createInitializedStorageBuffer(
+  const projectedContributorU32Buffer = createInitializedStorageBuffer(
     device,
-    "production_election_retained_record_payload_u32",
-    retainedRecordPayloadU32,
+    "production_election_projected_contributor_u32",
+    projectedContributorPayload.u32,
     GPUBufferUsage.STORAGE,
   );
-  const retainedRecordPayloadF32Buffer = createInitializedStorageBuffer(
+  const projectedContributorF32Buffer = createInitializedStorageBuffer(
     device,
-    "production_election_retained_record_payload_f32",
-    retainedRecordPayloadF32,
+    "production_election_projected_contributor_f32",
+    projectedContributorPayload.f32,
     GPUBufferUsage.STORAGE,
   );
   const paramsBuffer = device.createBuffer({
@@ -176,7 +165,7 @@ export function createGpuProductionElectionPrefixScatterContract(
       retainedRecordCount,
       tileCount,
       maxTileRefs,
-      RETAINED_ROW_U32_STRIDE,
+      PROJECTED_CONTRIBUTOR_U32_STRIDE,
     ]),
   );
   const witnessBuffer = createZeroedStorageBuffer(
@@ -265,8 +254,8 @@ export function createGpuProductionElectionPrefixScatterContract(
     label: "gpu_production_election_compositor_materialize_bind_group",
     layout: materializeBindGroupLayout,
     entries: [
-      { binding: 8, resource: { buffer: retainedRecordPayloadU32Buffer } },
-      { binding: 9, resource: { buffer: retainedRecordPayloadF32Buffer } },
+      { binding: 8, resource: { buffer: projectedContributorU32Buffer } },
+      { binding: 9, resource: { buffer: projectedContributorF32Buffer } },
       { binding: 10, resource: { buffer: prefixCountsBuffer } },
       { binding: 11, resource: { buffer: retainedRecordIndicesBuffer } },
       { binding: 12, resource: { buffer: tileHeaderBuffer } },
@@ -289,8 +278,8 @@ export function createGpuProductionElectionPrefixScatterContract(
     paramsBuffer,
     materializeParamsBuffer,
     retainedRecordTileIndexesBuffer,
-    retainedRecordPayloadU32Buffer,
-    retainedRecordPayloadF32Buffer,
+    projectedContributorU32Buffer,
+    projectedContributorF32Buffer,
     prefixCountsBuffer,
     prefixOffsetsBuffer,
     retainedRecordIndicesBuffer,

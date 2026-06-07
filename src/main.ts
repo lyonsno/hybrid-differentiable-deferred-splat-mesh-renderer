@@ -8460,8 +8460,8 @@ function destroyTileLocalSceneState(state: TileLocalSceneState): void {
   state.productionElectionPrefixScatter?.paramsBuffer.destroy();
   state.productionElectionPrefixScatter?.materializeParamsBuffer.destroy();
   state.productionElectionPrefixScatter?.retainedRecordTileIndexesBuffer.destroy();
-  state.productionElectionPrefixScatter?.retainedRecordPayloadU32Buffer.destroy();
-  state.productionElectionPrefixScatter?.retainedRecordPayloadF32Buffer.destroy();
+  state.productionElectionPrefixScatter?.projectedContributorU32Buffer.destroy();
+  state.productionElectionPrefixScatter?.projectedContributorF32Buffer.destroy();
   state.productionElectionPrefixScatter?.prefixCountsBuffer.destroy();
   state.productionElectionPrefixScatter?.prefixOffsetsBuffer.destroy();
   state.productionElectionPrefixScatter?.retainedRecordIndicesBuffer.destroy();
