@@ -255,8 +255,14 @@ test("operator witness timing summary exposes source-frontier pack substage attr
                 detail: {
                   bucketCount: 471,
                   projectedTileRefs: 221440,
+                  streamTileCandidateCount: 420000,
+                  streamCoverageRejectCount: 198560,
+                  streamPositiveCoverageCount: 221440,
                   candidateRecordCount: 91392,
                   supportSampleRecordCount: 18816,
+                  supportSampleEvaluationCount: 3543040,
+                  supportSamplePositiveWeightCount: 45612,
+                  supportSampleRetainCount: 20491,
                   supportSampleGroupCount: 7530,
                 },
               },
@@ -280,9 +286,78 @@ test("operator witness timing summary exposes source-frontier pack substage attr
     frameSerial: 22,
     bucketCount: 471,
     projectedTileRefs: 221440,
+    streamTileCandidateCount: 420000,
+    streamCoverageRejectCount: 198560,
+    streamPositiveCoverageCount: 221440,
     candidateRecordCount: 91392,
     supportSampleRecordCount: 18816,
+    supportSampleEvaluationCount: 3543040,
+    supportSamplePositiveWeightCount: 45612,
+    supportSampleRetainCount: 20491,
     supportSampleGroupCount: 7530,
+  });
+});
+
+test("operator witness timing summary carries source-frontier stream inner ledger counters", () => {
+  const timing = summarizeOperatorWitnessTiming([
+    witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.porousClose, {
+      pageEvidence: {
+        operatorWitness: {
+          frameSerial: 81,
+          frameTimings: {
+            totalMs: 3747.9,
+            stages: [
+              { name: "wgsl-source-frontier-pack/stream-projected-tile-refs", elapsedMs: 1884.8 },
+              {
+                name: "wgsl-source-frontier-pack/counts",
+                elapsedMs: 0,
+                detail: {
+                  bucketCount: 1787,
+                  projectedTileRefs: 664755,
+                  streamSplatCount: 94406,
+                  streamDenseRowCount: 38680,
+                  streamSparseRowCount: 0,
+                  streamTileCandidateCount: 1015779,
+                  streamCoverageRejectCount: 351024,
+                  streamPositiveCoverageCount: 664755,
+                  coverageRetainCount: 400054,
+                  retentionRetainCount: 181163,
+                  occlusionRetainCount: 181163,
+                  candidateRecordCount: 320071,
+                  supportSampleEvaluationCount: 10636080,
+                  supportSamplePositiveWeightCount: 1182068,
+                  supportSampleRetainCount: 487331,
+                  supportSampleRecordCount: 223155,
+                  supportSampleGroupCount: 28592,
+                },
+              },
+            ],
+          },
+        },
+      },
+    }),
+  ]);
+
+  assert.deepEqual(timing.sourceFrontierPack.counts, {
+    captureId: OPERATOR_WITNESS_CAPTURE_IDS.porousClose,
+    frameSerial: 81,
+    bucketCount: 1787,
+    projectedTileRefs: 664755,
+    streamSplatCount: 94406,
+    streamDenseRowCount: 38680,
+    streamSparseRowCount: 0,
+    streamTileCandidateCount: 1015779,
+    streamCoverageRejectCount: 351024,
+    streamPositiveCoverageCount: 664755,
+    coverageRetainCount: 400054,
+    retentionRetainCount: 181163,
+    occlusionRetainCount: 181163,
+    candidateRecordCount: 320071,
+    supportSampleEvaluationCount: 10636080,
+    supportSamplePositiveWeightCount: 1182068,
+    supportSampleRetainCount: 487331,
+    supportSampleRecordCount: 223155,
+    supportSampleGroupCount: 28592,
   });
 });
 
@@ -786,6 +861,9 @@ test("operator witness report prints the slowest app-side frame stage", () => {
   const reportStart = source.indexOf("function renderOperatorWitnessLoopReport");
   const reportEnd = source.indexOf("function renderOperatorTimingTable", reportStart);
   const reportSource = source.slice(reportStart, reportEnd);
+  const formatterStart = source.indexOf("function formatSourceFrontierPackCounts");
+  const formatterEnd = source.indexOf("function formatReadinessDiagnostics", formatterStart);
+  const formatterSource = source.slice(formatterStart, formatterEnd);
 
   assert.match(reportSource, /Slowest app frame stage:/);
   assert.match(reportSource, /timing\.slowestAppFrameStage/);
@@ -795,6 +873,10 @@ test("operator witness report prints the slowest app-side frame stage", () => {
   assert.match(reportSource, /timing\.sourceFrontierPack\?\.slowestSubstage/);
   assert.match(reportSource, /Source-frontier pack counts:/);
   assert.match(reportSource, /formatSourceFrontierPackCounts\(timing\.sourceFrontierPack\?\.counts\)/);
+  assert.match(formatterSource, /streamTileCandidates/);
+  assert.match(formatterSource, /streamCoverageRejects/);
+  assert.match(formatterSource, /supportSampleEvaluations/);
+  assert.match(formatterSource, /supportSamplePositiveWeights/);
   assert.match(reportSource, /Operator readiness vs observed poll frame total:/);
   assert.match(reportSource, /timing\.operatorReadinessVsObservedAppFrameTotal/);
 });

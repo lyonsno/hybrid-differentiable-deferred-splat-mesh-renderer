@@ -2435,6 +2435,7 @@ function buildWgslSourceFrontierCandidateSources({
     attributes,
     effectiveOpacities,
   }));
+  const streamLedger = compactSourceFrontierStreamLedger();
   let projectedIndex = 0;
 
   timeOptionalFrameStage(frameTiming, "wgsl-source-frontier-pack/stream-projected-tile-refs", () => {
@@ -2446,6 +2447,7 @@ function buildWgslSourceFrontierCandidateSources({
       tileColumns,
       samplesPerAxis: TILE_LOCAL_PROVISIONAL_COVERAGE_SAMPLES,
       maxTilesPerSplat: frontierSource.maxTilesPerSplat,
+      ledger: streamLedger,
       onEntry({ splatOrdinal, tileIndex, tileX, tileY, coverageWeight, localSupportWeight }) {
         const record = compactRuntimeContributorFromTemplate({
           template: contributorTemplates[splatOrdinal],
@@ -2459,9 +2461,15 @@ function buildWgslSourceFrontierCandidateSources({
         projectedIndex += 1;
 
         const bucket = compactStreamingTileBucket(buckets, tileIndex);
-        compactRetainTopRecord(bucket.coverageRecords, record, maxRefsPerTile, compareCompactProjectionRetentionCoverageOrder);
-        compactRetainTopRecord(bucket.retentionRecords, record, Math.max(1, Math.floor(maxRefsPerTile / 2)), compareCompactProjectionRetentionPriority);
-        compactRetainTopRecord(bucket.occlusionRecords, record, Math.max(1, Math.floor(maxRefsPerTile / 2)), compareCompactProjectionOcclusionPriority);
+        if (compactRetainTopRecord(bucket.coverageRecords, record, maxRefsPerTile, compareCompactProjectionRetentionCoverageOrder)) {
+          streamLedger.coverageRetainCount += 1;
+        }
+        if (compactRetainTopRecord(bucket.retentionRecords, record, Math.max(1, Math.floor(maxRefsPerTile / 2)), compareCompactProjectionRetentionPriority)) {
+          streamLedger.retentionRetainCount += 1;
+        }
+        if (compactRetainTopRecord(bucket.occlusionRecords, record, Math.max(1, Math.floor(maxRefsPerTile / 2)), compareCompactProjectionOcclusionPriority)) {
+          streamLedger.occlusionRetainCount += 1;
+        }
         compactRetainSupportSampleRecords({
           bucket,
           record,
@@ -2470,6 +2478,7 @@ function buildWgslSourceFrontierCandidateSources({
           tileMaxX: Math.min(viewportWidth, (tileX + 1) * tileSizePx),
           tileMaxY: Math.min(viewportHeight, (tileY + 1) * tileSizePx),
           maxRefsPerTile,
+          ledger: streamLedger,
         });
       },
     });
@@ -2500,10 +2509,22 @@ function buildWgslSourceFrontierCandidateSources({
   recordOptionalFrameStageDetail(frameTiming, "wgsl-source-frontier-pack/counts", {
     bucketCount: buckets.size,
     projectedTileRefs: projectedIndex,
+    streamSplatCount: streamLedger.splatCount,
+    streamDenseRowCount: streamLedger.denseRowCount,
+    streamSparseRowCount: streamLedger.sparseRowCount,
+    streamTileCandidateCount: streamLedger.tileCandidateCount,
+    streamCoverageRejectCount: streamLedger.coverageRejectCount,
+    streamPositiveCoverageCount: streamLedger.positiveCoverageCount,
+    coverageRetainCount: streamLedger.coverageRetainCount,
+    retentionRetainCount: streamLedger.retentionRetainCount,
+    occlusionRetainCount: streamLedger.occlusionRetainCount,
     candidateRecordCount: projectedCandidateRecords.length,
     coverageRecordCount: coverageRecords.length,
     retentionRecordCount: retentionRecords.length,
     occlusionRecordCount: occlusionRecords.length,
+    supportSampleEvaluationCount: streamLedger.supportSampleEvaluationCount,
+    supportSamplePositiveWeightCount: streamLedger.supportSamplePositiveWeightCount,
+    supportSampleRetainCount: streamLedger.supportSampleRetainCount,
     supportSampleRecordCount: supportSampleRecords.length,
     supportSampleGroupCount: supportSampleRecordGroups.length,
   });
@@ -3846,6 +3867,38 @@ interface CompactRetainedRecordList {
   worstIndex: number;
 }
 
+interface CompactSourceFrontierStreamLedger {
+  splatCount: number;
+  denseRowCount: number;
+  sparseRowCount: number;
+  tileCandidateCount: number;
+  coverageRejectCount: number;
+  positiveCoverageCount: number;
+  coverageRetainCount: number;
+  retentionRetainCount: number;
+  occlusionRetainCount: number;
+  supportSampleEvaluationCount: number;
+  supportSamplePositiveWeightCount: number;
+  supportSampleRetainCount: number;
+}
+
+function compactSourceFrontierStreamLedger(): CompactSourceFrontierStreamLedger {
+  return {
+    splatCount: 0,
+    denseRowCount: 0,
+    sparseRowCount: 0,
+    tileCandidateCount: 0,
+    coverageRejectCount: 0,
+    positiveCoverageCount: 0,
+    coverageRetainCount: 0,
+    retentionRetainCount: 0,
+    occlusionRetainCount: 0,
+    supportSampleEvaluationCount: 0,
+    supportSamplePositiveWeightCount: 0,
+    supportSampleRetainCount: 0,
+  };
+}
+
 function compactRetainedRecordList(): CompactRetainedRecordList {
   return {
     records: [],
@@ -3882,22 +3935,23 @@ function compactRetainTopRecord(
   record: GpuTileContributorArenaProjectedContributor,
   limit: number,
   compareRecords: typeof compareCompactProjectionRetentionCoverageOrder,
-): void {
+): boolean {
   const records = recordList.records;
   if (records.length < limit) {
     records.push(record);
     if (records.length === 1 || compareRecords(record, records[recordList.worstIndex]) > 0) {
       recordList.worstIndex = records.length - 1;
     }
-    return;
+    return true;
   }
 
   if (compareRecords(record, records[recordList.worstIndex]) >= 0) {
-    return;
+    return false;
   }
 
   records[recordList.worstIndex] = record;
   recordList.worstIndex = compactRetainedRecordListWorstIndex(records, compareRecords);
+  return true;
 }
 
 function compactRetainedRecordListWorstIndex(
@@ -3921,6 +3975,7 @@ function compactRetainSupportSampleRecords({
   tileMaxX,
   tileMaxY,
   maxRefsPerTile,
+  ledger,
 }: {
   readonly bucket: CompactStreamingTileBucket;
   readonly record: GpuTileContributorArenaProjectedContributor;
@@ -3929,6 +3984,7 @@ function compactRetainSupportSampleRecords({
   readonly tileMaxX: number;
   readonly tileMaxY: number;
   readonly maxRefsPerTile: number;
+  readonly ledger?: CompactSourceFrontierStreamLedger;
 }): void {
   const width = tileMaxX - tileMinX;
   const height = tileMaxY - tileMinY;
@@ -3941,20 +3997,28 @@ function compactRetainSupportSampleRecords({
     const y = tileMinY + ((sampleY + 0.5) / samplesPerAxis) * height;
     for (let sampleX = 0; sampleX < samplesPerAxis; sampleX += 1) {
       const x = tileMinX + ((sampleX + 0.5) / samplesPerAxis) * width;
+      if (ledger) {
+        ledger.supportSampleEvaluationCount += 1;
+      }
       const supportSampleWeight = compactSourceConicPixelWeight(record, [x, y]) * record.opacity;
       if (supportSampleWeight <= 1e-8) {
         continue;
       }
+      if (ledger) {
+        ledger.supportSamplePositiveWeightCount += 1;
+      }
       const supportLuminance = record.occlusionWeight > 0 ? record.retentionWeight / record.occlusionWeight : 0;
       const supportSampleRetentionWeight = supportSampleWeight * Math.max(0, finiteOrZero(supportLuminance));
       const sampleIndex = sampleY * samplesPerAxis + sampleX;
-      compactRetainSupportSampleRecord({
+      if (compactRetainSupportSampleRecord({
         recordList: bucket.supportSampleRecords[sampleIndex],
         record,
         supportSampleWeight,
         supportSampleRetentionWeight,
         limit: sampleLimit,
-      });
+      }) && ledger) {
+        ledger.supportSampleRetainCount += 1;
+      }
     }
   }
 }
@@ -3971,7 +4035,7 @@ function compactRetainSupportSampleRecord({
   readonly supportSampleWeight: number;
   readonly supportSampleRetentionWeight: number;
   readonly limit: number;
-}): void {
+}): boolean {
   const records = recordList.records;
   if (
     records.length >= limit &&
@@ -3982,7 +4046,7 @@ function compactRetainSupportSampleRecord({
       records[recordList.worstIndex],
     ) >= 0
   ) {
-    return;
+    return false;
   }
 
   const supportRecord: GpuTileContributorArenaProjectedContributor = { ...record, supportSampleWeight, supportSampleRetentionWeight };
@@ -3994,11 +4058,12 @@ function compactRetainSupportSampleRecord({
     ) {
       recordList.worstIndex = records.length - 1;
     }
-    return;
+    return true;
   }
 
   records[recordList.worstIndex] = supportRecord;
   recordList.worstIndex = compactRetainedRecordListWorstIndex(records, compareCompactProjectionSupportSamplePriority);
+  return true;
 }
 
 function compactCompareSupportSampleCandidateToRecord(
@@ -4131,6 +4196,7 @@ function streamCompactProjectedTileRefs({
   samplesPerAxis,
   onlyTileIndexes,
   maxTilesPerSplat,
+  ledger,
   onEntry,
 }: {
   readonly splats: RuntimeCompactTileCoverage["splats"];
@@ -4141,6 +4207,7 @@ function streamCompactProjectedTileRefs({
   readonly samplesPerAxis: number;
   readonly onlyTileIndexes?: ReadonlySet<number> | null;
   readonly maxTilesPerSplat?: number | null;
+  readonly ledger?: CompactSourceFrontierStreamLedger;
   readonly onEntry: (entry: {
     readonly splatOrdinal: number;
     readonly splat: RuntimeCompactTileCoverage["splats"][number];
@@ -4154,6 +4221,9 @@ function streamCompactProjectedTileRefs({
   const selectedTileRows = onlyTileIndexes ? compactSourceSelectedTileRows(onlyTileIndexes, tileColumns) : null;
   if (onlyTileIndexes && !selectedTileRows) {
     return;
+  }
+  if (ledger) {
+    ledger.splatCount += splats.length;
   }
   for (let splatOrdinal = 0; splatOrdinal < splats.length; splatOrdinal += 1) {
     const splat = splats[splatOrdinal];
@@ -4182,6 +4252,9 @@ function streamCompactProjectedTileRefs({
       const tileMinY = tileY * tileSizePx;
       const tileMaxX = Math.min(viewportWidth, tileMinX + tileSizePx);
       const tileMaxY = Math.min(viewportHeight, tileMinY + tileSizePx);
+      if (ledger) {
+        ledger.tileCandidateCount += 1;
+      }
       const coverageWeight = compactSourceTileCoverageWeight({
         centerPx: splat.centerPx,
         densityParams,
@@ -4192,7 +4265,13 @@ function streamCompactProjectedTileRefs({
         samplesPerAxis,
       });
       if (coverageWeight <= 0) {
+        if (ledger) {
+          ledger.coverageRejectCount += 1;
+        }
         return;
+      }
+      if (ledger) {
+        ledger.positiveCoverageCount += 1;
       }
       const localSupportWeight = compactSourceTileLocalSupportWeight({
         centerPx: splat.centerPx,
@@ -4207,8 +4286,14 @@ function streamCompactProjectedTileRefs({
     for (let tileY = minTileY; tileY <= maxTileY; tileY += 1) {
       const rowTileXs = selectedTileRows?.tileXsByRow.get(tileY);
       if (rowTileXs) {
+        if (ledger) {
+          ledger.sparseRowCount += 1;
+        }
         compactStreamSparseTileXRow(rowTileXs, minTileX, maxTileX, tileY, emitTileEntry);
       } else {
+        if (ledger) {
+          ledger.denseRowCount += 1;
+        }
         compactStreamDenseTileXRange(minTileX, maxTileX, tileY, emitTileEntry);
       }
     }
