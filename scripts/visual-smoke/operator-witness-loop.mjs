@@ -299,9 +299,11 @@ function observedAppFrameForReadinessStage(stageName, readinessDiagnosticsByStag
       : stageName === "initial-readiness"
         ? "initialReadiness"
         : "";
-  const observed = stageKey
-    ? readinessDiagnosticsByStage?.[stageKey]?.observedAppFrame
+  const stageDiagnostics = stageKey
+    ? readinessDiagnosticsByStage?.[stageKey]
     : undefined;
+  const observed = stageDiagnostics?.slowestPoll?.observedAppFrame ??
+    stageDiagnostics?.observedAppFrame;
   if (!observed || typeof observed !== "object") {
     return null;
   }

@@ -371,6 +371,61 @@ test("operator witness timing summary compares readiness against poll-observed a
   });
 });
 
+test("operator witness timing summary prefers the slowest poll observed frame over the final poll frame", () => {
+  const timing = summarizeOperatorWitnessTiming([
+    witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.porousClose, {
+      timing: {
+        totalMs: 8200,
+        stages: [{ name: "view-readiness", elapsedMs: 8010 }],
+      },
+      pageEvidence: {
+        readinessDiagnosticsByStage: {
+          viewReadiness: {
+            observedAppFrame: {
+              frameSerial: 39,
+              totalMs: 23.6,
+              slowestStage: { name: "evidence-exposure", elapsedMs: 1.2 },
+            },
+            slowestPoll: {
+              pollDurationMs: 7771,
+              pollCount: 3,
+              observedAppFrame: {
+                frameSerial: 38,
+                totalMs: 7849.4,
+                slowestStage: {
+                  name: "wgsl-source-frontier-pack-candidate-source-inputs",
+                  elapsedMs: 4701.3,
+                },
+              },
+            },
+          },
+        },
+        operatorWitness: {
+          frameSerial: 40,
+          frameTimings: {
+            totalMs: 23.6,
+            stages: [{ name: "evidence-exposure", elapsedMs: 1.2 }],
+          },
+        },
+      },
+    }),
+  ]);
+
+  assert.deepEqual(timing.operatorReadinessVsObservedAppFrameTotal, {
+    status: "operator-readiness-exceeds-app-frame-total",
+    readinessCaptureId: OPERATOR_WITNESS_CAPTURE_IDS.porousClose,
+    appFrameTotalCaptureId: OPERATOR_WITNESS_CAPTURE_IDS.porousClose,
+    readinessMs: 8010,
+    appFrameTotalMs: 7849.4,
+    gapMs: 160.6,
+    frameSerial: 38,
+    slowestStage: {
+      name: "wgsl-source-frontier-pack-candidate-source-inputs",
+      elapsedMs: 4701.3,
+    },
+  });
+});
+
 test("operator witness timing summary does not cover readiness with an unrelated app-frame total", () => {
   const timing = summarizeOperatorWitnessTiming([
     witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.dessertClose, {
@@ -818,6 +873,8 @@ test("operator witness report renders readiness diagnostics per capture", () => 
   assert.match(formatterSource, /observedFrame=/);
   assert.match(formatterSource, /observedFrameTotal=/);
   assert.match(formatterSource, /observedFrameSlowestStage=/);
+  assert.match(formatterSource, /slowestPollObservedFrameTotal=/);
+  assert.match(formatterSource, /slowestPollObservedFrameSlowestStage=/);
 });
 
 test("operator witness session preserves initial readiness diagnostics by stage", () => {

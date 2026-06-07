@@ -1,19 +1,19 @@
 {
-  "generatedAt": "2026-06-07T02:43:16.524Z",
+  "generatedAt": "2026-06-07T03:16:02.928Z",
   "baseUrl": "http://127.0.0.1:6176/?wgslProjectedRefStream=source-frontier",
   "analysisPath": "smoke-reports/readiness-frame-spine-bloodhound-0606/analysis.json",
   "reportPath": "smoke-reports/readiness-frame-spine-bloodhound-0606/report.md",
   "contactSheetPath": "smoke-reports/readiness-frame-spine-bloodhound-0606/operator-witness-contact-sheet.png",
   "timing": {
-    "totalMs": 68287,
+    "totalMs": 74992,
     "stages": [
       {
         "name": "new-page",
-        "elapsedMs": 391
+        "elapsedMs": 899
       },
       {
         "name": "page-goto",
-        "elapsedMs": 112
+        "elapsedMs": 290
       },
       {
         "name": "canvas-locator",
@@ -21,43 +21,43 @@
       },
       {
         "name": "canvas-attached",
-        "elapsedMs": 31
+        "elapsedMs": 59
       },
       {
         "name": "canvas-clip",
-        "elapsedMs": 42
+        "elapsedMs": 29
       },
       {
         "name": "hide-overlays",
-        "elapsedMs": 199
+        "elapsedMs": 7
       },
       {
         "name": "initial-readiness",
-        "elapsedMs": 4711
+        "elapsedMs": 6313
       },
       {
         "name": "capture:whole-render-final-color",
-        "elapsedMs": 4268
+        "elapsedMs": 4456
       },
       {
         "name": "capture:dessert-close-final-color",
-        "elapsedMs": 8173
+        "elapsedMs": 8335
       },
       {
         "name": "capture:porous-close-final-color",
-        "elapsedMs": 10669
+        "elapsedMs": 11238
       },
       {
         "name": "capture:porous-close-orbit-left",
-        "elapsedMs": 19491
+        "elapsedMs": 21527
       },
       {
         "name": "capture:porous-close-orbit-right",
-        "elapsedMs": 20199
+        "elapsedMs": 21838
       },
       {
         "name": "page-close",
-        "elapsedMs": 14
+        "elapsedMs": 27
       }
     ]
   },
@@ -185,35 +185,35 @@
       "url": "http://127.0.0.1:6176/?wgslProjectedRefStream=source-frontier&asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256&renderer=tile-local-visible",
       "interactions": [],
       "timing": {
-        "totalMs": 4267,
+        "totalMs": 4456,
         "stages": [
           {
             "name": "apply-view",
-            "elapsedMs": 1
+            "elapsedMs": 2
           },
           {
             "name": "view-readiness",
-            "elapsedMs": 1882
+            "elapsedMs": 2069
           },
           {
             "name": "settle-before-interaction",
-            "elapsedMs": 2001
+            "elapsedMs": 2008
           },
           {
             "name": "collect-settled-evidence",
-            "elapsedMs": 13
+            "elapsedMs": 14
           },
           {
             "name": "screenshot",
-            "elapsedMs": 48
+            "elapsedMs": 93
           },
           {
             "name": "image-analysis",
-            "elapsedMs": 249
+            "elapsedMs": 241
           },
           {
             "name": "trace-canvas-parity",
-            "elapsedMs": 73
+            "elapsedMs": 28
           },
           {
             "name": "classify-smoke",
@@ -221,7 +221,7 @@
           },
           {
             "name": "witness-diagnostics",
-            "elapsedMs": 0
+            "elapsedMs": 1
           }
         ]
       },
@@ -734,7 +734,7 @@
                 "retainedRows": 37590,
                 "nonEmptyTiles": 177,
                 "maxRowsPerTile": 256,
-                "firstRetainedRecordIndex": 45,
+                "firstRetainedRecordIndex": 75,
                 "outputBuffers": [
                   "production-election-prefix-counts-buffer",
                   "production-election-prefix-offsets-buffer",
@@ -1116,7 +1116,7 @@
             "retainedRows": 37590,
             "nonEmptyTiles": 177,
             "maxRowsPerTile": 256,
-            "firstRetainedRecordIndex": 45,
+            "firstRetainedRecordIndex": 75,
             "outputBuffers": [
               "production-election-prefix-counts-buffer",
               "production-election-prefix-offsets-buffer",
@@ -1130,7 +1130,7 @@
           "revision": 1,
           "frameSerial": 3,
           "frameTimings": {
-            "totalMs": 1878,
+            "totalMs": 2054.7,
             "stages": [
               {
                 "name": "frame-uniforms",
@@ -1142,27 +1142,27 @@
               },
               {
                 "name": "gpu-sort-refresh",
-                "elapsedMs": 0.8
+                "elapsedMs": 1.6
               },
               {
                 "name": "wgsl-source-frontier-project-splats",
-                "elapsedMs": 42.9
+                "elapsedMs": 55.2
               },
               {
                 "name": "wgsl-source-frontier-estimate-ref-budget",
-                "elapsedMs": 5
+                "elapsedMs": 11.5
               },
               {
                 "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                "elapsedMs": 1441.9
+                "elapsedMs": 1555.4
               },
               {
                 "name": "wgsl-source-frontier-production-election-runtime",
-                "elapsedMs": 161.5
+                "elapsedMs": 181.3
               },
               {
                 "name": "tile-local-dispatch-encode",
-                "elapsedMs": 0.2
+                "elapsedMs": 0.3
               },
               {
                 "name": "queue-submit",
@@ -1170,16 +1170,16 @@
               },
               {
                 "name": "tile-local-readback-resolve",
-                "elapsedMs": 0
+                "elapsedMs": 0.1
               },
               {
                 "name": "evidence-exposure",
-                "elapsedMs": 5.1
+                "elapsedMs": 7.9
               }
             ]
           }
         },
-        "statsText": "1280×720 | 0 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-gaussian-compositor | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 94,406 splats/23 tiles | tile-local: 80x45 tiles/37,590 refs | tile-local live refs: gpu-tile-header-and-scatter-readback | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | visible-compositor cap: 256 refs | tile-order: gpu-sorted-index-rank-inversion | retained-source: wgsl-projected-ref-stream-source-frontier->tile-local-visible-gaussian-compositor | projected-stream: wgsl-projected-ref-stream-source-frontier | arena requested: gpu | arena effective: gpu | arena GPU dispatch enqueue: 0.000ms | render: 0.04ms",
+        "statsText": "1280×720 | 2 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-gaussian-compositor | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 94,406 splats/23 tiles | tile-local: 80x45 tiles/37,590 refs | tile-local live refs: gpu-tile-header-and-scatter-readback | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | visible-compositor cap: 256 refs | tile-order: gpu-sorted-index-rank-inversion | retained-source: wgsl-projected-ref-stream-source-frontier->tile-local-visible-gaussian-compositor | projected-stream: wgsl-projected-ref-stream-source-frontier | arena requested: gpu | arena effective: gpu | arena GPU dispatch enqueue: 0.000ms | render: 12.27ms",
         "title": "Deferred Splat+Mesh Renderer",
         "canvas": {
           "width": 1280,
@@ -1187,7 +1187,7 @@
           "clientWidth": 1280,
           "clientHeight": 720
         },
-        "fps": 0,
+        "fps": 2,
         "arenaRuntime": {
           "requestedArenaBackend": "gpu",
           "effectiveArenaBackend": "gpu",
@@ -1197,15 +1197,15 @@
           "ready": true,
           "blockers": [],
           "pollCount": 1,
-          "pollDurationMs": 1881,
-          "elapsedMs": 1881,
+          "pollDurationMs": 2069,
+          "elapsedMs": 2069,
           "evidenceSource": "compact-readiness",
           "observedAppFrame": {
             "frameSerial": 3,
-            "totalMs": 1878,
+            "totalMs": 2054.7,
             "slowestStage": {
               "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-              "elapsedMs": 1441.9
+              "elapsedMs": 1555.4
             }
           },
           "expectedRendererLabel": "tile-local-visible",
@@ -1225,16 +1225,16 @@
           "failedPolls": 0,
           "slowestPoll": {
             "pollCount": 1,
-            "pollDurationMs": 1881,
-            "elapsedMs": 1881,
+            "pollDurationMs": 2069,
+            "elapsedMs": 2069,
             "ready": true,
             "blockers": [],
             "observedAppFrame": {
               "frameSerial": 3,
-              "totalMs": 1878,
+              "totalMs": 2054.7,
               "slowestStage": {
                 "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                "elapsedMs": 1441.9
+                "elapsedMs": 1555.4
               }
             }
           },
@@ -1242,16 +1242,16 @@
           "pollHistory": [
             {
               "pollCount": 1,
-              "pollDurationMs": 1881,
-              "elapsedMs": 1881,
+              "pollDurationMs": 2069,
+              "elapsedMs": 2069,
               "ready": true,
               "blockers": [],
               "observedAppFrame": {
                 "frameSerial": 3,
-                "totalMs": 1878,
+                "totalMs": 2054.7,
                 "slowestStage": {
                   "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                  "elapsedMs": 1441.9
+                  "elapsedMs": 1555.4
                 }
               }
             }
@@ -1448,15 +1448,15 @@
             "ready": true,
             "blockers": [],
             "pollCount": 1,
-            "pollDurationMs": 1881,
-            "elapsedMs": 1881,
+            "pollDurationMs": 2069,
+            "elapsedMs": 2069,
             "evidenceSource": "compact-readiness",
             "observedAppFrame": {
               "frameSerial": 3,
-              "totalMs": 1878,
+              "totalMs": 2054.7,
               "slowestStage": {
                 "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                "elapsedMs": 1441.9
+                "elapsedMs": 1555.4
               }
             },
             "expectedRendererLabel": "tile-local-visible",
@@ -1476,16 +1476,16 @@
             "failedPolls": 0,
             "slowestPoll": {
               "pollCount": 1,
-              "pollDurationMs": 1881,
-              "elapsedMs": 1881,
+              "pollDurationMs": 2069,
+              "elapsedMs": 2069,
               "ready": true,
               "blockers": [],
               "observedAppFrame": {
                 "frameSerial": 3,
-                "totalMs": 1878,
+                "totalMs": 2054.7,
                 "slowestStage": {
                   "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                  "elapsedMs": 1441.9
+                  "elapsedMs": 1555.4
                 }
               }
             },
@@ -1493,16 +1493,16 @@
             "pollHistory": [
               {
                 "pollCount": 1,
-                "pollDurationMs": 1881,
-                "elapsedMs": 1881,
+                "pollDurationMs": 2069,
+                "elapsedMs": 2069,
                 "ready": true,
                 "blockers": [],
                 "observedAppFrame": {
                   "frameSerial": 3,
-                  "totalMs": 1878,
+                  "totalMs": 2054.7,
                   "slowestStage": {
                     "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                    "elapsedMs": 1441.9
+                    "elapsedMs": 1555.4
                   }
                 }
               }
@@ -1652,19 +1652,19 @@
       "url": "http://127.0.0.1:6176/?wgslProjectedRefStream=source-frontier&asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256&renderer=tile-local-visible",
       "interactions": [],
       "timing": {
-        "totalMs": 8173,
+        "totalMs": 8335,
         "stages": [
           {
             "name": "apply-view",
-            "elapsedMs": 27
+            "elapsedMs": 12
           },
           {
             "name": "view-readiness",
-            "elapsedMs": 5670
+            "elapsedMs": 5921
           },
           {
             "name": "settle-before-interaction",
-            "elapsedMs": 2002
+            "elapsedMs": 2001
           },
           {
             "name": "collect-settled-evidence",
@@ -1672,15 +1672,15 @@
           },
           {
             "name": "screenshot",
-            "elapsedMs": 87
+            "elapsedMs": 147
           },
           {
             "name": "image-analysis",
-            "elapsedMs": 234
+            "elapsedMs": 215
           },
           {
             "name": "trace-canvas-parity",
-            "elapsedMs": 145
+            "elapsedMs": 31
           },
           {
             "name": "classify-smoke",
@@ -1881,12 +1881,12 @@
             "maxRefsPerTile": 256,
             "tileCount": 3600,
             "tileCapacity": 256,
-            "frameId": 23
+            "frameId": 12
           },
           "refStatsReadback": {
             "status": "present",
             "source": "gpu-tile-header-and-scatter-readback",
-            "frameId": 23,
+            "frameId": 12,
             "tileCount": 3600,
             "tileCapacity": 256,
             "allocatedRefs": 921600,
@@ -1993,7 +1993,7 @@
           "freshness": {
             "status": "current",
             "cachedFrameAgeMs": 0,
-            "cachedFrame": 23,
+            "cachedFrame": 12,
             "currentFrameSignature": "tile-local@87196525",
             "cachedFrameSignature": "tile-local@87196525"
           },
@@ -2078,7 +2078,7 @@
               "payloadEncoding": "source-frontier-score",
               "falseClosureGuard": "source-frontier-ref-stats-readback-is-row-accounting-not-payload-readback",
               "rowFields": [],
-              "frameId": 23,
+              "frameId": 12,
               "tileCount": 3600,
               "retainedBudgetRefs": 921600,
               "maxRefsPerTile": 256,
@@ -2185,7 +2185,7 @@
               "readback": {
                 "status": "present",
                 "source": "wgsl-production-election-prefix-scatter-readback",
-                "frameId": 23,
+                "frameId": 12,
                 "recordCount": 426604,
                 "groupCount": 13702,
                 "retainedRecordCount": 157547,
@@ -2520,9 +2520,9 @@
             },
             "dispatchCache": {
               "tileIndex": 5343,
-              "clearFrameId": 23,
-              "buildFrameId": 23,
-              "compositeFrameId": 23,
+              "clearFrameId": 12,
+              "buildFrameId": 12,
+              "compositeFrameId": 12,
               "tileY": 65,
               "tileSpan": {
                 "minTileX": 139,
@@ -2531,7 +2531,7 @@
                 "maxTileY": 66
               },
               "cacheState": "current",
-              "presentationFrameId": 23,
+              "presentationFrameId": 12,
               "rowDispatchState": {
                 "tileCoveredByClear": false,
                 "tileCoveredByBuild": false,
@@ -2567,7 +2567,7 @@
           "prefixScatterReadback": {
             "status": "present",
             "source": "wgsl-production-election-prefix-scatter-readback",
-            "frameId": 23,
+            "frameId": 12,
             "recordCount": 426604,
             "groupCount": 13702,
             "retainedRecordCount": 157547,
@@ -2595,9 +2595,9 @@
         "operatorWitness": {
           "witnessView": "dessert-close",
           "revision": 2,
-          "frameSerial": 24,
+          "frameSerial": 13,
           "frameTimings": {
-            "totalMs": 12,
+            "totalMs": 13.3,
             "stages": [
               {
                 "name": "frame-uniforms",
@@ -2613,16 +2613,16 @@
               },
               {
                 "name": "tile-local-readback-resolve",
-                "elapsedMs": 0.1
+                "elapsedMs": 0
               },
               {
                 "name": "evidence-exposure",
-                "elapsedMs": 11.8
+                "elapsedMs": 13.1
               }
             ]
           }
         },
-        "statsText": "1280×720 | 4 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-gaussian-compositor | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 94,406 splats/153 tiles | tile-local: 80x45 tiles/157,547 refs | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | visible-compositor cap: 256 refs | tile-order: gpu-sorted-index-rank-inversion | retained-source: wgsl-projected-ref-stream-source-frontier->tile-local-visible-gaussian-compositor | projected-stream: wgsl-projected-ref-stream-source-frontier | arena requested: gpu | arena effective: gpu | arena GPU dispatch enqueue: 0.000ms | render: 0.03ms | tile-local live refs: gpu-tile-header-and-scatter-readback",
+        "statsText": "1280×720 | 2 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-gaussian-compositor | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 94,406 splats/153 tiles | tile-local: 80x45 tiles/157,547 refs | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | visible-compositor cap: 256 refs | tile-order: gpu-sorted-index-rank-inversion | retained-source: wgsl-projected-ref-stream-source-frontier->tile-local-visible-gaussian-compositor | projected-stream: wgsl-projected-ref-stream-source-frontier | arena requested: gpu | arena effective: gpu | arena GPU dispatch enqueue: 0.000ms | render: 0.06ms | tile-local live refs: gpu-tile-header-and-scatter-readback",
         "title": "Deferred Splat+Mesh Renderer",
         "canvas": {
           "width": 1280,
@@ -2630,7 +2630,7 @@
           "clientWidth": 1280,
           "clientHeight": 720
         },
-        "fps": 4,
+        "fps": 2,
         "arenaRuntime": {
           "requestedArenaBackend": "gpu",
           "effectiveArenaBackend": "gpu",
@@ -2640,15 +2640,15 @@
           "ready": true,
           "blockers": [],
           "pollCount": 3,
-          "pollDurationMs": 5451,
-          "elapsedMs": 5670,
+          "pollDurationMs": 5691,
+          "elapsedMs": 5920,
           "evidenceSource": "compact-readiness",
           "observedAppFrame": {
-            "frameSerial": 23,
-            "totalMs": 5532.6,
+            "frameSerial": 12,
+            "totalMs": 5744.1,
             "slowestStage": {
               "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-              "elapsedMs": 3816.2
+              "elapsedMs": 3694.1
             }
           },
           "expectedRendererLabel": "tile-local-visible",
@@ -2668,23 +2668,23 @@
           "failedPolls": 2,
           "slowestPoll": {
             "pollCount": 3,
-            "pollDurationMs": 5451,
-            "elapsedMs": 5670,
+            "pollDurationMs": 5691,
+            "elapsedMs": 5920,
             "ready": true,
             "blockers": [],
             "observedAppFrame": {
-              "frameSerial": 23,
-              "totalMs": 5532.6,
+              "frameSerial": 12,
+              "totalMs": 5744.1,
               "slowestStage": {
                 "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                "elapsedMs": 3816.2
+                "elapsedMs": 3694.1
               }
             }
           },
           "lastFailedPoll": {
             "pollCount": 2,
-            "pollDurationMs": 3,
-            "elapsedMs": 117,
+            "pollDurationMs": 4,
+            "elapsedMs": 115,
             "blockers": [
               "visual-smoke-not-ready"
             ]
@@ -2695,50 +2695,50 @@
           "pollHistory": [
             {
               "pollCount": 1,
-              "pollDurationMs": 12,
-              "elapsedMs": 12,
+              "pollDurationMs": 8,
+              "elapsedMs": 8,
+              "ready": false,
+              "blockers": [
+                "visual-smoke-not-ready"
+              ],
+              "observedAppFrame": {
+                "frameSerial": 4,
+                "totalMs": 9.1,
+                "slowestStage": {
+                  "name": "evidence-exposure",
+                  "elapsedMs": 5.5
+                }
+              }
+            },
+            {
+              "pollCount": 2,
+              "pollDurationMs": 4,
+              "elapsedMs": 115,
               "ready": false,
               "blockers": [
                 "visual-smoke-not-ready"
               ],
               "observedAppFrame": {
                 "frameSerial": 7,
-                "totalMs": 6.7,
+                "totalMs": 5.5,
                 "slowestStage": {
                   "name": "evidence-exposure",
-                  "elapsedMs": 6.2
-                }
-              }
-            },
-            {
-              "pollCount": 2,
-              "pollDurationMs": 3,
-              "elapsedMs": 117,
-              "ready": false,
-              "blockers": [
-                "visual-smoke-not-ready"
-              ],
-              "observedAppFrame": {
-                "frameSerial": 20,
-                "totalMs": 3.6,
-                "slowestStage": {
-                  "name": "evidence-exposure",
-                  "elapsedMs": 3.2
+                  "elapsedMs": 5
                 }
               }
             },
             {
               "pollCount": 3,
-              "pollDurationMs": 5451,
-              "elapsedMs": 5670,
+              "pollDurationMs": 5691,
+              "elapsedMs": 5920,
               "ready": true,
               "blockers": [],
               "observedAppFrame": {
-                "frameSerial": 23,
-                "totalMs": 5532.6,
+                "frameSerial": 12,
+                "totalMs": 5744.1,
                 "slowestStage": {
                   "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                  "elapsedMs": 3816.2
+                  "elapsedMs": 3694.1
                 }
               }
             }
@@ -2935,15 +2935,15 @@
             "ready": true,
             "blockers": [],
             "pollCount": 3,
-            "pollDurationMs": 5451,
-            "elapsedMs": 5670,
+            "pollDurationMs": 5691,
+            "elapsedMs": 5920,
             "evidenceSource": "compact-readiness",
             "observedAppFrame": {
-              "frameSerial": 23,
-              "totalMs": 5532.6,
+              "frameSerial": 12,
+              "totalMs": 5744.1,
               "slowestStage": {
                 "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                "elapsedMs": 3816.2
+                "elapsedMs": 3694.1
               }
             },
             "expectedRendererLabel": "tile-local-visible",
@@ -2963,23 +2963,23 @@
             "failedPolls": 2,
             "slowestPoll": {
               "pollCount": 3,
-              "pollDurationMs": 5451,
-              "elapsedMs": 5670,
+              "pollDurationMs": 5691,
+              "elapsedMs": 5920,
               "ready": true,
               "blockers": [],
               "observedAppFrame": {
-                "frameSerial": 23,
-                "totalMs": 5532.6,
+                "frameSerial": 12,
+                "totalMs": 5744.1,
                 "slowestStage": {
                   "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                  "elapsedMs": 3816.2
+                  "elapsedMs": 3694.1
                 }
               }
             },
             "lastFailedPoll": {
               "pollCount": 2,
-              "pollDurationMs": 3,
-              "elapsedMs": 117,
+              "pollDurationMs": 4,
+              "elapsedMs": 115,
               "blockers": [
                 "visual-smoke-not-ready"
               ]
@@ -2990,50 +2990,50 @@
             "pollHistory": [
               {
                 "pollCount": 1,
-                "pollDurationMs": 12,
-                "elapsedMs": 12,
+                "pollDurationMs": 8,
+                "elapsedMs": 8,
+                "ready": false,
+                "blockers": [
+                  "visual-smoke-not-ready"
+                ],
+                "observedAppFrame": {
+                  "frameSerial": 4,
+                  "totalMs": 9.1,
+                  "slowestStage": {
+                    "name": "evidence-exposure",
+                    "elapsedMs": 5.5
+                  }
+                }
+              },
+              {
+                "pollCount": 2,
+                "pollDurationMs": 4,
+                "elapsedMs": 115,
                 "ready": false,
                 "blockers": [
                   "visual-smoke-not-ready"
                 ],
                 "observedAppFrame": {
                   "frameSerial": 7,
-                  "totalMs": 6.7,
+                  "totalMs": 5.5,
                   "slowestStage": {
                     "name": "evidence-exposure",
-                    "elapsedMs": 6.2
-                  }
-                }
-              },
-              {
-                "pollCount": 2,
-                "pollDurationMs": 3,
-                "elapsedMs": 117,
-                "ready": false,
-                "blockers": [
-                  "visual-smoke-not-ready"
-                ],
-                "observedAppFrame": {
-                  "frameSerial": 20,
-                  "totalMs": 3.6,
-                  "slowestStage": {
-                    "name": "evidence-exposure",
-                    "elapsedMs": 3.2
+                    "elapsedMs": 5
                   }
                 }
               },
               {
                 "pollCount": 3,
-                "pollDurationMs": 5451,
-                "elapsedMs": 5670,
+                "pollDurationMs": 5691,
+                "elapsedMs": 5920,
                 "ready": true,
                 "blockers": [],
                 "observedAppFrame": {
-                  "frameSerial": 23,
-                  "totalMs": 5532.6,
+                  "frameSerial": 12,
+                  "totalMs": 5744.1,
                   "slowestStage": {
                     "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                    "elapsedMs": 3816.2
+                    "elapsedMs": 3694.1
                   }
                 }
               }
@@ -3183,15 +3183,15 @@
       "url": "http://127.0.0.1:6176/?wgslProjectedRefStream=source-frontier&asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256&renderer=tile-local-visible",
       "interactions": [],
       "timing": {
-        "totalMs": 10669,
+        "totalMs": 11238,
         "stages": [
           {
             "name": "apply-view",
-            "elapsedMs": 31
+            "elapsedMs": 25
           },
           {
             "name": "view-readiness",
-            "elapsedMs": 8010
+            "elapsedMs": 8352
           },
           {
             "name": "settle-before-interaction",
@@ -3199,19 +3199,19 @@
           },
           {
             "name": "collect-settled-evidence",
-            "elapsedMs": 10
+            "elapsedMs": 8
           },
           {
             "name": "screenshot",
-            "elapsedMs": 122
+            "elapsedMs": 414
           },
           {
             "name": "image-analysis",
-            "elapsedMs": 400
+            "elapsedMs": 365
           },
           {
             "name": "trace-canvas-parity",
-            "elapsedMs": 95
+            "elapsedMs": 73
           },
           {
             "name": "classify-smoke",
@@ -3412,12 +3412,12 @@
             "maxRefsPerTile": 256,
             "tileCount": 3600,
             "tileCapacity": 256,
-            "frameId": 38
+            "frameId": 18
           },
           "refStatsReadback": {
             "status": "present",
             "source": "gpu-tile-header-and-scatter-readback",
-            "frameId": 38,
+            "frameId": 18,
             "tileCount": 3600,
             "tileCapacity": 256,
             "allocatedRefs": 921600,
@@ -3524,7 +3524,7 @@
           "freshness": {
             "status": "current",
             "cachedFrameAgeMs": 0,
-            "cachedFrame": 38,
+            "cachedFrame": 18,
             "currentFrameSignature": "tile-local@db040c3e",
             "cachedFrameSignature": "tile-local@db040c3e"
           },
@@ -3609,7 +3609,7 @@
               "payloadEncoding": "source-frontier-score",
               "falseClosureGuard": "source-frontier-ref-stats-readback-is-row-accounting-not-payload-readback",
               "rowFields": [],
-              "frameId": 38,
+              "frameId": 18,
               "tileCount": 3600,
               "retainedBudgetRefs": 921600,
               "maxRefsPerTile": 256,
@@ -3716,7 +3716,7 @@
               "readback": {
                 "status": "present",
                 "source": "wgsl-production-election-prefix-scatter-readback",
-                "frameId": 38,
+                "frameId": 18,
                 "recordCount": 905552,
                 "groupCount": 28554,
                 "retainedRecordCount": 320071,
@@ -4051,9 +4051,9 @@
             },
             "dispatchCache": {
               "tileIndex": 5343,
-              "clearFrameId": 38,
-              "buildFrameId": 38,
-              "compositeFrameId": 38,
+              "clearFrameId": 18,
+              "buildFrameId": 18,
+              "compositeFrameId": 18,
               "tileY": 65,
               "tileSpan": {
                 "minTileX": 139,
@@ -4062,7 +4062,7 @@
                 "maxTileY": 66
               },
               "cacheState": "current",
-              "presentationFrameId": 38,
+              "presentationFrameId": 18,
               "rowDispatchState": {
                 "tileCoveredByClear": false,
                 "tileCoveredByBuild": false,
@@ -4098,7 +4098,7 @@
           "prefixScatterReadback": {
             "status": "present",
             "source": "wgsl-production-election-prefix-scatter-readback",
-            "frameId": 38,
+            "frameId": 18,
             "recordCount": 905552,
             "groupCount": 28554,
             "retainedRecordCount": 320071,
@@ -4126,9 +4126,9 @@
         "operatorWitness": {
           "witnessView": "dessert-porous-close",
           "revision": 3,
-          "frameSerial": 39,
+          "frameSerial": 19,
           "frameTimings": {
-            "totalMs": 23.6,
+            "totalMs": 29,
             "stages": [
               {
                 "name": "frame-uniforms",
@@ -4148,12 +4148,12 @@
               },
               {
                 "name": "evidence-exposure",
-                "elapsedMs": 23.1
+                "elapsedMs": 28.7
               }
             ]
           }
         },
-        "statsText": "1280×720 | 2 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-gaussian-compositor | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 79,708 splats/291 tiles | tile-local: 80x45 tiles/320071 refs | tile-local live refs: gpu-tile-header-and-scatter-readback | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | visible-compositor cap: 256 refs | tile-order: gpu-sorted-index-rank-inversion | retained-source: wgsl-projected-ref-stream-source-frontier->tile-local-visible-gaussian-compositor | projected-stream: wgsl-projected-ref-stream-source-frontier | arena requested: gpu | arena effective: gpu | arena GPU dispatch enqueue: 0.100ms | render: 6.78ms",
+        "statsText": "1280×720 | 1 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-gaussian-compositor | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 79,708 splats/291 tiles | tile-local: 80x45 tiles/320,071 refs | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | visible-compositor cap: 256 refs | tile-order: gpu-sorted-index-rank-inversion | retained-source: wgsl-projected-ref-stream-source-frontier->tile-local-visible-gaussian-compositor | projected-stream: wgsl-projected-ref-stream-source-frontier | arena requested: gpu | arena effective: gpu | arena GPU dispatch enqueue: 0.000ms | render: 1.72ms | tile-local live refs: gpu-tile-header-and-scatter-readback",
         "title": "Deferred Splat+Mesh Renderer",
         "canvas": {
           "width": 1280,
@@ -4161,25 +4161,25 @@
           "clientWidth": 1280,
           "clientHeight": 720
         },
-        "fps": 2,
+        "fps": 1,
         "arenaRuntime": {
           "requestedArenaBackend": "gpu",
           "effectiveArenaBackend": "gpu",
-          "gpuDispatchEnqueueDurationMs": 0.1
+          "gpuDispatchEnqueueDurationMs": 0
         },
         "readinessDiagnostics": {
           "ready": true,
           "blockers": [],
           "pollCount": 3,
-          "pollDurationMs": 7771,
-          "elapsedMs": 8010,
+          "pollDurationMs": 8129,
+          "elapsedMs": 8352,
           "evidenceSource": "compact-readiness",
           "observedAppFrame": {
-            "frameSerial": 38,
-            "totalMs": 7849.4,
+            "frameSerial": 18,
+            "totalMs": 8201.1,
             "slowestStage": {
               "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-              "elapsedMs": 4701.3
+              "elapsedMs": 4929.8
             }
           },
           "expectedRendererLabel": "tile-local-visible",
@@ -4199,23 +4199,23 @@
           "failedPolls": 2,
           "slowestPoll": {
             "pollCount": 3,
-            "pollDurationMs": 7771,
-            "elapsedMs": 8010,
+            "pollDurationMs": 8129,
+            "elapsedMs": 8352,
             "ready": true,
             "blockers": [],
             "observedAppFrame": {
-              "frameSerial": 38,
-              "totalMs": 7849.4,
+              "frameSerial": 18,
+              "totalMs": 8201.1,
               "slowestStage": {
                 "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                "elapsedMs": 4701.3
+                "elapsedMs": 4929.8
               }
             }
           },
           "lastFailedPoll": {
             "pollCount": 2,
-            "pollDurationMs": 14,
-            "elapsedMs": 134,
+            "pollDurationMs": 4,
+            "elapsedMs": 121,
             "blockers": [
               "visual-smoke-not-ready"
             ]
@@ -4226,50 +4226,50 @@
           "pollHistory": [
             {
               "pollCount": 1,
-              "pollDurationMs": 17,
-              "elapsedMs": 17,
+              "pollDurationMs": 14,
+              "elapsedMs": 14,
               "ready": false,
               "blockers": [
                 "visual-smoke-not-ready"
               ],
               "observedAppFrame": {
-                "frameSerial": 26,
-                "totalMs": 11.9,
+                "frameSerial": 15,
+                "totalMs": 12.4,
                 "slowestStage": {
                   "name": "evidence-exposure",
-                  "elapsedMs": 11.7
+                  "elapsedMs": 12.1
                 }
               }
             },
             {
               "pollCount": 2,
-              "pollDurationMs": 14,
-              "elapsedMs": 134,
+              "pollDurationMs": 4,
+              "elapsedMs": 121,
               "ready": false,
               "blockers": [
                 "visual-smoke-not-ready"
               ],
               "observedAppFrame": {
-                "frameSerial": 35,
-                "totalMs": 12.9,
+                "frameSerial": 16,
+                "totalMs": 12.6,
                 "slowestStage": {
                   "name": "evidence-exposure",
-                  "elapsedMs": 12.7
+                  "elapsedMs": 12.4
                 }
               }
             },
             {
               "pollCount": 3,
-              "pollDurationMs": 7771,
-              "elapsedMs": 8010,
+              "pollDurationMs": 8129,
+              "elapsedMs": 8352,
               "ready": true,
               "blockers": [],
               "observedAppFrame": {
-                "frameSerial": 38,
-                "totalMs": 7849.4,
+                "frameSerial": 18,
+                "totalMs": 8201.1,
                 "slowestStage": {
                   "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                  "elapsedMs": 4701.3
+                  "elapsedMs": 4929.8
                 }
               }
             }
@@ -4466,15 +4466,15 @@
             "ready": true,
             "blockers": [],
             "pollCount": 3,
-            "pollDurationMs": 7771,
-            "elapsedMs": 8010,
+            "pollDurationMs": 8129,
+            "elapsedMs": 8352,
             "evidenceSource": "compact-readiness",
             "observedAppFrame": {
-              "frameSerial": 38,
-              "totalMs": 7849.4,
+              "frameSerial": 18,
+              "totalMs": 8201.1,
               "slowestStage": {
                 "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                "elapsedMs": 4701.3
+                "elapsedMs": 4929.8
               }
             },
             "expectedRendererLabel": "tile-local-visible",
@@ -4494,23 +4494,23 @@
             "failedPolls": 2,
             "slowestPoll": {
               "pollCount": 3,
-              "pollDurationMs": 7771,
-              "elapsedMs": 8010,
+              "pollDurationMs": 8129,
+              "elapsedMs": 8352,
               "ready": true,
               "blockers": [],
               "observedAppFrame": {
-                "frameSerial": 38,
-                "totalMs": 7849.4,
+                "frameSerial": 18,
+                "totalMs": 8201.1,
                 "slowestStage": {
                   "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                  "elapsedMs": 4701.3
+                  "elapsedMs": 4929.8
                 }
               }
             },
             "lastFailedPoll": {
               "pollCount": 2,
-              "pollDurationMs": 14,
-              "elapsedMs": 134,
+              "pollDurationMs": 4,
+              "elapsedMs": 121,
               "blockers": [
                 "visual-smoke-not-ready"
               ]
@@ -4521,50 +4521,50 @@
             "pollHistory": [
               {
                 "pollCount": 1,
-                "pollDurationMs": 17,
-                "elapsedMs": 17,
+                "pollDurationMs": 14,
+                "elapsedMs": 14,
                 "ready": false,
                 "blockers": [
                   "visual-smoke-not-ready"
                 ],
                 "observedAppFrame": {
-                  "frameSerial": 26,
-                  "totalMs": 11.9,
+                  "frameSerial": 15,
+                  "totalMs": 12.4,
                   "slowestStage": {
                     "name": "evidence-exposure",
-                    "elapsedMs": 11.7
+                    "elapsedMs": 12.1
                   }
                 }
               },
               {
                 "pollCount": 2,
-                "pollDurationMs": 14,
-                "elapsedMs": 134,
+                "pollDurationMs": 4,
+                "elapsedMs": 121,
                 "ready": false,
                 "blockers": [
                   "visual-smoke-not-ready"
                 ],
                 "observedAppFrame": {
-                  "frameSerial": 35,
-                  "totalMs": 12.9,
+                  "frameSerial": 16,
+                  "totalMs": 12.6,
                   "slowestStage": {
                     "name": "evidence-exposure",
-                    "elapsedMs": 12.7
+                    "elapsedMs": 12.4
                   }
                 }
               },
               {
                 "pollCount": 3,
-                "pollDurationMs": 7771,
-                "elapsedMs": 8010,
+                "pollDurationMs": 8129,
+                "elapsedMs": 8352,
                 "ready": true,
                 "blockers": [],
                 "observedAppFrame": {
-                  "frameSerial": 38,
-                  "totalMs": 7849.4,
+                  "frameSerial": 18,
+                  "totalMs": 8201.1,
                   "slowestStage": {
                     "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                    "elapsedMs": 4701.3
+                    "elapsedMs": 4929.8
                   }
                 }
               }
@@ -4721,51 +4721,51 @@
         }
       ],
       "timing": {
-        "totalMs": 19491,
+        "totalMs": 21527,
         "stages": [
           {
             "name": "apply-view",
-            "elapsedMs": 6
+            "elapsedMs": 12
           },
           {
             "name": "view-readiness",
-            "elapsedMs": 7202
+            "elapsedMs": 7503
           },
           {
             "name": "settle-before-interaction",
-            "elapsedMs": 2002
+            "elapsedMs": 2003
           },
           {
             "name": "interactions",
-            "elapsedMs": 4
+            "elapsedMs": 2
           },
           {
             "name": "interaction-readiness",
-            "elapsedMs": 7696
+            "elapsedMs": 8757
           },
           {
             "name": "settle-after-interaction",
-            "elapsedMs": 2002
+            "elapsedMs": 2001
           },
           {
             "name": "collect-settled-evidence",
-            "elapsedMs": 7
+            "elapsedMs": 8
           },
           {
             "name": "screenshot",
-            "elapsedMs": 99
+            "elapsedMs": 825
           },
           {
             "name": "image-analysis",
-            "elapsedMs": 324
+            "elapsedMs": 385
           },
           {
             "name": "trace-canvas-parity",
-            "elapsedMs": 149
+            "elapsedMs": 30
           },
           {
             "name": "classify-smoke",
-            "elapsedMs": 0
+            "elapsedMs": 1
           },
           {
             "name": "witness-diagnostics",
@@ -4962,12 +4962,12 @@
             "maxRefsPerTile": 256,
             "tileCount": 3600,
             "tileCapacity": 256,
-            "frameId": 47
+            "frameId": 24
           },
           "refStatsReadback": {
             "status": "present",
             "source": "gpu-tile-header-and-scatter-readback",
-            "frameId": 47,
+            "frameId": 24,
             "tileCount": 3600,
             "tileCapacity": 256,
             "allocatedRefs": 921600,
@@ -5074,7 +5074,7 @@
           "freshness": {
             "status": "current",
             "cachedFrameAgeMs": 0,
-            "cachedFrame": 47,
+            "cachedFrame": 24,
             "currentFrameSignature": "tile-local@05bf5e45",
             "cachedFrameSignature": "tile-local@05bf5e45"
           },
@@ -5159,7 +5159,7 @@
               "payloadEncoding": "source-frontier-score",
               "falseClosureGuard": "source-frontier-ref-stats-readback-is-row-accounting-not-payload-readback",
               "rowFields": [],
-              "frameId": 47,
+              "frameId": 24,
               "tileCount": 3600,
               "retainedBudgetRefs": 921600,
               "maxRefsPerTile": 256,
@@ -5266,7 +5266,7 @@
               "readback": {
                 "status": "present",
                 "source": "wgsl-production-election-prefix-scatter-readback",
-                "frameId": 47,
+                "frameId": 24,
                 "recordCount": 962721,
                 "groupCount": 30192,
                 "retainedRecordCount": 340087,
@@ -5601,9 +5601,9 @@
             },
             "dispatchCache": {
               "tileIndex": 5343,
-              "clearFrameId": 47,
-              "buildFrameId": 47,
-              "compositeFrameId": 47,
+              "clearFrameId": 24,
+              "buildFrameId": 24,
+              "compositeFrameId": 24,
               "tileY": 65,
               "tileSpan": {
                 "minTileX": 139,
@@ -5612,7 +5612,7 @@
                 "maxTileY": 66
               },
               "cacheState": "current",
-              "presentationFrameId": 47,
+              "presentationFrameId": 24,
               "rowDispatchState": {
                 "tileCoveredByClear": false,
                 "tileCoveredByBuild": false,
@@ -5648,7 +5648,7 @@
           "prefixScatterReadback": {
             "status": "present",
             "source": "wgsl-production-election-prefix-scatter-readback",
-            "frameId": 47,
+            "frameId": 24,
             "recordCount": 962721,
             "groupCount": 30192,
             "retainedRecordCount": 340087,
@@ -5676,10 +5676,14 @@
         "operatorWitness": {
           "witnessView": "dessert-porous-close",
           "revision": 5,
-          "frameSerial": 48,
+          "frameSerial": 24,
           "frameTimings": {
-            "totalMs": 40.6,
+            "totalMs": 7840.2,
             "stages": [
+              {
+                "name": "alpha-density",
+                "elapsedMs": 394.6
+              },
               {
                 "name": "frame-uniforms",
                 "elapsedMs": 0
@@ -5687,6 +5691,26 @@
               {
                 "name": "uniform-upload",
                 "elapsedMs": 0
+              },
+              {
+                "name": "wgsl-source-frontier-project-splats",
+                "elapsedMs": 39.5
+              },
+              {
+                "name": "wgsl-source-frontier-estimate-ref-budget",
+                "elapsedMs": 5.9
+              },
+              {
+                "name": "wgsl-source-frontier-pack-candidate-source-inputs",
+                "elapsedMs": 4619.3
+              },
+              {
+                "name": "wgsl-source-frontier-production-election-runtime",
+                "elapsedMs": 1406.2
+              },
+              {
+                "name": "tile-local-dispatch-encode",
+                "elapsedMs": 0.4
               },
               {
                 "name": "queue-submit",
@@ -5698,12 +5722,12 @@
               },
               {
                 "name": "evidence-exposure",
-                "elapsedMs": 40.2
+                "elapsedMs": 44.3
               }
             ]
           }
         },
-        "statsText": "1280×720 | 1 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-gaussian-compositor | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 76,480 splats/296 tiles | tile-local: 80x45 tiles/340087 refs | tile-local live refs: gpu-tile-header-and-scatter-readback | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | visible-compositor cap: 256 refs | tile-order: gpu-sorted-index-rank-inversion | retained-source: wgsl-projected-ref-stream-source-frontier->tile-local-visible-gaussian-compositor | projected-stream: wgsl-projected-ref-stream-source-frontier | arena requested: gpu | arena effective: gpu | arena GPU dispatch enqueue: 0.000ms | render: 0.04ms",
+        "statsText": "1280×720 | 3 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-gaussian-compositor | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 76,480 splats/296 tiles | tile-local: 80x45 tiles/340,087 refs | tile-local live refs: gpu-tile-header-and-scatter-readback | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | visible-compositor cap: 256 refs | tile-order: gpu-sorted-index-rank-inversion | retained-source: wgsl-projected-ref-stream-source-frontier->tile-local-visible-gaussian-compositor | projected-stream: wgsl-projected-ref-stream-source-frontier | arena requested: gpu | arena effective: gpu | arena GPU dispatch enqueue: 0.000ms | render: 133.66ms",
         "title": "Deferred Splat+Mesh Renderer",
         "canvas": {
           "width": 1280,
@@ -5711,7 +5735,7 @@
           "clientWidth": 1280,
           "clientHeight": 720
         },
-        "fps": 1,
+        "fps": 3,
         "arenaRuntime": {
           "requestedArenaBackend": "gpu",
           "effectiveArenaBackend": "gpu",
@@ -5720,16 +5744,16 @@
         "readinessDiagnostics": {
           "ready": true,
           "blockers": [],
-          "pollCount": 3,
-          "pollDurationMs": 7453,
-          "elapsedMs": 7696,
+          "pollCount": 8,
+          "pollDurationMs": 7793,
+          "elapsedMs": 8757,
           "evidenceSource": "compact-readiness",
           "observedAppFrame": {
-            "frameSerial": 47,
-            "totalMs": 7526.6,
+            "frameSerial": 24,
+            "totalMs": 7840.2,
             "slowestStage": {
               "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-              "elapsedMs": 4655.9
+              "elapsedMs": 4619.3
             }
           },
           "expectedRendererLabel": "tile-local-visible",
@@ -5746,26 +5770,26 @@
             "debugMode": "final-color",
             "requiredDebugMode": ""
           },
-          "failedPolls": 2,
+          "failedPolls": 7,
           "slowestPoll": {
-            "pollCount": 3,
-            "pollDurationMs": 7453,
-            "elapsedMs": 7696,
+            "pollCount": 8,
+            "pollDurationMs": 7793,
+            "elapsedMs": 8757,
             "ready": true,
             "blockers": [],
             "observedAppFrame": {
-              "frameSerial": 47,
-              "totalMs": 7526.6,
+              "frameSerial": 24,
+              "totalMs": 7840.2,
               "slowestStage": {
                 "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                "elapsedMs": 4655.9
+                "elapsedMs": 4619.3
               }
             }
           },
           "lastFailedPoll": {
-            "pollCount": 2,
-            "pollDurationMs": 8,
-            "elapsedMs": 142,
+            "pollCount": 7,
+            "pollDurationMs": 3,
+            "elapsedMs": 856,
             "blockers": [
               "visual-smoke-not-ready"
             ]
@@ -5775,51 +5799,85 @@
           ],
           "pollHistory": [
             {
-              "pollCount": 1,
-              "pollDurationMs": 31,
-              "elapsedMs": 31,
+              "pollCount": 4,
+              "pollDurationMs": 60,
+              "elapsedMs": 508,
               "ready": false,
               "blockers": [
                 "visual-smoke-not-ready"
               ],
               "observedAppFrame": {
-                "frameSerial": 41,
-                "totalMs": 28,
+                "frameSerial": 23,
+                "totalMs": 25.7,
                 "slowestStage": {
                   "name": "evidence-exposure",
-                  "elapsedMs": 26.7
+                  "elapsedMs": 25.4
                 }
               }
             },
             {
-              "pollCount": 2,
-              "pollDurationMs": 8,
-              "elapsedMs": 142,
+              "pollCount": 5,
+              "pollDurationMs": 3,
+              "elapsedMs": 613,
               "ready": false,
               "blockers": [
                 "visual-smoke-not-ready"
               ],
               "observedAppFrame": {
-                "frameSerial": 45,
-                "totalMs": 26.5,
+                "frameSerial": 23,
+                "totalMs": 25.7,
                 "slowestStage": {
                   "name": "evidence-exposure",
-                  "elapsedMs": 26.3
+                  "elapsedMs": 25.4
                 }
               }
             },
             {
-              "pollCount": 3,
-              "pollDurationMs": 7453,
-              "elapsedMs": 7696,
+              "pollCount": 6,
+              "pollDurationMs": 34,
+              "elapsedMs": 749,
+              "ready": false,
+              "blockers": [
+                "visual-smoke-not-ready"
+              ],
+              "observedAppFrame": {
+                "frameSerial": 23,
+                "totalMs": 25.7,
+                "slowestStage": {
+                  "name": "evidence-exposure",
+                  "elapsedMs": 25.4
+                }
+              }
+            },
+            {
+              "pollCount": 7,
+              "pollDurationMs": 3,
+              "elapsedMs": 856,
+              "ready": false,
+              "blockers": [
+                "visual-smoke-not-ready"
+              ],
+              "observedAppFrame": {
+                "frameSerial": 23,
+                "totalMs": 25.7,
+                "slowestStage": {
+                  "name": "evidence-exposure",
+                  "elapsedMs": 25.4
+                }
+              }
+            },
+            {
+              "pollCount": 8,
+              "pollDurationMs": 7793,
+              "elapsedMs": 8757,
               "ready": true,
               "blockers": [],
               "observedAppFrame": {
-                "frameSerial": 47,
-                "totalMs": 7526.6,
+                "frameSerial": 24,
+                "totalMs": 7840.2,
                 "slowestStage": {
                   "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                  "elapsedMs": 4655.9
+                  "elapsedMs": 4619.3
                 }
               }
             }
@@ -6016,15 +6074,15 @@
             "ready": true,
             "blockers": [],
             "pollCount": 1,
-            "pollDurationMs": 7201,
-            "elapsedMs": 7202,
+            "pollDurationMs": 7502,
+            "elapsedMs": 7503,
             "evidenceSource": "compact-readiness",
             "observedAppFrame": {
-              "frameSerial": 40,
-              "totalMs": 7198.5,
+              "frameSerial": 20,
+              "totalMs": 7509.9,
               "slowestStage": {
                 "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                "elapsedMs": 4612.5
+                "elapsedMs": 4495.6
               }
             },
             "expectedRendererLabel": "tile-local-visible",
@@ -6044,16 +6102,16 @@
             "failedPolls": 0,
             "slowestPoll": {
               "pollCount": 1,
-              "pollDurationMs": 7201,
-              "elapsedMs": 7202,
+              "pollDurationMs": 7502,
+              "elapsedMs": 7503,
               "ready": true,
               "blockers": [],
               "observedAppFrame": {
-                "frameSerial": 40,
-                "totalMs": 7198.5,
+                "frameSerial": 20,
+                "totalMs": 7509.9,
                 "slowestStage": {
                   "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                  "elapsedMs": 4612.5
+                  "elapsedMs": 4495.6
                 }
               }
             },
@@ -6061,16 +6119,16 @@
             "pollHistory": [
               {
                 "pollCount": 1,
-                "pollDurationMs": 7201,
-                "elapsedMs": 7202,
+                "pollDurationMs": 7502,
+                "elapsedMs": 7503,
                 "ready": true,
                 "blockers": [],
                 "observedAppFrame": {
-                  "frameSerial": 40,
-                  "totalMs": 7198.5,
+                  "frameSerial": 20,
+                  "totalMs": 7509.9,
                   "slowestStage": {
                     "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                    "elapsedMs": 4612.5
+                    "elapsedMs": 4495.6
                   }
                 }
               }
@@ -6079,16 +6137,16 @@
           "interactionReadiness": {
             "ready": true,
             "blockers": [],
-            "pollCount": 3,
-            "pollDurationMs": 7453,
-            "elapsedMs": 7696,
+            "pollCount": 8,
+            "pollDurationMs": 7793,
+            "elapsedMs": 8757,
             "evidenceSource": "compact-readiness",
             "observedAppFrame": {
-              "frameSerial": 47,
-              "totalMs": 7526.6,
+              "frameSerial": 24,
+              "totalMs": 7840.2,
               "slowestStage": {
                 "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                "elapsedMs": 4655.9
+                "elapsedMs": 4619.3
               }
             },
             "expectedRendererLabel": "tile-local-visible",
@@ -6105,26 +6163,26 @@
               "debugMode": "final-color",
               "requiredDebugMode": ""
             },
-            "failedPolls": 2,
+            "failedPolls": 7,
             "slowestPoll": {
-              "pollCount": 3,
-              "pollDurationMs": 7453,
-              "elapsedMs": 7696,
+              "pollCount": 8,
+              "pollDurationMs": 7793,
+              "elapsedMs": 8757,
               "ready": true,
               "blockers": [],
               "observedAppFrame": {
-                "frameSerial": 47,
-                "totalMs": 7526.6,
+                "frameSerial": 24,
+                "totalMs": 7840.2,
                 "slowestStage": {
                   "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                  "elapsedMs": 4655.9
+                  "elapsedMs": 4619.3
                 }
               }
             },
             "lastFailedPoll": {
-              "pollCount": 2,
-              "pollDurationMs": 8,
-              "elapsedMs": 142,
+              "pollCount": 7,
+              "pollDurationMs": 3,
+              "elapsedMs": 856,
               "blockers": [
                 "visual-smoke-not-ready"
               ]
@@ -6134,51 +6192,85 @@
             ],
             "pollHistory": [
               {
-                "pollCount": 1,
-                "pollDurationMs": 31,
-                "elapsedMs": 31,
+                "pollCount": 4,
+                "pollDurationMs": 60,
+                "elapsedMs": 508,
                 "ready": false,
                 "blockers": [
                   "visual-smoke-not-ready"
                 ],
                 "observedAppFrame": {
-                  "frameSerial": 41,
-                  "totalMs": 28,
+                  "frameSerial": 23,
+                  "totalMs": 25.7,
                   "slowestStage": {
                     "name": "evidence-exposure",
-                    "elapsedMs": 26.7
+                    "elapsedMs": 25.4
                   }
                 }
               },
               {
-                "pollCount": 2,
-                "pollDurationMs": 8,
-                "elapsedMs": 142,
+                "pollCount": 5,
+                "pollDurationMs": 3,
+                "elapsedMs": 613,
                 "ready": false,
                 "blockers": [
                   "visual-smoke-not-ready"
                 ],
                 "observedAppFrame": {
-                  "frameSerial": 45,
-                  "totalMs": 26.5,
+                  "frameSerial": 23,
+                  "totalMs": 25.7,
                   "slowestStage": {
                     "name": "evidence-exposure",
-                    "elapsedMs": 26.3
+                    "elapsedMs": 25.4
                   }
                 }
               },
               {
-                "pollCount": 3,
-                "pollDurationMs": 7453,
-                "elapsedMs": 7696,
+                "pollCount": 6,
+                "pollDurationMs": 34,
+                "elapsedMs": 749,
+                "ready": false,
+                "blockers": [
+                  "visual-smoke-not-ready"
+                ],
+                "observedAppFrame": {
+                  "frameSerial": 23,
+                  "totalMs": 25.7,
+                  "slowestStage": {
+                    "name": "evidence-exposure",
+                    "elapsedMs": 25.4
+                  }
+                }
+              },
+              {
+                "pollCount": 7,
+                "pollDurationMs": 3,
+                "elapsedMs": 856,
+                "ready": false,
+                "blockers": [
+                  "visual-smoke-not-ready"
+                ],
+                "observedAppFrame": {
+                  "frameSerial": 23,
+                  "totalMs": 25.7,
+                  "slowestStage": {
+                    "name": "evidence-exposure",
+                    "elapsedMs": 25.4
+                  }
+                }
+              },
+              {
+                "pollCount": 8,
+                "pollDurationMs": 7793,
+                "elapsedMs": 8757,
                 "ready": true,
                 "blockers": [],
                 "observedAppFrame": {
-                  "frameSerial": 47,
-                  "totalMs": 7526.6,
+                  "frameSerial": 24,
+                  "totalMs": 7840.2,
                   "slowestStage": {
                     "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                    "elapsedMs": 4655.9
+                    "elapsedMs": 4619.3
                   }
                 }
               }
@@ -6335,19 +6427,19 @@
         }
       ],
       "timing": {
-        "totalMs": 20199,
+        "totalMs": 21838,
         "stages": [
           {
             "name": "apply-view",
-            "elapsedMs": 11
+            "elapsedMs": 83
           },
           {
             "name": "view-readiness",
-            "elapsedMs": 7863
+            "elapsedMs": 8178
           },
           {
             "name": "settle-before-interaction",
-            "elapsedMs": 2001
+            "elapsedMs": 2002
           },
           {
             "name": "interactions",
@@ -6355,27 +6447,27 @@
           },
           {
             "name": "interaction-readiness",
-            "elapsedMs": 7745
+            "elapsedMs": 8760
           },
           {
             "name": "settle-after-interaction",
-            "elapsedMs": 2001
+            "elapsedMs": 2015
           },
           {
             "name": "collect-settled-evidence",
-            "elapsedMs": 9
+            "elapsedMs": 32
           },
           {
             "name": "screenshot",
-            "elapsedMs": 134
+            "elapsedMs": 348
           },
           {
             "name": "image-analysis",
-            "elapsedMs": 300
+            "elapsedMs": 351
           },
           {
             "name": "trace-canvas-parity",
-            "elapsedMs": 132
+            "elapsedMs": 65
           },
           {
             "name": "classify-smoke",
@@ -6576,12 +6668,12 @@
             "maxRefsPerTile": 256,
             "tileCount": 3600,
             "tileCapacity": 256,
-            "frameId": 60
+            "frameId": 34
           },
           "refStatsReadback": {
             "status": "present",
             "source": "gpu-tile-header-and-scatter-readback",
-            "frameId": 60,
+            "frameId": 34,
             "tileCount": 3600,
             "tileCapacity": 256,
             "allocatedRefs": 921600,
@@ -6688,7 +6780,7 @@
           "freshness": {
             "status": "current",
             "cachedFrameAgeMs": 0,
-            "cachedFrame": 60,
+            "cachedFrame": 34,
             "currentFrameSignature": "tile-local@83f4576f",
             "cachedFrameSignature": "tile-local@83f4576f"
           },
@@ -6773,7 +6865,7 @@
               "payloadEncoding": "source-frontier-score",
               "falseClosureGuard": "source-frontier-ref-stats-readback-is-row-accounting-not-payload-readback",
               "rowFields": [],
-              "frameId": 60,
+              "frameId": 34,
               "tileCount": 3600,
               "retainedBudgetRefs": 921600,
               "maxRefsPerTile": 256,
@@ -6880,7 +6972,7 @@
               "readback": {
                 "status": "present",
                 "source": "wgsl-production-election-prefix-scatter-readback",
-                "frameId": 60,
+                "frameId": 34,
                 "recordCount": 857076,
                 "groupCount": 27101,
                 "retainedRecordCount": 302509,
@@ -7215,9 +7307,9 @@
             },
             "dispatchCache": {
               "tileIndex": 5343,
-              "clearFrameId": 60,
-              "buildFrameId": 60,
-              "compositeFrameId": 60,
+              "clearFrameId": 34,
+              "buildFrameId": 34,
+              "compositeFrameId": 34,
               "tileY": 65,
               "tileSpan": {
                 "minTileX": 139,
@@ -7226,7 +7318,7 @@
                 "maxTileY": 66
               },
               "cacheState": "current",
-              "presentationFrameId": 60,
+              "presentationFrameId": 34,
               "rowDispatchState": {
                 "tileCoveredByClear": false,
                 "tileCoveredByBuild": false,
@@ -7262,7 +7354,7 @@
           "prefixScatterReadback": {
             "status": "present",
             "source": "wgsl-production-election-prefix-scatter-readback",
-            "frameId": 60,
+            "frameId": 34,
             "recordCount": 857076,
             "groupCount": 27101,
             "retainedRecordCount": 302509,
@@ -7290,9 +7382,9 @@
         "operatorWitness": {
           "witnessView": "dessert-porous-close",
           "revision": 7,
-          "frameSerial": 61,
+          "frameSerial": 35,
           "frameTimings": {
-            "totalMs": 22.1,
+            "totalMs": 30.4,
             "stages": [
               {
                 "name": "frame-uniforms",
@@ -7300,11 +7392,11 @@
               },
               {
                 "name": "uniform-upload",
-                "elapsedMs": 0.1
+                "elapsedMs": 0
               },
               {
                 "name": "queue-submit",
-                "elapsedMs": 0
+                "elapsedMs": 0.1
               },
               {
                 "name": "tile-local-readback-resolve",
@@ -7312,12 +7404,12 @@
               },
               {
                 "name": "evidence-exposure",
-                "elapsedMs": 21.8
+                "elapsedMs": 30.2
               }
             ]
           }
         },
-        "statsText": "1280×720 | 1 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-gaussian-compositor | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 79,770 splats/284 tiles | tile-local: 80x45 tiles/302509 refs | tile-local live refs: gpu-tile-header-and-scatter-readback | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | visible-compositor cap: 256 refs | tile-order: gpu-sorted-index-rank-inversion | retained-source: wgsl-projected-ref-stream-source-frontier->tile-local-visible-gaussian-compositor | projected-stream: wgsl-projected-ref-stream-source-frontier | arena requested: gpu | arena effective: gpu | arena GPU dispatch enqueue: 0.000ms | render: 0.03ms",
+        "statsText": "1280×720 | 1 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-gaussian-compositor | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 79,770 splats/284 tiles | tile-local: 80x45 tiles/302,509 refs | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | visible-compositor cap: 256 refs | tile-order: gpu-sorted-index-rank-inversion | retained-source: wgsl-projected-ref-stream-source-frontier->tile-local-visible-gaussian-compositor | projected-stream: wgsl-projected-ref-stream-source-frontier | arena requested: gpu | arena effective: gpu | arena GPU dispatch enqueue: 0.100ms | render: 3.50ms | tile-local live refs: gpu-tile-header-and-scatter-readback",
         "title": "Deferred Splat+Mesh Renderer",
         "canvas": {
           "width": 1280,
@@ -7329,21 +7421,21 @@
         "arenaRuntime": {
           "requestedArenaBackend": "gpu",
           "effectiveArenaBackend": "gpu",
-          "gpuDispatchEnqueueDurationMs": 0
+          "gpuDispatchEnqueueDurationMs": 0.1
         },
         "readinessDiagnostics": {
           "ready": true,
           "blockers": [],
-          "pollCount": 3,
-          "pollDurationMs": 7501,
-          "elapsedMs": 7745,
+          "pollCount": 2,
+          "pollDurationMs": 8590,
+          "elapsedMs": 8760,
           "evidenceSource": "compact-readiness",
           "observedAppFrame": {
-            "frameSerial": 60,
-            "totalMs": 7562.5,
+            "frameSerial": 34,
+            "totalMs": 8549.2,
             "slowestStage": {
               "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-              "elapsedMs": 4529.3
+              "elapsedMs": 5648.4
             }
           },
           "expectedRendererLabel": "tile-local-visible",
@@ -7360,26 +7452,26 @@
             "debugMode": "final-color",
             "requiredDebugMode": ""
           },
-          "failedPolls": 2,
+          "failedPolls": 1,
           "slowestPoll": {
-            "pollCount": 3,
-            "pollDurationMs": 7501,
-            "elapsedMs": 7745,
+            "pollCount": 2,
+            "pollDurationMs": 8590,
+            "elapsedMs": 8760,
             "ready": true,
             "blockers": [],
             "observedAppFrame": {
-              "frameSerial": 60,
-              "totalMs": 7562.5,
+              "frameSerial": 34,
+              "totalMs": 8549.2,
               "slowestStage": {
                 "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                "elapsedMs": 4529.3
+                "elapsedMs": 5648.4
               }
             }
           },
           "lastFailedPoll": {
-            "pollCount": 2,
-            "pollDurationMs": 10,
-            "elapsedMs": 143,
+            "pollCount": 1,
+            "pollDurationMs": 63,
+            "elapsedMs": 63,
             "blockers": [
               "visual-smoke-not-ready"
             ]
@@ -7390,50 +7482,33 @@
           "pollHistory": [
             {
               "pollCount": 1,
-              "pollDurationMs": 31,
-              "elapsedMs": 31,
+              "pollDurationMs": 63,
+              "elapsedMs": 63,
               "ready": false,
               "blockers": [
                 "visual-smoke-not-ready"
               ],
               "observedAppFrame": {
-                "frameSerial": 55,
-                "totalMs": 30.9,
+                "frameSerial": 30,
+                "totalMs": 30.6,
                 "slowestStage": {
                   "name": "evidence-exposure",
-                  "elapsedMs": 30.2
+                  "elapsedMs": 29.7
                 }
               }
             },
             {
               "pollCount": 2,
-              "pollDurationMs": 10,
-              "elapsedMs": 143,
-              "ready": false,
-              "blockers": [
-                "visual-smoke-not-ready"
-              ],
-              "observedAppFrame": {
-                "frameSerial": 58,
-                "totalMs": 36.9,
-                "slowestStage": {
-                  "name": "evidence-exposure",
-                  "elapsedMs": 36.6
-                }
-              }
-            },
-            {
-              "pollCount": 3,
-              "pollDurationMs": 7501,
-              "elapsedMs": 7745,
+              "pollDurationMs": 8590,
+              "elapsedMs": 8760,
               "ready": true,
               "blockers": [],
               "observedAppFrame": {
-                "frameSerial": 60,
-                "totalMs": 7562.5,
+                "frameSerial": 34,
+                "totalMs": 8549.2,
                 "slowestStage": {
                   "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                  "elapsedMs": 4529.3
+                  "elapsedMs": 5648.4
                 }
               }
             }
@@ -7630,15 +7705,15 @@
             "ready": true,
             "blockers": [],
             "pollCount": 3,
-            "pollDurationMs": 7607,
-            "elapsedMs": 7863,
+            "pollDurationMs": 7938,
+            "elapsedMs": 8178,
             "evidenceSource": "compact-readiness",
             "observedAppFrame": {
-              "frameSerial": 53,
-              "totalMs": 7708.7,
+              "frameSerial": 28,
+              "totalMs": 8030.9,
               "slowestStage": {
                 "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                "elapsedMs": 4499.8
+                "elapsedMs": 4820.4
               }
             },
             "expectedRendererLabel": "tile-local-visible",
@@ -7658,23 +7733,23 @@
             "failedPolls": 2,
             "slowestPoll": {
               "pollCount": 3,
-              "pollDurationMs": 7607,
-              "elapsedMs": 7863,
+              "pollDurationMs": 7938,
+              "elapsedMs": 8178,
               "ready": true,
               "blockers": [],
               "observedAppFrame": {
-                "frameSerial": 53,
-                "totalMs": 7708.7,
+                "frameSerial": 28,
+                "totalMs": 8030.9,
                 "slowestStage": {
                   "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                  "elapsedMs": 4499.8
+                  "elapsedMs": 4820.4
                 }
               }
             },
             "lastFailedPoll": {
               "pollCount": 2,
-              "pollDurationMs": 19,
-              "elapsedMs": 154,
+              "pollDurationMs": 5,
+              "elapsedMs": 138,
               "blockers": [
                 "visual-smoke-not-ready"
               ]
@@ -7685,50 +7760,50 @@
             "pollHistory": [
               {
                 "pollCount": 1,
-                "pollDurationMs": 33,
-                "elapsedMs": 34,
+                "pollDurationMs": 30,
+                "elapsedMs": 30,
                 "ready": false,
                 "blockers": [
                   "visual-smoke-not-ready"
                 ],
                 "observedAppFrame": {
-                  "frameSerial": 49,
-                  "totalMs": 39.5,
+                  "frameSerial": 25,
+                  "totalMs": 32.1,
                   "slowestStage": {
                     "name": "evidence-exposure",
-                    "elapsedMs": 38.7
+                    "elapsedMs": 31.1
                   }
                 }
               },
               {
                 "pollCount": 2,
-                "pollDurationMs": 19,
-                "elapsedMs": 154,
+                "pollDurationMs": 5,
+                "elapsedMs": 138,
                 "ready": false,
                 "blockers": [
                   "visual-smoke-not-ready"
                 ],
                 "observedAppFrame": {
-                  "frameSerial": 52,
-                  "totalMs": 39.3,
+                  "frameSerial": 27,
+                  "totalMs": 35,
                   "slowestStage": {
                     "name": "evidence-exposure",
-                    "elapsedMs": 39
+                    "elapsedMs": 34.8
                   }
                 }
               },
               {
                 "pollCount": 3,
-                "pollDurationMs": 7607,
-                "elapsedMs": 7863,
+                "pollDurationMs": 7938,
+                "elapsedMs": 8178,
                 "ready": true,
                 "blockers": [],
                 "observedAppFrame": {
-                  "frameSerial": 53,
-                  "totalMs": 7708.7,
+                  "frameSerial": 28,
+                  "totalMs": 8030.9,
                   "slowestStage": {
                     "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                    "elapsedMs": 4499.8
+                    "elapsedMs": 4820.4
                   }
                 }
               }
@@ -7737,16 +7812,16 @@
           "interactionReadiness": {
             "ready": true,
             "blockers": [],
-            "pollCount": 3,
-            "pollDurationMs": 7501,
-            "elapsedMs": 7745,
+            "pollCount": 2,
+            "pollDurationMs": 8590,
+            "elapsedMs": 8760,
             "evidenceSource": "compact-readiness",
             "observedAppFrame": {
-              "frameSerial": 60,
-              "totalMs": 7562.5,
+              "frameSerial": 34,
+              "totalMs": 8549.2,
               "slowestStage": {
                 "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                "elapsedMs": 4529.3
+                "elapsedMs": 5648.4
               }
             },
             "expectedRendererLabel": "tile-local-visible",
@@ -7763,26 +7838,26 @@
               "debugMode": "final-color",
               "requiredDebugMode": ""
             },
-            "failedPolls": 2,
+            "failedPolls": 1,
             "slowestPoll": {
-              "pollCount": 3,
-              "pollDurationMs": 7501,
-              "elapsedMs": 7745,
+              "pollCount": 2,
+              "pollDurationMs": 8590,
+              "elapsedMs": 8760,
               "ready": true,
               "blockers": [],
               "observedAppFrame": {
-                "frameSerial": 60,
-                "totalMs": 7562.5,
+                "frameSerial": 34,
+                "totalMs": 8549.2,
                 "slowestStage": {
                   "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                  "elapsedMs": 4529.3
+                  "elapsedMs": 5648.4
                 }
               }
             },
             "lastFailedPoll": {
-              "pollCount": 2,
-              "pollDurationMs": 10,
-              "elapsedMs": 143,
+              "pollCount": 1,
+              "pollDurationMs": 63,
+              "elapsedMs": 63,
               "blockers": [
                 "visual-smoke-not-ready"
               ]
@@ -7793,50 +7868,33 @@
             "pollHistory": [
               {
                 "pollCount": 1,
-                "pollDurationMs": 31,
-                "elapsedMs": 31,
+                "pollDurationMs": 63,
+                "elapsedMs": 63,
                 "ready": false,
                 "blockers": [
                   "visual-smoke-not-ready"
                 ],
                 "observedAppFrame": {
-                  "frameSerial": 55,
-                  "totalMs": 30.9,
+                  "frameSerial": 30,
+                  "totalMs": 30.6,
                   "slowestStage": {
                     "name": "evidence-exposure",
-                    "elapsedMs": 30.2
+                    "elapsedMs": 29.7
                   }
                 }
               },
               {
                 "pollCount": 2,
-                "pollDurationMs": 10,
-                "elapsedMs": 143,
-                "ready": false,
-                "blockers": [
-                  "visual-smoke-not-ready"
-                ],
-                "observedAppFrame": {
-                  "frameSerial": 58,
-                  "totalMs": 36.9,
-                  "slowestStage": {
-                    "name": "evidence-exposure",
-                    "elapsedMs": 36.6
-                  }
-                }
-              },
-              {
-                "pollCount": 3,
-                "pollDurationMs": 7501,
-                "elapsedMs": 7745,
+                "pollDurationMs": 8590,
+                "elapsedMs": 8760,
                 "ready": true,
                 "blockers": [],
                 "observedAppFrame": {
-                  "frameSerial": 60,
-                  "totalMs": 7562.5,
+                  "frameSerial": 34,
+                  "totalMs": 8549.2,
                   "slowestStage": {
                     "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                    "elapsedMs": 4529.3
+                    "elapsedMs": 5648.4
                   }
                 }
               }
@@ -7979,16 +8037,16 @@
     "initialReadiness": {
       "ready": true,
       "blockers": [],
-      "pollCount": 2,
-      "pollDurationMs": 3,
-      "elapsedMs": 4710,
+      "pollCount": 9,
+      "pollDurationMs": 6,
+      "elapsedMs": 6313,
       "evidenceSource": "compact-readiness",
       "observedAppFrame": {
         "frameSerial": 2,
-        "totalMs": 6.5,
+        "totalMs": 9.9,
         "slowestStage": {
           "name": "evidence-exposure",
-          "elapsedMs": 6.2
+          "elapsedMs": 9.4
         }
       },
       "expectedRendererLabel": "tile-local-visible",
@@ -8005,28 +8063,21 @@
         "debugMode": "final-color",
         "requiredDebugMode": ""
       },
-      "failedPolls": 1,
+      "failedPolls": 8,
       "slowestPoll": {
-        "pollCount": 1,
-        "pollDurationMs": 4603,
-        "elapsedMs": 4604,
+        "pollCount": 3,
+        "pollDurationMs": 2870,
+        "elapsedMs": 3330,
         "ready": false,
         "blockers": [
           "visual-smoke-not-ready"
         ],
-        "observedAppFrame": {
-          "frameSerial": 1,
-          "totalMs": 2082.1,
-          "slowestStage": {
-            "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-            "elapsedMs": 1641.6
-          }
-        }
+        "observedAppFrame": {}
       },
       "lastFailedPoll": {
-        "pollCount": 1,
-        "pollDurationMs": 4603,
-        "elapsedMs": 4604,
+        "pollCount": 8,
+        "pollDurationMs": 5,
+        "elapsedMs": 6204,
         "blockers": [
           "visual-smoke-not-ready"
         ]
@@ -8036,34 +8087,85 @@
       ],
       "pollHistory": [
         {
-          "pollCount": 1,
-          "pollDurationMs": 4603,
-          "elapsedMs": 4604,
+          "pollCount": 5,
+          "pollDurationMs": 15,
+          "elapsedMs": 5843,
           "ready": false,
           "blockers": [
             "visual-smoke-not-ready"
           ],
           "observedAppFrame": {
-            "frameSerial": 1,
-            "totalMs": 2082.1,
+            "frameSerial": 2,
+            "totalMs": 9.9,
             "slowestStage": {
-              "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-              "elapsedMs": 1641.6
+              "name": "evidence-exposure",
+              "elapsedMs": 9.4
             }
           }
         },
         {
-          "pollCount": 2,
-          "pollDurationMs": 3,
-          "elapsedMs": 4710,
+          "pollCount": 6,
+          "pollDurationMs": 4,
+          "elapsedMs": 5949,
+          "ready": false,
+          "blockers": [
+            "visual-smoke-not-ready"
+          ],
+          "observedAppFrame": {
+            "frameSerial": 2,
+            "totalMs": 9.9,
+            "slowestStage": {
+              "name": "evidence-exposure",
+              "elapsedMs": 9.4
+            }
+          }
+        },
+        {
+          "pollCount": 7,
+          "pollDurationMs": 14,
+          "elapsedMs": 6095,
+          "ready": false,
+          "blockers": [
+            "visual-smoke-not-ready"
+          ],
+          "observedAppFrame": {
+            "frameSerial": 2,
+            "totalMs": 9.9,
+            "slowestStage": {
+              "name": "evidence-exposure",
+              "elapsedMs": 9.4
+            }
+          }
+        },
+        {
+          "pollCount": 8,
+          "pollDurationMs": 5,
+          "elapsedMs": 6204,
+          "ready": false,
+          "blockers": [
+            "visual-smoke-not-ready"
+          ],
+          "observedAppFrame": {
+            "frameSerial": 2,
+            "totalMs": 9.9,
+            "slowestStage": {
+              "name": "evidence-exposure",
+              "elapsedMs": 9.4
+            }
+          }
+        },
+        {
+          "pollCount": 9,
+          "pollDurationMs": 6,
+          "elapsedMs": 6313,
           "ready": true,
           "blockers": [],
           "observedAppFrame": {
             "frameSerial": 2,
-            "totalMs": 6.5,
+            "totalMs": 9.9,
             "slowestStage": {
               "name": "evidence-exposure",
-              "elapsedMs": 6.2
+              "elapsedMs": 9.4
             }
           }
         }
@@ -8096,79 +8198,121 @@
       ],
       "contactSheetPath": "smoke-reports/readiness-frame-spine-bloodhound-0606/operator-witness-contact-sheet.png",
       "timing": {
-        "totalCaptureMs": 62799,
+        "totalCaptureMs": 67394,
         "slowestCapture": {
           "id": "porous-close-orbit-right",
-          "totalMs": 20199
+          "totalMs": 21838
         },
         "slowestStage": {
-          "captureId": "porous-close-final-color",
-          "name": "view-readiness",
-          "elapsedMs": 8010
+          "captureId": "porous-close-orbit-right",
+          "name": "interaction-readiness",
+          "elapsedMs": 8760
         },
         "slowestOperatorReadiness": {
-          "captureId": "porous-close-final-color",
-          "name": "view-readiness",
-          "elapsedMs": 8010,
+          "captureId": "porous-close-orbit-right",
+          "name": "interaction-readiness",
+          "elapsedMs": 8760,
           "observedAppFrame": {
-            "frameSerial": 38,
-            "totalMs": 7849.4,
+            "frameSerial": 34,
+            "totalMs": 8549.2,
             "slowestStage": {
               "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-              "elapsedMs": 4701.3
+              "elapsedMs": 5648.4
             }
           }
         },
         "slowestAppFrameStage": {
-          "captureId": "whole-render-final-color",
+          "captureId": "porous-close-orbit-left",
           "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-          "elapsedMs": 1441.9,
-          "frameSerial": 3
+          "elapsedMs": 4619.3,
+          "frameSerial": 24
         },
         "slowestAppFrameTotal": {
-          "captureId": "whole-render-final-color",
-          "elapsedMs": 1878,
-          "frameSerial": 3
+          "captureId": "porous-close-orbit-left",
+          "elapsedMs": 7840.2,
+          "frameSerial": 24
         },
         "operatorReadinessVsAppFrameStage": {
           "status": "operator-readiness-exceeds-app-frame-stage",
-          "readinessMs": 8010,
-          "appFrameStageMs": 1441.9,
-          "gapMs": 6568.1
+          "readinessMs": 8760,
+          "appFrameStageMs": 4619.3,
+          "gapMs": 4140.7
         },
         "operatorReadinessVsAppFrameTotal": {
           "status": "operator-readiness-exceeds-app-frame-total",
-          "readinessCaptureId": "porous-close-final-color",
-          "appFrameTotalCaptureId": "porous-close-final-color",
-          "readinessMs": 8010,
-          "appFrameTotalMs": 23.6,
-          "gapMs": 7986.4
+          "readinessCaptureId": "porous-close-orbit-right",
+          "appFrameTotalCaptureId": "porous-close-orbit-right",
+          "readinessMs": 8760,
+          "appFrameTotalMs": 30.4,
+          "gapMs": 8729.6
         },
         "operatorReadinessVsObservedAppFrameTotal": {
           "status": "operator-readiness-exceeds-app-frame-total",
-          "readinessCaptureId": "porous-close-final-color",
-          "appFrameTotalCaptureId": "porous-close-final-color",
-          "readinessMs": 8010,
-          "appFrameTotalMs": 7849.4,
-          "gapMs": 160.6,
-          "frameSerial": 38,
+          "readinessCaptureId": "porous-close-orbit-right",
+          "appFrameTotalCaptureId": "porous-close-orbit-right",
+          "readinessMs": 8760,
+          "appFrameTotalMs": 8549.2,
+          "gapMs": 210.8,
+          "frameSerial": 34,
           "slowestStage": {
             "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-            "elapsedMs": 4701.3
+            "elapsedMs": 5648.4
           }
         },
         "captures": [
           {
             "id": "whole-render-final-color",
-            "totalMs": 4267,
+            "totalMs": 4456,
             "stages": [
               {
                 "name": "apply-view",
-                "elapsedMs": 1
+                "elapsedMs": 2
               },
               {
                 "name": "view-readiness",
-                "elapsedMs": 1882
+                "elapsedMs": 2069
+              },
+              {
+                "name": "settle-before-interaction",
+                "elapsedMs": 2008
+              },
+              {
+                "name": "collect-settled-evidence",
+                "elapsedMs": 14
+              },
+              {
+                "name": "screenshot",
+                "elapsedMs": 93
+              },
+              {
+                "name": "image-analysis",
+                "elapsedMs": 241
+              },
+              {
+                "name": "trace-canvas-parity",
+                "elapsedMs": 28
+              },
+              {
+                "name": "classify-smoke",
+                "elapsedMs": 0
+              },
+              {
+                "name": "witness-diagnostics",
+                "elapsedMs": 1
+              }
+            ]
+          },
+          {
+            "id": "dessert-close-final-color",
+            "totalMs": 8335,
+            "stages": [
+              {
+                "name": "apply-view",
+                "elapsedMs": 12
+              },
+              {
+                "name": "view-readiness",
+                "elapsedMs": 5921
               },
               {
                 "name": "settle-before-interaction",
@@ -8176,15 +8320,57 @@
               },
               {
                 "name": "collect-settled-evidence",
-                "elapsedMs": 13
+                "elapsedMs": 8
               },
               {
                 "name": "screenshot",
-                "elapsedMs": 48
+                "elapsedMs": 147
               },
               {
                 "name": "image-analysis",
-                "elapsedMs": 249
+                "elapsedMs": 215
+              },
+              {
+                "name": "trace-canvas-parity",
+                "elapsedMs": 31
+              },
+              {
+                "name": "classify-smoke",
+                "elapsedMs": 0
+              },
+              {
+                "name": "witness-diagnostics",
+                "elapsedMs": 0
+              }
+            ]
+          },
+          {
+            "id": "porous-close-final-color",
+            "totalMs": 11238,
+            "stages": [
+              {
+                "name": "apply-view",
+                "elapsedMs": 25
+              },
+              {
+                "name": "view-readiness",
+                "elapsedMs": 8352
+              },
+              {
+                "name": "settle-before-interaction",
+                "elapsedMs": 2001
+              },
+              {
+                "name": "collect-settled-evidence",
+                "elapsedMs": 8
+              },
+              {
+                "name": "screenshot",
+                "elapsedMs": 414
+              },
+              {
+                "name": "image-analysis",
+                "elapsedMs": 365
               },
               {
                 "name": "trace-canvas-parity",
@@ -8201,20 +8387,32 @@
             ]
           },
           {
-            "id": "dessert-close-final-color",
-            "totalMs": 8173,
+            "id": "porous-close-orbit-left",
+            "totalMs": 21527,
             "stages": [
               {
                 "name": "apply-view",
-                "elapsedMs": 27
+                "elapsedMs": 12
               },
               {
                 "name": "view-readiness",
-                "elapsedMs": 5670
+                "elapsedMs": 7503
               },
               {
                 "name": "settle-before-interaction",
-                "elapsedMs": 2002
+                "elapsedMs": 2003
+              },
+              {
+                "name": "interactions",
+                "elapsedMs": 2
+              },
+              {
+                "name": "interaction-readiness",
+                "elapsedMs": 8757
+              },
+              {
+                "name": "settle-after-interaction",
+                "elapsedMs": 2001
               },
               {
                 "name": "collect-settled-evidence",
@@ -8222,115 +8420,19 @@
               },
               {
                 "name": "screenshot",
-                "elapsedMs": 87
+                "elapsedMs": 825
               },
               {
                 "name": "image-analysis",
-                "elapsedMs": 234
+                "elapsedMs": 385
               },
               {
                 "name": "trace-canvas-parity",
-                "elapsedMs": 145
+                "elapsedMs": 30
               },
               {
                 "name": "classify-smoke",
-                "elapsedMs": 0
-              },
-              {
-                "name": "witness-diagnostics",
-                "elapsedMs": 0
-              }
-            ]
-          },
-          {
-            "id": "porous-close-final-color",
-            "totalMs": 10669,
-            "stages": [
-              {
-                "name": "apply-view",
-                "elapsedMs": 31
-              },
-              {
-                "name": "view-readiness",
-                "elapsedMs": 8010
-              },
-              {
-                "name": "settle-before-interaction",
-                "elapsedMs": 2001
-              },
-              {
-                "name": "collect-settled-evidence",
-                "elapsedMs": 10
-              },
-              {
-                "name": "screenshot",
-                "elapsedMs": 122
-              },
-              {
-                "name": "image-analysis",
-                "elapsedMs": 400
-              },
-              {
-                "name": "trace-canvas-parity",
-                "elapsedMs": 95
-              },
-              {
-                "name": "classify-smoke",
-                "elapsedMs": 0
-              },
-              {
-                "name": "witness-diagnostics",
-                "elapsedMs": 0
-              }
-            ]
-          },
-          {
-            "id": "porous-close-orbit-left",
-            "totalMs": 19491,
-            "stages": [
-              {
-                "name": "apply-view",
-                "elapsedMs": 6
-              },
-              {
-                "name": "view-readiness",
-                "elapsedMs": 7202
-              },
-              {
-                "name": "settle-before-interaction",
-                "elapsedMs": 2002
-              },
-              {
-                "name": "interactions",
-                "elapsedMs": 4
-              },
-              {
-                "name": "interaction-readiness",
-                "elapsedMs": 7696
-              },
-              {
-                "name": "settle-after-interaction",
-                "elapsedMs": 2002
-              },
-              {
-                "name": "collect-settled-evidence",
-                "elapsedMs": 7
-              },
-              {
-                "name": "screenshot",
-                "elapsedMs": 99
-              },
-              {
-                "name": "image-analysis",
-                "elapsedMs": 324
-              },
-              {
-                "name": "trace-canvas-parity",
-                "elapsedMs": 149
-              },
-              {
-                "name": "classify-smoke",
-                "elapsedMs": 0
+                "elapsedMs": 1
               },
               {
                 "name": "witness-diagnostics",
@@ -8340,19 +8442,19 @@
           },
           {
             "id": "porous-close-orbit-right",
-            "totalMs": 20199,
+            "totalMs": 21838,
             "stages": [
               {
                 "name": "apply-view",
-                "elapsedMs": 11
+                "elapsedMs": 83
               },
               {
                 "name": "view-readiness",
-                "elapsedMs": 7863
+                "elapsedMs": 8178
               },
               {
                 "name": "settle-before-interaction",
-                "elapsedMs": 2001
+                "elapsedMs": 2002
               },
               {
                 "name": "interactions",
@@ -8360,27 +8462,27 @@
               },
               {
                 "name": "interaction-readiness",
-                "elapsedMs": 7745
+                "elapsedMs": 8760
               },
               {
                 "name": "settle-after-interaction",
-                "elapsedMs": 2001
+                "elapsedMs": 2015
               },
               {
                 "name": "collect-settled-evidence",
-                "elapsedMs": 9
+                "elapsedMs": 32
               },
               {
                 "name": "screenshot",
-                "elapsedMs": 134
+                "elapsedMs": 348
               },
               {
                 "name": "image-analysis",
-                "elapsedMs": 300
+                "elapsedMs": 351
               },
               {
                 "name": "trace-canvas-parity",
-                "elapsedMs": 132
+                "elapsedMs": 65
               },
               {
                 "name": "classify-smoke",

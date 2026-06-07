@@ -2054,7 +2054,16 @@ function formatReadinessDiagnostics(diagnostics) {
   const slowestPollObservedFrame = diagnostics.slowestPoll?.observedAppFrame && typeof diagnostics.slowestPoll.observedAppFrame === "object"
     ? diagnostics.slowestPoll.observedAppFrame.frameSerial ?? "not reported"
     : "not reported";
-  return `ready=${Boolean(diagnostics.ready)} source=${diagnostics.evidenceSource ?? "not reported"} polls=${diagnostics.pollCount ?? "not reported"} failed=${diagnostics.failedPolls ?? "not reported"} elapsed=${diagnostics.elapsedMs ?? "not reported"}ms slowestPoll=${slowestPoll} observedFrame=${observedFrame} observedFrameTotal=${observedFrameTotal}ms observedFrameSlowestStage=${observedFrameSlowestStage} slowestPollObservedFrame=${slowestPollObservedFrame} blockers=${blockers} lastFailed=${lastFailed}`;
+  const slowestPollObservedAppFrame = diagnostics.slowestPoll?.observedAppFrame &&
+    typeof diagnostics.slowestPoll.observedAppFrame === "object"
+    ? diagnostics.slowestPoll.observedAppFrame
+    : {};
+  const slowestPollObservedFrameTotal = slowestPollObservedAppFrame.totalMs ?? "not reported";
+  const slowestPollObservedFrameSlowestStage = slowestPollObservedAppFrame.slowestStage &&
+    typeof slowestPollObservedAppFrame.slowestStage === "object"
+    ? `${slowestPollObservedAppFrame.slowestStage.name ?? "unknown"}:${slowestPollObservedAppFrame.slowestStage.elapsedMs ?? "not reported"}ms`
+    : "not reported";
+  return `ready=${Boolean(diagnostics.ready)} source=${diagnostics.evidenceSource ?? "not reported"} polls=${diagnostics.pollCount ?? "not reported"} failed=${diagnostics.failedPolls ?? "not reported"} elapsed=${diagnostics.elapsedMs ?? "not reported"}ms slowestPoll=${slowestPoll} observedFrame=${observedFrame} observedFrameTotal=${observedFrameTotal}ms observedFrameSlowestStage=${observedFrameSlowestStage} slowestPollObservedFrame=${slowestPollObservedFrame} slowestPollObservedFrameTotal=${slowestPollObservedFrameTotal}ms slowestPollObservedFrameSlowestStage=${slowestPollObservedFrameSlowestStage} blockers=${blockers} lastFailed=${lastFailed}`;
 }
 
 function formatReadinessDiagnosticsByStage(stageDiagnostics) {
