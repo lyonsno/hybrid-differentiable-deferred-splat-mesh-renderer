@@ -1050,6 +1050,7 @@ function describeVisualSmokeReadiness(pageEvidence, { expectedRendererLabel, rea
   const witness = pageEvidence.operatorWitness && typeof pageEvidence.operatorWitness === "object"
     ? pageEvidence.operatorWitness
     : {};
+  const observedAppFrame = summarizeObservedAppFrame(witness);
   return {
     ready: blockers.length === 0,
     blockers,
@@ -1057,6 +1058,7 @@ function describeVisualSmokeReadiness(pageEvidence, { expectedRendererLabel, rea
     pollDurationMs,
     elapsedMs,
     evidenceSource: pageEvidence.readinessEvidence?.source ?? "not reported",
+    observedAppFrame,
     expectedRendererLabel: expectedRendererLabel ?? "",
     rendererLabel: pageEvidence.rendererLabel ?? pageEvidence.tileLocal?.rendererLabel ?? "",
     operatorWitness: {
@@ -1071,6 +1073,29 @@ function describeVisualSmokeReadiness(pageEvidence, { expectedRendererLabel, rea
       debugMode: diagnostics?.debugMode ?? "",
       requiredDebugMode: readiness.tileLocalDiagnostics?.debugMode ?? "",
     },
+  };
+}
+
+function summarizeObservedAppFrame(operatorWitness) {
+  const frameTimings = operatorWitness?.frameTimings && typeof operatorWitness.frameTimings === "object"
+    ? operatorWitness.frameTimings
+    : {};
+  const stages = Array.isArray(frameTimings.stages) ? frameTimings.stages : [];
+  const slowestStage = stages.reduce((slowest, stage) => {
+    const elapsedMs = finiteNumber(stage?.elapsedMs);
+    if (elapsedMs === undefined) return slowest;
+    const slowestElapsedMs = finiteNumber(slowest?.elapsedMs) ?? -1;
+    return elapsedMs > slowestElapsedMs
+      ? {
+          name: typeof stage?.name === "string" ? stage.name : "unknown",
+          elapsedMs,
+        }
+      : slowest;
+  }, undefined);
+  return {
+    frameSerial: finiteNumber(operatorWitness?.frameSerial),
+    totalMs: finiteNumber(frameTimings.totalMs),
+    slowestStage,
   };
 }
 
@@ -1163,6 +1188,7 @@ function summarizeReadinessPollHistory(readinessPolls) {
         elapsedMs: slowestPoll.elapsedMs,
         ready: Boolean(slowestPoll.ready),
         blockers: Array.isArray(slowestPoll.blockers) ? slowestPoll.blockers : [],
+        observedAppFrame: slowestPoll.observedAppFrame,
       }
       : undefined,
     lastFailedPoll: lastFailedPoll
@@ -1180,6 +1206,7 @@ function summarizeReadinessPollHistory(readinessPolls) {
       elapsedMs: poll.elapsedMs,
       ready: Boolean(poll.ready),
       blockers: Array.isArray(poll.blockers) ? poll.blockers : [],
+      observedAppFrame: poll.observedAppFrame,
     })),
   };
 }
@@ -1780,6 +1807,7 @@ ${renderSmokeHandoffSection(result.smokeHandoff)}
 - Slowest app frame total: ${timing.slowestAppFrameTotal ? `${timing.slowestAppFrameTotal.captureId} (${timing.slowestAppFrameTotal.elapsedMs}ms, frame ${timing.slowestAppFrameTotal.frameSerial})` : "not reported"}
 - Operator readiness vs app frame stage: ${formatOperatorReadinessComparison(timing.operatorReadinessVsAppFrameStage)}
 - Operator readiness vs app frame total: ${formatOperatorReadinessTotalComparison(timing.operatorReadinessVsAppFrameTotal)}
+- Operator readiness vs observed poll frame total: ${formatOperatorReadinessTotalComparison(timing.operatorReadinessVsObservedAppFrameTotal)}
 - Initial readiness diagnostics: ${formatReadinessDiagnostics(result.readinessDiagnosticsByStage?.initialReadiness)}
 
 ${renderOperatorTimingTable(timing)}
@@ -2015,7 +2043,18 @@ function formatReadinessDiagnostics(diagnostics) {
   const slowestPoll = diagnostics.slowestPoll && typeof diagnostics.slowestPoll === "object"
     ? `${diagnostics.slowestPoll.pollDurationMs ?? "not reported"}ms@${diagnostics.slowestPoll.pollCount ?? "?"}`
     : "not reported";
-  return `ready=${Boolean(diagnostics.ready)} source=${diagnostics.evidenceSource ?? "not reported"} polls=${diagnostics.pollCount ?? "not reported"} failed=${diagnostics.failedPolls ?? "not reported"} elapsed=${diagnostics.elapsedMs ?? "not reported"}ms slowestPoll=${slowestPoll} blockers=${blockers} lastFailed=${lastFailed}`;
+  const observedAppFrame = diagnostics.observedAppFrame && typeof diagnostics.observedAppFrame === "object"
+    ? diagnostics.observedAppFrame
+    : {};
+  const observedFrame = observedAppFrame.frameSerial ?? "not reported";
+  const observedFrameTotal = observedAppFrame.totalMs ?? "not reported";
+  const observedFrameSlowestStage = observedAppFrame.slowestStage && typeof observedAppFrame.slowestStage === "object"
+    ? `${observedAppFrame.slowestStage.name ?? "unknown"}:${observedAppFrame.slowestStage.elapsedMs ?? "not reported"}ms`
+    : "not reported";
+  const slowestPollObservedFrame = diagnostics.slowestPoll?.observedAppFrame && typeof diagnostics.slowestPoll.observedAppFrame === "object"
+    ? diagnostics.slowestPoll.observedAppFrame.frameSerial ?? "not reported"
+    : "not reported";
+  return `ready=${Boolean(diagnostics.ready)} source=${diagnostics.evidenceSource ?? "not reported"} polls=${diagnostics.pollCount ?? "not reported"} failed=${diagnostics.failedPolls ?? "not reported"} elapsed=${diagnostics.elapsedMs ?? "not reported"}ms slowestPoll=${slowestPoll} observedFrame=${observedFrame} observedFrameTotal=${observedFrameTotal}ms observedFrameSlowestStage=${observedFrameSlowestStage} slowestPollObservedFrame=${slowestPollObservedFrame} blockers=${blockers} lastFailed=${lastFailed}`;
 }
 
 function formatReadinessDiagnosticsByStage(stageDiagnostics) {

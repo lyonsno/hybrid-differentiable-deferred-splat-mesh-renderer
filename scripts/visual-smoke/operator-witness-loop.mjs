@@ -152,6 +152,7 @@ export function summarizeOperatorWitnessTiming(captures = [], sessionTiming = {}
       id: capture.id,
       totalMs: finiteNumber(capture.timing?.totalMs),
       stages: Array.isArray(capture.timing?.stages) ? capture.timing.stages : [],
+      readinessDiagnosticsByStage: capture.pageEvidence?.readinessDiagnosticsByStage,
     }))
     .filter((capture) => capture.totalMs !== null || capture.stages.length > 0);
   const totalCaptureMs = timedCaptures.reduce((sum, capture) => sum + (capture.totalMs ?? 0), 0);
@@ -231,6 +232,9 @@ export function summarizeOperatorWitnessTiming(captures = [], sessionTiming = {}
         }
       : null
   );
+  const operatorReadinessVsObservedAppFrameTotal = compareOperatorReadinessToObservedAppFrameTotal(
+    slowestOperatorReadiness
+  );
   return {
     totalCaptureMs,
     slowestCapture,
@@ -240,6 +244,7 @@ export function summarizeOperatorWitnessTiming(captures = [], sessionTiming = {}
     slowestAppFrameTotal,
     operatorReadinessVsAppFrameStage,
     operatorReadinessVsAppFrameTotal,
+    operatorReadinessVsObservedAppFrameTotal,
     captures: timedCaptures.map((capture) => ({
       id: capture.id,
       totalMs: capture.totalMs ?? 0,
@@ -258,14 +263,18 @@ function operatorReadinessStages(timedCaptures, sessionTiming) {
   }
   for (const capture of timedCaptures) {
     for (const stage of capture.stages) {
-      const readinessStage = operatorReadinessStage(capture.id, stage);
+      const readinessStage = operatorReadinessStage(
+        capture.id,
+        stage,
+        capture.readinessDiagnosticsByStage
+      );
       if (readinessStage) stages.push(readinessStage);
     }
   }
   return stages;
 }
 
-function operatorReadinessStage(captureId, stage) {
+function operatorReadinessStage(captureId, stage, readinessDiagnosticsByStage) {
   if (!OPERATOR_READINESS_STAGE_NAMES.has(stage?.name)) {
     return null;
   }
@@ -273,7 +282,46 @@ function operatorReadinessStage(captureId, stage) {
   if (elapsedMs === null) {
     return null;
   }
-  return { captureId, name: stage.name, elapsedMs };
+  const observedAppFrame = observedAppFrameForReadinessStage(stage.name, readinessDiagnosticsByStage);
+  return {
+    captureId,
+    name: stage.name,
+    elapsedMs,
+    ...(observedAppFrame ? { observedAppFrame } : {}),
+  };
+}
+
+function observedAppFrameForReadinessStage(stageName, readinessDiagnosticsByStage) {
+  const stageKey = stageName === "view-readiness"
+    ? "viewReadiness"
+    : stageName === "interaction-readiness"
+      ? "interactionReadiness"
+      : stageName === "initial-readiness"
+        ? "initialReadiness"
+        : "";
+  const observed = stageKey
+    ? readinessDiagnosticsByStage?.[stageKey]?.observedAppFrame
+    : undefined;
+  if (!observed || typeof observed !== "object") {
+    return null;
+  }
+  const frameSerial = finiteNumber(observed.frameSerial);
+  const totalMs = finiteNumber(observed.totalMs);
+  const slowestStageElapsedMs = finiteNumber(observed.slowestStage?.elapsedMs);
+  const slowestStage = observed.slowestStage && typeof observed.slowestStage === "object" && slowestStageElapsedMs !== null
+    ? {
+        name: typeof observed.slowestStage.name === "string" ? observed.slowestStage.name : "unknown",
+        elapsedMs: slowestStageElapsedMs,
+      }
+    : undefined;
+  if (frameSerial === null && totalMs === null && !slowestStage) {
+    return null;
+  }
+  return {
+    ...(frameSerial !== null ? { frameSerial } : {}),
+    ...(totalMs !== null ? { totalMs } : {}),
+    ...(slowestStage ? { slowestStage } : {}),
+  };
 }
 
 function compareOperatorReadinessToAppFrameStage(slowestOperatorReadiness, slowestAppFrameStage) {
@@ -322,6 +370,25 @@ function compareOperatorReadinessToAppFrameTotal(slowestOperatorReadiness, slowe
     readinessMs,
     appFrameTotalMs,
     gapMs,
+  };
+}
+
+function compareOperatorReadinessToObservedAppFrameTotal(slowestOperatorReadiness) {
+  const observedFrame = slowestOperatorReadiness?.observedAppFrame;
+  const comparison = compareOperatorReadinessToAppFrameTotal(
+    slowestOperatorReadiness,
+    observedFrame && typeof observedFrame === "object"
+      ? {
+          captureId: slowestOperatorReadiness?.captureId ?? "",
+          elapsedMs: observedFrame.totalMs,
+          frameSerial: observedFrame.frameSerial ?? 0,
+        }
+      : null
+  );
+  return {
+    ...comparison,
+    ...(observedFrame?.frameSerial !== undefined ? { frameSerial: observedFrame.frameSerial } : {}),
+    ...(observedFrame?.slowestStage ? { slowestStage: observedFrame.slowestStage } : {}),
   };
 }
 
