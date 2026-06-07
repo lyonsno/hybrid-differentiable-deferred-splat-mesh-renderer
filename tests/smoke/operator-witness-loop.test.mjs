@@ -974,6 +974,36 @@ test("live stats overlay exposes app-frame latency instead of only GPU render ti
   );
 });
 
+test("live stats overlay times tile-local scene rebuild as operator-visible latency", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const frameSource = source.slice(
+    source.indexOf("function frame("),
+    source.indexOf("function createSortSettleState", source.indexOf("function frame(")),
+  );
+  const formatterSource = extractFunctionSource(source, "formatFrameTimingOverlay");
+
+  assert.match(
+    frameSource,
+    /timeFrameStage\(\s*frameTiming,\s*"tile-local-scene-state-refresh"/,
+    "tile-local rebuild must be a named frame stage instead of disappearing behind GPU render timing",
+  );
+  assert.match(
+    frameSource,
+    /ensureTileLocalSceneState\(/,
+    "the named rebuild stage should enclose the tile-local state refresh path",
+  );
+  assert.match(
+    formatterSource,
+    /tileLocalSceneRefreshMs/,
+    "HUD formatter should expose tile-local rebuild latency as a first-class operator-correlated number",
+  );
+  assert.match(
+    formatterSource,
+    /tile-local rebuild:/,
+    "HUD text should name tile-local rebuild separately from source-frontier pack and GPU render timing",
+  );
+});
+
 test("operator witness app frame timing routes requested GPU presentation through compact retained source runtime", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const ensureStart = source.indexOf("function ensureTileLocalSceneState");
@@ -994,6 +1024,33 @@ test("operator witness app frame timing routes requested GPU presentation throug
   assert.match(dispatchSource, /gpuDispatchEnqueueStartedAtMs/);
   assert.match(dispatchSource, /tileLocalState\.gpuArenaRuntime\.dispatch\(tileLocalComputePass/);
   assert.match(dispatchSource, /tileLocalState\.pipeline\.dispatchComposite\(tileLocalComputePass/);
+});
+
+test("source-frontier evidence names CPU retained-payload materialization before compositor handoff", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const evidenceSource = extractFunctionSource(source, "buildWgslProjectedSourceFrontierConstructionEvidence");
+  const sceneSource = extractFunctionSource(source, "createWgslProjectedSourceFrontierTileLocalSceneState");
+
+  assert.match(
+    sceneSource,
+    /timeOptionalFrameStage\(\s*frameTiming,\s*"wgsl-source-frontier-production-election-retained-payload-cpu-materialize"/,
+    "source-frontier retained payload creation should be a named CPU frame stage",
+  );
+  assert.match(
+    evidenceSource,
+    /"wgsl-source-frontier-production-election-retained-payload-cpu-materialize"/,
+    "retained-source evidence should preserve the remaining CPU payload materialization owner",
+  );
+  assert.match(
+    evidenceSource,
+    /"live-wgsl-production-election-retained-payload-materialization"/,
+    "the next offload boundary should point at GPU materialization of retained payloads, not generic compositor consumption",
+  );
+  assert.match(
+    evidenceSource,
+    /frontierBlockedStages:[\s\S]*retainedPayloadCpuMaterializeStage/,
+    "blocked stages should include the retained payload CPU materialization wall",
+  );
 });
 
 test("static dessert debug modes can publish compact ref readbacks without enabling heavy per-pixel probes", () => {

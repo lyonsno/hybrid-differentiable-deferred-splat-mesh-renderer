@@ -667,6 +667,7 @@ interface RetainedSourceConstructionEvidence {
     | "production-candidate-source-election-consumption"
     | "live-wgsl-production-candidate-source-election"
     | "live-wgsl-production-election-prefix-scatter"
+    | "live-wgsl-production-election-retained-payload-materialization"
     | "live-wgsl-production-election-compositor-consumption"
     | "live-wgsl-production-election-candidate-source-bindings";
   readonly accountingSource?:
@@ -898,6 +899,7 @@ function finishFrameTiming(timing: FrameTimingDraft): FrameTimingSummary {
 function formatFrameTimingOverlay(timing: FrameTimingDraft): string {
   let slowestStage: FrameTimingStage | null = null;
   let sourceFrontierPackMs = 0;
+  let tileLocalSceneRefreshMs = 0;
   for (const stage of timing.stages) {
     if (!slowestStage || stage.elapsedMs > slowestStage.elapsedMs) {
       slowestStage = stage;
@@ -905,10 +907,16 @@ function formatFrameTimingOverlay(timing: FrameTimingDraft): string {
     if (stage.name.startsWith("wgsl-source-frontier-pack")) {
       sourceFrontierPackMs = Math.max(sourceFrontierPackMs, stage.elapsedMs);
     }
+    if (stage.name === "tile-local-scene-state-refresh") {
+      tileLocalSceneRefreshMs = Math.max(tileLocalSceneRefreshMs, stage.elapsedMs);
+    }
   }
   const parts = [`app frame: ${roundRuntimeMetric(performance.now() - timing.startedAtMs)}ms`];
   if (slowestStage) {
     parts.push(`slowest app stage: ${slowestStage.name} ${slowestStage.elapsedMs}ms`);
+  }
+  if (tileLocalSceneRefreshMs > 0) {
+    parts.push(`tile-local rebuild: ${roundRuntimeMetric(tileLocalSceneRefreshMs)}ms`);
   }
   if (sourceFrontierPackMs > 0) {
     parts.push(`source-frontier pack: ${roundRuntimeMetric(sourceFrontierPackMs)}ms`);
@@ -1382,21 +1390,25 @@ async function main() {
       pendingAlphaDensity,
     })) {
       try {
-        const tileLocalState = ensureTileLocalSceneState(
-          gpu.device,
-          scene,
-          scene.tileLocalState,
-          view,
-          viewProj,
-          width,
-          height,
-          true,
-          {
-            splatScale: activeSplatScale,
-            minRadiusPx: activeMinRadiusPx,
-            nearFadeEndNdc: activeNearFadeEnd,
-          },
-          frameTiming
+        const tileLocalState = timeFrameStage(
+          frameTiming,
+          "tile-local-scene-state-refresh",
+          () => ensureTileLocalSceneState(
+            gpu.device,
+            scene,
+            scene.tileLocalState!,
+            view,
+            viewProj,
+            width,
+            height,
+            true,
+            {
+              splatScale: activeSplatScale,
+              minRadiusPx: activeMinRadiusPx,
+              nearFadeEndNdc: activeNearFadeEnd,
+            },
+            frameTiming
+          )
         );
         scene.tileLocalState = tileLocalState;
         scene.tileLocalLastSkipReason = null;
@@ -2200,20 +2212,24 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     candidateSourceGroupsBuffer: candidateSourceBuffers.candidateSourceGroupsBuffer,
     productionElection,
   });
-  const productionElectionPrefixScatter = createGpuProductionElectionPrefixScatterContract({
-    device,
-    candidateSourceRecordsBuffer: candidateSourceBuffers.candidateSourceRecordsBuffer,
-    candidateSourceGroupsBuffer: candidateSourceBuffers.candidateSourceGroupsBuffer,
-    productionElectionComputeConsumer,
-    productionElection,
-    candidateSourceInputs,
-    tileCount: plan.tileCount,
-    tileHeaderBuffer,
-    tileRefBuffer,
-    tileCoverageWeightBuffer,
-    alphaParamBuffer,
-    maxTileRefs: plan.maxTileRefs,
-  });
+  const productionElectionPrefixScatter = timeOptionalFrameStage(
+    frameTiming,
+    "wgsl-source-frontier-production-election-retained-payload-cpu-materialize",
+    () => createGpuProductionElectionPrefixScatterContract({
+      device,
+      candidateSourceRecordsBuffer: candidateSourceBuffers.candidateSourceRecordsBuffer,
+      candidateSourceGroupsBuffer: candidateSourceBuffers.candidateSourceGroupsBuffer,
+      productionElectionComputeConsumer,
+      productionElection,
+      candidateSourceInputs,
+      tileCount: plan.tileCount,
+      tileHeaderBuffer,
+      tileRefBuffer,
+      tileCoverageWeightBuffer,
+      alphaParamBuffer,
+      maxTileRefs: plan.maxTileRefs,
+    })
+  );
   const candidateSourceRuntimeBuffersEvidence = sourceFrontierCandidateSourceRuntimeBufferEvidence(candidateSourceBuffers);
   const bindGroup = pipeline.createBindGroup({
     frameUniformBuffer,
@@ -3241,9 +3257,10 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
   productionElectionComputeConsumer: GpuProductionElectionConsumerContract | undefined,
   productionElectionPrefixScatter: GpuProductionElectionPrefixScatterContract | undefined,
 ): RetainedSourceConstructionEvidence {
-  const compactSourceStreamRetentionBlockedStage = "compact-source-stream-retention";
+  const retainedPayloadCpuMaterializeStage =
+    "wgsl-source-frontier-production-election-retained-payload-cpu-materialize";
   const nextGpuOffloadStage = productionElectionPrefixScatter
-    ? "live-wgsl-production-election-compositor-consumption"
+    ? "live-wgsl-production-election-retained-payload-materialization"
     : "live-wgsl-production-election-prefix-scatter";
   return {
     requestedSourceBackend: "gpu-retained-source-substrate",
@@ -3258,6 +3275,8 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
       "wgsl-source-frontier-project-splats",
       "wgsl-source-frontier-estimate-ref-budget",
       "wgsl-source-frontier-pack-candidate-source-inputs",
+      "wgsl-source-frontier-production-election-runtime",
+      retainedPayloadCpuMaterializeStage,
     ],
     gpuReadyStages: [
       "wgsl-projected-ref-stream-source-table",
@@ -3296,8 +3315,9 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
       productionElectionPrefixScatter,
     ),
     frontierBlockedStages: [
-      compactSourceStreamRetentionBlockedStage,
-      "compact-source-pixel-traces",
+      "wgsl-source-frontier-pack-candidate-source-inputs",
+      "wgsl-source-frontier-production-election-runtime",
+      retainedPayloadCpuMaterializeStage,
       nextGpuOffloadStage,
     ],
   };
