@@ -682,7 +682,28 @@ test("operator witness readiness polling uses the capture timeout instead of the
   const waitEnd = source.indexOf("function operatorWitnessReadinessMatches", waitStart);
   const waitSource = source.slice(waitStart, waitEnd);
 
-  assert.match(waitSource, /collectPageEvidenceWithTimeout\(page, timeoutMs\)/);
+  assert.match(waitSource, /collectReadinessEvidenceWithTimeout\(page, timeoutMs\)/);
+  assert.doesNotMatch(waitSource, /collectPageEvidenceWithTimeout\(page, timeoutMs\)/);
+});
+
+test("operator witness readiness polling uses compact readiness evidence before full settled evidence", () => {
+  const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
+  const waitStart = source.indexOf("async function waitForVisualSmokeCaptureReady");
+  const waitEnd = source.indexOf("function describeVisualSmokeReadiness", waitStart);
+  const waitSource = source.slice(waitStart, waitEnd);
+  const collectorStart = source.indexOf("async function collectReadinessEvidence");
+  const collectorEnd = source.indexOf("async function collectReadinessEvidenceWithTimeout", collectorStart);
+  const collectorSource = source.slice(collectorStart, collectorEnd);
+  const frameStart = source.indexOf("async function captureOperatorWitnessFrame");
+  const frameEnd = source.indexOf("async function captureVisualSmoke", frameStart);
+  const frameSource = source.slice(frameStart, frameEnd);
+
+  assert.match(waitSource, /collectReadinessEvidenceWithTimeout\(page, timeoutMs\)/);
+  assert.match(collectorSource, /readinessEvidence:\s*\{/);
+  assert.match(collectorSource, /perPixelFinalColorAccumulation:\s*Array\.isArray/);
+  assert.doesNotMatch(collectorSource, /\.\.\.smoke/);
+  assert.doesNotMatch(collectorSource, /bodyText/);
+  assert.match(frameSource, /collectPageEvidenceWithTimeout\(page, timeoutMs\)/);
 });
 
 test("operator witness readiness polling records poll diagnostics on returned evidence", () => {
@@ -737,6 +758,7 @@ test("operator witness report renders readiness diagnostics per capture", () => 
   assert.match(formatterSource, /failed=/);
   assert.match(formatterSource, /lastFailed=/);
   assert.match(formatterSource, /slowestPoll=/);
+  assert.match(formatterSource, /source=/);
 });
 
 test("operator witness session preserves initial readiness diagnostics by stage", () => {

@@ -967,7 +967,7 @@ async function waitForVisualSmokeCaptureReady(page, expectedRendererLabel, timeo
     let rawEvidence;
     const pollStartedAt = Date.now();
     try {
-      rawEvidence = await collectPageEvidenceWithTimeout(page, timeoutMs);
+      rawEvidence = await collectReadinessEvidenceWithTimeout(page, timeoutMs);
     } catch (evidenceError) {
       const pollDurationMs = Date.now() - pollStartedAt;
       pollCount++;
@@ -1056,6 +1056,7 @@ function describeVisualSmokeReadiness(pageEvidence, { expectedRendererLabel, rea
     pollCount,
     pollDurationMs,
     elapsedMs,
+    evidenceSource: pageEvidence.readinessEvidence?.source ?? "not reported",
     expectedRendererLabel: expectedRendererLabel ?? "",
     rendererLabel: pageEvidence.rendererLabel ?? pageEvidence.tileLocal?.rendererLabel ?? "",
     operatorWitness: {
@@ -1338,6 +1339,86 @@ async function collectPageEvidence(page) {
         : null,
     };
   });
+}
+
+async function collectReadinessEvidence(page) {
+  return page.evaluate(() => {
+    const canvas = document.querySelector("canvas");
+    const stats = document.querySelector("#stats");
+    const smoke = globalThis.__MESH_SPLAT_SMOKE__ && typeof globalThis.__MESH_SPLAT_SMOKE__ === "object"
+      ? globalThis.__MESH_SPLAT_SMOKE__
+      : {};
+    const tileLocal = smoke.tileLocal && typeof smoke.tileLocal === "object" ? smoke.tileLocal : {};
+    const tileLocalDiagnostics =
+      globalThis.__MESH_SPLAT_TILE_LOCAL_DIAGNOSTICS__ &&
+      typeof globalThis.__MESH_SPLAT_TILE_LOCAL_DIAGNOSTICS__ === "object"
+        ? globalThis.__MESH_SPLAT_TILE_LOCAL_DIAGNOSTICS__
+        : tileLocal.diagnostics;
+    const datasets = [document.documentElement.dataset, document.body.dataset, canvas?.dataset].filter(Boolean);
+    const firstDatasetValue = (...keys) => {
+      for (const dataset of datasets) {
+        for (const key of keys) {
+          if (dataset[key]) return dataset[key];
+        }
+      }
+      return undefined;
+    };
+    const compactTileLocal = {
+      rendererLabel: tileLocal.rendererLabel,
+      refs: tileLocal.refAccounting?.retainedRefs ?? tileLocal.refStatsReadback?.retainedRefs ?? tileLocal.refs,
+      refAccounting: tileLocal.refAccounting
+        ? { retainedRefs: tileLocal.refAccounting.retainedRefs }
+        : undefined,
+      refStatsReadback: tileLocal.refStatsReadback
+        ? { retainedRefs: tileLocal.refStatsReadback.retainedRefs }
+        : undefined,
+      freshness: tileLocal.freshness,
+      diagnostics: tileLocalDiagnostics,
+      outputTextureReadback: tileLocal.outputTextureReadback
+        ? { status: tileLocal.outputTextureReadback.status }
+        : undefined,
+      compositorInputReadback: tileLocal.compositorInputReadback
+        ? { status: tileLocal.compositorInputReadback.status }
+        : undefined,
+      perPixelFinalColorAccumulation: Array.isArray(tileLocal.perPixelFinalColorAccumulation) &&
+        tileLocal.perPixelFinalColorAccumulation.length > 0
+          ? ["present"]
+          : undefined,
+    };
+
+    return {
+      readinessEvidence: {
+        source: "compact-readiness",
+      },
+      sourceKind: smoke.sourceKind ?? firstDatasetValue("smokeSourceKind", "sourceKind"),
+      splatCount: smoke.splatCount ?? firstDatasetValue("splatCount", "smokeSplatCount"),
+      assetPath: smoke.assetPath ?? firstDatasetValue("assetPath", "smokeAssetPath"),
+      sortBackend: smoke.sortBackend ?? firstDatasetValue("sortBackend", "smokeSortBackend"),
+      ready: smoke.ready ?? firstDatasetValue("smokeReady", "ready"),
+      rendererLabel: smoke.rendererLabel,
+      tileLocalDiagnostics,
+      tileLocal: compactTileLocal,
+      operatorWitness: smoke.operatorWitness,
+      statsText: stats?.textContent ?? "",
+      title: document.title,
+      canvas: canvas
+        ? {
+            width: canvas.width,
+            height: canvas.height,
+            clientWidth: canvas.clientWidth,
+            clientHeight: canvas.clientHeight,
+          }
+        : null,
+    };
+  });
+}
+
+async function collectReadinessEvidenceWithTimeout(page, timeoutMs = PAGE_EVIDENCE_TIMEOUT_MS) {
+  return await withTimeout(
+    collectReadinessEvidence(page),
+    timeoutMs,
+    `readiness evidence collection timed out after ${timeoutMs}ms`
+  );
 }
 
 async function collectPageEvidenceWithTimeout(page, timeoutMs = PAGE_EVIDENCE_TIMEOUT_MS) {
@@ -1934,7 +2015,7 @@ function formatReadinessDiagnostics(diagnostics) {
   const slowestPoll = diagnostics.slowestPoll && typeof diagnostics.slowestPoll === "object"
     ? `${diagnostics.slowestPoll.pollDurationMs ?? "not reported"}ms@${diagnostics.slowestPoll.pollCount ?? "?"}`
     : "not reported";
-  return `ready=${Boolean(diagnostics.ready)} polls=${diagnostics.pollCount ?? "not reported"} failed=${diagnostics.failedPolls ?? "not reported"} elapsed=${diagnostics.elapsedMs ?? "not reported"}ms slowestPoll=${slowestPoll} blockers=${blockers} lastFailed=${lastFailed}`;
+  return `ready=${Boolean(diagnostics.ready)} source=${diagnostics.evidenceSource ?? "not reported"} polls=${diagnostics.pollCount ?? "not reported"} failed=${diagnostics.failedPolls ?? "not reported"} elapsed=${diagnostics.elapsedMs ?? "not reported"}ms slowestPoll=${slowestPoll} blockers=${blockers} lastFailed=${lastFailed}`;
 }
 
 function formatReadinessDiagnosticsByStage(stageDiagnostics) {
