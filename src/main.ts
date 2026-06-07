@@ -2464,12 +2464,16 @@ function buildWgslSourceFrontierCandidateSources({
   const projectedCandidateRecords: GpuTileContributorArenaProjectedContributor[] = [];
 
   for (const bucket of buckets.values()) {
-    projectedCandidateRecords.push(...compactMergedTileCandidateRecords(bucket).sort(compareCompactProjectionRetentionCoverageOrder));
+    const bucketSupportSampleRecordGroups = compactSupportSampleCandidateRecordGroups(bucket);
+    const bucketSupportSampleRecords = compactSupportSampleCandidateRecords(bucketSupportSampleRecordGroups);
+    projectedCandidateRecords.push(
+      ...compactMergedTileCandidateRecords(bucket, bucketSupportSampleRecords).sort(compareCompactProjectionRetentionCoverageOrder),
+    );
     coverageRecords.push(...bucket.coverageRecords.records);
     retentionRecords.push(...bucket.retentionRecords.records);
     occlusionRecords.push(...bucket.occlusionRecords.records);
-    supportSampleRecords.push(...compactSupportSampleCandidateRecords(bucket));
-    supportSampleRecordGroups.push(...compactSupportSampleCandidateRecordGroups(bucket));
+    supportSampleRecords.push(...bucketSupportSampleRecords);
+    supportSampleRecordGroups.push(...bucketSupportSampleRecordGroups);
   }
 
   return {
@@ -3912,14 +3916,74 @@ function compactRetainSupportSampleRecords({
       const supportLuminance = record.occlusionWeight > 0 ? record.retentionWeight / record.occlusionWeight : 0;
       const supportSampleRetentionWeight = supportSampleWeight * Math.max(0, finiteOrZero(supportLuminance));
       const sampleIndex = sampleY * samplesPerAxis + sampleX;
-      compactRetainTopRecord(
-        bucket.supportSampleRecords[sampleIndex],
-        { ...record, supportSampleWeight, supportSampleRetentionWeight },
-        sampleLimit,
-        compareCompactProjectionSupportSamplePriority,
-      );
+      compactRetainSupportSampleRecord({
+        recordList: bucket.supportSampleRecords[sampleIndex],
+        record,
+        supportSampleWeight,
+        supportSampleRetentionWeight,
+        limit: sampleLimit,
+      });
     }
   }
+}
+
+function compactRetainSupportSampleRecord({
+  recordList,
+  record,
+  supportSampleWeight,
+  supportSampleRetentionWeight,
+  limit,
+}: {
+  readonly recordList: CompactRetainedRecordList;
+  readonly record: GpuTileContributorArenaProjectedContributor;
+  readonly supportSampleWeight: number;
+  readonly supportSampleRetentionWeight: number;
+  readonly limit: number;
+}): void {
+  const records = recordList.records;
+  if (
+    records.length >= limit &&
+    compactCompareSupportSampleCandidateToRecord(
+      record,
+      supportSampleWeight,
+      supportSampleRetentionWeight,
+      records[recordList.worstIndex],
+    ) >= 0
+  ) {
+    return;
+  }
+
+  const supportRecord: GpuTileContributorArenaProjectedContributor = { ...record, supportSampleWeight, supportSampleRetentionWeight };
+  if (records.length < limit) {
+    records.push(supportRecord);
+    if (
+      records.length === 1 ||
+      compareCompactProjectionSupportSamplePriority(supportRecord, records[recordList.worstIndex]) > 0
+    ) {
+      recordList.worstIndex = records.length - 1;
+    }
+    return;
+  }
+
+  records[recordList.worstIndex] = supportRecord;
+  recordList.worstIndex = compactRetainedRecordListWorstIndex(records, compareCompactProjectionSupportSamplePriority);
+}
+
+function compactCompareSupportSampleCandidateToRecord(
+  record: GpuTileContributorArenaProjectedContributor,
+  supportSampleWeight: number,
+  supportSampleRetentionWeight: number,
+  retainedRecord: GpuTileContributorArenaProjectedContributor,
+): number {
+  return (
+    finiteOrZero(retainedRecord.supportSampleRetentionWeight) - finiteOrZero(supportSampleRetentionWeight) ||
+    finiteOrZero(retainedRecord.supportSampleWeight) - finiteOrZero(supportSampleWeight) ||
+    retainedRecord.retentionWeight - record.retentionWeight ||
+    retainedRecord.occlusionWeight - record.occlusionWeight ||
+    record.viewRank - retainedRecord.viewRank ||
+    record.splatIndex - retainedRecord.splatIndex ||
+    record.originalId - retainedRecord.originalId
+  );
 }
 
 function buildCompactRetainedRecordsWithGpuCarrier({
@@ -3941,12 +4005,16 @@ function buildCompactRetainedRecordsWithGpuCarrier({
   const supportSampleRecordGroups: (readonly GpuTileContributorArenaProjectedContributor[])[] = [];
 
   for (const bucket of buckets.values()) {
-    projectedCandidateRecords.push(...compactMergedTileCandidateRecords(bucket).sort(compareCompactProjectionRetentionCoverageOrder));
+    const bucketSupportSampleRecordGroups = compactSupportSampleCandidateRecordGroups(bucket);
+    const bucketSupportSampleRecords = compactSupportSampleCandidateRecords(bucketSupportSampleRecordGroups);
+    projectedCandidateRecords.push(
+      ...compactMergedTileCandidateRecords(bucket, bucketSupportSampleRecords).sort(compareCompactProjectionRetentionCoverageOrder),
+    );
     coverageRecords.push(...bucket.coverageRecords.records);
     retentionRecords.push(...bucket.retentionRecords.records);
     occlusionRecords.push(...bucket.occlusionRecords.records);
-    supportSampleRecords.push(...compactSupportSampleCandidateRecords(bucket));
-    supportSampleRecordGroups.push(...compactSupportSampleCandidateRecordGroups(bucket));
+    supportSampleRecords.push(...bucketSupportSampleRecords);
+    supportSampleRecordGroups.push(...bucketSupportSampleRecordGroups);
   }
 
   const retentionArena = buildProjectionRetentionArena({
@@ -3979,27 +4047,41 @@ function buildCompactRetainedRecordsWithGpuCarrier({
 
 function compactMergedTileCandidateRecords(
   bucket: CompactStreamingTileBucket,
+  supportSampleRecords: readonly GpuTileContributorArenaProjectedContributor[],
 ): GpuTileContributorArenaProjectedContributor[] {
-  const records = [];
+  const records: GpuTileContributorArenaProjectedContributor[] = [];
   const seen = new Set<bigint>();
-  for (const record of [
-    ...bucket.coverageRecords.records,
-    ...bucket.retentionRecords.records,
-    ...bucket.occlusionRecords.records,
-    ...compactSupportSampleCandidateRecords(bucket),
-  ]) {
+  const pushRecord = (record: GpuTileContributorArenaProjectedContributor) => {
     const key = compactProjectionRetentionRecordKey(record);
     if (seen.has(key)) {
-      continue;
+      return;
     }
     seen.add(key);
     records.push(record);
+  };
+  for (const record of bucket.coverageRecords.records) {
+    pushRecord(record);
+  }
+  for (const record of bucket.retentionRecords.records) {
+    pushRecord(record);
+  }
+  for (const record of bucket.occlusionRecords.records) {
+    pushRecord(record);
+  }
+  for (const record of supportSampleRecords) {
+    pushRecord(record);
   }
   return records;
 }
 
-function compactSupportSampleCandidateRecords(bucket: CompactStreamingTileBucket): GpuTileContributorArenaProjectedContributor[] {
-  return bucket.supportSampleRecords.flatMap((recordList) => recordList.records);
+function compactSupportSampleCandidateRecords(
+  recordGroups: readonly (readonly GpuTileContributorArenaProjectedContributor[])[],
+): GpuTileContributorArenaProjectedContributor[] {
+  const records: GpuTileContributorArenaProjectedContributor[] = [];
+  for (const recordGroup of recordGroups) {
+    records.push(...recordGroup);
+  }
+  return records;
 }
 
 function compactSupportSampleCandidateRecordGroups(

@@ -704,6 +704,99 @@ test("compact stream retention scores local conic support separately from tile i
   assert.match(contributorSource, /occlusionWeight:\s*retentionSupportWeight \* opacity/);
 });
 
+test("source-frontier candidate packing reuses flattened support samples per bucket", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const sourceFrontierStart = source.indexOf("function buildWgslSourceFrontierCandidateSources");
+  const sourceFrontierEnd = source.indexOf("function createWgslProjectedRefStreamState", sourceFrontierStart);
+  const sourceFrontierSource = source.slice(sourceFrontierStart, sourceFrontierEnd);
+  const gpuCarrierStart = source.indexOf("function buildCompactRetainedRecordsWithGpuCarrier");
+  const gpuCarrierEnd = source.indexOf("function compactMergedTileCandidateRecords", gpuCarrierStart);
+  const gpuCarrierSource = source.slice(gpuCarrierStart, gpuCarrierEnd);
+  const mergeSource = extractFunctionSource(source, "compactMergedTileCandidateRecords");
+
+  assert.match(
+    sourceFrontierSource,
+    /const\s+bucketSupportSampleRecordGroups\s*=\s*compactSupportSampleCandidateRecordGroups\(bucket\)/,
+    "source-frontier packing should capture per-bucket support sample groups once",
+  );
+  assert.match(
+    sourceFrontierSource,
+    /const\s+bucketSupportSampleRecords\s*=\s*compactSupportSampleCandidateRecords\(bucketSupportSampleRecordGroups\)/,
+    "source-frontier packing should flatten support samples once per bucket",
+  );
+  assert.match(
+    sourceFrontierSource,
+    /compactMergedTileCandidateRecords\(bucket,\s*bucketSupportSampleRecords\)/,
+    "source-frontier merge must reuse the already-flattened support samples",
+  );
+  assert.match(
+    gpuCarrierSource,
+    /const\s+bucketSupportSampleRecordGroups\s*=\s*compactSupportSampleCandidateRecordGroups\(bucket\)/,
+    "GPU carrier finalize should share the same once-per-bucket support sample materialization contract",
+  );
+  assert.match(
+    gpuCarrierSource,
+    /const\s+bucketSupportSampleRecords\s*=\s*compactSupportSampleCandidateRecords\(bucketSupportSampleRecordGroups\)/,
+    "GPU carrier finalize should flatten support samples once per bucket",
+  );
+  assert.match(
+    gpuCarrierSource,
+    /compactMergedTileCandidateRecords\(bucket,\s*bucketSupportSampleRecords\)/,
+    "GPU carrier merge must reuse the already-flattened support samples",
+  );
+  assert.doesNotMatch(
+    mergeSource,
+    /compactSupportSampleCandidateRecords\(bucket\)/,
+    "merge must not silently rematerialize support samples after the caller already needs them",
+  );
+  assert.doesNotMatch(
+    mergeSource,
+    /for\s*\(\s*const record of\s*\[/,
+    "merge must not allocate a synthetic mega-list before de-duplicating candidate rows",
+  );
+});
+
+test("source-frontier support sample retention clones records only after capped-list acceptance", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const supportRetainStart = source.indexOf("function compactRetainSupportSampleRecords");
+  const supportRetainEnd = source.indexOf("\nfunction compactRetainSupportSampleRecord(", supportRetainStart);
+  const supportRetainSource = source.slice(supportRetainStart, supportRetainEnd);
+  const supportRecordRetainStart = source.indexOf("\nfunction compactRetainSupportSampleRecord(");
+  const supportRecordRetainEnd = source.indexOf("function compactCompareSupportSampleCandidateToRecord", supportRecordRetainStart);
+  const supportRecordRetainSource = source.slice(supportRecordRetainStart, supportRecordRetainEnd);
+
+  assert.ok(supportRetainStart >= 0, "support sample retention helper should exist");
+  assert.ok(supportRetainEnd > supportRetainStart, "support sample retention source should be bounded");
+  assert.ok(supportRecordRetainStart >= 0, "support sample record insertion helper should exist");
+  assert.ok(supportRecordRetainEnd > supportRecordRetainStart, "support sample record insertion source should be bounded");
+
+  assert.match(
+    supportRetainSource,
+    /compactRetainSupportSampleRecord\(\{\s*recordList:\s*bucket\.supportSampleRecords\[sampleIndex\],\s*record,\s*supportSampleWeight,\s*supportSampleRetentionWeight,\s*limit:\s*sampleLimit,\s*\}\)/,
+    "support sample hot loop must route candidates through a helper that can reject before cloning",
+  );
+  assert.doesNotMatch(
+    supportRetainSource,
+    /\{\s*\.\.\.record,\s*supportSampleWeight,\s*supportSampleRetentionWeight\s*\}/,
+    "support sample hot loop must not clone the full contributor before capped-list acceptance",
+  );
+  assert.doesNotMatch(
+    supportRetainSource,
+    /compactRetainTopRecord\(\s*bucket\.supportSampleRecords\[sampleIndex\]/,
+    "generic retain helper requires a prebuilt record and should not own support sample hot-loop insertion",
+  );
+  assert.match(
+    supportRecordRetainSource,
+    /compactCompareSupportSampleCandidateToRecord\(\s*record,\s*supportSampleWeight,\s*supportSampleRetentionWeight,\s*records\[recordList\.worstIndex\],?\s*\)\s*>=\s*0/,
+    "support sample helper must compare candidate priority against the cached worst row before allocation",
+  );
+  assert.match(
+    supportRecordRetainSource,
+    /const\s+supportRecord:\s*GpuTileContributorArenaProjectedContributor\s*=\s*\{\s*\.\.\.record,\s*supportSampleWeight,\s*supportSampleRetentionWeight,?\s*\}/,
+    "support sample helper should clone only after the candidate is known to enter the retained list",
+  );
+});
+
 test("compact finalize retention routes bounded priority candidate lists through the GPU carrier", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const electionSource = readFileSync(new URL("../../src/compactRetentionElection.js", import.meta.url), "utf8");
