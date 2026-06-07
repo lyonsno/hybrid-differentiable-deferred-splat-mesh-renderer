@@ -2453,7 +2453,7 @@ function buildWgslSourceFrontierCandidateSources({
         const bucket = compactStreamingTileBucket(buckets, tileIndex);
         const candidateProjectedIndex = projectedIndex;
         projectedIndex += 1;
-        const needsRecord = compactSourceFrontierCandidateNeedsMaterialization({
+        const admission = compactSourceFrontierCandidateAdmission({
           bucket,
           template,
           tileIndex,
@@ -2461,7 +2461,7 @@ function buildWgslSourceFrontierCandidateSources({
           localSupportWeight: finiteOrZero(localSupportWeight),
           maxRefsPerTile,
         });
-        if (!needsRecord) {
+        if (!admission.needsMaterialization) {
           streamLedger.materializationSkipCount += 1;
           return;
         }
@@ -2484,17 +2484,22 @@ function buildWgslSourceFrontierCandidateSources({
         if (compactRetainTopRecord(bucket.occlusionRecords, record, Math.max(1, Math.floor(maxRefsPerTile / 2)), compareCompactProjectionOcclusionPriority)) {
           streamLedger.occlusionRetainCount += 1;
         }
-        compactRetainSupportSampleRecords({
-          bucket,
-          record,
-          localSupportWeight: finiteOrZero(localSupportWeight),
-          tileMinX: tileX * tileSizePx,
-          tileMinY: tileY * tileSizePx,
-          tileMaxX: Math.min(viewportWidth, (tileX + 1) * tileSizePx),
-          tileMaxY: Math.min(viewportHeight, (tileY + 1) * tileSizePx),
-          maxRefsPerTile,
-          ledger: streamLedger,
-        });
+        if (admission.needsSupportSamples) {
+          compactRetainSupportSampleRecords({
+            bucket,
+            record,
+            localSupportWeight: finiteOrZero(localSupportWeight),
+            tileMinX: tileX * tileSizePx,
+            tileMinY: tileY * tileSizePx,
+            tileMaxX: Math.min(viewportWidth, (tileX + 1) * tileSizePx),
+            tileMaxY: Math.min(viewportHeight, (tileY + 1) * tileSizePx),
+            maxRefsPerTile,
+            ledger: streamLedger,
+          });
+        } else {
+          streamLedger.supportSampleCandidateSkipCount += 1;
+          streamLedger.supportSampleCandidateSkippedEvaluationCount += COMPACT_SOURCE_RETENTION_SUPPORT_SAMPLES_PER_AXIS * COMPACT_SOURCE_RETENTION_SUPPORT_SAMPLES_PER_AXIS;
+        }
       },
     });
   });
@@ -2539,6 +2544,8 @@ function buildWgslSourceFrontierCandidateSources({
     retentionRecordCount: retentionRecords.length,
     occlusionRecordCount: occlusionRecords.length,
     supportSampleEvaluationCount: streamLedger.supportSampleEvaluationCount,
+    supportSampleCandidateSkipCount: streamLedger.supportSampleCandidateSkipCount,
+    supportSampleCandidateSkippedEvaluationCount: streamLedger.supportSampleCandidateSkippedEvaluationCount,
     supportSampleSkipCount: streamLedger.supportSampleSkipCount,
     supportSampleSkippedEvaluationCount: streamLedger.supportSampleSkippedEvaluationCount,
     supportSamplePositiveWeightCount: streamLedger.supportSamplePositiveWeightCount,
@@ -3902,10 +3909,17 @@ interface CompactSourceFrontierStreamLedger {
   occlusionRetainCount: number;
   materializationSkipCount: number;
   supportSampleEvaluationCount: number;
+  supportSampleCandidateSkipCount: number;
+  supportSampleCandidateSkippedEvaluationCount: number;
   supportSampleSkipCount: number;
   supportSampleSkippedEvaluationCount: number;
   supportSamplePositiveWeightCount: number;
   supportSampleRetainCount: number;
+}
+
+interface CompactSourceFrontierCandidateAdmission {
+  readonly needsMaterialization: boolean;
+  readonly needsSupportSamples: boolean;
 }
 
 function compactSourceFrontierStreamLedger(): CompactSourceFrontierStreamLedger {
@@ -3921,6 +3935,8 @@ function compactSourceFrontierStreamLedger(): CompactSourceFrontierStreamLedger 
     occlusionRetainCount: 0,
     materializationSkipCount: 0,
     supportSampleEvaluationCount: 0,
+    supportSampleCandidateSkipCount: 0,
+    supportSampleCandidateSkippedEvaluationCount: 0,
     supportSampleSkipCount: 0,
     supportSampleSkippedEvaluationCount: 0,
     supportSamplePositiveWeightCount: 0,
@@ -4040,7 +4056,7 @@ function compactRetainedRecordListWorstIndex(
   return worstIndex;
 }
 
-function compactSourceFrontierCandidateNeedsMaterialization({
+function compactSourceFrontierCandidateAdmission({
   bucket,
   template,
   tileIndex,
@@ -4054,7 +4070,7 @@ function compactSourceFrontierCandidateNeedsMaterialization({
   readonly coverageWeight: number;
   readonly localSupportWeight: number;
   readonly maxRefsPerTile: number;
-}): boolean {
+}): CompactSourceFrontierCandidateAdmission {
   const safeCoverageWeight = Math.max(0, finiteOrZero(coverageWeight));
   const safeLocalSupportWeight = Math.max(0, finiteOrZero(localSupportWeight));
   const retentionSupportWeight = Math.max(safeCoverageWeight, safeLocalSupportWeight);
@@ -4062,40 +4078,34 @@ function compactSourceFrontierCandidateNeedsMaterialization({
   const luminance = Math.max(0, finiteOrZero(template.luminance));
   const retentionWeight = retentionSupportWeight * opacity * luminance;
   const occlusionWeight = retentionSupportWeight * opacity;
-  if (compactCandidateCanEnterCoverageRecordList({
+  const needsCoverageRecord = compactCandidateCanEnterCoverageRecordList({
     recordList: bucket.coverageRecords,
     limit: maxRefsPerTile,
     tileIndex,
     coverageWeight: safeCoverageWeight,
     template,
-  })) {
-    return true;
-  }
-  if (compactCandidateCanEnterRetentionRecordList({
+  });
+  const needsRetentionRecord = compactCandidateCanEnterRetentionRecordList({
     recordList: bucket.retentionRecords,
     limit: Math.max(1, Math.floor(maxRefsPerTile / 2)),
     coverageWeight: safeCoverageWeight,
     retentionWeight,
     template,
-  })) {
-    return true;
-  }
-  if (compactCandidateCanEnterOcclusionRecordList({
+  });
+  const needsOcclusionRecord = compactCandidateCanEnterOcclusionRecordList({
     recordList: bucket.occlusionRecords,
     limit: Math.max(1, Math.floor(maxRefsPerTile / 2)),
     coverageWeight: safeCoverageWeight,
     occlusionWeight,
     occlusionDensity: opacity,
     template,
-  })) {
-    return true;
-  }
+  });
 
   const samplesPerAxis = COMPACT_SOURCE_RETENTION_SUPPORT_SAMPLES_PER_AXIS;
   const sampleLimit = Math.max(1, Math.ceil(maxRefsPerTile / (samplesPerAxis * samplesPerAxis * 2)));
   const supportSampleWeightUpperBound = safeLocalSupportWeight * opacity;
   const supportSampleRetentionWeightUpperBound = supportSampleWeightUpperBound * luminance;
-  return !compactCanSkipSupportSampleCandidate({
+  const needsSupportSamples = !compactCanSkipSupportSampleCandidate({
     bucket,
     supportSampleWeightUpperBound,
     supportSampleRetentionWeightUpperBound,
@@ -4106,6 +4116,10 @@ function compactSourceFrontierCandidateNeedsMaterialization({
     originalId: template.originalId,
     limit: sampleLimit,
   });
+  return {
+    needsMaterialization: needsCoverageRecord || needsRetentionRecord || needsOcclusionRecord || needsSupportSamples,
+    needsSupportSamples: needsSupportSamples,
+  };
 }
 
 function compactCandidateCanEnterCoverageRecordList({

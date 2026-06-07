@@ -887,6 +887,8 @@ test("operator witness report prints the slowest app-side frame stage", () => {
   assert.match(formatterSource, /streamCoverageRejects/);
   assert.match(formatterSource, /materializationSkips/);
   assert.match(formatterSource, /supportSampleEvaluations/);
+  assert.match(formatterSource, /supportSampleCandidateSkips/);
+  assert.match(formatterSource, /supportSampleCandidateSkippedEvaluations/);
   assert.match(formatterSource, /supportSampleSkips/);
   assert.match(formatterSource, /supportSampleSkippedEvaluations/);
   assert.match(formatterSource, /supportSamplePositiveWeights/);
@@ -1306,8 +1308,8 @@ test("source-frontier stream packing uses indexed tile buckets instead of hot-pa
 test("source-frontier stream gates capped-list admission before projected contributor materialization", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const sourceFrontierSource = extractFunctionSource(source, "buildWgslSourceFrontierCandidateSources");
-  const admissionSource = extractFunctionSource(source, "compactSourceFrontierCandidateNeedsMaterialization");
-  const sourceFrontierAdmissionIndex = sourceFrontierSource.indexOf("compactSourceFrontierCandidateNeedsMaterialization");
+  const admissionSource = extractFunctionSource(source, "compactSourceFrontierCandidateAdmission");
+  const sourceFrontierAdmissionIndex = sourceFrontierSource.indexOf("compactSourceFrontierCandidateAdmission");
   const materializeIndex = sourceFrontierSource.indexOf("compactRuntimeContributorFromTemplate");
 
   assert.ok(
@@ -1320,7 +1322,7 @@ test("source-frontier stream gates capped-list admission before projected contri
   );
   assert.match(
     sourceFrontierSource,
-    /if \(!needsRecord\) \{\s*streamLedger\.materializationSkipCount \+= 1;\s*return;\s*\}/,
+    /if \(!admission\.needsMaterialization\) \{\s*streamLedger\.materializationSkipCount \+= 1;\s*return;\s*\}/,
     "source-frontier hot path should skip record materialization when the candidate cannot alter any retained source pool",
   );
   assert.match(
@@ -1342,6 +1344,53 @@ test("source-frontier stream gates capped-list admission before projected contri
     admissionSource,
     /compactCanSkipSupportSampleCandidate/,
     "admission gate must still account for the support-sample upper-bound pools before pruning",
+  );
+});
+
+test("source-frontier stream gates support-sample election separately from materialization", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const sourceFrontierSource = extractFunctionSource(source, "buildWgslSourceFrontierCandidateSources");
+  const admissionSource = extractFunctionSource(source, "compactSourceFrontierCandidateAdmission");
+  const supportRetainIndex = sourceFrontierSource.indexOf("compactRetainSupportSampleRecords");
+  const supportGateIndex = sourceFrontierSource.indexOf("admission.needsSupportSamples");
+
+  assert.match(
+    sourceFrontierSource,
+    /const admission = compactSourceFrontierCandidateAdmission\(\{/,
+    "source-frontier hot path should compute materialization and support-sample admission together",
+  );
+  assert.match(
+    sourceFrontierSource,
+    /if \(!admission\.needsMaterialization\) \{\s*streamLedger\.materializationSkipCount \+= 1;\s*return;\s*\}/,
+    "materialization skip should remain controlled by the materialization admission bit",
+  );
+  assert.ok(
+    supportGateIndex >= 0,
+    "source-frontier hot path should branch on the support-sample admission bit",
+  );
+  assert.ok(
+    supportRetainIndex > supportGateIndex,
+    "support-sample election should be guarded before entering the per-sample conic loop",
+  );
+  assert.match(
+    sourceFrontierSource,
+    /if \(admission\.needsSupportSamples\) \{\s*compactRetainSupportSampleRecords\(\{/,
+    "support sampling should run only when the upper-bound support election can still affect a sample list",
+  );
+  assert.match(
+    sourceFrontierSource,
+    /else \{\s*streamLedger\.supportSampleCandidateSkipCount \+= 1;\s*streamLedger\.supportSampleCandidateSkippedEvaluationCount \+= COMPACT_SOURCE_RETENTION_SUPPORT_SAMPLES_PER_AXIS \* COMPACT_SOURCE_RETENTION_SUPPORT_SAMPLES_PER_AXIS;\s*\}/,
+    "support-sample admission skips should remain visible in the existing skipped-evaluation counters",
+  );
+  assert.match(
+    admissionSource,
+    /needsMaterialization:/,
+    "admission helper should expose materialization admission separately",
+  );
+  assert.match(
+    admissionSource,
+    /needsSupportSamples:/,
+    "admission helper should expose support-sample admission separately",
   );
 });
 
