@@ -1012,6 +1012,16 @@ test("operator witness report prints the slowest app-side frame stage", () => {
   assert.match(reportSource, /timing\.operatorReadinessVsObservedAppFrameTotal/);
 });
 
+test("operator witness route identity distinguishes requested and effective projected-ref stream", () => {
+  const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
+  const routeSource = extractFunctionSource(source, "routeIdentityFromCapture");
+
+  assert.match(routeSource, /requestedWgslProjectedRefStream\s*=\s*url\.searchParams\.get\("wgslProjectedRefStream"\) \|\| url\.searchParams\.get\("projectedRefStream"\) \|\| null/);
+  assert.match(routeSource, /effectiveWgslProjectedRefStream\s*=\s*pageEvidence\.tileLocal\?\.wgslProjectedRefStream\?\.effectiveBackend/);
+  assert.match(routeSource, /pageEvidence\.tileLocal\?\.retainedSourceConstruction\?\.effectiveSourceBackend/);
+  assert.match(routeSource, /pageEvidence\.arenaRuntime\?\.wgslProjectedRefStream\?\.effectiveBackend/);
+});
+
 test("operator witness report prints operator readiness separately from app frame stage timing", () => {
   const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
   const reportStart = source.indexOf("function renderOperatorWitnessLoopReport");

@@ -8792,8 +8792,14 @@ function selectedArenaBackend(): "cpu" | "gpu" {
 function selectedWgslProjectedRefStreamMode(): WgslProjectedRefStreamMode {
   const params = new URLSearchParams(window.location.search);
   const requested = params.get("wgslProjectedRefStream") ?? params.get("projectedRefStream");
+  if (!requested) {
+    return "source-frontier";
+  }
   if (requested === "source-frontier" || requested === "source" || requested === "frontier") {
     return "source-frontier";
+  }
+  if (requested === "disabled" || requested === "off" || requested === "0") {
+    return "disabled";
   }
   if (requested === "on" || requested === "enabled" || requested === "1" || requested === "sidecar") {
     return "sidecar";

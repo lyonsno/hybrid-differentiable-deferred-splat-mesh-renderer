@@ -2614,6 +2614,14 @@ function publicOptions(options) {
 
 function routeIdentityFromCapture(capture, pageEvidence, options) {
   const url = new URL(capture.url);
+  const requestedWgslProjectedRefStream =
+    url.searchParams.get("wgslProjectedRefStream") || url.searchParams.get("projectedRefStream") || null;
+  const effectiveWgslProjectedRefStream =
+    pageEvidence.tileLocal?.wgslProjectedRefStream?.effectiveBackend ??
+    pageEvidence.tileLocal?.retainedSourceConstruction?.effectiveSourceBackend ??
+    pageEvidence.arenaRuntime?.wgslProjectedRefStream?.effectiveBackend ??
+    pageEvidence.arenaRuntime?.retainedSourceConstruction?.effectiveSourceBackend ??
+    null;
   return {
     captureId: capture.id,
     evidenceRole: capture.evidenceRole || "operator-visual",
@@ -2624,7 +2632,9 @@ function routeIdentityFromCapture(capture, pageEvidence, options) {
     effectiveArenaBackend: pageEvidence.arenaRuntime?.effectiveArenaBackend || null,
     tileSizePx: url.searchParams.get("tileSizePx") || pageEvidence.tileLocal?.diagnostics?.config?.tileSizePx || null,
     maxRefsPerTile: url.searchParams.get("maxRefsPerTile") || pageEvidence.tileLocal?.diagnostics?.config?.maxRefsPerTile || null,
-    wgslProjectedRefStream: url.searchParams.get("wgslProjectedRefStream") || null,
+    wgslProjectedRefStream: requestedWgslProjectedRefStream,
+    requestedWgslProjectedRefStream,
+    effectiveWgslProjectedRefStream,
     tileDebug: url.searchParams.get("tileDebug") || null,
     debug: url.searchParams.get("debug") || null,
     traceAnchors: url.searchParams.get("traceAnchors") || null,

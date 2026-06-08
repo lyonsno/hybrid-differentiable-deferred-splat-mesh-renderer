@@ -1157,6 +1157,19 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
 });
 
+test("default live projected-ref stream mode uses source-frontier with explicit diagnostic opt-outs", () => {
+  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const modeSource = extractFunctionSource(mainSource, "selectedWgslProjectedRefStreamMode");
+
+  assert.match(modeSource, /if \(!requested\) \{\s*return "source-frontier";\s*\}/);
+  assert.match(modeSource, /requested === "disabled"/);
+  assert.match(modeSource, /requested === "off"/);
+  assert.match(modeSource, /requested === "0"/);
+  assert.match(modeSource, /return "disabled";/);
+  assert.match(modeSource, /requested === "sidecar"/);
+  assert.match(modeSource, /return "sidecar";/);
+});
+
 test("production-election prefix scatter remains a sidecar materializer but not the source-frontier live compositor source", () => {
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const prefixScatterSource = readFileSync(
