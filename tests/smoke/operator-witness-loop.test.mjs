@@ -1026,62 +1026,52 @@ test("operator witness app frame timing routes requested GPU presentation throug
   assert.match(dispatchSource, /tileLocalState\.pipeline\.dispatchComposite\(tileLocalComputePass/);
 });
 
-test("source-frontier evidence names CPU retained-payload materialization before compositor handoff", () => {
+test("source-frontier evidence names shader-built compositor custody after CPU materialization removal", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const evidenceSource = extractFunctionSource(source, "buildWgslProjectedSourceFrontierConstructionEvidence");
   const sceneSource = extractFunctionSource(source, "createWgslProjectedSourceFrontierTileLocalSceneState");
 
-  assert.match(
+  assert.doesNotMatch(
     sceneSource,
     /timeOptionalFrameStage\(\s*frameTiming,\s*"wgsl-source-frontier-production-election-retained-payload-cpu-materialize"/,
-    "source-frontier retained payload creation should be a named CPU frame stage",
+    "source-frontier route must not rebuild retained payloads on the CPU before compositor handoff",
   );
-  assert.match(
+  assert.doesNotMatch(
     evidenceSource,
     /"wgsl-source-frontier-production-election-retained-payload-cpu-materialize"/,
-    "retained-source evidence should preserve the remaining CPU payload materialization owner",
+    "retained-source evidence must not preserve the removed CPU retained-payload materialization owner",
   );
   assert.match(
     evidenceSource,
-    /"live-wgsl-production-election-retained-payload-materialization"/,
-    "the next offload boundary should point at GPU materialization of retained payloads, not generic compositor consumption",
+    /currentCompositorBinding:\s*"wgsl-projected-ref-stream-shader-built-current-compositor-source"/,
+    "the source-frontier live route must name the shader-built compositor source as current custody",
   );
   assert.match(
     evidenceSource,
-    /frontierBlockedStages:[\s\S]*retainedPayloadCpuMaterializeStage/,
-    "blocked stages should include the retained payload CPU materialization wall",
+    /nextGpuOffloadStage = "live-wgsl-production-candidate-source-identity"/,
+    "the next offload boundary should point at GPU candidate-source identity, not CPU retained-payload materialization",
   );
 });
 
-test("source-frontier evidence names production-election ledger reuse before retained payload handoff", () => {
+test("source-frontier evidence no longer names production-election ledger reuse before compositor handoff", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const evidenceSource = extractFunctionSource(source, "buildWgslProjectedSourceFrontierConstructionEvidence");
   const sceneSource = extractFunctionSource(source, "createWgslProjectedSourceFrontierTileLocalSceneState");
 
-  assert.match(
+  assert.doesNotMatch(
     sceneSource,
     /timeOptionalFrameStage\(\s*frameTiming,\s*"wgsl-source-frontier-production-election-ledger-reuse"/,
-    "source-frontier compact source should expose the CPU ledger reuse stage separately from retained payload materialization",
+    "source-frontier route must not run CPU production-election ledger reuse before compositor handoff",
   );
-  assert.ok(
-    sceneSource.indexOf('"wgsl-source-frontier-production-election-ledger-reuse"') <
-      sceneSource.indexOf('"wgsl-source-frontier-production-election-retained-payload-cpu-materialize"'),
-    "ledger reuse timing should precede retained payload materialization timing",
+  assert.doesNotMatch(
+    evidenceSource,
+    /ledgerReuseStage|retainedPayloadCpuMaterializeStage/,
+    "retained-source evidence must not keep removed CPU ledger/materialization stage aliases",
   );
   assert.match(
     evidenceSource,
-    /const\s+ledgerReuseStage\s*=\s*"wgsl-source-frontier-production-election-ledger-reuse"/,
-    "retained-source evidence should bind the ledger reuse stage by name",
-  );
-  assert.match(
-    evidenceSource,
-    /cpuOwnedStages:[\s\S]*ledgerReuseStage[\s\S]*retainedPayloadCpuMaterializeStage/,
-    "retained-source evidence should name ledger reuse as a CPU-owned source-frontier stage",
-  );
-  assert.match(
-    evidenceSource,
-    /frontierBlockedStages:[\s\S]*ledgerReuseStage[\s\S]*retainedPayloadCpuMaterializeStage/,
-    "frontier blocked stages should include ledger reuse before retained payload materialization",
+    /cpuOwnedStages:\s*\[[\s\S]*"wgsl-source-frontier-project-splats"[\s\S]*"wgsl-source-frontier-estimate-ref-budget"[\s\S]*\]/,
+    "retained-source evidence should keep only projection and ref-budget estimation as CPU-owned source-frontier stages",
   );
 });
 
@@ -1100,16 +1090,16 @@ test("static dessert debug modes can publish compact ref readbacks without enabl
   assert.match(cpuReferenceSource, /state\.debugMode !== "final-color"/);
 });
 
-test("source-frontier state preserves retained compact contributors for debug diagnostics", () => {
+test("source-frontier state leaves CPU retained compact contributors empty until live readback diagnostics", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const sourceFrontierSource = extractFunctionSource(source, "createWgslProjectedSourceFrontierTileLocalSceneState");
   const refreshSource = extractFunctionSource(source, "refreshTileLocalDiagnostics");
 
-  assert.match(sourceFrontierSource, /runtimeContributors:\s*compactSource\.retainedRecords/);
-  assert.match(sourceFrontierSource, /gpuArenaProjectedContributors:\s*compactSource\.retainedRecords/);
+  assert.match(sourceFrontierSource, /runtimeContributors:\s*\[\]/);
+  assert.match(sourceFrontierSource, /gpuArenaProjectedContributors:\s*\[\]/);
   assert.match(sourceFrontierSource, /gpuArenaProjectedConicSources:\s*splats/);
   assert.match(refreshSource, /runtimeConicSources:\s*state\.gpuArenaProjectedConicSources/);
-  assert.doesNotMatch(sourceFrontierSource, /gpuArenaProjectedContributors:\s*\[\]/);
+  assert.doesNotMatch(sourceFrontierSource, /runtimeContributors:\s*compactSource\.retainedRecords/);
 });
 
 test("operator witness evidence distinguishes GPU arena consumption from retained-source construction ownership", () => {

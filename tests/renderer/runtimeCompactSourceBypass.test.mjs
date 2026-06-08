@@ -670,23 +670,28 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     retainedSourceEvidence,
-    /const nextGpuOffloadStage = productionElectionPrefixScatter\s*\?\s*"live-wgsl-production-election-retained-payload-materialization"\s*:\s*"live-wgsl-production-election-prefix-scatter"[\s\S]*nextGpuOffloadStage,/,
-    "after runtime production-election prefix scatter lands, the next retained-source frontier must advance to GPU retained-payload materialization before compositor consumption",
+    /const nextGpuOffloadStage = "live-wgsl-production-candidate-source-identity"[\s\S]*nextGpuOffloadStage,/,
+    "after shader-built source-frontier owns live construction, the next retained-source frontier must move production candidate-source identity onto the GPU",
   );
   assert.match(
     retainedSourceEvidence,
-    /candidateSourceIdentity:\s*sourceFrontierCandidateSourceIdentityEvidence\([\s\S]*candidateSourceInputs/,
-    "source-frontier retained-source evidence must be driven by actual candidate-source input substrate",
+    /candidateSourceIdentity:\s*sourceFrontierCandidateSourceIdentityEvidence\(\)/,
+    "source-frontier retained-source evidence must not claim production candidate-source identity before that substrate returns on the GPU side",
+  );
+  assert.doesNotMatch(
+    frontierFactorySource,
+    /buildGpuProjectionRetentionCandidateSourceProductionElection\(\{/,
+    "source-frontier live state must not run CPU production election before shader-built compositor source construction",
+  );
+  assert.doesNotMatch(
+    frontierFactorySource,
+    /buildGpuProjectionRetentionCandidateSourceElectionTable\(/,
+    "source-frontier tile headers must not require CPU-packed candidate-source records on the live shader-built route",
   );
   assert.match(
-    mainSource,
-    /buildGpuProjectionRetentionCandidateSourceProductionElection\(\{\s*records:\s*candidateSourceSubstrate\.projectedCandidateRecords,\s*maxRefsPerTile:\s*gpuLiveEffectiveRefsPerTile\(plan\),\s*candidateSourceInputs,\s*\}\)/,
-    "source-frontier runtime must consume candidate-source records/groups with a projected candidate score table before claiming production-election identity",
-  );
-  assert.match(
-    mainSource,
-    /buildGpuProjectionRetentionCandidateSourceElectionTable\(\s*frontierSource\.candidateSplatIndexes,\s*candidateSourceInputs,\s*\)/,
-    "source-frontier tile headers must consume the packed candidate-source record/group sidecar",
+    frontierFactorySource,
+    /createTileHeaderStorageBuffer\(\s*device,\s*plan,\s*frontierSource\.candidateSplatIndexes,\s*"wgsl_source_frontier_tile_headers",\s*\)/,
+    "source-frontier live route must seed only the compact source table and let the shader build the current tile refs",
   );
   assert.match(
     mainSource,
@@ -740,13 +745,28 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     retainedSourceEvidence,
-    /candidateSourceRuntimeBuffers:\s*candidateSourceRuntimeBuffersEvidence/,
-    "source-frontier construction evidence must carry runtime candidate-source buffer custody separately from identity/provenance evidence",
+    /candidateSourceRuntimeBuffers:\s*sourceFrontierCandidateSourceRuntimeBufferEvidence\(\{\}\)/,
+    "source-frontier construction evidence must not claim runtime candidate-source buffer custody on the shader-built live route",
   );
-  assert.match(
-    mainSource,
+  assert.doesNotMatch(
+    retainedSourceEvidence,
+    /gpuReadyStages:\s*\[[\s\S]*"wgsl-source-frontier-candidate-source-input-buffers"[\s\S]*\]/,
+    "source-frontier construction evidence must not list blocked candidate-source input buffers as GPU-ready",
+  );
+  assert.doesNotMatch(
+    retainedSourceEvidence,
+    /gpuReadyStages:\s*\[[\s\S]*"wgsl-source-frontier-production-election-consumer"[\s\S]*\]/,
+    "source-frontier construction evidence must not list blocked production-election consumers as GPU-ready",
+  );
+  assert.doesNotMatch(
+    retainedSourceEvidence,
+    /gpuReadyStages:\s*\[[\s\S]*"wgsl-production-election-compute-consumer"[\s\S]*\]/,
+    "source-frontier construction evidence must not list blocked production-election compute consumers as GPU-ready",
+  );
+  assert.doesNotMatch(
+    frontierFactorySource,
     /const candidateSourceRuntimeBuffersEvidence = sourceFrontierCandidateSourceRuntimeBufferEvidence\(candidateSourceBuffers\)/,
-    "candidate-source buffer evidence must be produced from the actual runtime GPU buffer bundle after allocation",
+    "source-frontier live state must not allocate CPU-derived candidate-source runtime buffers before the shader-built compositor source",
   );
   assert.match(
     mainSource,
@@ -760,8 +780,13 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     retainedSourceEvidence,
-    /productionElectionConsumer:\s*sourceFrontierProductionElectionConsumerEvidence\(\s*productionElection,\s*candidateSourceRuntimeBuffersEvidence,\s*productionElectionComputeConsumer,\s*\)/,
-    "source-frontier construction evidence must expose a narrow production-election consumer separately from runtime buffer custody",
+    /productionElectionConsumer:\s*sourceFrontierProductionElectionConsumerEvidence\(\s*undefined,\s*sourceFrontierCandidateSourceRuntimeBufferEvidence\(\{\}\),\s*undefined,\s*\)/,
+    "source-frontier construction evidence must not claim narrow production-election consumer custody until GPU candidate identity is restored",
+  );
+  assert.doesNotMatch(
+    frontierFactorySource,
+    /createGpuProductionElectionConsumerContract/,
+    "source-frontier live state must not instantiate the CPU production-election consumer before GPU candidate identity is restored",
   );
   assert.match(
     mainSource,
@@ -785,128 +810,28 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     retainedSourceEvidence,
-    /candidateSourceIdentity:\s*sourceFrontierCandidateSourceIdentityEvidence\([\s\S]*candidateSourceInputs/,
-    "source-frontier evidence must be driven by actual candidate-source input substrate, not a hardcoded missing-input claim",
+    /candidateSourceIdentity:\s*sourceFrontierCandidateSourceIdentityEvidence\(\)/,
+    "source-frontier evidence must expose candidate-source identity as the next GPU frontier instead of laundering CPU candidate-source inputs",
   );
   assert.match(
     retainedSourceEvidence,
-    /const nextGpuOffloadStage = productionElectionPrefixScatter\s*\?\s*"live-wgsl-production-election-retained-payload-materialization"\s*:\s*"live-wgsl-production-election-prefix-scatter"[\s\S]*nextGpuOffloadStage,/,
-    "once runtime production-election prefix scatter is seated, the next frontier is GPU retained-payload materialization rather than repeated prefix scatter",
-  );
-  assert.match(
-    mainSource,
-    /createGpuProductionElectionConsumerContract/,
-    "source-frontier runtime must create the narrow production-election compute-consumer contract after candidate-source buffers are seated",
-  );
-  assert.match(
-    frontierFactorySource,
-    /const productionElectionComputeConsumer = createGpuProductionElectionConsumerContract\(\{[\s\S]*candidateSourceRecordsBuffer:\s*candidateSourceBuffers\.candidateSourceRecordsBuffer[\s\S]*candidateSourceGroupsBuffer:\s*candidateSourceBuffers\.candidateSourceGroupsBuffer[\s\S]*productionElection,[\s\S]*\}\);/,
-    "source-frontier runtime must pass runtime candidate-source buffers plus production-election counts into the narrow compute consumer",
-  );
-  assert.match(
-    frontierFactorySource,
-    /return \{[\s\S]*productionElectionComputeConsumer,[\s\S]*retainedSourceConstruction/,
-    "source-frontier runtime must carry the narrow production-election compute consumer on scene state without treating it as compositor input",
-  );
-  assert.match(
-    productionElectionConsumerSource,
-    /createBindGroupLayout\(\{[\s\S]*label:\s*"gpu_production_election_consumer_bind_group_layout"[\s\S]*GPUShaderStage\.COMPUTE[\s\S]*candidateSourceRecordsBuffer[\s\S]*candidateSourceGroupsBuffer[\s\S]*witnessBuffer/,
-    "production-election compute consumer must own a dedicated bind group layout instead of expanding the current compositor layout",
-  );
-  assert.match(
-    productionElectionConsumerShader,
-    /@binding\(0\)\s*var<storage,\s*read>\s+candidateSourceRecords:[\s\S]*@binding\(1\)\s*var<storage,\s*read>\s+candidateSourceGroups:[\s\S]*@compute @workgroup_size\(64\)\s*fn witness_production_election_consumer/,
-    "narrow WGSL consumer must read candidate-source record/group buffers in a dedicated compute entrypoint",
-  );
-  assert.match(
-    mainSource,
-    /createGpuProductionElectionPrefixScatterContract/,
-    "source-frontier runtime must create the prefix-scatter contract after production-election compute-consumer is seated",
-  );
-  assert.match(
-    frontierFactorySource,
-    /const productionElectionPrefixScatter = timeOptionalFrameStage\(\s*frameTiming,\s*"wgsl-source-frontier-production-election-retained-payload-cpu-materialize"[\s\S]*createGpuProductionElectionPrefixScatterContract\(\{[\s\S]*productionElectionComputeConsumer,[\s\S]*productionElection,[\s\S]*\}\)[\s\S]*\);/,
-    "prefix scatter must consume the dedicated production-election compute-consumer plus elected rows under the retained-payload materialization timing stage, not rerun source selection",
+    /const nextGpuOffloadStage = "live-wgsl-production-candidate-source-identity"[\s\S]*nextGpuOffloadStage,/,
+    "source-frontier construction evidence must name candidate-source identity as the remaining GPU frontier",
   );
   assert.match(
     retainedSourceEvidence,
-    /productionElectionPrefixScatter:\s*sourceFrontierProductionElectionPrefixScatterEvidence\(\s*productionElectionComputeConsumer,\s*productionElectionPrefixScatter,\s*\)/,
-    "source-frontier construction evidence must expose prefix-scatter as the next narrow consumer after compute-consumer",
+    /productionElectionPrefixScatter:\s*sourceFrontierProductionElectionPrefixScatterEvidence\(\s*undefined,\s*undefined,\s*\)/,
+    "source-frontier construction evidence must not claim prefix-scatter materialization on the shader-built live route",
   );
-  assert.match(
-    mainSource,
-    /interface SourceFrontierProductionElectionPrefixScatterEvidence[\s\S]*"prefix-scatter-contract-present"[\s\S]*"blocked-missing-production-election-prefix-scatter-input"/,
-    "prefix-scatter evidence must carry explicit present/blocked status instead of silently implying compositor consumption",
+  assert.doesNotMatch(
+    frontierFactorySource,
+    /createGpuProductionElectionConsumerContract|createGpuProductionElectionPrefixScatterContract|dispatchGpuProductionElectionPrefixScatter|enqueueProductionElectionPrefixScatterReadback/,
+    "source-frontier live state must not instantiate or read back the CPU production-election materialization sidecar",
   );
-  assert.match(
-    productionElectionPrefixScatterSource,
-    /source:\s*"wgsl-production-election-prefix-scatter"[\s\S]*status:\s*"prefix-scatter-contract-present"[\s\S]*consumedComputeConsumer:\s*"wgsl-production-election-compute-consumer"/,
-    "prefix-scatter contract must name its source and prove that it consumes the compute-consumer boundary",
-  );
-  assert.match(
-    productionElectionPrefixScatterSource,
-    /export function dispatchGpuProductionElectionPrefixScatter\([\s\S]*pass\.setPipeline\(contract\.pipeline\)[\s\S]*pass\.setBindGroup\(0,\s*contract\.bindGroup\)[\s\S]*pass\.dispatchWorkgroups\(contract\.dispatchWorkgroups\)/,
-    "prefix-scatter contract must expose a dedicated dispatch helper instead of relying on inert pipeline construction",
-  );
-  assert.match(
-    productionElectionPrefixScatterSource,
-    /dispatchWorkgroups:\s*Math\.max\(1,\s*Math\.ceil\(retainedRecordCount \/ 64\)\)/,
-    "prefix-scatter dispatch must be bounded by retained record count, not viewport tiles or compositor capacity",
-  );
-  assert.match(
-    productionElectionPrefixScatterSource,
-    /outputBuffers:[\s\S]*"production-election-prefix-counts-buffer"[\s\S]*"production-election-prefix-offsets-buffer"[\s\S]*"production-election-retained-record-indices-buffer"/,
-    "prefix scatter must own concrete output buffers for counts, offsets, and retained record indices",
-  );
-  assert.match(
+  assert.doesNotMatch(
     renderLoopSource,
-    /dispatchGpuProductionElectionPrefixScatter\(tileLocalComputePass,\s*tileLocalState\.productionElectionPrefixScatter\)/,
-    "source-frontier render loop must dispatch prefix scatter after seating the contract",
-  );
-  assert.ok(
-    renderLoopSource.indexOf("dispatchGpuProductionElectionPrefixScatter") >= 0 &&
-      renderLoopSource.indexOf("dispatchGpuProductionElectionPrefixScatter") < renderLoopSource.indexOf("tileLocalState.pipeline.dispatchComposite"),
-    "prefix scatter must run before the current tile-local compositor path, not after presentation",
-  );
-  assert.match(
-    mainSource,
-    /enqueueProductionElectionPrefixScatterReadback\(gpu\.device,\s*encoder,\s*tileLocalState,\s*frameSerial\)/,
-    "source-frontier runtime must enqueue prefix-scatter readback evidence after dispatch",
-  );
-  assert.match(
-    mainSource,
-    /interface ProductionElectionPrefixScatterReadback[\s\S]*source:\s*"wgsl-production-election-prefix-scatter-readback"[\s\S]*witnessSentinel:\s*number[\s\S]*retainedRows:\s*number[\s\S]*nonEmptyTiles:\s*number[\s\S]*falseClosureGuard:\s*"prefix-scatter-readback-is-not-current-compositor-consumption"/,
-    "prefix-scatter readback evidence must carry live witness/count fields and a compositor non-consumption guard",
-  );
-  assert.match(
-    mainSource,
-    /function enqueueProductionElectionPrefixScatterReadback[\s\S]*copyBufferToBuffer\(state\.productionElectionPrefixScatter\.witnessBuffer[\s\S]*copyBufferToBuffer\(state\.productionElectionPrefixScatter\.prefixCountsBuffer[\s\S]*copyBufferToBuffer\(state\.productionElectionPrefixScatter\.retainedRecordIndicesBuffer/,
-    "prefix-scatter readback must copy the witness, counts, and retained index outputs from live GPU buffers",
-  );
-  assert.match(
-    mainSource,
-    /function summarizeProductionElectionPrefixScatterReadback[\s\S]*witnessSentinel:\s*witness\[7\][\s\S]*source:\s*"wgsl-production-election-prefix-scatter-readback"/,
-    "prefix-scatter readback must summarize the WGSL witness sentinel rather than only reporting pending state",
-  );
-  assert.match(
-    mainSource,
-    /function refreshProductionElectionPrefixScatterReadbackEvidence[\s\S]*productionElectionPrefixScatter:\s*\{[\s\S]*readback,[\s\S]*\}/,
-    "retained-source construction evidence must embed the live prefix-scatter readback after it resolves",
-  );
-  assert.match(
-    mainSource,
-    /function publishProductionElectionPrefixScatterReadback[\s\S]*prefixScatterReadback:\s*readback[\s\S]*retainedSourceConstruction:\s*state\.retainedSourceConstruction/,
-    "smoke evidence must publish prefix-scatter readback without claiming compositor input consumption",
-  );
-  assert.match(
-    productionElectionPrefixScatterShader,
-    /@binding\(0\)\s*var<storage,\s*read>[\s\S]*candidateSourceRecords:[\s\S]*@binding\(1\)\s*var<storage,\s*read>[\s\S]*candidateSourceGroups:[\s\S]*@binding\(2\)\s*var<storage,\s*read_write>[\s\S]*prefixCounts:[\s\S]*@compute @workgroup_size\(64\)\s*fn scatter_production_election_prefix/,
-    "prefix-scatter WGSL must consume candidate-source records/groups in a dedicated compute entrypoint",
-  );
-  assert.match(
-    retainedSourceEvidence,
-    /const nextGpuOffloadStage = productionElectionPrefixScatter\s*\?\s*"live-wgsl-production-election-retained-payload-materialization"\s*:\s*"live-wgsl-production-election-prefix-scatter"[\s\S]*nextGpuOffloadStage,/,
-    "once prefix scatter is seated, the next frontier must advance to GPU retained-payload materialization instead of repeating prefix scatter",
+    /dispatchGpuProductionElectionPrefixScatter|materializeGpuProductionElectionCompositorSource|productionElectionPrefixScatter/,
+    "source-frontier render loop must not run the prefix-scatter sidecar before the shader-built compositor source",
   );
   assert.doesNotMatch(
     coverageRendererSource,
@@ -1060,8 +985,8 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     retainedRowsRefreshSource,
-    /retainedRows:\s*retainedRowsReadback[\s\S]*nextGpuOffloadStage:\s*"live-wgsl-production-election-prefix-scatter"/,
-    "pending or blocked retained-row evidence must keep the next frontier pointed at live WGSL prefix scatter",
+    /retainedRows:\s*retainedRowsReadback[\s\S]*nextGpuOffloadStage:\s*"live-wgsl-production-candidate-source-identity"/,
+    "pending or blocked retained-row evidence must keep the next frontier pointed at production candidate-source identity",
   );
   assert.match(
     retainedRowsRefreshSource,
@@ -1075,13 +1000,13 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     retainedRowsRefreshSource,
-    /const nextGpuOffloadStage = state\.productionElectionPrefixScatter\s*\?\s*"live-wgsl-production-election-compositor-consumption"[\s\S]*:\s*state\.productionElectionComputeConsumer\s*\?\s*"live-wgsl-production-election-prefix-scatter"[\s\S]*:\s*candidateSourceRuntimeBuffers\.status === "runtime-state-buffers-present"[\s\S]*"live-wgsl-production-candidate-source-election"/,
-    "present retained rows plus seated prefix scatter must advance to compositor consumption while compute-consumer-only state preserves prefix scatter as the next frontier",
+    /const nextGpuOffloadStage = state\.productionElectionPrefixScatter\s*\?\s*"live-wgsl-production-election-compositor-consumption"[\s\S]*:\s*state\.productionElectionComputeConsumer\s*\?\s*"live-wgsl-production-election-prefix-scatter"[\s\S]*:\s*candidateSourceRuntimeBuffers\.status === "runtime-state-buffers-present"[\s\S]*"live-wgsl-production-candidate-source-election"[\s\S]*"live-wgsl-production-candidate-source-identity"/,
+    "present retained rows must preserve candidate-source identity as the fallback frontier until newer runtime custody is actually seated",
   );
   assert.match(
     retainedRowsRefreshSource,
-    /const nextBlockedStage = state\.productionElectionPrefixScatter\s*\?\s*"live-wgsl-production-election-compositor-consumption"[\s\S]*:\s*state\.productionElectionComputeConsumer\s*\?\s*"live-wgsl-production-election-prefix-scatter"[\s\S]*:\s*candidateSourceRuntimeBuffers\.status === "runtime-state-buffers-present"[\s\S]*"live-wgsl-production-candidate-source-election"/,
-    "frontier blockers must advance through prefix scatter when it is present and name older frontiers only when newer custody is missing",
+    /const nextBlockedStage = nextGpuOffloadStage/,
+    "frontier blockers must mirror the same candidate-source-aware next frontier instead of reintroducing old prefix-scatter or bindings language",
   );
   assert.match(
     retainedRowsRefreshSource,
@@ -1100,13 +1025,18 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     retainedRowsRefreshSource,
-    /return;\s*\}\s*state\.retainedSourceConstruction = \{[\s\S]*retainedRows:\s*retainedRowsReadback[\s\S]*nextGpuOffloadStage:\s*"live-wgsl-production-election-prefix-scatter"/,
+    /return;\s*\}\s*state\.retainedSourceConstruction = \{[\s\S]*retainedRows:\s*retainedRowsReadback[\s\S]*nextGpuOffloadStage:\s*"live-wgsl-production-candidate-source-identity"/,
     "blocked or pending retained-row evidence must be handled only after the present branch returns",
   );
   assert.match(
     retainedRowsRefreshSource,
-    /state\.retainedSourceConstruction = \{[\s\S]*retainedRows:\s*retainedRowsReadback[\s\S]*nextGpuOffloadStage:\s*"live-wgsl-production-election-prefix-scatter"[\s\S]*frontierBlockedStages:\s*\[[\s\S]*"live-wgsl-production-election-prefix-scatter"[\s\S]*\]/,
-    "blocked or pending retained-row evidence must restore prefix/scatter blockers instead of preserving stale candidate-source blockers",
+    /state\.retainedSourceConstruction = \{[\s\S]*retainedRows:\s*retainedRowsReadback[\s\S]*nextGpuOffloadStage:\s*"live-wgsl-production-candidate-source-identity"[\s\S]*frontierBlockedStages:\s*\[[\s\S]*"live-wgsl-production-candidate-source-identity"[\s\S]*\]/,
+    "blocked or pending retained-row evidence must restore candidate-source identity blockers instead of prefix/scatter blockers",
+  );
+  assert.doesNotMatch(
+    retainedRowsRefreshSource,
+    /compact-source-stream-retention|compact-source-pixel-traces|live-wgsl-production-election-candidate-source-bindings/,
+    "retained-row refresh must not reintroduce stale compact-stream blockers or old candidate-source bindings frontier language",
   );
   assert.match(
     retainedSourceRefreshSource,
@@ -1130,8 +1060,13 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     retainedSourceEvidence,
-    /frontierBlockedStages:\s*\[[\s\S]*"wgsl-source-frontier-pack-candidate-source-inputs"[\s\S]*"wgsl-source-frontier-production-election-runtime"[\s\S]*retainedPayloadCpuMaterializeStage[\s\S]*nextGpuOffloadStage[\s\S]*\]/,
-    "source-frontier retained-source evidence must name the current CPU pack/election/materialization blockers instead of the old compact-stream umbrella",
+    /frontierBlockedStages:\s*\[[\s\S]*nextGpuOffloadStage[\s\S]*\]/,
+    "source-frontier retained-source evidence must name only the live candidate-source identity frontier after CPU materialization is removed",
+  );
+  assert.doesNotMatch(
+    retainedSourceEvidence,
+    /wgsl-source-frontier-pack-candidate-source-inputs|wgsl-source-frontier-production-election-runtime|retainedPayloadCpuMaterializeStage/,
+    "source-frontier construction evidence must not preserve removed CPU pack/election/materialization blockers",
   );
   assert.match(streamEvidenceSource, /"wgsl-projected-ref-stream-source-frontier"/);
   assert.match(
@@ -1222,7 +1157,7 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
 });
 
-test("live production-election prefix scatter materializes the current compositor source before final color", () => {
+test("production-election prefix scatter remains a sidecar materializer but not the source-frontier live compositor source", () => {
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const prefixScatterSource = readFileSync(
     new URL("../../src/gpuProductionElectionPrefixScatter.ts", import.meta.url),
@@ -1237,6 +1172,7 @@ test("live production-election prefix scatter materializes the current composito
   const renderLoopSource = mainSource.slice(renderLoopStart, renderLoopEnd);
   const compactSourceFallback = extractFunctionSource(mainSource, "compactRetainedSourceForWgslProjectedSourceFrontier");
   const retainedSourceEvidence = extractFunctionSource(mainSource, "buildWgslProjectedSourceFrontierConstructionEvidence");
+  const sourceFrontierSource = extractFunctionSource(mainSource, "createWgslProjectedSourceFrontierTileLocalSceneState");
 
   assert.match(
     prefixScatterSource,
@@ -1278,25 +1214,50 @@ test("live production-election prefix scatter materializes the current composito
     /const retainedRecords = \[\.\.\.productionElection\.retainedRecords\]\.sort\(compareCompactProjectionRetentionCompositorOrder\)/,
     "production-election retained-source fallback evidence must use the same compositor ordering contract as the live materializer",
   );
-  assert.match(
+  assert.doesNotMatch(
     renderLoopSource,
     /dispatchGpuProductionElectionPrefixScatter\(\s*tileLocalComputePass,\s*tileLocalState\.productionElectionPrefixScatter\s*\)[\s\S]*materializeGpuProductionElectionCompositorSource\(\s*tileLocalComputePass,\s*tileLocalState\.productionElectionPrefixScatter[\s\S]*tileLocalState\.pipeline\.dispatchComposite/,
-    "source-frontier render loop must materialize production-election prefix-scatter output before current compositor dispatch",
+    "source-frontier render loop must not materialize CPU production-election prefix-scatter output before current compositor dispatch",
   );
-  assert.match(
+  assert.doesNotMatch(
     renderLoopSource,
     /else if \(tileLocalState\.productionElectionPrefixScatter\) \{\s*tileLocalState\.pipeline\.dispatchComposite\(tileLocalComputePass,\s*tileLocalState\.bindGroup,\s*tileLocalState\.plan\);\s*\} else if \(compositePrebuiltCpuTileRefs\)/,
-    "seated production-election prefix scatter must choose the compositor over the all-candidate projected-ref-stream pipeline",
+    "seated production-election prefix scatter must not choose the compositor over the shader-built source-frontier pipeline",
   );
   assert.match(
     retainedSourceEvidence,
-    /currentCompositorBinding:\s*productionElectionPrefixScatter\s*\?\s*"production-election-prefix-scatter-materialized-current-compositor-source"[\s\S]*:\s*"forbidden-current-compositor-bind-group-full"/,
-    "retained-source evidence must state that the current compositor source is materialized from production-election prefix scatter",
+    /currentCompositorBinding:\s*"wgsl-projected-ref-stream-shader-built-current-compositor-source"/,
+    "retained-source evidence must state that the live compositor source is shader-built projected refs",
+  );
+  assert.doesNotMatch(
+    retainedSourceEvidence,
+    /currentCompositorBinding:\s*productionElectionPrefixScatter\s*\?/,
+    "retained-source evidence must not make current compositor custody depend on CPU production-election prefix scatter",
   );
   assert.match(
     retainedSourceEvidence,
-    /falseClosureGuard:\s*productionElectionPrefixScatter\s*\?\s*"production-election-compositor-consumption-is-not-visual-quality-or-performance-closure"[\s\S]*:\s*"wgsl-source-frontier-gpu-retention-election-is-not-exact-plate-parity-or-production-retention"/,
-    "compositor-consumption evidence must keep visual quality and performance closure separate from source-routing closure",
+    /falseClosureGuard:\s*"shader-built-source-frontier-is-not-production-pool-seat-election-or-visual-quality-closure"/,
+    "shader-built source-frontier evidence must keep GPU construction closure separate from production-election and visual-quality closure",
+  );
+  assert.doesNotMatch(
+    sourceFrontierSource,
+    /buildWgslSourceFrontierCandidateSources/,
+    "source-frontier live state must not stream CPU candidate-source records before the shader-built compositor source",
+  );
+  assert.doesNotMatch(
+    sourceFrontierSource,
+    /buildGpuProjectionRetentionCandidateSourceProductionElection/,
+    "source-frontier live state must not run CPU production election before the shader-built compositor source",
+  );
+  assert.doesNotMatch(
+    sourceFrontierSource,
+    /createGpuProductionElectionPrefixScatterContract/,
+    "source-frontier live state must not create CPU election prefix-scatter materialization for the current compositor source",
+  );
+  assert.doesNotMatch(
+    retainedSourceEvidence,
+    /"wgsl-source-frontier-pack-candidate-source-inputs"|"wgsl-source-frontier-production-election-runtime"|"wgsl-source-frontier-production-election-retained-payload-cpu-materialize"/,
+    "source-frontier retained-source evidence must not list CPU candidate-source/election/materialization as live-route stages after shader construction owns the compositor source",
   );
 });
 
