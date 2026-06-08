@@ -8245,24 +8245,36 @@ function ensureTileLocalSceneState(
     nearFadeEndNdc: footprintParams.nearFadeEndNdc,
   };
   const viewportMatches = state.viewportWidth === viewportWidth && state.viewportHeight === viewportHeight;
-  const bridgeStillFresh = !tileLocalPrepassBridgeSignatureChanged(state.prepassSignature, bridgeInput);
+  const bridgeStillFresh = timeOptionalFrameStage(
+    frameTiming,
+    "tile-local-scene-state-refresh/signature-check",
+    () => !tileLocalPrepassBridgeSignatureChanged(state.prepassSignature, bridgeInput)
+  );
   if (viewportMatches && (bridgeStillFresh || !allowViewRebuild)) {
     return state;
   }
-  const nextState = createTileLocalSceneState(
-    device,
-    scene.attributes,
-    scene.buffers,
-    scene.sortedIndexBuffer,
-    scene.effectiveOpacities,
-    viewMatrix,
-    viewProj,
-    viewportWidth,
-    viewportHeight,
-    footprintParams,
-    frameTiming
+  const nextState = timeOptionalFrameStage(
+    frameTiming,
+    "tile-local-scene-state-refresh/create-state",
+    () => createTileLocalSceneState(
+      device,
+      scene.attributes,
+      scene.buffers,
+      scene.sortedIndexBuffer,
+      scene.effectiveOpacities,
+      viewMatrix,
+      viewProj,
+      viewportWidth,
+      viewportHeight,
+      footprintParams,
+      frameTiming
+    )
   );
-  destroyTileLocalSceneState(state);
+  timeOptionalFrameStage(
+    frameTiming,
+    "tile-local-scene-state-refresh/destroy-previous-state",
+    () => destroyTileLocalSceneState(state)
+  );
   return nextState;
 }
 

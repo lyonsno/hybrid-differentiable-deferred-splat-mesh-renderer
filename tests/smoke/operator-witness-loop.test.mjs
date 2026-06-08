@@ -514,6 +514,55 @@ test("operator witness timing summary ties source-frontier counts to the slowest
   });
 });
 
+test("operator witness timing summary exposes tile-local scene-state refresh substages", () => {
+  const timing = summarizeOperatorWitnessTiming([
+    witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.dessertClose, {
+      pageEvidence: {
+        operatorWitness: {
+          frameSerial: 32,
+          frameTimings: {
+            totalMs: 4032.5,
+            stages: [
+              { name: "tile-local-scene-state-refresh/signature-check", elapsedMs: 3.2 },
+              { name: "tile-local-scene-state-refresh/create-state", elapsedMs: 3918.4 },
+              { name: "compact-source-stream-retention", elapsedMs: 2875.1 },
+            ],
+          },
+        },
+      },
+    }),
+    witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.porousClose, {
+      timing: {
+        stages: [{ name: "interaction-readiness", elapsedMs: 5100 }],
+      },
+      pageEvidence: {
+        readinessDiagnosticsByStage: {
+          interactionReadiness: {
+            observedAppFrame: {
+              frameSerial: 37,
+              totalMs: 4960,
+              tileLocalSceneStateRefresh: {
+                slowestSubstage: {
+                  frameSerial: 37,
+                  name: "tile-local-scene-state-refresh/create-state",
+                  elapsedMs: 4821.9,
+                },
+              },
+            },
+          },
+        },
+      },
+    }),
+  ]);
+
+  assert.deepEqual(timing.tileLocalSceneStateRefresh.slowestSubstage, {
+    captureId: OPERATOR_WITNESS_CAPTURE_IDS.porousClose,
+    frameSerial: 37,
+    name: "tile-local-scene-state-refresh/create-state",
+    elapsedMs: 4821.9,
+  });
+});
+
 test("operator witness timing summary preserves fallback count frame provenance", () => {
   const timing = summarizeOperatorWitnessTiming([
     witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.dessertClose, {
@@ -881,6 +930,8 @@ test("operator witness report prints the slowest app-side frame stage", () => {
   assert.match(reportSource, /timing\.slowestAppFrameTotal/);
   assert.match(reportSource, /Source-frontier pack slowest substage:/);
   assert.match(reportSource, /timing\.sourceFrontierPack\?\.slowestSubstage/);
+  assert.match(reportSource, /Tile-local scene-state slowest substage:/);
+  assert.match(reportSource, /timing\.tileLocalSceneStateRefresh\?\.slowestSubstage/);
   assert.match(reportSource, /Source-frontier pack counts:/);
   assert.match(reportSource, /formatSourceFrontierPackCounts\(timing\.sourceFrontierPack\?\.counts\)/);
   assert.match(formatterSource, /streamTileCandidates/);
@@ -1001,6 +1052,27 @@ test("live stats overlay times tile-local scene rebuild as operator-visible late
     formatterSource,
     /tile-local rebuild:/,
     "HUD text should name tile-local rebuild separately from source-frontier pack and GPU render timing",
+  );
+});
+
+test("tile-local scene refresh records internal substages for operator latency forensics", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const ensureSource = extractFunctionSource(source, "ensureTileLocalSceneState");
+
+  assert.match(
+    ensureSource,
+    /timeOptionalFrameStage\(\s*frameTiming,\s*"tile-local-scene-state-refresh\/signature-check"/,
+    "signature freshness must be timed separately from state creation",
+  );
+  assert.match(
+    ensureSource,
+    /timeOptionalFrameStage\(\s*frameTiming,\s*"tile-local-scene-state-refresh\/create-state"/,
+    "state creation must be timed as the dominant suspected scene-state wall",
+  );
+  assert.match(
+    ensureSource,
+    /timeOptionalFrameStage\(\s*frameTiming,\s*"tile-local-scene-state-refresh\/destroy-previous-state"/,
+    "previous-state teardown must not be hidden inside the same opaque refresh total",
   );
 });
 

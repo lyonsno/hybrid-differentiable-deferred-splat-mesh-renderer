@@ -41,6 +41,7 @@ const OPERATOR_READINESS_STAGE_NAMES = Object.freeze(new Set([
 ]));
 const SOURCE_FRONTIER_PACK_STAGE_PREFIX = "wgsl-source-frontier-pack/";
 const SOURCE_FRONTIER_PACK_COUNTS_STAGE = "wgsl-source-frontier-pack/counts";
+const TILE_LOCAL_SCENE_STATE_STAGE_PREFIX = "tile-local-scene-state-refresh/";
 
 export function buildOperatorWitnessLoopPlan(baseUrl, { timeoutMs = OPERATOR_CAPTURE_TIMEOUT_MS } = {}) {
   return [
@@ -239,6 +240,7 @@ export function summarizeOperatorWitnessTiming(captures = [], sessionTiming = {}
     slowestOperatorReadiness
   );
   const sourceFrontierPack = summarizeSourceFrontierPackTiming(appFrameCaptures, readinessStages);
+  const tileLocalSceneStateRefresh = summarizeTileLocalSceneStateRefreshTiming(appFrameCaptures, readinessStages);
   return {
     totalCaptureMs,
     slowestCapture,
@@ -250,12 +252,83 @@ export function summarizeOperatorWitnessTiming(captures = [], sessionTiming = {}
     operatorReadinessVsAppFrameTotal,
     operatorReadinessVsObservedAppFrameTotal,
     sourceFrontierPack,
+    tileLocalSceneStateRefresh,
     captures: timedCaptures.map((capture) => ({
       id: capture.id,
       totalMs: capture.totalMs ?? 0,
       stages: capture.stages,
     })),
   };
+}
+
+function summarizeTileLocalSceneStateRefreshTiming(appFrameCaptures, readinessStages = []) {
+  const observations = [
+    ...appFrameCaptures.map(tileLocalSceneStateRefreshObservationFromAppFrameCapture).filter(Boolean),
+    ...readinessStages.map(tileLocalSceneStateRefreshObservationFromReadinessStage).filter(Boolean),
+  ];
+  const slowestSubstage = observations.reduce((slowest, observation) => {
+    const substage = observation.slowestSubstage;
+    if (!substage) {
+      return slowest;
+    }
+    return !slowest || substage.elapsedMs > slowest.elapsedMs ? substage : slowest;
+  }, null);
+  return { slowestSubstage };
+}
+
+function tileLocalSceneStateRefreshObservationFromAppFrameCapture(capture) {
+  const frameSerial = capture.frameSerial ?? 0;
+  let slowestSubstage = null;
+  for (const stage of capture.stages) {
+    if (!isTileLocalSceneStateRefreshSubstage(stage?.name)) {
+      continue;
+    }
+    const elapsedMs = finiteNumber(stage.elapsedMs);
+    if (elapsedMs === null) continue;
+    if (!slowestSubstage || elapsedMs > slowestSubstage.elapsedMs) {
+      slowestSubstage = {
+        captureId: capture.id,
+        frameSerial,
+        name: stage.name,
+        elapsedMs,
+      };
+    }
+  }
+  return slowestSubstage
+    ? {
+        captureId: capture.id,
+        frameSerial,
+        slowestSubstage,
+      }
+    : null;
+}
+
+function tileLocalSceneStateRefreshObservationFromReadinessStage(stage) {
+  const refresh = stage?.observedAppFrame?.tileLocalSceneStateRefresh;
+  if (!refresh || typeof refresh !== "object") {
+    return null;
+  }
+  const elapsedMs = finiteNumber(refresh.slowestSubstage?.elapsedMs);
+  if (elapsedMs === null) {
+    return null;
+  }
+  const frameSerial = finiteNumber(refresh.slowestSubstage?.frameSerial) ??
+    finiteNumber(stage.observedAppFrame?.frameSerial) ??
+    0;
+  return {
+    captureId: stage.captureId,
+    frameSerial,
+    slowestSubstage: {
+      captureId: stage.captureId,
+      frameSerial,
+      name: typeof refresh.slowestSubstage?.name === "string" ? refresh.slowestSubstage.name : "unknown",
+      elapsedMs,
+    },
+  };
+}
+
+function isTileLocalSceneStateRefreshSubstage(name) {
+  return typeof name === "string" && name.startsWith(TILE_LOCAL_SCENE_STATE_STAGE_PREFIX);
 }
 
 function summarizeSourceFrontierPackTiming(appFrameCaptures, readinessStages = []) {
@@ -471,17 +544,22 @@ function observedAppFrameForReadinessStage(stageName, readinessDiagnosticsByStag
         elapsedMs: slowestStageElapsedMs,
       }
     : undefined;
-  if (frameSerial === null && totalMs === null && !slowestStage) {
-    return null;
-  }
   const sourceFrontierPack = observed.sourceFrontierPack && typeof observed.sourceFrontierPack === "object"
     ? observed.sourceFrontierPack
     : undefined;
+  const tileLocalSceneStateRefresh = observed.tileLocalSceneStateRefresh &&
+    typeof observed.tileLocalSceneStateRefresh === "object"
+    ? observed.tileLocalSceneStateRefresh
+    : undefined;
+  if (frameSerial === null && totalMs === null && !slowestStage && !sourceFrontierPack && !tileLocalSceneStateRefresh) {
+    return null;
+  }
   return {
     ...(frameSerial !== null ? { frameSerial } : {}),
     ...(totalMs !== null ? { totalMs } : {}),
     ...(slowestStage ? { slowestStage } : {}),
     ...(sourceFrontierPack ? { sourceFrontierPack } : {}),
+    ...(tileLocalSceneStateRefresh ? { tileLocalSceneStateRefresh } : {}),
   };
 }
 
