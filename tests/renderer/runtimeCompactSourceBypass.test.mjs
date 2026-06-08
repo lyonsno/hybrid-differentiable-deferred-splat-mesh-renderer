@@ -61,7 +61,7 @@ test("requested GPU arena runtime routes presentation through compact retained s
   assert.doesNotMatch(gpuFactorySource, /estimatedGpuLiveBudgetDiagnostics/);
 });
 
-test("production-election compact source preserves dropped records beside counts", () => {
+test("production-election compact source consumes the election ledger without duplicate source-table scans", () => {
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const productionCompactSource = extractFunctionSource(
     mainSource,
@@ -70,13 +70,28 @@ test("production-election compact source preserves dropped records beside counts
 
   assert.match(
     productionCompactSource,
-    /const\s+retainedRecordKeys\s*=\s*new Set\(retainedRecords\.map\(runtimeCompactSourceRecordKey\)\)/,
-    "production-election compact source must key retained records before computing dropped rows",
+    /const\s+droppedRecords\s*=\s*productionElection\.droppedRecords/,
+    "production-election compact source should consume the election's dropped ledger instead of rebuilding it",
   );
   assert.match(
     productionCompactSource,
-    /const\s+droppedRecords\s*=\s*projectedCandidateRecords\.filter\(\(record\)\s*=>\s*!retainedRecordKeys\.has\(runtimeCompactSourceRecordKey\(record\)\)\s*\)/,
-    "droppedRecords must be the projected records not retained, not an empty placeholder",
+    /const\s+projectedCountsByTile\s*=\s*productionElection\.projectedCountsByTile/,
+    "production-election compact source should consume projected counts from the election ledger",
+  );
+  assert.match(
+    productionCompactSource,
+    /const\s+retainedCountsByTile\s*=\s*productionElection\.retainedCountsByTile/,
+    "production-election compact source should consume retained counts from the election ledger",
+  );
+  assert.doesNotMatch(
+    productionCompactSource,
+    /new Set\(retainedRecords\.map\(runtimeCompactSourceRecordKey\)\)/,
+    "source-frontier compact source must not re-key retained records after production election",
+  );
+  assert.doesNotMatch(
+    productionCompactSource,
+    /projectedCandidateRecords\.filter/,
+    "source-frontier compact source must not re-filter projected rows after production election",
   );
   assert.doesNotMatch(
     productionCompactSource,

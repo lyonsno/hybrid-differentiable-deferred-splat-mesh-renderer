@@ -250,7 +250,13 @@ export interface GpuProjectionRetentionCandidateSourceProductionElectionInput {
 export interface GpuProjectionRetentionCandidateSourceProductionElection {
   readonly status: "production-election-contract-consumed";
   readonly retainedRecords: readonly GpuTileContributorArenaProjectedContributor[];
+  readonly droppedRecords: readonly GpuTileContributorArenaProjectedContributor[];
   readonly retainedOriginalIds: readonly number[];
+  readonly projectedCountsByTile: Uint32Array;
+  readonly retainedCountsByTile: Uint32Array;
+  readonly projectedContributorCount: number;
+  readonly retainedContributorCount: number;
+  readonly droppedContributorCount: number;
   readonly retainedPoolCounts: {
     readonly retention: number;
     readonly occlusion: number;
@@ -384,6 +390,9 @@ export function buildGpuProjectionRetentionCandidateSourceProductionElection(
   }
 
   const retainedRecords: GpuTileContributorArenaProjectedContributor[] = [];
+  const droppedRecords: GpuTileContributorArenaProjectedContributor[] = [];
+  const projectedCountsByTile = new Uint32Array(maxTileIndex + 1);
+  const retainedCountsByTile = new Uint32Array(maxTileIndex + 1);
   const retainedPoolCounts = {
     retention: 0,
     occlusion: 0,
@@ -395,8 +404,16 @@ export function buildGpuProjectionRetentionCandidateSourceProductionElection(
     const tileRecords = recordsByTile[tileIndex].sort(compareGpuProjectionRetentionCoverageOrder);
     const tileCandidateSources = candidateSourcesByTile[tileIndex];
     const selected = selectGpuProjectionRetentionRecords(tileRecords, maxRefsPerTile, tileCandidateSources);
+    const selectedKeys = new Set(selected.map(gpuProjectionRetentionRecordKey));
     const poolSeats = assignGpuProjectionRetentionPoolSeats(tileRecords, maxRefsPerTile, tileCandidateSources);
+    projectedCountsByTile[tileIndex] = tileRecords.length;
+    retainedCountsByTile[tileIndex] = selected.length;
     retainedRecords.push(...selected);
+    for (const record of tileRecords) {
+      if (!selectedKeys.has(gpuProjectionRetentionRecordKey(record))) {
+        droppedRecords.push(record);
+      }
+    }
     for (const record of selected) {
       const seat = poolSeats.get(gpuProjectionRetentionRecordKey(record)) ?? "backfill";
       retainedPoolCounts[seat] += 1;
@@ -406,7 +423,13 @@ export function buildGpuProjectionRetentionCandidateSourceProductionElection(
   return {
     status: "production-election-contract-consumed",
     retainedRecords,
+    droppedRecords,
     retainedOriginalIds: retainedRecords.map((record) => record.originalId),
+    projectedCountsByTile,
+    retainedCountsByTile,
+    projectedContributorCount: records.length,
+    retainedContributorCount: retainedRecords.length,
+    droppedContributorCount: droppedRecords.length,
     retainedPoolCounts,
     crossPoolDuplicateSuppressedCount: countGpuProjectionRetentionCandidateSourceDuplicateRows(
       input.candidateSourceInputs,

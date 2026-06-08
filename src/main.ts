@@ -2193,12 +2193,16 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     frontierSource,
     plan
   );
-  const compactSource = compactRetainedSourceForWgslProjectedSourceFrontier(
-    frontierSource,
-    compactSourceConstruction,
-    plan,
-    candidateSourceSubstrate.projectedCandidateRecords,
-    productionElection,
+  const compactSource = timeOptionalFrameStage(
+    frameTiming,
+    "wgsl-source-frontier-production-election-ledger-reuse",
+    () => compactRetainedSourceForWgslProjectedSourceFrontier(
+      frontierSource,
+      compactSourceConstruction,
+      plan,
+      candidateSourceSubstrate.projectedCandidateRecords,
+      productionElection,
+    )
   );
   const candidateSourceBuffers = createCandidateSourceInputBuffers(
     device,
@@ -2388,25 +2392,12 @@ function compactRetainedSourceForWgslProjectedSourceFrontier(
   productionElection: GpuProjectionRetentionCandidateSourceProductionElection,
 ): CompactRetainedSourceForRuntime {
   const retainedRecords = [...productionElection.retainedRecords].sort(compareCompactProjectionRetentionCompositorOrder);
-  const retainedRecordKeys = new Set(retainedRecords.map(runtimeCompactSourceRecordKey));
-  const droppedRecords = projectedCandidateRecords.filter((record) =>
-    !retainedRecordKeys.has(runtimeCompactSourceRecordKey(record))
-  );
-  const projectedContributorCount = projectedCandidateRecords.length;
-  const droppedContributorCount = Math.max(0, projectedContributorCount - retainedRecords.length);
+  const droppedRecords = productionElection.droppedRecords;
+  const projectedContributorCount = productionElection.projectedContributorCount;
+  const droppedContributorCount = productionElection.droppedContributorCount;
   const effectiveMaxRefsPerTile = gpuLiveEffectiveRefsPerTile(plan);
-  const projectedCountsByTile = new Uint32Array(Math.max(0, plan.tileCount));
-  const retainedCountsByTile = new Uint32Array(Math.max(0, plan.tileCount));
-  for (const record of projectedCandidateRecords) {
-    if (record.tileIndex < projectedCountsByTile.length) {
-      projectedCountsByTile[record.tileIndex] += 1;
-    }
-  }
-  for (const record of retainedRecords) {
-    if (record.tileIndex < retainedCountsByTile.length) {
-      retainedCountsByTile[record.tileIndex] += 1;
-    }
-  }
+  const projectedCountsByTile = productionElection.projectedCountsByTile;
+  const retainedCountsByTile = productionElection.retainedCountsByTile;
   let cappedTileCount = 0;
   let saturatedRetainedTileCount = 0;
   let maxProjectedRefsPerTile = 0;
@@ -2453,14 +2444,6 @@ function compactRetainedSourceForWgslProjectedSourceFrontier(
     perPixelProjectedContributors: [],
     perPixelRetainedContributors: [],
   };
-}
-
-function runtimeCompactSourceRecordKey(contributor: GpuTileContributorArenaProjectedContributor): bigint {
-  return (
-    (BigInt(contributor.tileIndex) << 128n) |
-    (BigInt(contributor.splatIndex) << 64n) |
-    BigInt(contributor.originalId)
-  );
 }
 
 function buildWgslSourceFrontierCandidateSources({

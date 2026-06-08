@@ -1053,6 +1053,22 @@ test("source-frontier evidence names CPU retained-payload materialization before
   );
 });
 
+test("source-frontier evidence names production-election ledger reuse before retained payload handoff", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const sceneSource = extractFunctionSource(source, "createWgslProjectedSourceFrontierTileLocalSceneState");
+
+  assert.match(
+    sceneSource,
+    /timeOptionalFrameStage\(\s*frameTiming,\s*"wgsl-source-frontier-production-election-ledger-reuse"/,
+    "source-frontier compact source should expose the CPU ledger reuse stage separately from retained payload materialization",
+  );
+  assert.ok(
+    sceneSource.indexOf('"wgsl-source-frontier-production-election-ledger-reuse"') <
+      sceneSource.indexOf('"wgsl-source-frontier-production-election-retained-payload-cpu-materialize"'),
+    "ledger reuse timing should precede retained payload materialization timing",
+  );
+});
+
 test("static dessert debug modes can publish compact ref readbacks without enabling heavy per-pixel probes", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const refStatsSource = extractFunctionSource(source, "enqueueTileLocalRefStatsReadback");

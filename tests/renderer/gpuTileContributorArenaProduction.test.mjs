@@ -410,6 +410,16 @@ test("candidate-source production election consumes packed records and groups wi
     coverageOnly.originalId,
     supportOnly.originalId,
   ]);
+  assert.deepEqual(
+    productionElection.droppedRecords.map((record) => record.originalId),
+    [retentionOnly.originalId, backfillOnly.originalId],
+    "production election should preserve the dropped ledger for downstream source construction",
+  );
+  assert.deepEqual([...productionElection.projectedCountsByTile], [records.length]);
+  assert.deepEqual([...productionElection.retainedCountsByTile], [expectedRetained.length]);
+  assert.equal(productionElection.projectedContributorCount, records.length);
+  assert.equal(productionElection.retainedContributorCount, expectedRetained.length);
+  assert.equal(productionElection.droppedContributorCount, 2);
   assert.deepEqual(productionElection.retainedPoolCounts, {
     retention: 1,
     occlusion: 1,
