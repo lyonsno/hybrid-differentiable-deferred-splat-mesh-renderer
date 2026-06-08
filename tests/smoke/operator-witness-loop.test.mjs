@@ -1394,6 +1394,51 @@ test("compact stream retention scores local conic support separately from tile i
   assert.match(contributorSource, /occlusionWeight:\s*retentionSupportWeight \* template\.opacity/);
 });
 
+test("compact runtime stream retention gates materialization before retained record construction", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const streamStart = source.indexOf("function buildStreamingCompactRetainedSourceForRuntime");
+  const streamEnd = source.indexOf("const retainedRecords: GpuTileContributorArenaProjectedContributor[] = []", streamStart);
+  const streamSource = source.slice(streamStart, streamEnd);
+
+  assert.match(streamSource, /const streamLedger = compactSourceFrontierStreamLedger\(\)/);
+  assert.match(
+    streamSource,
+    /compact-source-stream-retention\/build-contributor-templates/,
+    "compact runtime should precompute contributor templates once per splat before tile-candidate materialization",
+  );
+  assert.match(streamSource, /compactSourceFrontierCandidateAdmission\(\{/);
+  assert.match(streamSource, /if\s*\(\s*admission && !admission\.needsMaterialization && !shouldTraceTile\s*\)/);
+  assert.match(streamSource, /streamLedger\.materializationSkipCount \+= 1/);
+  assert.match(streamSource, /compactRuntimeContributorFromTemplate\(\{/);
+  assert.doesNotMatch(streamSource, /compactCoverageEntryToRuntimeContributor\(\{/);
+});
+
+test("compact runtime stream retention asks support-sample admission only after cheap pool rejection", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const admissionStart = source.indexOf("function compactSourceFrontierCandidateAdmission");
+  const admissionEnd = source.indexOf("function compactCandidateCanEnterCoverageRecordList", admissionStart);
+  const admissionSource = source.slice(admissionStart, admissionEnd);
+
+  const topPoolReturn = admissionSource.indexOf("needsCoverageRecord || needsRetentionRecord || needsOcclusionRecord");
+  const supportSamplePrecheck = admissionSource.indexOf("compactCanSkipSupportSampleCandidate");
+
+  assert.ok(topPoolReturn > 0, "candidate admission should short-circuit when cheap top pools require materialization");
+  assert.ok(supportSamplePrecheck > topPoolReturn, "support-sample precheck must not run before cheap pool admission");
+});
+
+test("operator witness compact runtime stream retention reports inner timing and count detail", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const streamStart = source.indexOf("function buildStreamingCompactRetainedSourceForRuntime");
+  const streamEnd = source.indexOf("const retainedRecords: GpuTileContributorArenaProjectedContributor[] = []", streamStart);
+  const streamSource = source.slice(streamStart, streamEnd);
+
+  assert.match(streamSource, /compact-source-stream-retention\/stream-projected-tile-refs/);
+  assert.match(streamSource, /recordOptionalFrameStageDetail\(frameTiming,\s*"compact-source-stream-retention\/counts"/);
+  assert.match(streamSource, /streamTileCandidateCount:\s*streamLedger\.tileCandidateCount/);
+  assert.match(streamSource, /streamMaterializationSkipCount:\s*streamLedger\.materializationSkipCount/);
+  assert.match(streamSource, /supportSampleEvaluationCount:\s*streamLedger\.supportSampleEvaluationCount/);
+});
+
 test("source-frontier candidate packing reuses flattened support samples per bucket", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const sourceFrontierStart = source.indexOf("function buildWgslSourceFrontierCandidateSources");

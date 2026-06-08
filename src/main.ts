@@ -2995,70 +2995,125 @@ function buildStreamingCompactRetainedSourceForRuntime({
   const projectedRefBudgetOverflow: CompactRetainedSourceForRuntime["projectedRefBudgetOverflow"] =
     compactSourceBudget.projectedRefBudgetOverflow;
   const { ranks, depths } = compactSourceBackToFrontDepthEvidence(attributes, viewMatrix);
-  const splatsByIndex = new Map(splats.map((splat) => [splat.splatIndex, splat]));
+  const contributorTemplates = timeOptionalFrameStage(
+    frameTiming,
+    "compact-source-stream-retention/build-contributor-templates",
+    () => splats.map((splat) => compactRuntimeContributorTemplateForSplat({
+      splat,
+      ranks,
+      depths,
+      attributes,
+      effectiveOpacities,
+    }))
+  );
   const compactSourceCandidateSplatIndexes = new Uint32Array(splats.map((splat) => splat.splatIndex));
   const buckets = new Map<number, CompactStreamingTileBucket>();
   const anchorProjectedRecords: GpuTileContributorArenaProjectedContributor[] = [];
   const tileHeaderU32 = new Uint32Array(Math.max(0, tileCount * 8));
+  const streamLedger = compactSourceFrontierStreamLedger();
   let projectedIndex = 0;
 
   timeOptionalFrameStage(frameTiming, "compact-source-stream-retention", () => {
-    streamCompactProjectedTileRefs({
-      splats,
-      viewportWidth,
-      viewportHeight,
-      tileSizePx,
-      tileColumns,
-      samplesPerAxis,
-      onlyTileIndexes: retainOnlyAnchorTiles ? sourceTileIndexes : null,
-      maxTilesPerSplat,
-      onEntry({ splat, tileIndex, tileX, tileY, coverageWeight, localSupportWeight }) {
-        const currentProjectedIndex = projectedIndex;
-        projectedIndex += 1;
-        projectedCounts[tileIndex] += 1;
-        const shouldRetainTile = !retainOnlyAnchorTiles || sourceTileIndexes.has(tileIndex);
-        const shouldTraceTile = traceTileIndexes.has(tileIndex);
-        if (!shouldRetainTile && !shouldTraceTile) {
-          return;
-        }
-        const record = compactCoverageEntryToRuntimeContributor({
-          entry: {
+    timeOptionalFrameStage(frameTiming, "compact-source-stream-retention/stream-projected-tile-refs", () => {
+      streamCompactProjectedTileRefs({
+        splats,
+        viewportWidth,
+        viewportHeight,
+        tileSizePx,
+        tileColumns,
+        samplesPerAxis,
+        onlyTileIndexes: retainOnlyAnchorTiles ? sourceTileIndexes : null,
+        maxTilesPerSplat,
+        ledger: streamLedger,
+        onEntry({ splatOrdinal, tileIndex, tileX, tileY, coverageWeight, localSupportWeight }) {
+          const currentProjectedIndex = projectedIndex;
+          projectedIndex += 1;
+          projectedCounts[tileIndex] += 1;
+          const shouldRetainTile = !retainOnlyAnchorTiles || sourceTileIndexes.has(tileIndex);
+          const shouldTraceTile = traceTileIndexes.has(tileIndex);
+          if (!shouldRetainTile && !shouldTraceTile) {
+            return;
+          }
+          const template = contributorTemplates[splatOrdinal];
+          const bucket = shouldRetainTile ? compactStreamingTileBucket(buckets, tileIndex) : null;
+          const admission = bucket
+            ? compactSourceFrontierCandidateAdmission({
+                bucket,
+                template,
+                tileIndex,
+                coverageWeight,
+                localSupportWeight: finiteOrZero(localSupportWeight),
+                maxRefsPerTile,
+              })
+            : null;
+          if (admission && !admission.needsMaterialization && !shouldTraceTile) {
+            streamLedger.materializationSkipCount += 1;
+            return;
+          }
+          const record = compactRuntimeContributorFromTemplate({
+            template,
+            projectedIndex: currentProjectedIndex,
             tileIndex,
             tileX,
             tileY,
-            splatIndex: splat.splatIndex,
-            originalId: splat.originalId,
             coverageWeight,
             localSupportWeight,
-          },
-          projectedIndex: currentProjectedIndex,
-          splatsByIndex,
-          ranks,
-          depths,
-          attributes,
-          effectiveOpacities,
-        });
-        if (shouldTraceTile) {
-          anchorProjectedRecords.push(record);
-        }
-        if (shouldRetainTile) {
-          const bucket = compactStreamingTileBucket(buckets, tileIndex);
-          compactRetainTopRecord(bucket.coverageRecords, record, maxRefsPerTile, compareCompactProjectionRetentionCoverageOrder);
-          compactRetainTopRecord(bucket.retentionRecords, record, Math.max(1, Math.floor(maxRefsPerTile / 2)), compareCompactProjectionRetentionPriority);
-          compactRetainTopRecord(bucket.occlusionRecords, record, Math.max(1, Math.floor(maxRefsPerTile / 2)), compareCompactProjectionOcclusionPriority);
-          compactRetainSupportSampleRecords({
-            bucket,
-            record,
-            localSupportWeight: finiteOrZero(localSupportWeight),
-            tileMinX: tileX * tileSizePx,
-            tileMinY: tileY * tileSizePx,
-            tileMaxX: Math.min(viewportWidth, (tileX + 1) * tileSizePx),
-            tileMaxY: Math.min(viewportHeight, (tileY + 1) * tileSizePx),
-            maxRefsPerTile,
           });
-        }
-      },
+          if (shouldTraceTile) {
+            anchorProjectedRecords.push(record);
+          }
+          if (!bucket || (admission && !admission.needsMaterialization)) {
+            return;
+          }
+          if (compactRetainTopRecord(bucket.coverageRecords, record, maxRefsPerTile, compareCompactProjectionRetentionCoverageOrder)) {
+            streamLedger.coverageRetainCount += 1;
+          }
+          if (compactRetainTopRecord(bucket.retentionRecords, record, Math.max(1, Math.floor(maxRefsPerTile / 2)), compareCompactProjectionRetentionPriority)) {
+            streamLedger.retentionRetainCount += 1;
+          }
+          if (compactRetainTopRecord(bucket.occlusionRecords, record, Math.max(1, Math.floor(maxRefsPerTile / 2)), compareCompactProjectionOcclusionPriority)) {
+            streamLedger.occlusionRetainCount += 1;
+          }
+          if (admission?.needsSupportSamples) {
+            compactRetainSupportSampleRecords({
+              bucket,
+              record,
+              localSupportWeight: finiteOrZero(localSupportWeight),
+              tileMinX: tileX * tileSizePx,
+              tileMinY: tileY * tileSizePx,
+              tileMaxX: Math.min(viewportWidth, (tileX + 1) * tileSizePx),
+              tileMaxY: Math.min(viewportHeight, (tileY + 1) * tileSizePx),
+              maxRefsPerTile,
+              ledger: streamLedger,
+            });
+          } else {
+            streamLedger.supportSampleCandidateSkipCount += 1;
+            streamLedger.supportSampleCandidateSkippedEvaluationCount += COMPACT_SOURCE_RETENTION_SUPPORT_SAMPLES_PER_AXIS * COMPACT_SOURCE_RETENTION_SUPPORT_SAMPLES_PER_AXIS;
+          }
+        },
+      });
     });
+  });
+  recordOptionalFrameStageDetail(frameTiming, "compact-source-stream-retention/counts", {
+    bucketCount: compactStreamingTileBucketCount(buckets),
+    projectedTileRefs: projectedIndex,
+    streamSplatCount: streamLedger.splatCount,
+    streamDenseRowCount: streamLedger.denseRowCount,
+    streamSparseRowCount: streamLedger.sparseRowCount,
+    streamTileCandidateCount: streamLedger.tileCandidateCount,
+    streamCoverageRejectCount: streamLedger.coverageRejectCount,
+    streamPositiveCoverageCount: streamLedger.positiveCoverageCount,
+    coverageRetainCount: streamLedger.coverageRetainCount,
+    retentionRetainCount: streamLedger.retentionRetainCount,
+    occlusionRetainCount: streamLedger.occlusionRetainCount,
+    streamMaterializationSkipCount: streamLedger.materializationSkipCount,
+    supportSampleEvaluationCount: streamLedger.supportSampleEvaluationCount,
+    supportSampleCandidateSkipCount: streamLedger.supportSampleCandidateSkipCount,
+    supportSampleCandidateSkippedEvaluationCount: streamLedger.supportSampleCandidateSkippedEvaluationCount,
+    supportSampleSkipCount: streamLedger.supportSampleSkipCount,
+    supportSampleSkippedEvaluationCount: streamLedger.supportSampleSkippedEvaluationCount,
+    supportSamplePositiveWeightCount: streamLedger.supportSamplePositiveWeightCount,
+    supportSampleRetainCount: streamLedger.supportSampleRetainCount,
   });
 
   const retainedRecords: GpuTileContributorArenaProjectedContributor[] = [];
@@ -4167,6 +4222,12 @@ function compactSourceFrontierCandidateAdmission({
     occlusionDensity: opacity,
     template,
   });
+  if (needsCoverageRecord || needsRetentionRecord || needsOcclusionRecord) {
+    return {
+      needsMaterialization: true,
+      needsSupportSamples: true,
+    };
+  }
 
   const samplesPerAxis = COMPACT_SOURCE_RETENTION_SUPPORT_SAMPLES_PER_AXIS;
   const sampleLimit = Math.max(1, Math.ceil(maxRefsPerTile / (samplesPerAxis * samplesPerAxis * 2)));
