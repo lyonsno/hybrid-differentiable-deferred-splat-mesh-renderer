@@ -4386,7 +4386,7 @@ function compactRetainSupportSampleRecords({
       if (ledger) {
         ledger.supportSampleEvaluationCount += 1;
       }
-      const supportSampleWeight = compactSourceConicPixelWeight(record, [x, y]) * record.opacity;
+      const supportSampleWeight = compactSourceConicPixelWeightAt(record, x, y) * record.opacity;
       if (supportSampleWeight <= 1e-8) {
         continue;
       }
@@ -5969,8 +5969,16 @@ function compactSourceConicPixelWeight(
   contributor: GpuTileContributorArenaProjectedContributor,
   pixelCenter: readonly [number, number]
 ): number {
-  const dx = pixelCenter[0] - contributor.centerPx[0];
-  const dy = pixelCenter[1] - contributor.centerPx[1];
+  return compactSourceConicPixelWeightAt(contributor, pixelCenter[0], pixelCenter[1]);
+}
+
+function compactSourceConicPixelWeightAt(
+  contributor: GpuTileContributorArenaProjectedContributor,
+  pixelX: number,
+  pixelY: number,
+): number {
+  const dx = pixelX - contributor.centerPx[0];
+  const dy = pixelY - contributor.centerPx[1];
   const inverseConic = contributor.inverseConic;
   const mahalanobis2 = inverseConic[0] * dx * dx + 2 * inverseConic[1] * dx * dy + inverseConic[2] * dy * dy;
   return Math.exp(-2 * Math.max(mahalanobis2, 0));

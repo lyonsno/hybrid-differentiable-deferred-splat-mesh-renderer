@@ -1383,7 +1383,7 @@ test("compact stream retention scores local conic support separately from tile i
   assert.match(bucketSource, /supportSampleRecords:\s*compactSupportSampleRecordLists\(\)/);
   assert.match(bucketSource, /function compactRetainSupportSampleRecords/);
   assert.match(bucketSource, /const sampleLimit = Math\.max\(1,\s*Math\.ceil\(maxRefsPerTile \/ \(samplesPerAxis \* samplesPerAxis \* 2\)\)\)/);
-  assert.match(bucketSource, /const supportSampleWeight = compactSourceConicPixelWeight\(record,\s*\[x,\s*y\]\) \* record\.opacity/);
+  assert.match(bucketSource, /const supportSampleWeight = compactSourceConicPixelWeightAt\(record,\s*x,\s*y\) \* record\.opacity/);
   assert.match(bucketSource, /const safeSupportLuminance = Math\.max\(0,\s*finiteOrZero\(supportLuminance\)\)/);
   assert.match(bucketSource, /const supportSampleRetentionWeight = supportSampleWeight \* safeSupportLuminance/);
   assert.match(bucketSource, /compareCompactProjectionSupportSamplePriority/);
@@ -1437,6 +1437,17 @@ test("operator witness compact runtime stream retention reports inner timing and
   assert.match(streamSource, /streamTileCandidateCount:\s*streamLedger\.tileCandidateCount/);
   assert.match(streamSource, /streamMaterializationSkipCount:\s*streamLedger\.materializationSkipCount/);
   assert.match(streamSource, /supportSampleEvaluationCount:\s*streamLedger\.supportSampleEvaluationCount/);
+});
+
+test("compact support sample retention evaluates conic weights without per-sample tuple allocation", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const supportStart = source.indexOf("function compactRetainSupportSampleRecords");
+  const supportEnd = source.indexOf("function compactCanSkipSupportSampleRecords", supportStart);
+  const supportSource = source.slice(supportStart, supportEnd);
+
+  assert.match(source, /function compactSourceConicPixelWeightAt\(/);
+  assert.match(supportSource, /compactSourceConicPixelWeightAt\(record,\s*x,\s*y\)/);
+  assert.doesNotMatch(supportSource, /compactSourceConicPixelWeight\(record,\s*\[\s*x,\s*y\s*\]\)/);
 });
 
 test("source-frontier candidate packing reuses flattened support samples per bucket", () => {
