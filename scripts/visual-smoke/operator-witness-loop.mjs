@@ -42,6 +42,9 @@ const OPERATOR_READINESS_STAGE_NAMES = Object.freeze(new Set([
 const SOURCE_FRONTIER_PACK_STAGE_PREFIX = "wgsl-source-frontier-pack/";
 const SOURCE_FRONTIER_PACK_COUNTS_STAGE = "wgsl-source-frontier-pack/counts";
 const TILE_LOCAL_SCENE_STATE_STAGE_PREFIX = "tile-local-scene-state-refresh/";
+const COMPACT_SOURCE_STAGE_PREFIX = "compact-source-";
+const GPU_ARENA_COMPACT_SOURCE_STAGE =
+  "tile-local-scene-state-refresh/create-state/gpu-arena/build-compact-source";
 
 export function buildOperatorWitnessLoopPlan(baseUrl, { timeoutMs = OPERATOR_CAPTURE_TIMEOUT_MS } = {}) {
   return [
@@ -279,7 +282,10 @@ function summarizeTileLocalSceneStateRefreshTiming(appFrameCaptures, readinessSt
 function tileLocalSceneStateRefreshObservationFromAppFrameCapture(capture) {
   const frameSerial = capture.frameSerial ?? 0;
   let slowestSubstage = null;
-  for (const stage of tileLocalSceneStateRefreshLeafStages(capture.stages)) {
+  const leafStages = tileLocalSceneStateRefreshLeafStages(
+    tileLocalSceneStateRefreshAttributionStages(capture.stages)
+  );
+  for (const stage of leafStages) {
     if (!isTileLocalSceneStateRefreshSubstage(stage?.name)) {
       continue;
     }
@@ -325,6 +331,23 @@ function tileLocalSceneStateRefreshObservationFromReadinessStage(stage) {
       elapsedMs,
     },
   };
+}
+
+function tileLocalSceneStateRefreshAttributionStages(stages) {
+  const sourceStages = Array.isArray(stages) ? stages : [];
+  const hasGpuArenaCompactSourceStage = sourceStages.some(
+    (stage) => stage?.name === GPU_ARENA_COMPACT_SOURCE_STAGE
+  );
+  if (!hasGpuArenaCompactSourceStage) {
+    return sourceStages;
+  }
+  const compactSourceStages = sourceStages
+    .filter((stage) => typeof stage?.name === "string" && stage.name.startsWith(COMPACT_SOURCE_STAGE_PREFIX))
+    .map((stage) => ({
+      ...stage,
+      name: `${GPU_ARENA_COMPACT_SOURCE_STAGE}/${stage.name}`,
+    }));
+  return [...sourceStages, ...compactSourceStages];
 }
 
 function tileLocalSceneStateRefreshLeafStages(stages) {

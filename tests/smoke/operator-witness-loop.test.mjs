@@ -597,6 +597,37 @@ test("operator witness timing summary prefers nested scene-state create leaves o
   });
 });
 
+test("operator witness timing summary attributes compact source leaves under GPU arena create state", () => {
+  const timing = summarizeOperatorWitnessTiming([
+    witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.porousClose, {
+      pageEvidence: {
+        operatorWitness: {
+          frameSerial: 61,
+          frameTimings: {
+            totalMs: 2627.3,
+            stages: [
+              { name: "tile-local-scene-state-refresh/signature-check", elapsedMs: 1.4 },
+              {
+                name: "tile-local-scene-state-refresh/create-state/gpu-arena/build-compact-source",
+                elapsedMs: 2272.7,
+              },
+              { name: "compact-source-stream-retention", elapsedMs: 2100.5 },
+              { name: "compact-source-finalize-retained", elapsedMs: 88.3 },
+            ],
+          },
+        },
+      },
+    }),
+  ]);
+
+  assert.deepEqual(timing.tileLocalSceneStateRefresh.slowestSubstage, {
+    captureId: OPERATOR_WITNESS_CAPTURE_IDS.porousClose,
+    frameSerial: 61,
+    name: "tile-local-scene-state-refresh/create-state/gpu-arena/build-compact-source/compact-source-stream-retention",
+    elapsedMs: 2100.5,
+  });
+});
+
 test("operator witness timing summary preserves fallback count frame provenance", () => {
   const timing = summarizeOperatorWitnessTiming([
     witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.dessertClose, {
