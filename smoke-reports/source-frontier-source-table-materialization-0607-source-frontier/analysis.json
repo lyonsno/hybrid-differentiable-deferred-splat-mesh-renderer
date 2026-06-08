@@ -1,19 +1,19 @@
 {
-  "generatedAt": "2026-06-08T01:02:36.813Z",
+  "generatedAt": "2026-06-08T01:52:53.865Z",
   "baseUrl": "http://127.0.0.1:6177/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256&wgslProjectedRefStream=source-frontier",
   "analysisPath": "smoke-reports/source-frontier-source-table-materialization-0607-source-frontier/analysis.json",
   "reportPath": "smoke-reports/source-frontier-source-table-materialization-0607-source-frontier/report.md",
   "contactSheetPath": "smoke-reports/source-frontier-source-table-materialization-0607-source-frontier/operator-witness-contact-sheet.png",
   "timing": {
-    "totalMs": 62199,
+    "totalMs": 54796,
     "stages": [
       {
         "name": "new-page",
-        "elapsedMs": 342
+        "elapsedMs": 115
       },
       {
         "name": "page-goto",
-        "elapsedMs": 186
+        "elapsedMs": 56
       },
       {
         "name": "canvas-locator",
@@ -21,39 +21,39 @@
       },
       {
         "name": "canvas-attached",
-        "elapsedMs": 45
+        "elapsedMs": 30
       },
       {
         "name": "canvas-clip",
-        "elapsedMs": 38
+        "elapsedMs": 11
       },
       {
         "name": "hide-overlays",
-        "elapsedMs": 61
+        "elapsedMs": 1
       },
       {
         "name": "initial-readiness",
-        "elapsedMs": 4454
+        "elapsedMs": 1762
       },
       {
         "name": "capture:whole-render-final-color",
-        "elapsedMs": 6826
+        "elapsedMs": 5739
       },
       {
         "name": "capture:dessert-close-final-color",
-        "elapsedMs": 9713
+        "elapsedMs": 7259
       },
       {
         "name": "capture:porous-close-final-color",
-        "elapsedMs": 8323
+        "elapsedMs": 8202
       },
       {
         "name": "capture:porous-close-orbit-left",
-        "elapsedMs": 15958
+        "elapsedMs": 15707
       },
       {
         "name": "capture:porous-close-orbit-right",
-        "elapsedMs": 16253
+        "elapsedMs": 15914
       },
       {
         "name": "page-close",
@@ -185,15 +185,15 @@
       "url": "http://127.0.0.1:6177/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256&wgslProjectedRefStream=source-frontier&renderer=tile-local-visible",
       "interactions": [],
       "timing": {
-        "totalMs": 6826,
+        "totalMs": 5739,
         "stages": [
           {
             "name": "apply-view",
-            "elapsedMs": 2
+            "elapsedMs": 1
           },
           {
             "name": "view-readiness",
-            "elapsedMs": 1596
+            "elapsedMs": 613
           },
           {
             "name": "settle-before-interaction",
@@ -205,23 +205,23 @@
           },
           {
             "name": "screenshot",
-            "elapsedMs": 38
+            "elapsedMs": 25
           },
           {
             "name": "image-analysis",
-            "elapsedMs": 152
+            "elapsedMs": 74
           },
           {
             "name": "trace-canvas-parity",
-            "elapsedMs": 26
+            "elapsedMs": 14
           },
           {
             "name": "classify-smoke",
-            "elapsedMs": 0
+            "elapsedMs": 1
           },
           {
             "name": "witness-diagnostics",
-            "elapsedMs": 1
+            "elapsedMs": 0
           }
         ]
       },
@@ -583,6 +583,7 @@
               "wgsl-source-frontier-estimate-ref-budget",
               "wgsl-source-frontier-pack-candidate-source-inputs",
               "wgsl-source-frontier-production-election-runtime",
+              "wgsl-source-frontier-production-election-ledger-reuse",
               "wgsl-source-frontier-production-election-retained-payload-cpu-materialize"
             ],
             "gpuReadyStages": [
@@ -736,7 +737,7 @@
                 "retainedRows": 37590,
                 "nonEmptyTiles": 177,
                 "maxRowsPerTile": 256,
-                "firstRetainedRecordIndex": 0,
+                "firstRetainedRecordIndex": 12,
                 "outputBuffers": [
                   "production-election-prefix-counts-buffer",
                   "production-election-prefix-offsets-buffer",
@@ -748,6 +749,7 @@
             "frontierBlockedStages": [
               "wgsl-source-frontier-pack-candidate-source-inputs",
               "wgsl-source-frontier-production-election-runtime",
+              "wgsl-source-frontier-production-election-ledger-reuse",
               "wgsl-source-frontier-production-election-retained-payload-cpu-materialize",
               "live-wgsl-production-election-retained-payload-materialization"
             ]
@@ -1119,7 +1121,7 @@
             "retainedRows": 37590,
             "nonEmptyTiles": 177,
             "maxRowsPerTile": 256,
-            "firstRetainedRecordIndex": 0,
+            "firstRetainedRecordIndex": 12,
             "outputBuffers": [
               "production-election-prefix-counts-buffer",
               "production-election-prefix-offsets-buffer",
@@ -1133,7 +1135,7 @@
           "revision": 1,
           "frameSerial": 3,
           "frameTimings": {
-            "totalMs": 1591.8,
+            "totalMs": 611.3,
             "stages": [
               {
                 "name": "frame-uniforms",
@@ -1141,27 +1143,27 @@
               },
               {
                 "name": "uniform-upload",
-                "elapsedMs": 0.1
+                "elapsedMs": 0
               },
               {
                 "name": "gpu-sort-refresh",
-                "elapsedMs": 1.3
+                "elapsedMs": 1
               },
               {
                 "name": "wgsl-source-frontier-project-splats",
-                "elapsedMs": 54.7
+                "elapsedMs": 23.1
               },
               {
                 "name": "wgsl-source-frontier-estimate-ref-budget",
-                "elapsedMs": 9.5
+                "elapsedMs": 4.2
               },
               {
                 "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                "elapsedMs": 1086.3
+                "elapsedMs": 399.7
               },
               {
                 "name": "wgsl-source-frontier-pack/finalize-candidate-lists",
-                "elapsedMs": 40
+                "elapsedMs": 17.3
               },
               {
                 "name": "wgsl-source-frontier-pack/counts",
@@ -1196,27 +1198,27 @@
               },
               {
                 "name": "wgsl-source-frontier-pack-candidate-source-inputs",
-                "elapsedMs": 1181.9
+                "elapsedMs": 442.3
               },
               {
                 "name": "wgsl-source-frontier-production-election-runtime",
-                "elapsedMs": 183.4
+                "elapsedMs": 74.2
               },
               {
                 "name": "wgsl-source-frontier-production-election-ledger-reuse",
-                "elapsedMs": 7.1
+                "elapsedMs": 3.2
               },
               {
                 "name": "wgsl-source-frontier-production-election-retained-payload-cpu-materialize",
-                "elapsedMs": 50.3
+                "elapsedMs": 19.1
               },
               {
                 "name": "tile-local-scene-state-refresh",
-                "elapsedMs": 1585.8
+                "elapsedMs": 608.5
               },
               {
                 "name": "tile-local-dispatch-encode",
-                "elapsedMs": 0.2
+                "elapsedMs": 0.1
               },
               {
                 "name": "queue-submit",
@@ -1228,12 +1230,12 @@
               },
               {
                 "name": "evidence-exposure",
-                "elapsedMs": 3.8
+                "elapsedMs": 1.5
               }
             ]
           }
         },
-        "statsText": "1280×720 | 1 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-gaussian-compositor | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 94,406 splats/23 tiles | tile-local: 80x45 tiles/37,590 refs | tile-local live refs: gpu-tile-header-and-scatter-readback | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | visible-compositor cap: 256 refs | tile-order: gpu-sorted-index-rank-inversion | retained-source: wgsl-projected-ref-stream-source-frontier->tile-local-visible-gaussian-compositor | projected-stream: wgsl-projected-ref-stream-source-frontier | arena requested: gpu | arena effective: gpu | arena GPU dispatch enqueue: 0.000ms | app frame: 1588ms | slowest app stage: tile-local-scene-state-refresh 1585.8ms | tile-local rebuild: 1585.8ms | source-frontier pack: 1181.9ms | render: 27.52ms",
+        "statsText": "1280×720 | 2 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-gaussian-compositor | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 94,406 splats/23 tiles | tile-local: 80x45 tiles/37,590 refs | tile-local live refs: gpu-tile-header-and-scatter-readback | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | visible-compositor cap: 256 refs | tile-order: gpu-sorted-index-rank-inversion | retained-source: wgsl-projected-ref-stream-source-frontier->tile-local-visible-gaussian-compositor | projected-stream: wgsl-projected-ref-stream-source-frontier | arena requested: gpu | arena effective: gpu | arena GPU dispatch enqueue: 0.000ms | app frame: 609.8ms | slowest app stage: tile-local-scene-state-refresh 608.5ms | tile-local rebuild: 608.5ms | source-frontier pack: 442.3ms | render: 0.03ms",
         "title": "Deferred Splat+Mesh Renderer",
         "canvas": {
           "width": 1280,
@@ -1241,7 +1243,7 @@
           "clientWidth": 1280,
           "clientHeight": 720
         },
-        "fps": 1,
+        "fps": 2,
         "arenaRuntime": {
           "requestedArenaBackend": "gpu",
           "effectiveArenaBackend": "gpu",
@@ -1251,21 +1253,21 @@
           "ready": true,
           "blockers": [],
           "pollCount": 1,
-          "pollDurationMs": 1595,
-          "elapsedMs": 1596,
+          "pollDurationMs": 613,
+          "elapsedMs": 613,
           "evidenceSource": "compact-readiness",
           "observedAppFrame": {
             "frameSerial": 3,
-            "totalMs": 1591.8,
+            "totalMs": 611.3,
             "slowestStage": {
               "name": "tile-local-scene-state-refresh",
-              "elapsedMs": 1585.8
+              "elapsedMs": 608.5
             },
             "sourceFrontierPack": {
               "slowestSubstage": {
                 "frameSerial": 3,
                 "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                "elapsedMs": 1086.3
+                "elapsedMs": 399.7
               },
               "counts": {
                 "frameSerial": 3,
@@ -1314,22 +1316,22 @@
           "failedPolls": 0,
           "slowestPoll": {
             "pollCount": 1,
-            "pollDurationMs": 1595,
-            "elapsedMs": 1596,
+            "pollDurationMs": 613,
+            "elapsedMs": 613,
             "ready": true,
             "blockers": [],
             "observedAppFrame": {
               "frameSerial": 3,
-              "totalMs": 1591.8,
+              "totalMs": 611.3,
               "slowestStage": {
                 "name": "tile-local-scene-state-refresh",
-                "elapsedMs": 1585.8
+                "elapsedMs": 608.5
               },
               "sourceFrontierPack": {
                 "slowestSubstage": {
                   "frameSerial": 3,
                   "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                  "elapsedMs": 1086.3
+                  "elapsedMs": 399.7
                 },
                 "counts": {
                   "frameSerial": 3,
@@ -1366,22 +1368,22 @@
           "pollHistory": [
             {
               "pollCount": 1,
-              "pollDurationMs": 1595,
-              "elapsedMs": 1596,
+              "pollDurationMs": 613,
+              "elapsedMs": 613,
               "ready": true,
               "blockers": [],
               "observedAppFrame": {
                 "frameSerial": 3,
-                "totalMs": 1591.8,
+                "totalMs": 611.3,
                 "slowestStage": {
                   "name": "tile-local-scene-state-refresh",
-                  "elapsedMs": 1585.8
+                  "elapsedMs": 608.5
                 },
                 "sourceFrontierPack": {
                   "slowestSubstage": {
                     "frameSerial": 3,
                     "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                    "elapsedMs": 1086.3
+                    "elapsedMs": 399.7
                   },
                   "counts": {
                     "frameSerial": 3,
@@ -1607,21 +1609,21 @@
             "ready": true,
             "blockers": [],
             "pollCount": 1,
-            "pollDurationMs": 1595,
-            "elapsedMs": 1596,
+            "pollDurationMs": 613,
+            "elapsedMs": 613,
             "evidenceSource": "compact-readiness",
             "observedAppFrame": {
               "frameSerial": 3,
-              "totalMs": 1591.8,
+              "totalMs": 611.3,
               "slowestStage": {
                 "name": "tile-local-scene-state-refresh",
-                "elapsedMs": 1585.8
+                "elapsedMs": 608.5
               },
               "sourceFrontierPack": {
                 "slowestSubstage": {
                   "frameSerial": 3,
                   "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                  "elapsedMs": 1086.3
+                  "elapsedMs": 399.7
                 },
                 "counts": {
                   "frameSerial": 3,
@@ -1670,22 +1672,22 @@
             "failedPolls": 0,
             "slowestPoll": {
               "pollCount": 1,
-              "pollDurationMs": 1595,
-              "elapsedMs": 1596,
+              "pollDurationMs": 613,
+              "elapsedMs": 613,
               "ready": true,
               "blockers": [],
               "observedAppFrame": {
                 "frameSerial": 3,
-                "totalMs": 1591.8,
+                "totalMs": 611.3,
                 "slowestStage": {
                   "name": "tile-local-scene-state-refresh",
-                  "elapsedMs": 1585.8
+                  "elapsedMs": 608.5
                 },
                 "sourceFrontierPack": {
                   "slowestSubstage": {
                     "frameSerial": 3,
                     "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                    "elapsedMs": 1086.3
+                    "elapsedMs": 399.7
                   },
                   "counts": {
                     "frameSerial": 3,
@@ -1722,22 +1724,22 @@
             "pollHistory": [
               {
                 "pollCount": 1,
-                "pollDurationMs": 1595,
-                "elapsedMs": 1596,
+                "pollDurationMs": 613,
+                "elapsedMs": 613,
                 "ready": true,
                 "blockers": [],
                 "observedAppFrame": {
                   "frameSerial": 3,
-                  "totalMs": 1591.8,
+                  "totalMs": 611.3,
                   "slowestStage": {
                     "name": "tile-local-scene-state-refresh",
-                    "elapsedMs": 1585.8
+                    "elapsedMs": 608.5
                   },
                   "sourceFrontierPack": {
                     "slowestSubstage": {
                       "frameSerial": 3,
                       "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                      "elapsedMs": 1086.3
+                      "elapsedMs": 399.7
                     },
                     "counts": {
                       "frameSerial": 3,
@@ -1900,6 +1902,14 @@
         {
           "type": "debug",
           "text": "[vite] connected."
+        },
+        {
+          "type": "debug",
+          "text": "[vite] connecting..."
+        },
+        {
+          "type": "debug",
+          "text": "[vite] connected."
         }
       ],
       "pageErrors": []
@@ -1916,31 +1926,31 @@
       "url": "http://127.0.0.1:6177/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256&wgslProjectedRefStream=source-frontier&renderer=tile-local-visible",
       "interactions": [],
       "timing": {
-        "totalMs": 9713,
+        "totalMs": 7259,
         "stages": [
           {
             "name": "apply-view",
-            "elapsedMs": 2
+            "elapsedMs": 1
           },
           {
             "name": "view-readiness",
-            "elapsedMs": 4574
+            "elapsedMs": 2115
           },
           {
             "name": "settle-before-interaction",
-            "elapsedMs": 5001
+            "elapsedMs": 5002
           },
           {
             "name": "collect-settled-evidence",
-            "elapsedMs": 3
+            "elapsedMs": 8
           },
           {
             "name": "screenshot",
-            "elapsedMs": 46
+            "elapsedMs": 47
           },
           {
             "name": "image-analysis",
-            "elapsedMs": 74
+            "elapsedMs": 73
           },
           {
             "name": "trace-canvas-parity",
@@ -2145,12 +2155,12 @@
             "maxRefsPerTile": 256,
             "tileCount": 3600,
             "tileCapacity": 256,
-            "frameId": 22
+            "frameId": 24
           },
           "refStatsReadback": {
             "status": "present",
             "source": "gpu-tile-header-and-scatter-readback",
-            "frameId": 22,
+            "frameId": 24,
             "tileCount": 3600,
             "tileCapacity": 256,
             "allocatedRefs": 921600,
@@ -2257,7 +2267,7 @@
           "freshness": {
             "status": "current",
             "cachedFrameAgeMs": 0,
-            "cachedFrame": 22,
+            "cachedFrame": 24,
             "currentFrameSignature": "tile-local@87196525",
             "cachedFrameSignature": "tile-local@87196525"
           },
@@ -2314,6 +2324,7 @@
               "wgsl-source-frontier-estimate-ref-budget",
               "wgsl-source-frontier-pack-candidate-source-inputs",
               "wgsl-source-frontier-production-election-runtime",
+              "wgsl-source-frontier-production-election-ledger-reuse",
               "wgsl-source-frontier-production-election-retained-payload-cpu-materialize"
             ],
             "gpuReadyStages": [
@@ -2344,7 +2355,7 @@
               "payloadEncoding": "source-frontier-score",
               "falseClosureGuard": "source-frontier-ref-stats-readback-is-row-accounting-not-payload-readback",
               "rowFields": [],
-              "frameId": 22,
+              "frameId": 24,
               "tileCount": 3600,
               "retainedBudgetRefs": 921600,
               "maxRefsPerTile": 256,
@@ -2451,7 +2462,7 @@
               "readback": {
                 "status": "present",
                 "source": "wgsl-production-election-prefix-scatter-readback",
-                "frameId": 22,
+                "frameId": 24,
                 "recordCount": 426604,
                 "groupCount": 13702,
                 "retainedRecordCount": 157547,
@@ -2479,6 +2490,7 @@
             "frontierBlockedStages": [
               "wgsl-source-frontier-pack-candidate-source-inputs",
               "wgsl-source-frontier-production-election-runtime",
+              "wgsl-source-frontier-production-election-ledger-reuse",
               "wgsl-source-frontier-production-election-retained-payload-cpu-materialize",
               "live-wgsl-production-election-retained-payload-materialization"
             ]
@@ -2787,9 +2799,9 @@
             },
             "dispatchCache": {
               "tileIndex": 5343,
-              "clearFrameId": 22,
-              "buildFrameId": 22,
-              "compositeFrameId": 22,
+              "clearFrameId": 24,
+              "buildFrameId": 24,
+              "compositeFrameId": 24,
               "tileY": 65,
               "tileSpan": {
                 "minTileX": 139,
@@ -2798,7 +2810,7 @@
                 "maxTileY": 66
               },
               "cacheState": "current",
-              "presentationFrameId": 22,
+              "presentationFrameId": 24,
               "rowDispatchState": {
                 "tileCoveredByClear": false,
                 "tileCoveredByBuild": false,
@@ -2835,9 +2847,9 @@
         "operatorWitness": {
           "witnessView": "dessert-close",
           "revision": 2,
-          "frameSerial": 23,
+          "frameSerial": 25,
           "frameTimings": {
-            "totalMs": 8.7,
+            "totalMs": 7.1,
             "stages": [
               {
                 "name": "frame-uniforms",
@@ -2857,12 +2869,12 @@
               },
               {
                 "name": "evidence-exposure",
-                "elapsedMs": 8.4
+                "elapsedMs": 6.8
               }
             ]
           }
         },
-        "statsText": "1280×720 | 4 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-gaussian-compositor | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 94,406 splats/153 tiles | tile-local: 80x45 tiles/157547 refs | tile-local live refs: gpu-tile-header-and-scatter-readback | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | visible-compositor cap: 256 refs | tile-order: gpu-sorted-index-rank-inversion | retained-source: wgsl-projected-ref-stream-source-frontier->tile-local-visible-gaussian-compositor | projected-stream: wgsl-projected-ref-stream-source-frontier | arena requested: gpu | arena effective: gpu | arena GPU dispatch enqueue: 0.000ms | app frame: 0.3ms | slowest app stage: frame-uniforms 0ms | recent slow app frame: app frame: 4400ms | slowest app stage: tile-local-scene-state-refresh 4144.6ms | tile-local rebuild: 4144.6ms | source-frontier pack: 2935.2ms (4418ms ago) | render: 14.03ms",
+        "statsText": "1280×720 | 10 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-gaussian-compositor | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 94,406 splats/153 tiles | tile-local: 80x45 tiles/157547 refs | tile-local live refs: gpu-tile-header-and-scatter-readback | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | visible-compositor cap: 256 refs | tile-order: gpu-sorted-index-rank-inversion | retained-source: wgsl-projected-ref-stream-source-frontier->tile-local-visible-gaussian-compositor | projected-stream: wgsl-projected-ref-stream-source-frontier | arena requested: gpu | arena effective: gpu | arena GPU dispatch enqueue: 0.000ms | app frame: 0.3ms | slowest app stage: frame-uniforms 0ms | recent slow app frame: app frame: 1941.4ms | slowest app stage: tile-local-scene-state-refresh 1823.7ms | tile-local rebuild: 1823.7ms | source-frontier pack: 1198.5ms (1955ms ago) | render: 0.04ms",
         "title": "Deferred Splat+Mesh Renderer",
         "canvas": {
           "width": 1280,
@@ -2870,7 +2882,7 @@
           "clientWidth": 1280,
           "clientHeight": 720
         },
-        "fps": 4,
+        "fps": 10,
         "arenaRuntime": {
           "requestedArenaBackend": "gpu",
           "effectiveArenaBackend": "gpu",
@@ -2880,24 +2892,24 @@
           "ready": true,
           "blockers": [],
           "pollCount": 3,
-          "pollDurationMs": 4354,
-          "elapsedMs": 4574,
+          "pollDurationMs": 1904,
+          "elapsedMs": 2114,
           "evidenceSource": "compact-readiness",
           "observedAppFrame": {
-            "frameSerial": 22,
-            "totalMs": 4410.4,
+            "frameSerial": 24,
+            "totalMs": 1949.2,
             "slowestStage": {
               "name": "tile-local-scene-state-refresh",
-              "elapsedMs": 4144.6
+              "elapsedMs": 1823.7
             },
             "sourceFrontierPack": {
               "slowestSubstage": {
-                "frameSerial": 22,
+                "frameSerial": 24,
                 "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                "elapsedMs": 2744.2
+                "elapsedMs": 1106.9
               },
               "counts": {
-                "frameSerial": 22,
+                "frameSerial": 24,
                 "bucketCount": 861,
                 "projectedTileRefs": 724912,
                 "streamSplatCount": 94406,
@@ -2943,25 +2955,25 @@
           "failedPolls": 2,
           "slowestPoll": {
             "pollCount": 3,
-            "pollDurationMs": 4354,
-            "elapsedMs": 4574,
+            "pollDurationMs": 1904,
+            "elapsedMs": 2114,
             "ready": true,
             "blockers": [],
             "observedAppFrame": {
-              "frameSerial": 22,
-              "totalMs": 4410.4,
+              "frameSerial": 24,
+              "totalMs": 1949.2,
               "slowestStage": {
                 "name": "tile-local-scene-state-refresh",
-                "elapsedMs": 4144.6
+                "elapsedMs": 1823.7
               },
               "sourceFrontierPack": {
                 "slowestSubstage": {
-                  "frameSerial": 22,
+                  "frameSerial": 24,
                   "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                  "elapsedMs": 2744.2
+                  "elapsedMs": 1106.9
                 },
                 "counts": {
-                  "frameSerial": 22,
+                  "frameSerial": 24,
                   "bucketCount": 861,
                   "projectedTileRefs": 724912,
                   "streamSplatCount": 94406,
@@ -2993,8 +3005,8 @@
           },
           "lastFailedPoll": {
             "pollCount": 2,
-            "pollDurationMs": 5,
-            "elapsedMs": 119,
+            "pollDurationMs": 1,
+            "elapsedMs": 109,
             "blockers": [
               "visual-smoke-not-ready"
             ]
@@ -3005,61 +3017,61 @@
           "pollHistory": [
             {
               "pollCount": 1,
-              "pollDurationMs": 12,
-              "elapsedMs": 12,
+              "pollDurationMs": 6,
+              "elapsedMs": 6,
               "ready": false,
               "blockers": [
                 "visual-smoke-not-ready"
               ],
               "observedAppFrame": {
                 "frameSerial": 4,
-                "totalMs": 9.8,
+                "totalMs": 5.3,
                 "slowestStage": {
                   "name": "evidence-exposure",
-                  "elapsedMs": 6.2
+                  "elapsedMs": 3.5
                 },
                 "sourceFrontierPack": {}
               }
             },
             {
               "pollCount": 2,
-              "pollDurationMs": 5,
-              "elapsedMs": 119,
+              "pollDurationMs": 1,
+              "elapsedMs": 109,
               "ready": false,
               "blockers": [
                 "visual-smoke-not-ready"
               ],
               "observedAppFrame": {
-                "frameSerial": 16,
-                "totalMs": 4.1,
+                "frameSerial": 17,
+                "totalMs": 1.4,
                 "slowestStage": {
                   "name": "evidence-exposure",
-                  "elapsedMs": 3.6
+                  "elapsedMs": 1.3
                 },
                 "sourceFrontierPack": {}
               }
             },
             {
               "pollCount": 3,
-              "pollDurationMs": 4354,
-              "elapsedMs": 4574,
+              "pollDurationMs": 1904,
+              "elapsedMs": 2114,
               "ready": true,
               "blockers": [],
               "observedAppFrame": {
-                "frameSerial": 22,
-                "totalMs": 4410.4,
+                "frameSerial": 24,
+                "totalMs": 1949.2,
                 "slowestStage": {
                   "name": "tile-local-scene-state-refresh",
-                  "elapsedMs": 4144.6
+                  "elapsedMs": 1823.7
                 },
                 "sourceFrontierPack": {
                   "slowestSubstage": {
-                    "frameSerial": 22,
+                    "frameSerial": 24,
                     "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                    "elapsedMs": 2744.2
+                    "elapsedMs": 1106.9
                   },
                   "counts": {
-                    "frameSerial": 22,
+                    "frameSerial": 24,
                     "bucketCount": 861,
                     "projectedTileRefs": 724912,
                     "streamSplatCount": 94406,
@@ -3282,24 +3294,24 @@
             "ready": true,
             "blockers": [],
             "pollCount": 3,
-            "pollDurationMs": 4354,
-            "elapsedMs": 4574,
+            "pollDurationMs": 1904,
+            "elapsedMs": 2114,
             "evidenceSource": "compact-readiness",
             "observedAppFrame": {
-              "frameSerial": 22,
-              "totalMs": 4410.4,
+              "frameSerial": 24,
+              "totalMs": 1949.2,
               "slowestStage": {
                 "name": "tile-local-scene-state-refresh",
-                "elapsedMs": 4144.6
+                "elapsedMs": 1823.7
               },
               "sourceFrontierPack": {
                 "slowestSubstage": {
-                  "frameSerial": 22,
+                  "frameSerial": 24,
                   "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                  "elapsedMs": 2744.2
+                  "elapsedMs": 1106.9
                 },
                 "counts": {
-                  "frameSerial": 22,
+                  "frameSerial": 24,
                   "bucketCount": 861,
                   "projectedTileRefs": 724912,
                   "streamSplatCount": 94406,
@@ -3345,25 +3357,25 @@
             "failedPolls": 2,
             "slowestPoll": {
               "pollCount": 3,
-              "pollDurationMs": 4354,
-              "elapsedMs": 4574,
+              "pollDurationMs": 1904,
+              "elapsedMs": 2114,
               "ready": true,
               "blockers": [],
               "observedAppFrame": {
-                "frameSerial": 22,
-                "totalMs": 4410.4,
+                "frameSerial": 24,
+                "totalMs": 1949.2,
                 "slowestStage": {
                   "name": "tile-local-scene-state-refresh",
-                  "elapsedMs": 4144.6
+                  "elapsedMs": 1823.7
                 },
                 "sourceFrontierPack": {
                   "slowestSubstage": {
-                    "frameSerial": 22,
+                    "frameSerial": 24,
                     "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                    "elapsedMs": 2744.2
+                    "elapsedMs": 1106.9
                   },
                   "counts": {
-                    "frameSerial": 22,
+                    "frameSerial": 24,
                     "bucketCount": 861,
                     "projectedTileRefs": 724912,
                     "streamSplatCount": 94406,
@@ -3395,8 +3407,8 @@
             },
             "lastFailedPoll": {
               "pollCount": 2,
-              "pollDurationMs": 5,
-              "elapsedMs": 119,
+              "pollDurationMs": 1,
+              "elapsedMs": 109,
               "blockers": [
                 "visual-smoke-not-ready"
               ]
@@ -3407,61 +3419,61 @@
             "pollHistory": [
               {
                 "pollCount": 1,
-                "pollDurationMs": 12,
-                "elapsedMs": 12,
+                "pollDurationMs": 6,
+                "elapsedMs": 6,
                 "ready": false,
                 "blockers": [
                   "visual-smoke-not-ready"
                 ],
                 "observedAppFrame": {
                   "frameSerial": 4,
-                  "totalMs": 9.8,
+                  "totalMs": 5.3,
                   "slowestStage": {
                     "name": "evidence-exposure",
-                    "elapsedMs": 6.2
+                    "elapsedMs": 3.5
                   },
                   "sourceFrontierPack": {}
                 }
               },
               {
                 "pollCount": 2,
-                "pollDurationMs": 5,
-                "elapsedMs": 119,
+                "pollDurationMs": 1,
+                "elapsedMs": 109,
                 "ready": false,
                 "blockers": [
                   "visual-smoke-not-ready"
                 ],
                 "observedAppFrame": {
-                  "frameSerial": 16,
-                  "totalMs": 4.1,
+                  "frameSerial": 17,
+                  "totalMs": 1.4,
                   "slowestStage": {
                     "name": "evidence-exposure",
-                    "elapsedMs": 3.6
+                    "elapsedMs": 1.3
                   },
                   "sourceFrontierPack": {}
                 }
               },
               {
                 "pollCount": 3,
-                "pollDurationMs": 4354,
-                "elapsedMs": 4574,
+                "pollDurationMs": 1904,
+                "elapsedMs": 2114,
                 "ready": true,
                 "blockers": [],
                 "observedAppFrame": {
-                  "frameSerial": 22,
-                  "totalMs": 4410.4,
+                  "frameSerial": 24,
+                  "totalMs": 1949.2,
                   "slowestStage": {
                     "name": "tile-local-scene-state-refresh",
-                    "elapsedMs": 4144.6
+                    "elapsedMs": 1823.7
                   },
                   "sourceFrontierPack": {
                     "slowestSubstage": {
-                      "frameSerial": 22,
+                      "frameSerial": 24,
                       "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                      "elapsedMs": 2744.2
+                      "elapsedMs": 1106.9
                     },
                     "counts": {
-                      "frameSerial": 22,
+                      "frameSerial": 24,
                       "bucketCount": 861,
                       "projectedTileRefs": 724912,
                       "streamSplatCount": 94406,
@@ -3621,6 +3633,14 @@
         {
           "type": "debug",
           "text": "[vite] connected."
+        },
+        {
+          "type": "debug",
+          "text": "[vite] connecting..."
+        },
+        {
+          "type": "debug",
+          "text": "[vite] connected."
         }
       ],
       "pageErrors": []
@@ -3637,7 +3657,7 @@
       "url": "http://127.0.0.1:6177/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256&wgslProjectedRefStream=source-frontier&renderer=tile-local-visible",
       "interactions": [],
       "timing": {
-        "totalMs": 8323,
+        "totalMs": 8202,
         "stages": [
           {
             "name": "apply-view",
@@ -3645,7 +3665,7 @@
           },
           {
             "name": "view-readiness",
-            "elapsedMs": 3157
+            "elapsedMs": 3022
           },
           {
             "name": "settle-before-interaction",
@@ -3653,19 +3673,19 @@
           },
           {
             "name": "collect-settled-evidence",
-            "elapsedMs": 3
+            "elapsedMs": 8
           },
           {
             "name": "screenshot",
-            "elapsedMs": 57
+            "elapsedMs": 71
           },
           {
             "name": "image-analysis",
-            "elapsedMs": 90
+            "elapsedMs": 83
           },
           {
             "name": "trace-canvas-parity",
-            "elapsedMs": 13
+            "elapsedMs": 15
           },
           {
             "name": "classify-smoke",
@@ -3866,12 +3886,12 @@
             "maxRefsPerTile": 256,
             "tileCount": 3600,
             "tileCapacity": 256,
-            "frameId": 44
+            "frameId": 46
           },
           "refStatsReadback": {
             "status": "present",
             "source": "gpu-tile-header-and-scatter-readback",
-            "frameId": 44,
+            "frameId": 46,
             "tileCount": 3600,
             "tileCapacity": 256,
             "allocatedRefs": 921600,
@@ -3978,7 +3998,7 @@
           "freshness": {
             "status": "current",
             "cachedFrameAgeMs": 0,
-            "cachedFrame": 44,
+            "cachedFrame": 46,
             "currentFrameSignature": "tile-local@db040c3e",
             "cachedFrameSignature": "tile-local@db040c3e"
           },
@@ -4035,6 +4055,7 @@
               "wgsl-source-frontier-estimate-ref-budget",
               "wgsl-source-frontier-pack-candidate-source-inputs",
               "wgsl-source-frontier-production-election-runtime",
+              "wgsl-source-frontier-production-election-ledger-reuse",
               "wgsl-source-frontier-production-election-retained-payload-cpu-materialize"
             ],
             "gpuReadyStages": [
@@ -4065,7 +4086,7 @@
               "payloadEncoding": "source-frontier-score",
               "falseClosureGuard": "source-frontier-ref-stats-readback-is-row-accounting-not-payload-readback",
               "rowFields": [],
-              "frameId": 44,
+              "frameId": 46,
               "tileCount": 3600,
               "retainedBudgetRefs": 921600,
               "maxRefsPerTile": 256,
@@ -4172,7 +4193,7 @@
               "readback": {
                 "status": "present",
                 "source": "wgsl-production-election-prefix-scatter-readback",
-                "frameId": 44,
+                "frameId": 46,
                 "recordCount": 905552,
                 "groupCount": 28554,
                 "retainedRecordCount": 320071,
@@ -4200,6 +4221,7 @@
             "frontierBlockedStages": [
               "wgsl-source-frontier-pack-candidate-source-inputs",
               "wgsl-source-frontier-production-election-runtime",
+              "wgsl-source-frontier-production-election-ledger-reuse",
               "wgsl-source-frontier-production-election-retained-payload-cpu-materialize",
               "live-wgsl-production-election-retained-payload-materialization"
             ]
@@ -4508,9 +4530,9 @@
             },
             "dispatchCache": {
               "tileIndex": 5343,
-              "clearFrameId": 44,
-              "buildFrameId": 44,
-              "compositeFrameId": 44,
+              "clearFrameId": 46,
+              "buildFrameId": 46,
+              "compositeFrameId": 46,
               "tileY": 65,
               "tileSpan": {
                 "minTileX": 139,
@@ -4519,7 +4541,7 @@
                 "maxTileY": 66
               },
               "cacheState": "current",
-              "presentationFrameId": 44,
+              "presentationFrameId": 46,
               "rowDispatchState": {
                 "tileCoveredByClear": false,
                 "tileCoveredByBuild": false,
@@ -4551,14 +4573,41 @@
                 "reason": "tileLocal.perPixelFinalColorAccumulation missing contributors for black-band-dropout-2300-1055"
               }
             ]
+          },
+          "prefixScatterReadback": {
+            "status": "present",
+            "source": "wgsl-production-election-prefix-scatter-readback",
+            "frameId": 46,
+            "recordCount": 905552,
+            "groupCount": 28554,
+            "retainedRecordCount": 320071,
+            "tileCount": 3600,
+            "witnessSentinel": 1,
+            "witnessRecordCount": 905552,
+            "witnessGroupCount": 28554,
+            "witnessRetainedRecordCount": 320071,
+            "witnessTileCount": 3600,
+            "firstRecordWord": 1064,
+            "firstGroupWord": 1064,
+            "firstRetainedTileIndex": 1064,
+            "retainedRows": 320071,
+            "nonEmptyTiles": 1787,
+            "maxRowsPerTile": 256,
+            "firstRetainedRecordIndex": 0,
+            "outputBuffers": [
+              "production-election-prefix-counts-buffer",
+              "production-election-prefix-offsets-buffer",
+              "production-election-retained-record-indices-buffer"
+            ],
+            "falseClosureGuard": "prefix-scatter-readback-is-not-current-compositor-consumption"
           }
         },
         "operatorWitness": {
           "witnessView": "dessert-porous-close",
           "revision": 3,
-          "frameSerial": 45,
+          "frameSerial": 47,
           "frameTimings": {
-            "totalMs": 15.7,
+            "totalMs": 14.6,
             "stages": [
               {
                 "name": "frame-uniforms",
@@ -4570,7 +4619,7 @@
               },
               {
                 "name": "queue-submit",
-                "elapsedMs": 0.1
+                "elapsedMs": 0
               },
               {
                 "name": "tile-local-readback-resolve",
@@ -4578,12 +4627,12 @@
               },
               {
                 "name": "evidence-exposure",
-                "elapsedMs": 15.5
+                "elapsedMs": 14.4
               }
             ]
           }
         },
-        "statsText": "1280×720 | 7 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-gaussian-compositor | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 79,708 splats/291 tiles | tile-local: 80x45 tiles/320071 refs | tile-local live refs: gpu-tile-header-and-scatter-readback | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | visible-compositor cap: 256 refs | tile-order: gpu-sorted-index-rank-inversion | retained-source: wgsl-projected-ref-stream-source-frontier->tile-local-visible-gaussian-compositor | projected-stream: wgsl-projected-ref-stream-source-frontier | arena requested: gpu | arena effective: gpu | arena GPU dispatch enqueue: 0.000ms | app frame: 0.2ms | slowest app stage: queue-submit 0.1ms | recent slow app frame: app frame: 2974.4ms | slowest app stage: tile-local-scene-state-refresh 2817.9ms | tile-local rebuild: 2817.9ms | source-frontier pack: 1526.6ms (3004ms ago) | render: 1.76ms",
+        "statsText": "1280×720 | 7 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-gaussian-compositor | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 79,708 splats/291 tiles | tile-local: 80x45 tiles/320071 refs | tile-local live refs: gpu-tile-header-and-scatter-readback | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | visible-compositor cap: 256 refs | tile-order: gpu-sorted-index-rank-inversion | retained-source: wgsl-projected-ref-stream-source-frontier->tile-local-visible-gaussian-compositor | projected-stream: wgsl-projected-ref-stream-source-frontier | arena requested: gpu | arena effective: gpu | arena GPU dispatch enqueue: 0.000ms | app frame: 0.2ms | slowest app stage: frame-uniforms 0ms | recent slow app frame: app frame: 2839.8ms | slowest app stage: tile-local-scene-state-refresh 2689.5ms | tile-local rebuild: 2689.5ms | source-frontier pack: 1453.1ms (2868ms ago) | render: 0.07ms",
         "title": "Deferred Splat+Mesh Renderer",
         "canvas": {
           "width": 1280,
@@ -4601,24 +4650,24 @@
           "ready": true,
           "blockers": [],
           "pollCount": 3,
-          "pollDurationMs": 2943,
-          "elapsedMs": 3157,
+          "pollDurationMs": 2809,
+          "elapsedMs": 3022,
           "evidenceSource": "compact-readiness",
           "observedAppFrame": {
-            "frameSerial": 44,
-            "totalMs": 2993.2,
+            "frameSerial": 46,
+            "totalMs": 2858.1,
             "slowestStage": {
               "name": "tile-local-scene-state-refresh",
-              "elapsedMs": 2817.9
+              "elapsedMs": 2689.5
             },
             "sourceFrontierPack": {
               "slowestSubstage": {
-                "frameSerial": 44,
+                "frameSerial": 46,
                 "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                "elapsedMs": 1377
+                "elapsedMs": 1309.4
               },
               "counts": {
-                "frameSerial": 44,
+                "frameSerial": 46,
                 "bucketCount": 1787,
                 "projectedTileRefs": 664755,
                 "streamSplatCount": 79708,
@@ -4664,25 +4713,25 @@
           "failedPolls": 2,
           "slowestPoll": {
             "pollCount": 3,
-            "pollDurationMs": 2943,
-            "elapsedMs": 3157,
+            "pollDurationMs": 2809,
+            "elapsedMs": 3022,
             "ready": true,
             "blockers": [],
             "observedAppFrame": {
-              "frameSerial": 44,
-              "totalMs": 2993.2,
+              "frameSerial": 46,
+              "totalMs": 2858.1,
               "slowestStage": {
                 "name": "tile-local-scene-state-refresh",
-                "elapsedMs": 2817.9
+                "elapsedMs": 2689.5
               },
               "sourceFrontierPack": {
                 "slowestSubstage": {
-                  "frameSerial": 44,
+                  "frameSerial": 46,
                   "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                  "elapsedMs": 1377
+                  "elapsedMs": 1309.4
                 },
                 "counts": {
-                  "frameSerial": 44,
+                  "frameSerial": 46,
                   "bucketCount": 1787,
                   "projectedTileRefs": 664755,
                   "streamSplatCount": 79708,
@@ -4714,8 +4763,8 @@
           },
           "lastFailedPoll": {
             "pollCount": 2,
-            "pollDurationMs": 2,
-            "elapsedMs": 113,
+            "pollDurationMs": 1,
+            "elapsedMs": 111,
             "blockers": [
               "visual-smoke-not-ready"
             ]
@@ -4733,54 +4782,54 @@
                 "visual-smoke-not-ready"
               ],
               "observedAppFrame": {
-                "frameSerial": 24,
-                "totalMs": 8.3,
+                "frameSerial": 26,
+                "totalMs": 8.1,
                 "slowestStage": {
                   "name": "evidence-exposure",
-                  "elapsedMs": 7.6
+                  "elapsedMs": 7.4
                 },
                 "sourceFrontierPack": {}
               }
             },
             {
               "pollCount": 2,
-              "pollDurationMs": 2,
-              "elapsedMs": 113,
+              "pollDurationMs": 1,
+              "elapsedMs": 111,
               "ready": false,
               "blockers": [
                 "visual-smoke-not-ready"
               ],
               "observedAppFrame": {
-                "frameSerial": 37,
+                "frameSerial": 39,
                 "totalMs": 6.3,
                 "slowestStage": {
                   "name": "evidence-exposure",
-                  "elapsedMs": 6.2
+                  "elapsedMs": 6.1
                 },
                 "sourceFrontierPack": {}
               }
             },
             {
               "pollCount": 3,
-              "pollDurationMs": 2943,
-              "elapsedMs": 3157,
+              "pollDurationMs": 2809,
+              "elapsedMs": 3022,
               "ready": true,
               "blockers": [],
               "observedAppFrame": {
-                "frameSerial": 44,
-                "totalMs": 2993.2,
+                "frameSerial": 46,
+                "totalMs": 2858.1,
                 "slowestStage": {
                   "name": "tile-local-scene-state-refresh",
-                  "elapsedMs": 2817.9
+                  "elapsedMs": 2689.5
                 },
                 "sourceFrontierPack": {
                   "slowestSubstage": {
-                    "frameSerial": 44,
+                    "frameSerial": 46,
                     "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                    "elapsedMs": 1377
+                    "elapsedMs": 1309.4
                   },
                   "counts": {
-                    "frameSerial": 44,
+                    "frameSerial": 46,
                     "bucketCount": 1787,
                     "projectedTileRefs": 664755,
                     "streamSplatCount": 79708,
@@ -5003,24 +5052,24 @@
             "ready": true,
             "blockers": [],
             "pollCount": 3,
-            "pollDurationMs": 2943,
-            "elapsedMs": 3157,
+            "pollDurationMs": 2809,
+            "elapsedMs": 3022,
             "evidenceSource": "compact-readiness",
             "observedAppFrame": {
-              "frameSerial": 44,
-              "totalMs": 2993.2,
+              "frameSerial": 46,
+              "totalMs": 2858.1,
               "slowestStage": {
                 "name": "tile-local-scene-state-refresh",
-                "elapsedMs": 2817.9
+                "elapsedMs": 2689.5
               },
               "sourceFrontierPack": {
                 "slowestSubstage": {
-                  "frameSerial": 44,
+                  "frameSerial": 46,
                   "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                  "elapsedMs": 1377
+                  "elapsedMs": 1309.4
                 },
                 "counts": {
-                  "frameSerial": 44,
+                  "frameSerial": 46,
                   "bucketCount": 1787,
                   "projectedTileRefs": 664755,
                   "streamSplatCount": 79708,
@@ -5066,25 +5115,25 @@
             "failedPolls": 2,
             "slowestPoll": {
               "pollCount": 3,
-              "pollDurationMs": 2943,
-              "elapsedMs": 3157,
+              "pollDurationMs": 2809,
+              "elapsedMs": 3022,
               "ready": true,
               "blockers": [],
               "observedAppFrame": {
-                "frameSerial": 44,
-                "totalMs": 2993.2,
+                "frameSerial": 46,
+                "totalMs": 2858.1,
                 "slowestStage": {
                   "name": "tile-local-scene-state-refresh",
-                  "elapsedMs": 2817.9
+                  "elapsedMs": 2689.5
                 },
                 "sourceFrontierPack": {
                   "slowestSubstage": {
-                    "frameSerial": 44,
+                    "frameSerial": 46,
                     "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                    "elapsedMs": 1377
+                    "elapsedMs": 1309.4
                   },
                   "counts": {
-                    "frameSerial": 44,
+                    "frameSerial": 46,
                     "bucketCount": 1787,
                     "projectedTileRefs": 664755,
                     "streamSplatCount": 79708,
@@ -5116,8 +5165,8 @@
             },
             "lastFailedPoll": {
               "pollCount": 2,
-              "pollDurationMs": 2,
-              "elapsedMs": 113,
+              "pollDurationMs": 1,
+              "elapsedMs": 111,
               "blockers": [
                 "visual-smoke-not-ready"
               ]
@@ -5135,54 +5184,54 @@
                   "visual-smoke-not-ready"
                 ],
                 "observedAppFrame": {
-                  "frameSerial": 24,
-                  "totalMs": 8.3,
+                  "frameSerial": 26,
+                  "totalMs": 8.1,
                   "slowestStage": {
                     "name": "evidence-exposure",
-                    "elapsedMs": 7.6
+                    "elapsedMs": 7.4
                   },
                   "sourceFrontierPack": {}
                 }
               },
               {
                 "pollCount": 2,
-                "pollDurationMs": 2,
-                "elapsedMs": 113,
+                "pollDurationMs": 1,
+                "elapsedMs": 111,
                 "ready": false,
                 "blockers": [
                   "visual-smoke-not-ready"
                 ],
                 "observedAppFrame": {
-                  "frameSerial": 37,
+                  "frameSerial": 39,
                   "totalMs": 6.3,
                   "slowestStage": {
                     "name": "evidence-exposure",
-                    "elapsedMs": 6.2
+                    "elapsedMs": 6.1
                   },
                   "sourceFrontierPack": {}
                 }
               },
               {
                 "pollCount": 3,
-                "pollDurationMs": 2943,
-                "elapsedMs": 3157,
+                "pollDurationMs": 2809,
+                "elapsedMs": 3022,
                 "ready": true,
                 "blockers": [],
                 "observedAppFrame": {
-                  "frameSerial": 44,
-                  "totalMs": 2993.2,
+                  "frameSerial": 46,
+                  "totalMs": 2858.1,
                   "slowestStage": {
                     "name": "tile-local-scene-state-refresh",
-                    "elapsedMs": 2817.9
+                    "elapsedMs": 2689.5
                   },
                   "sourceFrontierPack": {
                     "slowestSubstage": {
-                      "frameSerial": 44,
+                      "frameSerial": 46,
                       "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                      "elapsedMs": 1377
+                      "elapsedMs": 1309.4
                     },
                     "counts": {
-                      "frameSerial": 44,
+                      "frameSerial": 46,
                       "bucketCount": 1787,
                       "projectedTileRefs": 664755,
                       "streamSplatCount": 79708,
@@ -5342,6 +5391,14 @@
         {
           "type": "debug",
           "text": "[vite] connected."
+        },
+        {
+          "type": "debug",
+          "text": "[vite] connecting..."
+        },
+        {
+          "type": "debug",
+          "text": "[vite] connected."
         }
       ],
       "pageErrors": []
@@ -5365,15 +5422,15 @@
         }
       ],
       "timing": {
-        "totalMs": 15958,
+        "totalMs": 15707,
         "stages": [
           {
             "name": "apply-view",
-            "elapsedMs": 2
+            "elapsedMs": 1
           },
           {
             "name": "view-readiness",
-            "elapsedMs": 2704
+            "elapsedMs": 2579
           },
           {
             "name": "settle-before-interaction",
@@ -5381,11 +5438,11 @@
           },
           {
             "name": "interactions",
-            "elapsedMs": 1
+            "elapsedMs": 2
           },
           {
             "name": "interaction-readiness",
-            "elapsedMs": 3088
+            "elapsedMs": 2927
           },
           {
             "name": "settle-after-interaction",
@@ -5393,19 +5450,19 @@
           },
           {
             "name": "collect-settled-evidence",
-            "elapsedMs": 3
+            "elapsedMs": 10
           },
           {
             "name": "screenshot",
-            "elapsedMs": 58
+            "elapsedMs": 87
           },
           {
             "name": "image-analysis",
-            "elapsedMs": 85
+            "elapsedMs": 83
           },
           {
             "name": "trace-canvas-parity",
-            "elapsedMs": 13
+            "elapsedMs": 14
           },
           {
             "name": "classify-smoke",
@@ -5606,12 +5663,12 @@
             "maxRefsPerTile": 256,
             "tileCount": 3600,
             "tileCapacity": 256,
-            "frameId": 59
+            "frameId": 58
           },
           "refStatsReadback": {
             "status": "present",
             "source": "gpu-tile-header-and-scatter-readback",
-            "frameId": 59,
+            "frameId": 58,
             "tileCount": 3600,
             "tileCapacity": 256,
             "allocatedRefs": 921600,
@@ -5718,7 +5775,7 @@
           "freshness": {
             "status": "current",
             "cachedFrameAgeMs": 0,
-            "cachedFrame": 59,
+            "cachedFrame": 58,
             "currentFrameSignature": "tile-local@05bf5e45",
             "cachedFrameSignature": "tile-local@05bf5e45"
           },
@@ -5775,6 +5832,7 @@
               "wgsl-source-frontier-estimate-ref-budget",
               "wgsl-source-frontier-pack-candidate-source-inputs",
               "wgsl-source-frontier-production-election-runtime",
+              "wgsl-source-frontier-production-election-ledger-reuse",
               "wgsl-source-frontier-production-election-retained-payload-cpu-materialize"
             ],
             "gpuReadyStages": [
@@ -5805,7 +5863,7 @@
               "payloadEncoding": "source-frontier-score",
               "falseClosureGuard": "source-frontier-ref-stats-readback-is-row-accounting-not-payload-readback",
               "rowFields": [],
-              "frameId": 59,
+              "frameId": 58,
               "tileCount": 3600,
               "retainedBudgetRefs": 921600,
               "maxRefsPerTile": 256,
@@ -5912,7 +5970,7 @@
               "readback": {
                 "status": "present",
                 "source": "wgsl-production-election-prefix-scatter-readback",
-                "frameId": 59,
+                "frameId": 58,
                 "recordCount": 962721,
                 "groupCount": 30192,
                 "retainedRecordCount": 340087,
@@ -5940,6 +5998,7 @@
             "frontierBlockedStages": [
               "wgsl-source-frontier-pack-candidate-source-inputs",
               "wgsl-source-frontier-production-election-runtime",
+              "wgsl-source-frontier-production-election-ledger-reuse",
               "wgsl-source-frontier-production-election-retained-payload-cpu-materialize",
               "live-wgsl-production-election-retained-payload-materialization"
             ]
@@ -6248,9 +6307,9 @@
             },
             "dispatchCache": {
               "tileIndex": 5343,
-              "clearFrameId": 59,
-              "buildFrameId": 59,
-              "compositeFrameId": 59,
+              "clearFrameId": 58,
+              "buildFrameId": 58,
+              "compositeFrameId": 58,
               "tileY": 65,
               "tileSpan": {
                 "minTileX": 139,
@@ -6259,7 +6318,7 @@
                 "maxTileY": 66
               },
               "cacheState": "current",
-              "presentationFrameId": 59,
+              "presentationFrameId": 58,
               "rowDispatchState": {
                 "tileCoveredByClear": false,
                 "tileCoveredByBuild": false,
@@ -6291,41 +6350,14 @@
                 "reason": "tileLocal.perPixelFinalColorAccumulation missing contributors for black-band-dropout-2300-1055"
               }
             ]
-          },
-          "prefixScatterReadback": {
-            "status": "present",
-            "source": "wgsl-production-election-prefix-scatter-readback",
-            "frameId": 59,
-            "recordCount": 962721,
-            "groupCount": 30192,
-            "retainedRecordCount": 340087,
-            "tileCount": 3600,
-            "witnessSentinel": 1,
-            "witnessRecordCount": 962721,
-            "witnessGroupCount": 30192,
-            "witnessRetainedRecordCount": 340087,
-            "witnessTileCount": 3600,
-            "firstRecordWord": 1225,
-            "firstGroupWord": 1225,
-            "firstRetainedTileIndex": 1225,
-            "retainedRows": 340087,
-            "nonEmptyTiles": 1890,
-            "maxRowsPerTile": 256,
-            "firstRetainedRecordIndex": 0,
-            "outputBuffers": [
-              "production-election-prefix-counts-buffer",
-              "production-election-prefix-offsets-buffer",
-              "production-election-retained-record-indices-buffer"
-            ],
-            "falseClosureGuard": "prefix-scatter-readback-is-not-current-compositor-consumption"
           }
         },
         "operatorWitness": {
           "witnessView": "dessert-porous-close",
           "revision": 5,
-          "frameSerial": 60,
+          "frameSerial": 59,
           "frameTimings": {
-            "totalMs": 14.4,
+            "totalMs": 13.3,
             "stages": [
               {
                 "name": "frame-uniforms",
@@ -6345,12 +6377,12 @@
               },
               {
                 "name": "evidence-exposure",
-                "elapsedMs": 14
+                "elapsedMs": 13
               }
             ]
           }
         },
-        "statsText": "1280×720 | 4 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-gaussian-compositor | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 76,480 splats/296 tiles | tile-local: 80x45 tiles/340087 refs | tile-local live refs: gpu-tile-header-and-scatter-readback | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | visible-compositor cap: 256 refs | tile-order: gpu-sorted-index-rank-inversion | retained-source: wgsl-projected-ref-stream-source-frontier->tile-local-visible-gaussian-compositor | projected-stream: wgsl-projected-ref-stream-source-frontier | arena requested: gpu | arena effective: gpu | arena GPU dispatch enqueue: 0.000ms | app frame: 0.3ms | slowest app stage: frame-uniforms 0ms | recent slow app frame: app frame: 2905.5ms | slowest app stage: tile-local-scene-state-refresh 2753.6ms | tile-local rebuild: 2753.6ms | source-frontier pack: 1596.1ms (2931ms ago) | render: 0.07ms",
+        "statsText": "1280×720 | 3 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-gaussian-compositor | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 76,480 splats/296 tiles | tile-local: 80x45 tiles/340087 refs | tile-local live refs: gpu-tile-header-and-scatter-readback | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | visible-compositor cap: 256 refs | tile-order: gpu-sorted-index-rank-inversion | retained-source: wgsl-projected-ref-stream-source-frontier->tile-local-visible-gaussian-compositor | projected-stream: wgsl-projected-ref-stream-source-frontier | arena requested: gpu | arena effective: gpu | arena GPU dispatch enqueue: 0.000ms | app frame: 0.3ms | slowest app stage: frame-uniforms 0ms | recent slow app frame: app frame: 2745.8ms | slowest app stage: tile-local-scene-state-refresh 2598ms | tile-local rebuild: 2598ms | source-frontier pack: 1510.7ms (2770ms ago) | render: 2.70ms",
         "title": "Deferred Splat+Mesh Renderer",
         "canvas": {
           "width": 1280,
@@ -6358,7 +6390,7 @@
           "clientWidth": 1280,
           "clientHeight": 720
         },
-        "fps": 4,
+        "fps": 3,
         "arenaRuntime": {
           "requestedArenaBackend": "gpu",
           "effectiveArenaBackend": "gpu",
@@ -6368,24 +6400,24 @@
           "ready": true,
           "blockers": [],
           "pollCount": 3,
-          "pollDurationMs": 2862,
-          "elapsedMs": 3088,
+          "pollDurationMs": 2675,
+          "elapsedMs": 2927,
           "evidenceSource": "compact-readiness",
           "observedAppFrame": {
-            "frameSerial": 59,
-            "totalMs": 2921.8,
+            "frameSerial": 58,
+            "totalMs": 2761.2,
             "slowestStage": {
               "name": "tile-local-scene-state-refresh",
-              "elapsedMs": 2753.6
+              "elapsedMs": 2598
             },
             "sourceFrontierPack": {
               "slowestSubstage": {
-                "frameSerial": 59,
+                "frameSerial": 58,
                 "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                "elapsedMs": 1442.2
+                "elapsedMs": 1364.4
               },
               "counts": {
-                "frameSerial": 59,
+                "frameSerial": 58,
                 "bucketCount": 1890,
                 "projectedTileRefs": 642413,
                 "streamSplatCount": 76480,
@@ -6431,25 +6463,25 @@
           "failedPolls": 2,
           "slowestPoll": {
             "pollCount": 3,
-            "pollDurationMs": 2862,
-            "elapsedMs": 3088,
+            "pollDurationMs": 2675,
+            "elapsedMs": 2927,
             "ready": true,
             "blockers": [],
             "observedAppFrame": {
-              "frameSerial": 59,
-              "totalMs": 2921.8,
+              "frameSerial": 58,
+              "totalMs": 2761.2,
               "slowestStage": {
                 "name": "tile-local-scene-state-refresh",
-                "elapsedMs": 2753.6
+                "elapsedMs": 2598
               },
               "sourceFrontierPack": {
                 "slowestSubstage": {
-                  "frameSerial": 59,
+                  "frameSerial": 58,
                   "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                  "elapsedMs": 1442.2
+                  "elapsedMs": 1364.4
                 },
                 "counts": {
-                  "frameSerial": 59,
+                  "frameSerial": 58,
                   "bucketCount": 1890,
                   "projectedTileRefs": 642413,
                   "streamSplatCount": 76480,
@@ -6481,8 +6513,8 @@
           },
           "lastFailedPoll": {
             "pollCount": 2,
-            "pollDurationMs": 8,
-            "elapsedMs": 125,
+            "pollDurationMs": 15,
+            "elapsedMs": 151,
             "blockers": [
               "visual-smoke-not-ready"
             ]
@@ -6493,61 +6525,61 @@
           "pollHistory": [
             {
               "pollCount": 1,
-              "pollDurationMs": 15,
-              "elapsedMs": 15,
+              "pollDurationMs": 34,
+              "elapsedMs": 34,
               "ready": false,
               "blockers": [
                 "visual-smoke-not-ready"
               ],
               "observedAppFrame": {
-                "frameSerial": 47,
-                "totalMs": 14.2,
+                "frameSerial": 49,
+                "totalMs": 32.4,
                 "slowestStage": {
                   "name": "evidence-exposure",
-                  "elapsedMs": 13.8
+                  "elapsedMs": 31.4
                 },
                 "sourceFrontierPack": {}
               }
             },
             {
               "pollCount": 2,
-              "pollDurationMs": 8,
-              "elapsedMs": 125,
+              "pollDurationMs": 15,
+              "elapsedMs": 151,
               "ready": false,
               "blockers": [
                 "visual-smoke-not-ready"
               ],
               "observedAppFrame": {
-                "frameSerial": 55,
-                "totalMs": 13.4,
+                "frameSerial": 56,
+                "totalMs": 13.8,
                 "slowestStage": {
                   "name": "evidence-exposure",
-                  "elapsedMs": 13.2
+                  "elapsedMs": 13.7
                 },
                 "sourceFrontierPack": {}
               }
             },
             {
               "pollCount": 3,
-              "pollDurationMs": 2862,
-              "elapsedMs": 3088,
+              "pollDurationMs": 2675,
+              "elapsedMs": 2927,
               "ready": true,
               "blockers": [],
               "observedAppFrame": {
-                "frameSerial": 59,
-                "totalMs": 2921.8,
+                "frameSerial": 58,
+                "totalMs": 2761.2,
                 "slowestStage": {
                   "name": "tile-local-scene-state-refresh",
-                  "elapsedMs": 2753.6
+                  "elapsedMs": 2598
                 },
                 "sourceFrontierPack": {
                   "slowestSubstage": {
-                    "frameSerial": 59,
+                    "frameSerial": 58,
                     "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                    "elapsedMs": 1442.2
+                    "elapsedMs": 1364.4
                   },
                   "counts": {
-                    "frameSerial": 59,
+                    "frameSerial": 58,
                     "bucketCount": 1890,
                     "projectedTileRefs": 642413,
                     "streamSplatCount": 76480,
@@ -6770,24 +6802,24 @@
             "ready": true,
             "blockers": [],
             "pollCount": 1,
-            "pollDurationMs": 2704,
-            "elapsedMs": 2704,
+            "pollDurationMs": 2579,
+            "elapsedMs": 2579,
             "evidenceSource": "compact-readiness",
             "observedAppFrame": {
-              "frameSerial": 46,
-              "totalMs": 2703.4,
+              "frameSerial": 48,
+              "totalMs": 2576.8,
               "slowestStage": {
                 "name": "tile-local-scene-state-refresh",
-                "elapsedMs": 2686.2
+                "elapsedMs": 2559.8
               },
               "sourceFrontierPack": {
                 "slowestSubstage": {
-                  "frameSerial": 46,
+                  "frameSerial": 48,
                   "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                  "elapsedMs": 1386
+                  "elapsedMs": 1300.3
                 },
                 "counts": {
-                  "frameSerial": 46,
+                  "frameSerial": 48,
                   "bucketCount": 1787,
                   "projectedTileRefs": 664755,
                   "streamSplatCount": 79708,
@@ -6833,25 +6865,25 @@
             "failedPolls": 0,
             "slowestPoll": {
               "pollCount": 1,
-              "pollDurationMs": 2704,
-              "elapsedMs": 2704,
+              "pollDurationMs": 2579,
+              "elapsedMs": 2579,
               "ready": true,
               "blockers": [],
               "observedAppFrame": {
-                "frameSerial": 46,
-                "totalMs": 2703.4,
+                "frameSerial": 48,
+                "totalMs": 2576.8,
                 "slowestStage": {
                   "name": "tile-local-scene-state-refresh",
-                  "elapsedMs": 2686.2
+                  "elapsedMs": 2559.8
                 },
                 "sourceFrontierPack": {
                   "slowestSubstage": {
-                    "frameSerial": 46,
+                    "frameSerial": 48,
                     "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                    "elapsedMs": 1386
+                    "elapsedMs": 1300.3
                   },
                   "counts": {
-                    "frameSerial": 46,
+                    "frameSerial": 48,
                     "bucketCount": 1787,
                     "projectedTileRefs": 664755,
                     "streamSplatCount": 79708,
@@ -6885,25 +6917,25 @@
             "pollHistory": [
               {
                 "pollCount": 1,
-                "pollDurationMs": 2704,
-                "elapsedMs": 2704,
+                "pollDurationMs": 2579,
+                "elapsedMs": 2579,
                 "ready": true,
                 "blockers": [],
                 "observedAppFrame": {
-                  "frameSerial": 46,
-                  "totalMs": 2703.4,
+                  "frameSerial": 48,
+                  "totalMs": 2576.8,
                   "slowestStage": {
                     "name": "tile-local-scene-state-refresh",
-                    "elapsedMs": 2686.2
+                    "elapsedMs": 2559.8
                   },
                   "sourceFrontierPack": {
                     "slowestSubstage": {
-                      "frameSerial": 46,
+                      "frameSerial": 48,
                       "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                      "elapsedMs": 1386
+                      "elapsedMs": 1300.3
                     },
                     "counts": {
-                      "frameSerial": 46,
+                      "frameSerial": 48,
                       "bucketCount": 1787,
                       "projectedTileRefs": 664755,
                       "streamSplatCount": 79708,
@@ -6939,24 +6971,24 @@
             "ready": true,
             "blockers": [],
             "pollCount": 3,
-            "pollDurationMs": 2862,
-            "elapsedMs": 3088,
+            "pollDurationMs": 2675,
+            "elapsedMs": 2927,
             "evidenceSource": "compact-readiness",
             "observedAppFrame": {
-              "frameSerial": 59,
-              "totalMs": 2921.8,
+              "frameSerial": 58,
+              "totalMs": 2761.2,
               "slowestStage": {
                 "name": "tile-local-scene-state-refresh",
-                "elapsedMs": 2753.6
+                "elapsedMs": 2598
               },
               "sourceFrontierPack": {
                 "slowestSubstage": {
-                  "frameSerial": 59,
+                  "frameSerial": 58,
                   "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                  "elapsedMs": 1442.2
+                  "elapsedMs": 1364.4
                 },
                 "counts": {
-                  "frameSerial": 59,
+                  "frameSerial": 58,
                   "bucketCount": 1890,
                   "projectedTileRefs": 642413,
                   "streamSplatCount": 76480,
@@ -7002,25 +7034,25 @@
             "failedPolls": 2,
             "slowestPoll": {
               "pollCount": 3,
-              "pollDurationMs": 2862,
-              "elapsedMs": 3088,
+              "pollDurationMs": 2675,
+              "elapsedMs": 2927,
               "ready": true,
               "blockers": [],
               "observedAppFrame": {
-                "frameSerial": 59,
-                "totalMs": 2921.8,
+                "frameSerial": 58,
+                "totalMs": 2761.2,
                 "slowestStage": {
                   "name": "tile-local-scene-state-refresh",
-                  "elapsedMs": 2753.6
+                  "elapsedMs": 2598
                 },
                 "sourceFrontierPack": {
                   "slowestSubstage": {
-                    "frameSerial": 59,
+                    "frameSerial": 58,
                     "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                    "elapsedMs": 1442.2
+                    "elapsedMs": 1364.4
                   },
                   "counts": {
-                    "frameSerial": 59,
+                    "frameSerial": 58,
                     "bucketCount": 1890,
                     "projectedTileRefs": 642413,
                     "streamSplatCount": 76480,
@@ -7052,8 +7084,8 @@
             },
             "lastFailedPoll": {
               "pollCount": 2,
-              "pollDurationMs": 8,
-              "elapsedMs": 125,
+              "pollDurationMs": 15,
+              "elapsedMs": 151,
               "blockers": [
                 "visual-smoke-not-ready"
               ]
@@ -7064,61 +7096,61 @@
             "pollHistory": [
               {
                 "pollCount": 1,
-                "pollDurationMs": 15,
-                "elapsedMs": 15,
+                "pollDurationMs": 34,
+                "elapsedMs": 34,
                 "ready": false,
                 "blockers": [
                   "visual-smoke-not-ready"
                 ],
                 "observedAppFrame": {
-                  "frameSerial": 47,
-                  "totalMs": 14.2,
+                  "frameSerial": 49,
+                  "totalMs": 32.4,
                   "slowestStage": {
                     "name": "evidence-exposure",
-                    "elapsedMs": 13.8
+                    "elapsedMs": 31.4
                   },
                   "sourceFrontierPack": {}
                 }
               },
               {
                 "pollCount": 2,
-                "pollDurationMs": 8,
-                "elapsedMs": 125,
+                "pollDurationMs": 15,
+                "elapsedMs": 151,
                 "ready": false,
                 "blockers": [
                   "visual-smoke-not-ready"
                 ],
                 "observedAppFrame": {
-                  "frameSerial": 55,
-                  "totalMs": 13.4,
+                  "frameSerial": 56,
+                  "totalMs": 13.8,
                   "slowestStage": {
                     "name": "evidence-exposure",
-                    "elapsedMs": 13.2
+                    "elapsedMs": 13.7
                   },
                   "sourceFrontierPack": {}
                 }
               },
               {
                 "pollCount": 3,
-                "pollDurationMs": 2862,
-                "elapsedMs": 3088,
+                "pollDurationMs": 2675,
+                "elapsedMs": 2927,
                 "ready": true,
                 "blockers": [],
                 "observedAppFrame": {
-                  "frameSerial": 59,
-                  "totalMs": 2921.8,
+                  "frameSerial": 58,
+                  "totalMs": 2761.2,
                   "slowestStage": {
                     "name": "tile-local-scene-state-refresh",
-                    "elapsedMs": 2753.6
+                    "elapsedMs": 2598
                   },
                   "sourceFrontierPack": {
                     "slowestSubstage": {
-                      "frameSerial": 59,
+                      "frameSerial": 58,
                       "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                      "elapsedMs": 1442.2
+                      "elapsedMs": 1364.4
                     },
                     "counts": {
-                      "frameSerial": 59,
+                      "frameSerial": 58,
                       "bucketCount": 1890,
                       "projectedTileRefs": 642413,
                       "streamSplatCount": 76480,
@@ -7278,6 +7310,14 @@
         {
           "type": "debug",
           "text": "[vite] connected."
+        },
+        {
+          "type": "debug",
+          "text": "[vite] connecting..."
+        },
+        {
+          "type": "debug",
+          "text": "[vite] connected."
         }
       ],
       "pageErrors": []
@@ -7301,15 +7341,15 @@
         }
       ],
       "timing": {
-        "totalMs": 16253,
+        "totalMs": 15914,
         "stages": [
           {
             "name": "apply-view",
-            "elapsedMs": 4
+            "elapsedMs": 1
           },
           {
             "name": "view-readiness",
-            "elapsedMs": 3080
+            "elapsedMs": 2945
           },
           {
             "name": "settle-before-interaction",
@@ -7317,15 +7357,15 @@
           },
           {
             "name": "interactions",
-            "elapsedMs": 1
+            "elapsedMs": 2
           },
           {
             "name": "interaction-readiness",
-            "elapsedMs": 3004
+            "elapsedMs": 2789
           },
           {
             "name": "settle-after-interaction",
-            "elapsedMs": 5001
+            "elapsedMs": 5002
           },
           {
             "name": "collect-settled-evidence",
@@ -7333,11 +7373,11 @@
           },
           {
             "name": "screenshot",
-            "elapsedMs": 63
+            "elapsedMs": 77
           },
           {
             "name": "image-analysis",
-            "elapsedMs": 83
+            "elapsedMs": 81
           },
           {
             "name": "trace-canvas-parity",
@@ -7542,12 +7582,12 @@
             "maxRefsPerTile": 256,
             "tileCount": 3600,
             "tileCapacity": 256,
-            "frameId": 84
+            "frameId": 82
           },
           "refStatsReadback": {
             "status": "present",
             "source": "gpu-tile-header-and-scatter-readback",
-            "frameId": 84,
+            "frameId": 82,
             "tileCount": 3600,
             "tileCapacity": 256,
             "allocatedRefs": 921600,
@@ -7654,7 +7694,7 @@
           "freshness": {
             "status": "current",
             "cachedFrameAgeMs": 0,
-            "cachedFrame": 84,
+            "cachedFrame": 82,
             "currentFrameSignature": "tile-local@83f4576f",
             "cachedFrameSignature": "tile-local@83f4576f"
           },
@@ -7711,6 +7751,7 @@
               "wgsl-source-frontier-estimate-ref-budget",
               "wgsl-source-frontier-pack-candidate-source-inputs",
               "wgsl-source-frontier-production-election-runtime",
+              "wgsl-source-frontier-production-election-ledger-reuse",
               "wgsl-source-frontier-production-election-retained-payload-cpu-materialize"
             ],
             "gpuReadyStages": [
@@ -7741,7 +7782,7 @@
               "payloadEncoding": "source-frontier-score",
               "falseClosureGuard": "source-frontier-ref-stats-readback-is-row-accounting-not-payload-readback",
               "rowFields": [],
-              "frameId": 84,
+              "frameId": 82,
               "tileCount": 3600,
               "retainedBudgetRefs": 921600,
               "maxRefsPerTile": 256,
@@ -7848,7 +7889,7 @@
               "readback": {
                 "status": "present",
                 "source": "wgsl-production-election-prefix-scatter-readback",
-                "frameId": 84,
+                "frameId": 82,
                 "recordCount": 857076,
                 "groupCount": 27101,
                 "retainedRecordCount": 302509,
@@ -7876,6 +7917,7 @@
             "frontierBlockedStages": [
               "wgsl-source-frontier-pack-candidate-source-inputs",
               "wgsl-source-frontier-production-election-runtime",
+              "wgsl-source-frontier-production-election-ledger-reuse",
               "wgsl-source-frontier-production-election-retained-payload-cpu-materialize",
               "live-wgsl-production-election-retained-payload-materialization"
             ]
@@ -8184,9 +8226,9 @@
             },
             "dispatchCache": {
               "tileIndex": 5343,
-              "clearFrameId": 84,
-              "buildFrameId": 84,
-              "compositeFrameId": 84,
+              "clearFrameId": 82,
+              "buildFrameId": 82,
+              "compositeFrameId": 82,
               "tileY": 65,
               "tileSpan": {
                 "minTileX": 139,
@@ -8195,7 +8237,7 @@
                 "maxTileY": 66
               },
               "cacheState": "current",
-              "presentationFrameId": 84,
+              "presentationFrameId": 82,
               "rowDispatchState": {
                 "tileCoveredByClear": false,
                 "tileCoveredByBuild": false,
@@ -8232,9 +8274,9 @@
         "operatorWitness": {
           "witnessView": "dessert-porous-close",
           "revision": 7,
-          "frameSerial": 85,
+          "frameSerial": 83,
           "frameTimings": {
-            "totalMs": 17.9,
+            "totalMs": 11.6,
             "stages": [
               {
                 "name": "frame-uniforms",
@@ -8254,12 +8296,12 @@
               },
               {
                 "name": "evidence-exposure",
-                "elapsedMs": 17.6
+                "elapsedMs": 11.3
               }
             ]
           }
         },
-        "statsText": "1280×720 | 3 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-gaussian-compositor | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 79,770 splats/284 tiles | tile-local: 80x45 tiles/302509 refs | tile-local live refs: gpu-tile-header-and-scatter-readback | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | visible-compositor cap: 256 refs | tile-order: gpu-sorted-index-rank-inversion | retained-source: wgsl-projected-ref-stream-source-frontier->tile-local-visible-gaussian-compositor | projected-stream: wgsl-projected-ref-stream-source-frontier | arena requested: gpu | arena effective: gpu | arena GPU dispatch enqueue: 0.000ms | app frame: 0.3ms | slowest app stage: frame-uniforms 0ms | recent slow app frame: app frame: 2812.8ms | slowest app stage: tile-local-scene-state-refresh 2672.1ms | tile-local rebuild: 2672.1ms | source-frontier pack: 1562.6ms (2846ms ago) | render: 0.07ms",
+        "statsText": "1280×720 | 3 fps | 94,406 real Scaniverse splats | renderer: tile-local-visible-gaussian-compositor | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 79,770 splats/284 tiles | tile-local: 80x45 tiles/302509 refs | tile-local live refs: gpu-tile-header-and-scatter-readback | tile-local budget: cap 20,000,000 | per-tile cap 256 | tile-budget: 16px/256 refs | visible-compositor cap: 256 refs | tile-order: gpu-sorted-index-rank-inversion | retained-source: wgsl-projected-ref-stream-source-frontier->tile-local-visible-gaussian-compositor | projected-stream: wgsl-projected-ref-stream-source-frontier | arena requested: gpu | arena effective: gpu | arena GPU dispatch enqueue: 0.000ms | app frame: 0.2ms | slowest app stage: frame-uniforms 0ms | recent slow app frame: app frame: 2607.8ms | slowest app stage: tile-local-scene-state-refresh 2471.3ms | tile-local rebuild: 2471.3ms | source-frontier pack: 1377.6ms (2631ms ago) | render: 3.06ms",
         "title": "Deferred Splat+Mesh Renderer",
         "canvas": {
           "width": 1280,
@@ -8277,24 +8319,24 @@
           "ready": true,
           "blockers": [],
           "pollCount": 3,
-          "pollDurationMs": 2769,
-          "elapsedMs": 3004,
+          "pollDurationMs": 2542,
+          "elapsedMs": 2789,
           "evidenceSource": "compact-readiness",
           "observedAppFrame": {
-            "frameSerial": 84,
-            "totalMs": 2834.5,
+            "frameSerial": 82,
+            "totalMs": 2622.6,
             "slowestStage": {
               "name": "tile-local-scene-state-refresh",
-              "elapsedMs": 2672.1
+              "elapsedMs": 2471.3
             },
             "sourceFrontierPack": {
               "slowestSubstage": {
-                "frameSerial": 84,
+                "frameSerial": 82,
                 "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                "elapsedMs": 1426.5
+                "elapsedMs": 1244
               },
               "counts": {
-                "frameSerial": 84,
+                "frameSerial": 82,
                 "bucketCount": 1699,
                 "projectedTileRefs": 666381,
                 "streamSplatCount": 79770,
@@ -8340,25 +8382,25 @@
           "failedPolls": 2,
           "slowestPoll": {
             "pollCount": 3,
-            "pollDurationMs": 2769,
-            "elapsedMs": 3004,
+            "pollDurationMs": 2542,
+            "elapsedMs": 2789,
             "ready": true,
             "blockers": [],
             "observedAppFrame": {
-              "frameSerial": 84,
-              "totalMs": 2834.5,
+              "frameSerial": 82,
+              "totalMs": 2622.6,
               "slowestStage": {
                 "name": "tile-local-scene-state-refresh",
-                "elapsedMs": 2672.1
+                "elapsedMs": 2471.3
               },
               "sourceFrontierPack": {
                 "slowestSubstage": {
-                  "frameSerial": 84,
+                  "frameSerial": 82,
                   "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                  "elapsedMs": 1426.5
+                  "elapsedMs": 1244
                 },
                 "counts": {
-                  "frameSerial": 84,
+                  "frameSerial": 82,
                   "bucketCount": 1699,
                   "projectedTileRefs": 666381,
                   "streamSplatCount": 79770,
@@ -8390,8 +8432,8 @@
           },
           "lastFailedPoll": {
             "pollCount": 2,
-            "pollDurationMs": 11,
-            "elapsedMs": 133,
+            "pollDurationMs": 10,
+            "elapsedMs": 146,
             "blockers": [
               "visual-smoke-not-ready"
             ]
@@ -8402,61 +8444,61 @@
           "pollHistory": [
             {
               "pollCount": 1,
-              "pollDurationMs": 21,
-              "elapsedMs": 21,
+              "pollDurationMs": 35,
+              "elapsedMs": 35,
               "ready": false,
               "blockers": [
                 "visual-smoke-not-ready"
               ],
               "observedAppFrame": {
                 "frameSerial": 75,
-                "totalMs": 19.4,
+                "totalMs": 33.5,
                 "slowestStage": {
                   "name": "evidence-exposure",
-                  "elapsedMs": 18.9
+                  "elapsedMs": 31.6
                 },
                 "sourceFrontierPack": {}
               }
             },
             {
               "pollCount": 2,
-              "pollDurationMs": 11,
-              "elapsedMs": 133,
+              "pollDurationMs": 10,
+              "elapsedMs": 146,
               "ready": false,
               "blockers": [
                 "visual-smoke-not-ready"
               ],
               "observedAppFrame": {
-                "frameSerial": 81,
-                "totalMs": 18.3,
+                "frameSerial": 80,
+                "totalMs": 18.1,
                 "slowestStage": {
                   "name": "evidence-exposure",
-                  "elapsedMs": 18.2
+                  "elapsedMs": 18
                 },
                 "sourceFrontierPack": {}
               }
             },
             {
               "pollCount": 3,
-              "pollDurationMs": 2769,
-              "elapsedMs": 3004,
+              "pollDurationMs": 2542,
+              "elapsedMs": 2789,
               "ready": true,
               "blockers": [],
               "observedAppFrame": {
-                "frameSerial": 84,
-                "totalMs": 2834.5,
+                "frameSerial": 82,
+                "totalMs": 2622.6,
                 "slowestStage": {
                   "name": "tile-local-scene-state-refresh",
-                  "elapsedMs": 2672.1
+                  "elapsedMs": 2471.3
                 },
                 "sourceFrontierPack": {
                   "slowestSubstage": {
-                    "frameSerial": 84,
+                    "frameSerial": 82,
                     "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                    "elapsedMs": 1426.5
+                    "elapsedMs": 1244
                   },
                   "counts": {
-                    "frameSerial": 84,
+                    "frameSerial": 82,
                     "bucketCount": 1699,
                     "projectedTileRefs": 666381,
                     "streamSplatCount": 79770,
@@ -8679,21 +8721,21 @@
             "ready": true,
             "blockers": [],
             "pollCount": 3,
-            "pollDurationMs": 2849,
-            "elapsedMs": 3080,
+            "pollDurationMs": 2725,
+            "elapsedMs": 2944,
             "evidenceSource": "compact-readiness",
             "observedAppFrame": {
               "frameSerial": 73,
-              "totalMs": 2906.6,
+              "totalMs": 2769,
               "slowestStage": {
                 "name": "tile-local-scene-state-refresh",
-                "elapsedMs": 2736.4
+                "elapsedMs": 2602
               },
               "sourceFrontierPack": {
                 "slowestSubstage": {
                   "frameSerial": 73,
                   "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                  "elapsedMs": 1442.4
+                  "elapsedMs": 1241.1
                 },
                 "counts": {
                   "frameSerial": 73,
@@ -8742,22 +8784,22 @@
             "failedPolls": 2,
             "slowestPoll": {
               "pollCount": 3,
-              "pollDurationMs": 2849,
-              "elapsedMs": 3080,
+              "pollDurationMs": 2725,
+              "elapsedMs": 2944,
               "ready": true,
               "blockers": [],
               "observedAppFrame": {
                 "frameSerial": 73,
-                "totalMs": 2906.6,
+                "totalMs": 2769,
                 "slowestStage": {
                   "name": "tile-local-scene-state-refresh",
-                  "elapsedMs": 2736.4
+                  "elapsedMs": 2602
                 },
                 "sourceFrontierPack": {
                   "slowestSubstage": {
                     "frameSerial": 73,
                     "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                    "elapsedMs": 1442.4
+                    "elapsedMs": 1241.1
                   },
                   "counts": {
                     "frameSerial": 73,
@@ -8792,8 +8834,8 @@
             },
             "lastFailedPoll": {
               "pollCount": 2,
-              "pollDurationMs": 12,
-              "elapsedMs": 130,
+              "pollDurationMs": 2,
+              "elapsedMs": 118,
               "blockers": [
                 "visual-smoke-not-ready"
               ]
@@ -8804,58 +8846,58 @@
             "pollHistory": [
               {
                 "pollCount": 1,
-                "pollDurationMs": 16,
-                "elapsedMs": 16,
+                "pollDurationMs": 15,
+                "elapsedMs": 15,
                 "ready": false,
                 "blockers": [
                   "visual-smoke-not-ready"
                 ],
                 "observedAppFrame": {
-                  "frameSerial": 61,
-                  "totalMs": 14.5,
+                  "frameSerial": 60,
+                  "totalMs": 13.6,
                   "slowestStage": {
                     "name": "evidence-exposure",
-                    "elapsedMs": 14
+                    "elapsedMs": 13
                   },
                   "sourceFrontierPack": {}
                 }
               },
               {
                 "pollCount": 2,
-                "pollDurationMs": 12,
-                "elapsedMs": 130,
+                "pollDurationMs": 2,
+                "elapsedMs": 118,
                 "ready": false,
                 "blockers": [
                   "visual-smoke-not-ready"
                 ],
                 "observedAppFrame": {
-                  "frameSerial": 69,
-                  "totalMs": 13.5,
+                  "frameSerial": 68,
+                  "totalMs": 12.5,
                   "slowestStage": {
                     "name": "evidence-exposure",
-                    "elapsedMs": 13.4
+                    "elapsedMs": 12.3
                   },
                   "sourceFrontierPack": {}
                 }
               },
               {
                 "pollCount": 3,
-                "pollDurationMs": 2849,
-                "elapsedMs": 3080,
+                "pollDurationMs": 2725,
+                "elapsedMs": 2944,
                 "ready": true,
                 "blockers": [],
                 "observedAppFrame": {
                   "frameSerial": 73,
-                  "totalMs": 2906.6,
+                  "totalMs": 2769,
                   "slowestStage": {
                     "name": "tile-local-scene-state-refresh",
-                    "elapsedMs": 2736.4
+                    "elapsedMs": 2602
                   },
                   "sourceFrontierPack": {
                     "slowestSubstage": {
                       "frameSerial": 73,
                       "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                      "elapsedMs": 1442.4
+                      "elapsedMs": 1241.1
                     },
                     "counts": {
                       "frameSerial": 73,
@@ -8894,24 +8936,24 @@
             "ready": true,
             "blockers": [],
             "pollCount": 3,
-            "pollDurationMs": 2769,
-            "elapsedMs": 3004,
+            "pollDurationMs": 2542,
+            "elapsedMs": 2789,
             "evidenceSource": "compact-readiness",
             "observedAppFrame": {
-              "frameSerial": 84,
-              "totalMs": 2834.5,
+              "frameSerial": 82,
+              "totalMs": 2622.6,
               "slowestStage": {
                 "name": "tile-local-scene-state-refresh",
-                "elapsedMs": 2672.1
+                "elapsedMs": 2471.3
               },
               "sourceFrontierPack": {
                 "slowestSubstage": {
-                  "frameSerial": 84,
+                  "frameSerial": 82,
                   "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                  "elapsedMs": 1426.5
+                  "elapsedMs": 1244
                 },
                 "counts": {
-                  "frameSerial": 84,
+                  "frameSerial": 82,
                   "bucketCount": 1699,
                   "projectedTileRefs": 666381,
                   "streamSplatCount": 79770,
@@ -8957,25 +8999,25 @@
             "failedPolls": 2,
             "slowestPoll": {
               "pollCount": 3,
-              "pollDurationMs": 2769,
-              "elapsedMs": 3004,
+              "pollDurationMs": 2542,
+              "elapsedMs": 2789,
               "ready": true,
               "blockers": [],
               "observedAppFrame": {
-                "frameSerial": 84,
-                "totalMs": 2834.5,
+                "frameSerial": 82,
+                "totalMs": 2622.6,
                 "slowestStage": {
                   "name": "tile-local-scene-state-refresh",
-                  "elapsedMs": 2672.1
+                  "elapsedMs": 2471.3
                 },
                 "sourceFrontierPack": {
                   "slowestSubstage": {
-                    "frameSerial": 84,
+                    "frameSerial": 82,
                     "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                    "elapsedMs": 1426.5
+                    "elapsedMs": 1244
                   },
                   "counts": {
-                    "frameSerial": 84,
+                    "frameSerial": 82,
                     "bucketCount": 1699,
                     "projectedTileRefs": 666381,
                     "streamSplatCount": 79770,
@@ -9007,8 +9049,8 @@
             },
             "lastFailedPoll": {
               "pollCount": 2,
-              "pollDurationMs": 11,
-              "elapsedMs": 133,
+              "pollDurationMs": 10,
+              "elapsedMs": 146,
               "blockers": [
                 "visual-smoke-not-ready"
               ]
@@ -9019,61 +9061,61 @@
             "pollHistory": [
               {
                 "pollCount": 1,
-                "pollDurationMs": 21,
-                "elapsedMs": 21,
+                "pollDurationMs": 35,
+                "elapsedMs": 35,
                 "ready": false,
                 "blockers": [
                   "visual-smoke-not-ready"
                 ],
                 "observedAppFrame": {
                   "frameSerial": 75,
-                  "totalMs": 19.4,
+                  "totalMs": 33.5,
                   "slowestStage": {
                     "name": "evidence-exposure",
-                    "elapsedMs": 18.9
+                    "elapsedMs": 31.6
                   },
                   "sourceFrontierPack": {}
                 }
               },
               {
                 "pollCount": 2,
-                "pollDurationMs": 11,
-                "elapsedMs": 133,
+                "pollDurationMs": 10,
+                "elapsedMs": 146,
                 "ready": false,
                 "blockers": [
                   "visual-smoke-not-ready"
                 ],
                 "observedAppFrame": {
-                  "frameSerial": 81,
-                  "totalMs": 18.3,
+                  "frameSerial": 80,
+                  "totalMs": 18.1,
                   "slowestStage": {
                     "name": "evidence-exposure",
-                    "elapsedMs": 18.2
+                    "elapsedMs": 18
                   },
                   "sourceFrontierPack": {}
                 }
               },
               {
                 "pollCount": 3,
-                "pollDurationMs": 2769,
-                "elapsedMs": 3004,
+                "pollDurationMs": 2542,
+                "elapsedMs": 2789,
                 "ready": true,
                 "blockers": [],
                 "observedAppFrame": {
-                  "frameSerial": 84,
-                  "totalMs": 2834.5,
+                  "frameSerial": 82,
+                  "totalMs": 2622.6,
                   "slowestStage": {
                     "name": "tile-local-scene-state-refresh",
-                    "elapsedMs": 2672.1
+                    "elapsedMs": 2471.3
                   },
                   "sourceFrontierPack": {
                     "slowestSubstage": {
-                      "frameSerial": 84,
+                      "frameSerial": 82,
                       "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                      "elapsedMs": 1426.5
+                      "elapsedMs": 1244
                     },
                     "counts": {
-                      "frameSerial": 84,
+                      "frameSerial": 82,
                       "bucketCount": 1699,
                       "projectedTileRefs": 666381,
                       "streamSplatCount": 79770,
@@ -9233,6 +9275,14 @@
         {
           "type": "debug",
           "text": "[vite] connected."
+        },
+        {
+          "type": "debug",
+          "text": "[vite] connecting..."
+        },
+        {
+          "type": "debug",
+          "text": "[vite] connected."
         }
       ],
       "pageErrors": []
@@ -9242,16 +9292,16 @@
     "initialReadiness": {
       "ready": true,
       "blockers": [],
-      "pollCount": 4,
-      "pollDurationMs": 4,
-      "elapsedMs": 4454,
+      "pollCount": 5,
+      "pollDurationMs": 2,
+      "elapsedMs": 1762,
       "evidenceSource": "compact-readiness",
       "observedAppFrame": {
         "frameSerial": 2,
-        "totalMs": 7.2,
+        "totalMs": 4.2,
         "slowestStage": {
           "name": "evidence-exposure",
-          "elapsedMs": 6.7
+          "elapsedMs": 3.9
         },
         "sourceFrontierPack": {}
       },
@@ -9269,11 +9319,11 @@
         "debugMode": "final-color",
         "requiredDebugMode": ""
       },
-      "failedPolls": 3,
+      "failedPolls": 4,
       "slowestPoll": {
-        "pollCount": 2,
-        "pollDurationMs": 2223,
-        "elapsedMs": 2541,
+        "pollCount": 3,
+        "pollDurationMs": 802,
+        "elapsedMs": 1014,
         "ready": false,
         "blockers": [
           "visual-smoke-not-ready"
@@ -9283,9 +9333,9 @@
         }
       },
       "lastFailedPoll": {
-        "pollCount": 3,
-        "pollDurationMs": 1705,
-        "elapsedMs": 4348,
+        "pollCount": 4,
+        "pollDurationMs": 543,
+        "elapsedMs": 1658,
         "blockers": [
           "visual-smoke-not-ready"
         ]
@@ -9296,8 +9346,8 @@
       "pollHistory": [
         {
           "pollCount": 1,
-          "pollDurationMs": 209,
-          "elapsedMs": 211,
+          "pollDurationMs": 2,
+          "elapsedMs": 3,
           "ready": false,
           "blockers": [
             "visual-smoke-not-ready"
@@ -9308,8 +9358,8 @@
         },
         {
           "pollCount": 2,
-          "pollDurationMs": 2223,
-          "elapsedMs": 2541,
+          "pollDurationMs": 7,
+          "elapsedMs": 111,
           "ready": false,
           "blockers": [
             "visual-smoke-not-ready"
@@ -9320,24 +9370,36 @@
         },
         {
           "pollCount": 3,
-          "pollDurationMs": 1705,
-          "elapsedMs": 4348,
+          "pollDurationMs": 802,
+          "elapsedMs": 1014,
+          "ready": false,
+          "blockers": [
+            "visual-smoke-not-ready"
+          ],
+          "observedAppFrame": {
+            "sourceFrontierPack": {}
+          }
+        },
+        {
+          "pollCount": 4,
+          "pollDurationMs": 543,
+          "elapsedMs": 1658,
           "ready": false,
           "blockers": [
             "visual-smoke-not-ready"
           ],
           "observedAppFrame": {
             "frameSerial": 1,
-            "totalMs": 1802.6,
+            "totalMs": 642.4,
             "slowestStage": {
               "name": "tile-local-scene-state-refresh",
-              "elapsedMs": 1790.6
+              "elapsedMs": 637.1
             },
             "sourceFrontierPack": {
               "slowestSubstage": {
                 "frameSerial": 1,
                 "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                "elapsedMs": 1244.5
+                "elapsedMs": 416.5
               },
               "counts": {
                 "frameSerial": 1,
@@ -9371,17 +9433,17 @@
           }
         },
         {
-          "pollCount": 4,
-          "pollDurationMs": 4,
-          "elapsedMs": 4454,
+          "pollCount": 5,
+          "pollDurationMs": 2,
+          "elapsedMs": 1762,
           "ready": true,
           "blockers": [],
           "observedAppFrame": {
             "frameSerial": 2,
-            "totalMs": 7.2,
+            "totalMs": 4.2,
             "slowestStage": {
               "name": "evidence-exposure",
-              "elapsedMs": 6.7
+              "elapsedMs": 3.9
             },
             "sourceFrontierPack": {}
           }
@@ -9415,60 +9477,60 @@
       ],
       "contactSheetPath": "smoke-reports/source-frontier-source-table-materialization-0607-source-frontier/operator-witness-contact-sheet.png",
       "timing": {
-        "totalCaptureMs": 57073,
+        "totalCaptureMs": 52821,
         "slowestCapture": {
           "id": "porous-close-orbit-right",
-          "totalMs": 16253
+          "totalMs": 15914
         },
         "slowestStage": {
-          "captureId": "porous-close-final-color",
+          "captureId": "dessert-close-final-color",
           "name": "settle-before-interaction",
           "elapsedMs": 5002
         },
         "slowestOperatorReadiness": {
-          "captureId": "dessert-close-final-color",
+          "captureId": "porous-close-final-color",
           "name": "view-readiness",
-          "elapsedMs": 4574,
+          "elapsedMs": 3022,
           "observedAppFrame": {
-            "frameSerial": 22,
-            "totalMs": 4410.4,
+            "frameSerial": 46,
+            "totalMs": 2858.1,
             "slowestStage": {
               "name": "tile-local-scene-state-refresh",
-              "elapsedMs": 4144.6
+              "elapsedMs": 2689.5
             },
             "sourceFrontierPack": {
               "slowestSubstage": {
-                "frameSerial": 22,
+                "frameSerial": 46,
                 "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-                "elapsedMs": 2744.2
+                "elapsedMs": 1309.4
               },
               "counts": {
-                "frameSerial": 22,
-                "bucketCount": 861,
-                "projectedTileRefs": 724912,
-                "streamSplatCount": 94406,
-                "streamDenseRowCount": 254646,
+                "frameSerial": 46,
+                "bucketCount": 1787,
+                "projectedTileRefs": 664755,
+                "streamSplatCount": 79708,
+                "streamDenseRowCount": 226687,
                 "streamSparseRowCount": 0,
-                "streamTileCandidateCount": 724912,
+                "streamTileCandidateCount": 664755,
                 "streamCoverageRejectCount": 0,
-                "streamPositiveCoverageCount": 724912,
-                "coverageRetainCount": 363555,
-                "retentionRetainCount": 239008,
-                "occlusionRetainCount": 241668,
-                "materializationSkipCount": 286113,
-                "candidateRecordCount": 230145,
-                "coverageRecordCount": 157547,
-                "retentionRecordCount": 84160,
-                "occlusionRecordCount": 84160,
-                "supportSampleEvaluationCount": 2879696,
-                "supportSampleCandidateSkipCount": 258818,
-                "supportSampleCandidateSkippedEvaluationCount": 4141088,
+                "streamPositiveCoverageCount": 664755,
+                "coverageRetainCount": 509887,
+                "retentionRetainCount": 370834,
+                "occlusionRetainCount": 377020,
+                "materializationSkipCount": 112455,
+                "candidateRecordCount": 400084,
+                "coverageRecordCount": 320071,
+                "retentionRecordCount": 181163,
+                "occlusionRecordCount": 181163,
+                "supportSampleEvaluationCount": 3012032,
+                "supportSampleCandidateSkipCount": 364048,
+                "supportSampleCandidateSkippedEvaluationCount": 5824768,
                 "supportSampleSkipCount": 0,
                 "supportSampleSkippedEvaluationCount": 0,
-                "supportSamplePositiveWeightCount": 2388741,
-                "supportSampleRetainCount": 464630,
-                "supportSampleRecordCount": 100737,
-                "supportSampleGroupCount": 13776
+                "supportSamplePositiveWeightCount": 2759727,
+                "supportSampleRetainCount": 890167,
+                "supportSampleRecordCount": 223155,
+                "supportSampleGroupCount": 28592
               }
             }
           }
@@ -9476,90 +9538,90 @@
         "slowestAppFrameStage": {
           "captureId": "whole-render-final-color",
           "name": "tile-local-scene-state-refresh",
-          "elapsedMs": 1585.8,
+          "elapsedMs": 608.5,
           "frameSerial": 3
         },
         "slowestAppFrameTotal": {
           "captureId": "whole-render-final-color",
-          "elapsedMs": 1591.8,
+          "elapsedMs": 611.3,
           "frameSerial": 3
         },
         "operatorReadinessVsAppFrameStage": {
           "status": "operator-readiness-exceeds-app-frame-stage",
-          "readinessMs": 4574,
-          "appFrameStageMs": 1585.8,
-          "gapMs": 2988.2
+          "readinessMs": 3022,
+          "appFrameStageMs": 608.5,
+          "gapMs": 2413.5
         },
         "operatorReadinessVsAppFrameTotal": {
           "status": "operator-readiness-exceeds-app-frame-total",
-          "readinessCaptureId": "dessert-close-final-color",
-          "appFrameTotalCaptureId": "dessert-close-final-color",
-          "readinessMs": 4574,
-          "appFrameTotalMs": 8.7,
-          "gapMs": 4565.3
+          "readinessCaptureId": "porous-close-final-color",
+          "appFrameTotalCaptureId": "porous-close-final-color",
+          "readinessMs": 3022,
+          "appFrameTotalMs": 14.6,
+          "gapMs": 3007.4
         },
         "operatorReadinessVsObservedAppFrameTotal": {
           "status": "operator-readiness-exceeds-app-frame-total",
-          "readinessCaptureId": "dessert-close-final-color",
-          "appFrameTotalCaptureId": "dessert-close-final-color",
-          "readinessMs": 4574,
-          "appFrameTotalMs": 4410.4,
-          "gapMs": 163.6,
-          "frameSerial": 22,
+          "readinessCaptureId": "porous-close-final-color",
+          "appFrameTotalCaptureId": "porous-close-final-color",
+          "readinessMs": 3022,
+          "appFrameTotalMs": 2858.1,
+          "gapMs": 163.9,
+          "frameSerial": 46,
           "slowestStage": {
             "name": "tile-local-scene-state-refresh",
-            "elapsedMs": 4144.6
+            "elapsedMs": 2689.5
           }
         },
         "sourceFrontierPack": {
           "slowestSubstage": {
-            "captureId": "dessert-close-final-color",
-            "frameSerial": 22,
+            "captureId": "porous-close-orbit-left",
+            "frameSerial": 58,
             "name": "wgsl-source-frontier-pack/stream-projected-tile-refs",
-            "elapsedMs": 2744.2
+            "elapsedMs": 1364.4
           },
           "counts": {
-            "captureId": "dessert-close-final-color",
-            "frameSerial": 22,
-            "bucketCount": 861,
-            "projectedTileRefs": 724912,
-            "streamSplatCount": 94406,
-            "streamDenseRowCount": 254646,
+            "captureId": "porous-close-orbit-left",
+            "frameSerial": 58,
+            "bucketCount": 1890,
+            "projectedTileRefs": 642413,
+            "streamSplatCount": 76480,
+            "streamDenseRowCount": 218535,
             "streamSparseRowCount": 0,
-            "streamTileCandidateCount": 724912,
+            "streamTileCandidateCount": 642413,
             "streamCoverageRejectCount": 0,
-            "streamPositiveCoverageCount": 724912,
-            "coverageRetainCount": 363555,
-            "retentionRetainCount": 239008,
-            "occlusionRetainCount": 241668,
-            "materializationSkipCount": 286113,
-            "candidateRecordCount": 230145,
-            "coverageRecordCount": 157547,
-            "retentionRecordCount": 84160,
-            "occlusionRecordCount": 84160,
-            "supportSampleEvaluationCount": 2879696,
-            "supportSampleCandidateSkipCount": 258818,
-            "supportSampleCandidateSkippedEvaluationCount": 4141088,
+            "streamPositiveCoverageCount": 642413,
+            "coverageRetainCount": 517354,
+            "retentionRetainCount": 379740,
+            "occlusionRetainCount": 389496,
+            "materializationSkipCount": 89099,
+            "candidateRecordCount": 417077,
+            "coverageRecordCount": 340087,
+            "retentionRecordCount": 193666,
+            "occlusionRecordCount": 193666,
+            "supportSampleEvaluationCount": 2956976,
+            "supportSampleCandidateSkipCount": 368503,
+            "supportSampleCandidateSkippedEvaluationCount": 5896048,
             "supportSampleSkipCount": 0,
             "supportSampleSkippedEvaluationCount": 0,
-            "supportSamplePositiveWeightCount": 2388741,
-            "supportSampleRetainCount": 464630,
-            "supportSampleRecordCount": 100737,
-            "supportSampleGroupCount": 13776
+            "supportSamplePositiveWeightCount": 2733938,
+            "supportSampleRetainCount": 914243,
+            "supportSampleRecordCount": 235302,
+            "supportSampleGroupCount": 30240
           }
         },
         "captures": [
           {
             "id": "whole-render-final-color",
-            "totalMs": 6826,
+            "totalMs": 5739,
             "stages": [
               {
                 "name": "apply-view",
-                "elapsedMs": 2
+                "elapsedMs": 1
               },
               {
                 "name": "view-readiness",
-                "elapsedMs": 1596
+                "elapsedMs": 613
               },
               {
                 "name": "settle-before-interaction",
@@ -9571,53 +9633,53 @@
               },
               {
                 "name": "screenshot",
-                "elapsedMs": 38
+                "elapsedMs": 25
               },
               {
                 "name": "image-analysis",
-                "elapsedMs": 152
+                "elapsedMs": 74
               },
               {
                 "name": "trace-canvas-parity",
-                "elapsedMs": 26
+                "elapsedMs": 14
               },
               {
                 "name": "classify-smoke",
-                "elapsedMs": 0
+                "elapsedMs": 1
               },
               {
                 "name": "witness-diagnostics",
-                "elapsedMs": 1
+                "elapsedMs": 0
               }
             ]
           },
           {
             "id": "dessert-close-final-color",
-            "totalMs": 9713,
+            "totalMs": 7259,
             "stages": [
               {
                 "name": "apply-view",
-                "elapsedMs": 2
+                "elapsedMs": 1
               },
               {
                 "name": "view-readiness",
-                "elapsedMs": 4574
+                "elapsedMs": 2115
               },
               {
                 "name": "settle-before-interaction",
-                "elapsedMs": 5001
+                "elapsedMs": 5002
               },
               {
                 "name": "collect-settled-evidence",
-                "elapsedMs": 3
+                "elapsedMs": 8
               },
               {
                 "name": "screenshot",
-                "elapsedMs": 46
+                "elapsedMs": 47
               },
               {
                 "name": "image-analysis",
-                "elapsedMs": 74
+                "elapsedMs": 73
               },
               {
                 "name": "trace-canvas-parity",
@@ -9635,7 +9697,7 @@
           },
           {
             "id": "porous-close-final-color",
-            "totalMs": 8323,
+            "totalMs": 8202,
             "stages": [
               {
                 "name": "apply-view",
@@ -9643,7 +9705,7 @@
               },
               {
                 "name": "view-readiness",
-                "elapsedMs": 3157
+                "elapsedMs": 3022
               },
               {
                 "name": "settle-before-interaction",
@@ -9651,19 +9713,19 @@
               },
               {
                 "name": "collect-settled-evidence",
-                "elapsedMs": 3
+                "elapsedMs": 8
               },
               {
                 "name": "screenshot",
-                "elapsedMs": 57
+                "elapsedMs": 71
               },
               {
                 "name": "image-analysis",
-                "elapsedMs": 90
+                "elapsedMs": 83
               },
               {
                 "name": "trace-canvas-parity",
-                "elapsedMs": 13
+                "elapsedMs": 15
               },
               {
                 "name": "classify-smoke",
@@ -9677,15 +9739,15 @@
           },
           {
             "id": "porous-close-orbit-left",
-            "totalMs": 15958,
+            "totalMs": 15707,
             "stages": [
               {
                 "name": "apply-view",
-                "elapsedMs": 2
+                "elapsedMs": 1
               },
               {
                 "name": "view-readiness",
-                "elapsedMs": 2704
+                "elapsedMs": 2579
               },
               {
                 "name": "settle-before-interaction",
@@ -9693,11 +9755,11 @@
               },
               {
                 "name": "interactions",
-                "elapsedMs": 1
+                "elapsedMs": 2
               },
               {
                 "name": "interaction-readiness",
-                "elapsedMs": 3088
+                "elapsedMs": 2927
               },
               {
                 "name": "settle-after-interaction",
@@ -9705,19 +9767,19 @@
               },
               {
                 "name": "collect-settled-evidence",
-                "elapsedMs": 3
+                "elapsedMs": 10
               },
               {
                 "name": "screenshot",
-                "elapsedMs": 58
+                "elapsedMs": 87
               },
               {
                 "name": "image-analysis",
-                "elapsedMs": 85
+                "elapsedMs": 83
               },
               {
                 "name": "trace-canvas-parity",
-                "elapsedMs": 13
+                "elapsedMs": 14
               },
               {
                 "name": "classify-smoke",
@@ -9731,15 +9793,15 @@
           },
           {
             "id": "porous-close-orbit-right",
-            "totalMs": 16253,
+            "totalMs": 15914,
             "stages": [
               {
                 "name": "apply-view",
-                "elapsedMs": 4
+                "elapsedMs": 1
               },
               {
                 "name": "view-readiness",
-                "elapsedMs": 3080
+                "elapsedMs": 2945
               },
               {
                 "name": "settle-before-interaction",
@@ -9747,15 +9809,15 @@
               },
               {
                 "name": "interactions",
-                "elapsedMs": 1
+                "elapsedMs": 2
               },
               {
                 "name": "interaction-readiness",
-                "elapsedMs": 3004
+                "elapsedMs": 2789
               },
               {
                 "name": "settle-after-interaction",
-                "elapsedMs": 5001
+                "elapsedMs": 5002
               },
               {
                 "name": "collect-settled-evidence",
@@ -9763,11 +9825,11 @@
               },
               {
                 "name": "screenshot",
-                "elapsedMs": 63
+                "elapsedMs": 77
               },
               {
                 "name": "image-analysis",
-                "elapsedMs": 83
+                "elapsedMs": 81
               },
               {
                 "name": "trace-canvas-parity",
