@@ -1055,6 +1055,7 @@ test("source-frontier evidence names CPU retained-payload materialization before
 
 test("source-frontier evidence names production-election ledger reuse before retained payload handoff", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const evidenceSource = extractFunctionSource(source, "buildWgslProjectedSourceFrontierConstructionEvidence");
   const sceneSource = extractFunctionSource(source, "createWgslProjectedSourceFrontierTileLocalSceneState");
 
   assert.match(
@@ -1066,6 +1067,21 @@ test("source-frontier evidence names production-election ledger reuse before ret
     sceneSource.indexOf('"wgsl-source-frontier-production-election-ledger-reuse"') <
       sceneSource.indexOf('"wgsl-source-frontier-production-election-retained-payload-cpu-materialize"'),
     "ledger reuse timing should precede retained payload materialization timing",
+  );
+  assert.match(
+    evidenceSource,
+    /const\s+ledgerReuseStage\s*=\s*"wgsl-source-frontier-production-election-ledger-reuse"/,
+    "retained-source evidence should bind the ledger reuse stage by name",
+  );
+  assert.match(
+    evidenceSource,
+    /cpuOwnedStages:[\s\S]*ledgerReuseStage[\s\S]*retainedPayloadCpuMaterializeStage/,
+    "retained-source evidence should name ledger reuse as a CPU-owned source-frontier stage",
+  );
+  assert.match(
+    evidenceSource,
+    /frontierBlockedStages:[\s\S]*ledgerReuseStage[\s\S]*retainedPayloadCpuMaterializeStage/,
+    "frontier blocked stages should include ledger reuse before retained payload materialization",
   );
 });
 

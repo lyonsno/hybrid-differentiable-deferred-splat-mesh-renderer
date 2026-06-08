@@ -3240,6 +3240,8 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
   productionElectionComputeConsumer: GpuProductionElectionConsumerContract | undefined,
   productionElectionPrefixScatter: GpuProductionElectionPrefixScatterContract | undefined,
 ): RetainedSourceConstructionEvidence {
+  const ledgerReuseStage =
+    "wgsl-source-frontier-production-election-ledger-reuse";
   const retainedPayloadCpuMaterializeStage =
     "wgsl-source-frontier-production-election-retained-payload-cpu-materialize";
   const nextGpuOffloadStage = productionElectionPrefixScatter
@@ -3259,6 +3261,7 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
       "wgsl-source-frontier-estimate-ref-budget",
       "wgsl-source-frontier-pack-candidate-source-inputs",
       "wgsl-source-frontier-production-election-runtime",
+      ledgerReuseStage,
       retainedPayloadCpuMaterializeStage,
     ],
     gpuReadyStages: [
@@ -3300,6 +3303,7 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
     frontierBlockedStages: [
       "wgsl-source-frontier-pack-candidate-source-inputs",
       "wgsl-source-frontier-production-election-runtime",
+      ledgerReuseStage,
       retainedPayloadCpuMaterializeStage,
       nextGpuOffloadStage,
     ],
