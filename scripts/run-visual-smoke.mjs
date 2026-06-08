@@ -1129,7 +1129,8 @@ function summarizeObservedAppFrame(operatorWitness) {
 }
 
 function summarizeTileLocalSceneStateRefreshFrame(stages, frameSerial) {
-  const slowestSubstage = stages.reduce((slowest, stage) => {
+  const leafStages = tileLocalSceneStateRefreshLeafStages(stages);
+  const slowestSubstage = leafStages.reduce((slowest, stage) => {
     if (typeof stage?.name !== "string" || !stage.name.startsWith(TILE_LOCAL_SCENE_STATE_STAGE_PREFIX)) {
       return slowest;
     }
@@ -1145,6 +1146,17 @@ function summarizeTileLocalSceneStateRefreshFrame(stages, frameSerial) {
       : slowest;
   }, undefined);
   return { slowestSubstage };
+}
+
+function tileLocalSceneStateRefreshLeafStages(stages) {
+  const names = stages
+    .map((stage) => typeof stage?.name === "string" ? stage.name : null)
+    .filter((name) => name?.startsWith(TILE_LOCAL_SCENE_STATE_STAGE_PREFIX));
+  return stages.filter((stage) => {
+    if (typeof stage?.name !== "string") return true;
+    if (!stage.name.startsWith(TILE_LOCAL_SCENE_STATE_STAGE_PREFIX)) return true;
+    return !names.some((name) => name !== stage.name && name.startsWith(`${stage.name}/`));
+  });
 }
 
 function summarizeSourceFrontierPackFrame(stages, frameSerial) {

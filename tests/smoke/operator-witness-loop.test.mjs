@@ -563,6 +563,40 @@ test("operator witness timing summary exposes tile-local scene-state refresh sub
   });
 });
 
+test("operator witness timing summary prefers nested scene-state create leaves over the parent stage", () => {
+  const timing = summarizeOperatorWitnessTiming([
+    witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.porousClose, {
+      pageEvidence: {
+        operatorWitness: {
+          frameSerial: 41,
+          frameTimings: {
+            totalMs: 3110.2,
+            stages: [
+              { name: "tile-local-scene-state-refresh/signature-check", elapsedMs: 1.1 },
+              { name: "tile-local-scene-state-refresh/create-state", elapsedMs: 3000.2 },
+              {
+                name: "tile-local-scene-state-refresh/create-state/source-frontier/create-tile-headers",
+                elapsedMs: 2844.7,
+              },
+              {
+                name: "tile-local-scene-state-refresh/create-state/source-frontier/create-bind-group",
+                elapsedMs: 12.3,
+              },
+            ],
+          },
+        },
+      },
+    }),
+  ]);
+
+  assert.deepEqual(timing.tileLocalSceneStateRefresh.slowestSubstage, {
+    captureId: OPERATOR_WITNESS_CAPTURE_IDS.porousClose,
+    frameSerial: 41,
+    name: "tile-local-scene-state-refresh/create-state/source-frontier/create-tile-headers",
+    elapsedMs: 2844.7,
+  });
+});
+
 test("operator witness timing summary preserves fallback count frame provenance", () => {
   const timing = summarizeOperatorWitnessTiming([
     witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.dessertClose, {
@@ -1074,6 +1108,51 @@ test("tile-local scene refresh records internal substages for operator latency f
     /timeOptionalFrameStage\(\s*frameTiming,\s*"tile-local-scene-state-refresh\/destroy-previous-state"/,
     "previous-state teardown must not be hidden inside the same opaque refresh total",
   );
+});
+
+test("source-frontier scene-state construction records leaf timings under create-state", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const sceneSource = extractFunctionSource(source, "createWgslProjectedSourceFrontierTileLocalSceneState");
+
+  for (const stageName of [
+    "tile-local-scene-state-refresh/create-state/source-frontier/project-splats",
+    "tile-local-scene-state-refresh/create-state/source-frontier/estimate-ref-budget",
+    "tile-local-scene-state-refresh/create-state/source-frontier/create-plan",
+    "tile-local-scene-state-refresh/create-state/source-frontier/create-pipeline",
+    "tile-local-scene-state-refresh/create-state/source-frontier/create-tile-headers",
+    "tile-local-scene-state-refresh/create-state/source-frontier/create-ref-buffers",
+    "tile-local-scene-state-refresh/create-state/source-frontier/create-bind-group",
+    "tile-local-scene-state-refresh/create-state/source-frontier/source-depth-evidence",
+    "tile-local-scene-state-refresh/create-state/source-frontier/diagnostics",
+  ]) {
+    assert.match(
+      sceneSource,
+      new RegExp(`timeOptionalFrameStage\\(\\s*frameTiming,\\s*"${stageName.replaceAll("/", "\\/")}"`),
+      `${stageName} should be timed as a tile-local scene-state leaf`,
+    );
+  }
+});
+
+test("GPU arena scene-state construction records leaf timings under create-state", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const gpuSource = extractFunctionSource(source, "createGpuArenaTileLocalSceneState");
+
+  for (const stageName of [
+    "tile-local-scene-state-refresh/create-state/gpu-arena/build-compact-source",
+    "tile-local-scene-state-refresh/create-state/gpu-arena/create-plan",
+    "tile-local-scene-state-refresh/create-state/gpu-arena/create-runtime",
+    "tile-local-scene-state-refresh/create-state/gpu-arena/create-pipeline",
+    "tile-local-scene-state-refresh/create-state/gpu-arena/create-ref-stream-state",
+    "tile-local-scene-state-refresh/create-state/gpu-arena/create-bind-group",
+    "tile-local-scene-state-refresh/create-state/gpu-arena/source-depth-evidence",
+    "tile-local-scene-state-refresh/create-state/gpu-arena/diagnostics",
+  ]) {
+    assert.match(
+      gpuSource,
+      new RegExp(`timeOptionalFrameStage\\(\\s*frameTiming,\\s*"${stageName.replaceAll("/", "\\/")}"`),
+      `${stageName} should be timed as a tile-local scene-state leaf`,
+    );
+  }
 });
 
 test("operator witness app frame timing routes requested GPU presentation through compact retained source runtime", () => {

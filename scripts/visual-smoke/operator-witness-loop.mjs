@@ -279,7 +279,7 @@ function summarizeTileLocalSceneStateRefreshTiming(appFrameCaptures, readinessSt
 function tileLocalSceneStateRefreshObservationFromAppFrameCapture(capture) {
   const frameSerial = capture.frameSerial ?? 0;
   let slowestSubstage = null;
-  for (const stage of capture.stages) {
+  for (const stage of tileLocalSceneStateRefreshLeafStages(capture.stages)) {
     if (!isTileLocalSceneStateRefreshSubstage(stage?.name)) {
       continue;
     }
@@ -325,6 +325,17 @@ function tileLocalSceneStateRefreshObservationFromReadinessStage(stage) {
       elapsedMs,
     },
   };
+}
+
+function tileLocalSceneStateRefreshLeafStages(stages) {
+  const names = stages
+    .map((stage) => typeof stage?.name === "string" ? stage.name : null)
+    .filter((name) => name?.startsWith(TILE_LOCAL_SCENE_STATE_STAGE_PREFIX));
+  return stages.filter((stage) => {
+    if (typeof stage?.name !== "string") return true;
+    if (!stage.name.startsWith(TILE_LOCAL_SCENE_STATE_STAGE_PREFIX)) return true;
+    return !names.some((name) => name !== stage.name && name.startsWith(`${stage.name}/`));
+  });
 }
 
 function isTileLocalSceneStateRefreshSubstage(name) {

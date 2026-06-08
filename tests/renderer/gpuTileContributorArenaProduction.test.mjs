@@ -840,7 +840,11 @@ test("GPU arena runtime exposes retained-source construction custody without cla
   const statsEnd = mainSource.indexOf("statsEl.textContent = statsText;", statsStart);
   const statsSource = mainSource.slice(statsStart, statsEnd);
 
-  assert.match(gpuFactorySource, /const retainedSourceConstruction = buildGpuArenaRetainedSourceConstructionEvidence\(compactSource\)/);
+  assert.match(
+    gpuFactorySource,
+    /tile-local-scene-state-refresh\/create-state\/gpu-arena\/retained-source-evidence/,
+  );
+  assert.match(gpuFactorySource, /buildGpuArenaRetainedSourceConstructionEvidence\(compactSource\)/);
   assert.match(retainedSourceEvidence, /requestedSourceBackend:\s*"gpu-retained-source-substrate"/);
   assert.match(retainedSourceEvidence, /effectiveSourceBackend:\s*"deterministic-gpu-retention-carrier"/);
   assert.match(retainedSourceEvidence, /oracleBackend:\s*"cpu-reference"/);
