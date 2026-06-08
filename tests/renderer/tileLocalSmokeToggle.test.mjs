@@ -50,7 +50,13 @@ test("main defers compact GPU retained-source rebuilds during active input and p
   assert.match(source, /const\s+TILE_LOCAL_REBUILD_SETTLE_MS\s*=\s*260/);
   assert.match(source, /tileLocalLastObservedSignature:\s*tileLocalState\?\.lastCompositedSignature \?\? null/);
   assert.match(source, /tileLocalCurrentSignature !== scene\.tileLocalLastObservedSignature[\s\S]*scene\.tileLocalLastSignatureChangeMs = now/);
-  assert.match(source, /scene\.tileLocalState\?\.arenaBackend === "gpu"[\s\S]*activeInput \|\| now - scene\.tileLocalLastSignatureChangeMs < TILE_LOCAL_REBUILD_SETTLE_MS[\s\S]*tileLocalPresentationStaleForCurrentView/);
+  const alphaDensityIndex = source.indexOf('timeFrameStage(frameTiming, "alpha-density"');
+  const tileLocalDecisionNowIndex = source.indexOf("const tileLocalRebuildDecisionNow = performance.now()", alphaDensityIndex);
+  const deferIndex = source.indexOf("const deferTileLocalRebuildForActiveInput", tileLocalDecisionNowIndex);
+  assert.notEqual(alphaDensityIndex, -1);
+  assert.ok(tileLocalDecisionNowIndex > alphaDensityIndex);
+  assert.ok(deferIndex > tileLocalDecisionNowIndex);
+  assert.match(source.slice(deferIndex), /scene\.tileLocalState\?\.arenaBackend === "gpu"[\s\S]*activeInput\s*\|\|\s*tileLocalRebuildDecisionNow - scene\.tileLocalLastSignatureChangeMs < TILE_LOCAL_REBUILD_SETTLE_MS[\s\S]*tileLocalPresentationStaleForCurrentView/);
   assert.match(
     source,
     /allowActiveInputDispatch:\s*scene\.tileLocalState\.arenaBackend === "gpu" && !deferTileLocalRebuildForActiveInput/,

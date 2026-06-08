@@ -1370,9 +1370,13 @@ async function main() {
     ) {
       scene.tileLocalState.needsDispatch = true;
     }
+    const tileLocalRebuildDecisionNow = performance.now();
     const deferTileLocalRebuildForActiveInput = Boolean(
       scene.tileLocalState?.arenaBackend === "gpu" &&
-      (activeInput || now - scene.tileLocalLastSignatureChangeMs < TILE_LOCAL_REBUILD_SETTLE_MS) &&
+      (
+        activeInput ||
+        tileLocalRebuildDecisionNow - scene.tileLocalLastSignatureChangeMs < TILE_LOCAL_REBUILD_SETTLE_MS
+      ) &&
       tileLocalPresentationStaleForCurrentView
     );
 
