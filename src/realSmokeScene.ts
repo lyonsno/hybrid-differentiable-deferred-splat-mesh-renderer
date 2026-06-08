@@ -165,16 +165,10 @@ export interface AlphaDensityCompensationSummary extends AlphaOverlapDensitySumm
 
 export type AlphaDensityAccountingMode = "coverage-aware" | "center-tile";
 
-interface AlphaDensityTile {
-  alphaMass: number;
-  splatCount: number;
-  sampleOriginalIds: number[];
-}
-
 interface AlphaDensityAccounting {
   readonly summary: AlphaOverlapDensitySummary;
-  readonly tiles: Map<number, AlphaDensityTile>;
-  readonly splatTileKeys: number[][];
+  readonly tileAlphaMass: Float64Array;
+  readonly splatTileKeys: readonly (readonly number[] | undefined)[];
 }
 
 declare global {
@@ -647,9 +641,9 @@ export function writeAlphaDensityCompensatedOpacities(
 
     let exponent = 1;
     for (const tileKey of tileKeys) {
-      const tile = accounting.tiles.get(tileKey);
-      if (!tile || tile.alphaMass <= alphaMassCap) continue;
-      exponent = Math.min(exponent, Math.max(0, Math.min(1, alphaMassCap / tile.alphaMass)));
+      const tileAlphaMass = accounting.tileAlphaMass[tileKey] ?? 0;
+      if (tileAlphaMass <= alphaMassCap) continue;
+      exponent = Math.min(exponent, Math.max(0, Math.min(1, alphaMassCap / tileAlphaMass)));
     }
     if (exponent >= 1) continue;
 
@@ -680,8 +674,12 @@ function buildAlphaDensityAccounting(
   const alphaMassCap = tileSizePx * tileSizePx * 0.75;
   const tileColumns = Math.max(1, Math.ceil(viewportWidth / tileSizePx));
   const tileRows = Math.max(1, Math.ceil(viewportHeight / tileSizePx));
-  const splatTileKeys = Array.from({ length: attributes.count }, () => [] as number[]);
-  const tiles = new Map<number, AlphaDensityTile>();
+  const tileCount = tileColumns * tileRows;
+  const splatTileKeys: number[][] = new Array(attributes.count);
+  const tileAlphaMass = new Float64Array(tileCount);
+  const tileSplatCount = new Uint32Array(tileCount);
+  const activeTileKeys: number[] = [];
+  const sampleOriginalIdsByTile: number[][] = [];
   let tileEntryCount = 0;
   let maxSplatCoveredTileCount = 0;
   let maxCenterTileDroppedCoverageFraction = 0;
@@ -701,13 +699,16 @@ function buildAlphaDensityAccounting(
 
     if (accountingMode === "center-tile") {
       addAlphaDensityTileMass(
-        tiles,
+        tileAlphaMass,
+        tileSplatCount,
+        activeTileKeys,
+        sampleOriginalIdsByTile,
         centerTileKey,
         opacity * footprint.areaPx,
         index,
         attributes
       );
-      splatTileKeys[index].push(centerTileKey);
+      alphaDensitySplatTileKeys(splatTileKeys, index).push(centerTileKey);
       tileEntryCount += 1;
       maxSplatCoveredTileCount = Math.max(maxSplatCoveredTileCount, 1);
       continue;
@@ -733,7 +734,10 @@ function buildAlphaDensityAccounting(
         if (coverageWeight <= 0) continue;
 
         addAlphaDensityTileMass(
-          tiles,
+          tileAlphaMass,
+          tileSplatCount,
+          activeTileKeys,
+          sampleOriginalIdsByTile,
           tileKey,
           opacity * footprint.areaPx * coverageWeight,
           index,
@@ -749,7 +753,10 @@ function buildAlphaDensityAccounting(
 
     if (touchedTiles.length === 0) {
       addAlphaDensityTileMass(
-        tiles,
+        tileAlphaMass,
+        tileSplatCount,
+        activeTileKeys,
+        sampleOriginalIdsByTile,
         centerTileKey,
         opacity * footprint.areaPx,
         index,
@@ -760,7 +767,7 @@ function buildAlphaDensityAccounting(
       centerTileCoverageWeight = 1;
     }
 
-    splatTileKeys[index].push(...touchedTiles);
+    alphaDensitySplatTileKeys(splatTileKeys, index).push(...touchedTiles);
     tileEntryCount += touchedTiles.length;
     maxSplatCoveredTileCount = Math.max(maxSplatCoveredTileCount, touchedTiles.length);
     if (totalCoverageWeight > 0) {
@@ -773,7 +780,10 @@ function buildAlphaDensityAccounting(
 
   return {
     summary: summarizeAlphaDensityTiles(
-      tiles,
+      tileAlphaMass,
+      tileSplatCount,
+      activeTileKeys,
+      sampleOriginalIdsByTile,
       tileSizePx,
       alphaMassCap,
       accountingMode,
@@ -781,13 +791,24 @@ function buildAlphaDensityAccounting(
       maxSplatCoveredTileCount,
       maxCenterTileDroppedCoverageFraction
     ),
-    tiles,
+    tileAlphaMass,
     splatTileKeys,
   };
 }
 
+function alphaDensitySplatTileKeys(splatTileKeys: number[][], index: number): number[] {
+  const existing = splatTileKeys[index];
+  if (existing) return existing;
+  const tileKeys: number[] = [];
+  splatTileKeys[index] = tileKeys;
+  return tileKeys;
+}
+
 function summarizeAlphaDensityTiles(
-  tiles: Map<number, AlphaDensityTile>,
+  tileAlphaMass: Float64Array,
+  tileSplatCount: Uint32Array,
+  activeTileKeys: readonly number[],
+  sampleOriginalIdsByTile: readonly (readonly number[] | undefined)[],
   tileSizePx: number,
   alphaMassCap: number,
   accountingMode: AlphaDensityAccountingMode,
@@ -799,18 +820,21 @@ function summarizeAlphaDensityTiles(
   let maxTileSplatCount = 0;
   let hotTileCount = 0;
   let sampleOriginalIds: number[] = [];
-  for (const tile of tiles.values()) {
-    if (tile.alphaMass > alphaMassCap) {
+  for (const tileKey of activeTileKeys) {
+    const alphaMass = tileAlphaMass[tileKey] ?? 0;
+    const splatCount = tileSplatCount[tileKey] ?? 0;
+    const tileSampleOriginalIds = sampleOriginalIdsByTile[tileKey] ?? [];
+    if (alphaMass > alphaMassCap) {
       hotTileCount += 1;
       if (sampleOriginalIds.length === 0) {
-        sampleOriginalIds = tile.sampleOriginalIds;
+        sampleOriginalIds = [...tileSampleOriginalIds];
       }
     }
-    if (tile.alphaMass > maxTileAlphaMass) {
-      maxTileAlphaMass = tile.alphaMass;
-      maxTileSplatCount = tile.splatCount;
+    if (alphaMass > maxTileAlphaMass) {
+      maxTileAlphaMass = alphaMass;
+      maxTileSplatCount = splatCount;
       if (hotTileCount === 0) {
-        sampleOriginalIds = tile.sampleOriginalIds;
+        sampleOriginalIds = [...tileSampleOriginalIds];
       }
     }
   }
@@ -830,19 +854,25 @@ function summarizeAlphaDensityTiles(
 }
 
 function addAlphaDensityTileMass(
-  tiles: Map<number, AlphaDensityTile>,
+  tileAlphaMass: Float64Array,
+  tileSplatCount: Uint32Array,
+  activeTileKeys: number[],
+  sampleOriginalIdsByTile: number[][],
   tileKey: number,
   alphaMass: number,
   splatIndex: number,
   attributes: SplatAttributes
 ): void {
-  const tile = tiles.get(tileKey) ?? { alphaMass: 0, splatCount: 0, sampleOriginalIds: [] };
-  tile.alphaMass += alphaMass;
-  tile.splatCount += 1;
-  if (tile.sampleOriginalIds.length < 8) {
-    tile.sampleOriginalIds.push(attributes.originalIds[splatIndex] ?? splatIndex);
+  if (tileSplatCount[tileKey] === 0) {
+    activeTileKeys.push(tileKey);
   }
-  tiles.set(tileKey, tile);
+  tileAlphaMass[tileKey] += alphaMass;
+  tileSplatCount[tileKey] += 1;
+  const sampleOriginalIds = sampleOriginalIdsByTile[tileKey] ?? [];
+  if (sampleOriginalIds.length < 8) {
+    sampleOriginalIds.push(attributes.originalIds[splatIndex] ?? splatIndex);
+    sampleOriginalIdsByTile[tileKey] = sampleOriginalIds;
+  }
 }
 
 function projectedCovariancePx(

@@ -437,3 +437,28 @@ test("renderer updates the uploaded opacity buffer with alpha density compensati
   assert.match(source, /selectedAlphaDensityMode/);
   assert.match(source, /alpha: \$\{alphaSummary\.accountingMode\} density/);
 });
+
+test("alpha density accounting uses dense tile arrays instead of Map-backed hot-path tile accounting", () => {
+  const source = readFileSync(new URL("../../src/realSmokeScene.ts", import.meta.url), "utf8");
+  const accountingStart = source.indexOf("function buildAlphaDensityAccounting(");
+  const accountingEnd = source.indexOf("function summarizeAlphaDensityTiles(", accountingStart);
+  assert.ok(accountingStart >= 0 && accountingEnd > accountingStart, "expected alpha-density accounting source");
+  const accountingBody = source.slice(accountingStart, accountingEnd);
+
+  assert.ok(accountingBody.includes("const tileAlphaMass"), "expected dense alpha-mass tile storage");
+  assert.doesNotMatch(
+    accountingBody,
+    /Array\.from\(\{\s*length:\s*attributes\.count/,
+    "alpha-density accounting should not eagerly allocate one tile-key row per splat"
+  );
+  assert.doesNotMatch(
+    accountingBody,
+    /new Map<[^>]*AlphaDensityTile|new Map\(/,
+    "alpha-density hot-path tile accounting must not allocate a Map per refresh"
+  );
+  assert.doesNotMatch(
+    accountingBody,
+    /tiles\.get|tiles\.set/,
+    "alpha-density hot-path tile accounting should use dense indexed arrays"
+  );
+});
