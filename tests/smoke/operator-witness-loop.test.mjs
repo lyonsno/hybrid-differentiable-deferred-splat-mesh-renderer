@@ -1439,6 +1439,22 @@ test("operator witness compact runtime stream retention reports inner timing and
   assert.match(streamSource, /supportSampleEvaluationCount:\s*streamLedger\.supportSampleEvaluationCount/);
 });
 
+test("compact runtime stream retention reports support sample insert and replacement churn", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const ledgerSource = extractFunctionSource(source, "compactSourceFrontierStreamLedger");
+  const supportRetainSource = extractFunctionSource(source, "compactRetainSupportSampleRecords");
+  const runtimeCountStart = source.indexOf('recordOptionalFrameStageDetail(frameTiming, "compact-source-stream-retention/counts"');
+  const runtimeCountEnd = source.indexOf("});", runtimeCountStart);
+  const runtimeCountSource = source.slice(runtimeCountStart, runtimeCountEnd);
+
+  assert.match(ledgerSource, /supportSampleInsertCount:\s*0/);
+  assert.match(ledgerSource, /supportSampleReplaceCount:\s*0/);
+  assert.match(supportRetainSource, /supportSampleRetainResult === "insert"/);
+  assert.match(supportRetainSource, /supportSampleRetainResult === "replace"/);
+  assert.match(runtimeCountSource, /supportSampleInsertCount:\s*streamLedger\.supportSampleInsertCount/);
+  assert.match(runtimeCountSource, /supportSampleReplaceCount:\s*streamLedger\.supportSampleReplaceCount/);
+});
+
 test("compact support sample retention evaluates conic weights without per-sample tuple allocation", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const supportStart = source.indexOf("function compactRetainSupportSampleRecords");
@@ -1538,8 +1554,18 @@ test("source-frontier support sample retention clones records only after capped-
   );
   assert.match(
     supportRecordRetainSource,
-    /const\s+supportRecord:\s*GpuTileContributorArenaProjectedContributor\s*=\s*\{\s*\.\.\.record,\s*supportSampleWeight,\s*supportSampleRetentionWeight,?\s*\}/,
-    "support sample helper should clone only after the candidate is known to enter the retained list",
+    /const\s+supportRecord\s*=\s*compactSupportSampleRecordFrom\(record,\s*supportSampleWeight,\s*supportSampleRetentionWeight\)/,
+    "support sample helper should allocate only after the candidate is known to enter the retained list",
+  );
+  assert.match(
+    supportRecordRetainSource,
+    /compactOverwriteSupportSampleRecord\(\s*records\[recordList\.worstIndex\],\s*record,\s*supportSampleWeight,\s*supportSampleRetentionWeight,?\s*\)/,
+    "support sample replacement should reuse the owned worst slot instead of allocating a replacement record",
+  );
+  assert.doesNotMatch(
+    supportRecordRetainSource,
+    /records\[recordList\.worstIndex\]\s*=\s*supportRecord/,
+    "support sample replacement must not replace the worst slot with a freshly allocated record",
   );
 });
 

@@ -2643,6 +2643,8 @@ function buildWgslSourceFrontierCandidateSources({
     supportSampleSkippedEvaluationCount: streamLedger.supportSampleSkippedEvaluationCount,
     supportSamplePositiveWeightCount: streamLedger.supportSamplePositiveWeightCount,
     supportSampleRetainCount: streamLedger.supportSampleRetainCount,
+    supportSampleInsertCount: streamLedger.supportSampleInsertCount,
+    supportSampleReplaceCount: streamLedger.supportSampleReplaceCount,
     supportSampleRecordCount: supportSampleRecords.length,
     supportSampleGroupCount: supportSampleRecordGroups.length,
   });
@@ -3114,6 +3116,8 @@ function buildStreamingCompactRetainedSourceForRuntime({
     supportSampleSkippedEvaluationCount: streamLedger.supportSampleSkippedEvaluationCount,
     supportSamplePositiveWeightCount: streamLedger.supportSamplePositiveWeightCount,
     supportSampleRetainCount: streamLedger.supportSampleRetainCount,
+    supportSampleInsertCount: streamLedger.supportSampleInsertCount,
+    supportSampleReplaceCount: streamLedger.supportSampleReplaceCount,
   });
 
   const retainedRecords: GpuTileContributorArenaProjectedContributor[] = [];
@@ -4019,6 +4023,12 @@ interface CompactRetainedRecordList {
   worstIndex: number;
 }
 
+type MutableGpuTileContributorArenaProjectedContributor = {
+  -readonly [K in keyof GpuTileContributorArenaProjectedContributor]: GpuTileContributorArenaProjectedContributor[K];
+};
+
+type CompactSupportSampleRetainResult = "none" | "insert" | "replace";
+
 interface CompactSourceFrontierStreamLedger {
   splatCount: number;
   denseRowCount: number;
@@ -4037,6 +4047,8 @@ interface CompactSourceFrontierStreamLedger {
   supportSampleSkippedEvaluationCount: number;
   supportSamplePositiveWeightCount: number;
   supportSampleRetainCount: number;
+  supportSampleInsertCount: number;
+  supportSampleReplaceCount: number;
 }
 
 interface CompactSourceFrontierCandidateAdmission {
@@ -4063,6 +4075,8 @@ function compactSourceFrontierStreamLedger(): CompactSourceFrontierStreamLedger 
     supportSampleSkippedEvaluationCount: 0,
     supportSamplePositiveWeightCount: 0,
     supportSampleRetainCount: 0,
+    supportSampleInsertCount: 0,
+    supportSampleReplaceCount: 0,
   };
 }
 
@@ -4395,14 +4409,20 @@ function compactRetainSupportSampleRecords({
       }
       const supportSampleRetentionWeight = supportSampleWeight * safeSupportLuminance;
       const sampleIndex = sampleY * samplesPerAxis + sampleX;
-      if (compactRetainSupportSampleRecord({
+      const supportSampleRetainResult = compactRetainSupportSampleRecord({
         recordList: bucket.supportSampleRecords[sampleIndex],
         record,
         supportSampleWeight,
         supportSampleRetentionWeight,
         limit: sampleLimit,
-      }) && ledger) {
+      });
+      if (supportSampleRetainResult !== "none" && ledger) {
         ledger.supportSampleRetainCount += 1;
+        if (supportSampleRetainResult === "insert") {
+          ledger.supportSampleInsertCount += 1;
+        } else if (supportSampleRetainResult === "replace") {
+          ledger.supportSampleReplaceCount += 1;
+        }
       }
     }
   }
@@ -4508,7 +4528,7 @@ function compactRetainSupportSampleRecord({
   readonly supportSampleWeight: number;
   readonly supportSampleRetentionWeight: number;
   readonly limit: number;
-}): boolean {
+}): CompactSupportSampleRetainResult {
   const records = recordList.records;
   if (
     records.length >= limit &&
@@ -4519,11 +4539,11 @@ function compactRetainSupportSampleRecord({
       records[recordList.worstIndex],
     ) >= 0
   ) {
-    return false;
+    return "none";
   }
 
-  const supportRecord: GpuTileContributorArenaProjectedContributor = { ...record, supportSampleWeight, supportSampleRetentionWeight };
   if (records.length < limit) {
+    const supportRecord = compactSupportSampleRecordFrom(record, supportSampleWeight, supportSampleRetentionWeight);
     records.push(supportRecord);
     if (
       records.length === 1 ||
@@ -4531,12 +4551,54 @@ function compactRetainSupportSampleRecord({
     ) {
       recordList.worstIndex = records.length - 1;
     }
-    return true;
+    return "insert";
   }
 
-  records[recordList.worstIndex] = supportRecord;
+  compactOverwriteSupportSampleRecord(
+    records[recordList.worstIndex],
+    record,
+    supportSampleWeight,
+    supportSampleRetentionWeight,
+  );
   recordList.worstIndex = compactRetainedRecordListWorstIndex(records, compareCompactProjectionSupportSamplePriority);
-  return true;
+  return "replace";
+}
+
+function compactSupportSampleRecordFrom(
+  record: GpuTileContributorArenaProjectedContributor,
+  supportSampleWeight: number,
+  supportSampleRetentionWeight: number,
+): GpuTileContributorArenaProjectedContributor {
+  return { ...record, supportSampleWeight, supportSampleRetentionWeight };
+}
+
+function compactOverwriteSupportSampleRecord(
+  target: GpuTileContributorArenaProjectedContributor,
+  record: GpuTileContributorArenaProjectedContributor,
+  supportSampleWeight: number,
+  supportSampleRetentionWeight: number,
+): void {
+  const mutable = target as MutableGpuTileContributorArenaProjectedContributor;
+  mutable.splatIndex = record.splatIndex;
+  mutable.originalId = record.originalId;
+  mutable.tileIndex = record.tileIndex;
+  mutable.tileX = record.tileX;
+  mutable.tileY = record.tileY;
+  mutable.projectedIndex = record.projectedIndex;
+  mutable.viewRank = record.viewRank;
+  mutable.viewDepth = record.viewDepth;
+  mutable.depthBand = record.depthBand;
+  mutable.coverageWeight = record.coverageWeight;
+  mutable.centerPx = record.centerPx;
+  mutable.inverseConic = record.inverseConic;
+  mutable.opacity = record.opacity;
+  mutable.coverageAlpha = record.coverageAlpha;
+  mutable.transmittanceBefore = record.transmittanceBefore;
+  mutable.retentionWeight = record.retentionWeight;
+  mutable.occlusionWeight = record.occlusionWeight;
+  mutable.occlusionDensity = record.occlusionDensity;
+  mutable.supportSampleWeight = supportSampleWeight;
+  mutable.supportSampleRetentionWeight = supportSampleRetentionWeight;
 }
 
 function compactCompareSupportSampleCandidateToRecord(
