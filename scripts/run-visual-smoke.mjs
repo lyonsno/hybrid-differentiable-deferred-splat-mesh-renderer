@@ -12,7 +12,7 @@ import {
   buildTileLocalComparisonPlan,
   classifyTileLocalComparison,
   extractTileLocalPageMetrics,
-  isVisualSmokeCaptureReady,
+  visualSmokeCaptureReadinessBlockers,
   classifyArenaRuntimeState,
 } from "./visual-smoke/tile-local-comparison.mjs";
 import {
@@ -1056,9 +1056,9 @@ async function waitForVisualSmokeCaptureReady(page, expectedRendererLabel, timeo
 function describeVisualSmokeReadiness(pageEvidence, { expectedRendererLabel, readiness = {}, pollCount = 0, pollDurationMs = 0, elapsedMs = 0 } = {}) {
   const operatorWitnessBlockers = operatorWitnessReadinessBlockers(pageEvidence, readiness.operatorWitness);
   const tileLocalBlockers = tileLocalDiagnosticsReadinessBlockers(pageEvidence, readiness.tileLocalDiagnostics);
-  const visualSmokeReady = isVisualSmokeCaptureReady(pageEvidence, { expectedRendererLabel });
+  const visualSmokeBlockers = visualSmokeCaptureReadinessBlockers(pageEvidence, { expectedRendererLabel });
   const blockers = [
-    ...(visualSmokeReady ? [] : ["visual-smoke-not-ready"]),
+    ...visualSmokeBlockers,
     ...operatorWitnessBlockers,
     ...tileLocalBlockers,
   ];

@@ -8,6 +8,7 @@ import {
   extractTileLocalPageMetrics,
   isVisualSmokeCaptureReady,
   summarizeTileLocalArenaWitness,
+  visualSmokeCaptureReadinessBlockers,
 } from "../../scripts/visual-smoke/tile-local-comparison.mjs";
 
 test("tile-local comparison plan captures plate, silent prepass, and visible compositor modes", () => {
@@ -96,6 +97,38 @@ test("tile-local comparison waits for first rendered evidence instead of initial
       { expectedRendererLabel: "tile-local-visible" }
     ),
     true
+  );
+});
+
+test("tile-local visual readiness names the missing ready flag separately from current route evidence", () => {
+  const pageEvidence = {
+    sourceKind: "real_scaniverse_ply",
+    splatCount: 94406,
+    rendererLabel: "tile-local-visible-gaussian-compositor",
+    statsText:
+      "3456x1915 | 60 fps | renderer: tile-local-visible-gaussian-compositor | tile-local: 216x120 tiles/723801 refs",
+    canvas: { width: 3456, height: 1915, clientWidth: 1728, clientHeight: 958 },
+    tileLocalStatus: "current",
+    tileLocal: {
+      status: "current",
+      refs: 723801,
+      freshness: { status: "current" },
+    },
+    operatorWitness: {
+      frameTimings: {
+        totalMs: 548.6,
+        stages: [{ name: "alpha-density", elapsedMs: 492.8 }],
+      },
+    },
+  };
+
+  assert.deepEqual(
+    visualSmokeCaptureReadinessBlockers(pageEvidence, { expectedRendererLabel: "tile-local-visible" }),
+    ["smoke-ready-flag-not-true"]
+  );
+  assert.equal(
+    isVisualSmokeCaptureReady(pageEvidence, { expectedRendererLabel: "tile-local-visible" }),
+    false
   );
 });
 

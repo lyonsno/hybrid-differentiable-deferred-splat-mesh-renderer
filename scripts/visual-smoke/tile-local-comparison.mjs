@@ -257,6 +257,10 @@ export function classifyArenaRuntimeState(arenaRuntime = {}) {
 }
 
 export function isVisualSmokeCaptureReady(pageEvidence = {}, { expectedRendererLabel = "" } = {}) {
+  return visualSmokeCaptureReadinessBlockers(pageEvidence, { expectedRendererLabel }).length === 0;
+}
+
+export function visualSmokeCaptureReadinessBlockers(pageEvidence = {}, { expectedRendererLabel = "" } = {}) {
   const metrics = extractTileLocalPageMetrics(pageEvidence);
   const statsText = String(pageEvidence.statsText ?? "");
   const canvas = pageEvidence.canvas ?? {};
@@ -264,15 +268,22 @@ export function isVisualSmokeCaptureReady(pageEvidence = {}, { expectedRendererL
   const canvasHeight = finiteNumber(canvas.height) ?? 0;
   const clientWidth = finiteNumber(canvas.clientWidth) ?? 0;
   const clientHeight = finiteNumber(canvas.clientHeight) ?? 0;
+  const blockers = [];
 
-  if (pageEvidence.ready !== true) return false;
-  if (/loading/i.test(statsText)) return false;
-  if (canvasWidth <= 0 || canvasHeight <= 0) return false;
-  if (clientWidth > 0 && canvasWidth < clientWidth) return false;
-  if (clientHeight > 0 && canvasHeight < clientHeight) return false;
-  if (expectedRendererLabel && !rendererLabelMatches(metrics.rendererLabel, expectedRendererLabel)) return false;
-  if (expectedRendererLabel.includes("tile-local") && tileLocalPresentationIsStale(metrics)) return false;
-  if (expectedRendererLabel.includes("tile-local") && metrics.tileLocal.refs <= 0) return false;
+  if (pageEvidence.ready !== true) blockers.push("smoke-ready-flag-not-true");
+  if (/loading/i.test(statsText)) blockers.push("stats-loading");
+  if (canvasWidth <= 0 || canvasHeight <= 0) blockers.push("canvas-missing");
+  if (clientWidth > 0 && canvasWidth < clientWidth) blockers.push("canvas-width-not-settled");
+  if (clientHeight > 0 && canvasHeight < clientHeight) blockers.push("canvas-height-not-settled");
+  if (expectedRendererLabel && !rendererLabelMatches(metrics.rendererLabel, expectedRendererLabel)) {
+    blockers.push("renderer-label-mismatch");
+  }
+  if (expectedRendererLabel.includes("tile-local") && tileLocalPresentationIsStale(metrics)) {
+    blockers.push("tile-local-presentation-stale");
+  }
+  if (expectedRendererLabel.includes("tile-local") && metrics.tileLocal.refs <= 0) {
+    blockers.push("tile-local-retained-refs-missing");
+  }
   if (expectedRendererLabel.includes("tile-local")) {
     const tileLocal = pageEvidence.tileLocal && typeof pageEvidence.tileLocal === "object" ? pageEvidence.tileLocal : {};
     const hasFinalRows = Array.isArray(tileLocal.perPixelFinalColorAccumulation) &&
@@ -280,13 +291,13 @@ export function isVisualSmokeCaptureReady(pageEvidence = {}, { expectedRendererL
     const readbackStatus = tileLocal.outputTextureReadback?.status;
     const compositorInputReadbackStatus = tileLocal.compositorInputReadback?.status;
     if (hasFinalRows && readbackStatus !== undefined && !["present", "blocked"].includes(readbackStatus)) {
-      return false;
+      blockers.push("tile-local-output-texture-readback-pending");
     }
     if (hasFinalRows && compositorInputReadbackStatus !== undefined && !["present", "blocked"].includes(compositorInputReadbackStatus)) {
-      return false;
+      blockers.push("tile-local-compositor-input-readback-pending");
     }
   }
-  return true;
+  return blockers;
 }
 
 function rendererUrl(baseUrl, renderer) {

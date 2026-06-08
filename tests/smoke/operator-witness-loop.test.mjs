@@ -1672,11 +1672,16 @@ test("operator witness readiness polling records poll diagnostics on returned ev
 
 test("operator witness readiness diagnostics name blocker classes", () => {
   const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
+  const tileLocalComparisonSource = readFileSync(
+    new URL("../../scripts/visual-smoke/tile-local-comparison.mjs", import.meta.url),
+    "utf8",
+  );
   const helperStart = source.indexOf("function describeVisualSmokeReadiness");
   const helperEnd = source.indexOf("function tileLocalRetainedRefs", helperStart);
   const helperSource = source.slice(helperStart, helperEnd);
 
-  assert.match(helperSource, /visual-smoke-not-ready/);
+  assert.match(helperSource, /visualSmokeCaptureReadinessBlockers/);
+  assert.match(tileLocalComparisonSource, /smoke-ready-flag-not-true/);
   assert.match(helperSource, /operator-witness-view-mismatch/);
   assert.match(helperSource, /operator-witness-revision-pending/);
   assert.match(helperSource, /tile-local-diagnostics-missing/);
