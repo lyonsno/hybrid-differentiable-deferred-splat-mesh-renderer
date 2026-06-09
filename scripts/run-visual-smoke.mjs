@@ -2001,9 +2001,15 @@ ${result.captures
   )
   .join("\n")}
 
-## Findings
+## Blocking Harness Findings
 
 ${classification.findings.length === 0 ? "- None" : classification.findings.map((finding) => `- ${finding.kind}: ${finding.summary}`).join("\n")}
+
+## Witness Diagnostics
+
+These diagnostics are witness-only visual pressure from the backing analysis. They do not change the operator-witness pass/fail status unless the harness findings above fail.
+
+${formatOperatorWitnessDiagnostics(result.captures)}
 
 ## Route Identity
 
@@ -2022,6 +2028,21 @@ ${JSON.stringify(result.captures.map((capture) => ({ id: capture.id, role: captu
 
 ${classification.summary.text}
 `;
+}
+
+function formatOperatorWitnessDiagnostics(captures = []) {
+  const lines = [];
+  for (const capture of captures) {
+    const findings = Array.isArray(capture.witnessDiagnostics?.findings)
+      ? capture.witnessDiagnostics.findings
+      : [];
+    for (const finding of findings) {
+      lines.push(
+        `- ${capture.id}/${finding.kind} (${finding.severity ?? "unspecified"}): ${finding.summary}`
+      );
+    }
+  }
+  return lines.length ? lines.join("\n") : "- No witness-only diagnostics reported.";
 }
 
 function renderGpuLiveParityMugshotReport(result) {

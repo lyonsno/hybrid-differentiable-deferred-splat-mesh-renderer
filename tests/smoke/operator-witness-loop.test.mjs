@@ -82,6 +82,18 @@ test("operator witness report prints alpha fallthrough visual contracts", () => 
   assert.match(reportSource, /general-operator-visual/);
 });
 
+test("operator witness report separates blocking harness findings from witness-only diagnostics", () => {
+  const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
+  const reportStart = source.indexOf("function renderOperatorWitnessLoopReport");
+  const reportEnd = source.indexOf("function renderGpuLiveParityMugshotReport");
+  const reportSource = source.slice(reportStart, reportEnd);
+
+  assert.match(reportSource, /## Blocking Harness Findings/);
+  assert.match(reportSource, /## Witness Diagnostics/);
+  assert.match(reportSource, /witnessDiagnostics/);
+  assert.doesNotMatch(reportSource, /## Findings\s*\n\s*\$\{classification\.findings\.length === 0 \? "- None"/);
+});
+
 test("operator witness loop plan keeps one canonical page route for warmed captures", () => {
   const plan = buildOperatorWitnessLoopPlan(BASE_URL);
 

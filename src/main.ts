@@ -78,6 +78,7 @@ import {
   createRenderDemandState,
   markRenderFrameFinished,
   requestRenderFrame,
+  shouldDeferTileLocalRebuildForActiveInput,
   shouldDispatchTileLocalCompositor,
   shouldContinueRendering,
 } from "./renderDemand.js";
@@ -1372,15 +1373,14 @@ async function main() {
     ) {
       scene.tileLocalState.needsDispatch = true;
     }
-    const tileLocalRebuildDecisionNow = performance.now();
-    const deferTileLocalRebuildForActiveInput = Boolean(
-      scene.tileLocalState?.arenaBackend === "gpu" &&
-      (
-        activeInput ||
-        tileLocalRebuildDecisionNow - scene.tileLocalLastSignatureChangeMs < TILE_LOCAL_REBUILD_SETTLE_MS
-      ) &&
-      tileLocalPresentationStaleForCurrentView
-    );
+    const deferTileLocalRebuildForActiveInput = shouldDeferTileLocalRebuildForActiveInput({
+      arenaBackend: scene.tileLocalState?.arenaBackend,
+      activeInput,
+      presentationStaleForCurrentView: tileLocalPresentationStaleForCurrentView,
+      frameStartMs: now,
+      lastSignatureChangeMs: scene.tileLocalLastSignatureChangeMs,
+      settleMs: TILE_LOCAL_REBUILD_SETTLE_MS,
+    });
 
     if (scene.tileLocalState && shouldDispatchTileLocalCompositor({
       needsDispatch: scene.tileLocalState.needsDispatch,

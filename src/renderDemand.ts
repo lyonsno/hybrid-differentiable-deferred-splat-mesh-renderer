@@ -18,6 +18,15 @@ export interface TileLocalCompositorDispatchSignals {
   readonly pendingAlphaDensity: boolean;
 }
 
+export interface TileLocalRebuildDeferralSignals {
+  readonly arenaBackend?: string | null;
+  readonly activeInput: boolean;
+  readonly presentationStaleForCurrentView: boolean;
+  readonly frameStartMs: number;
+  readonly lastSignatureChangeMs: number;
+  readonly settleMs: number;
+}
+
 export function createRenderDemandState(): RenderDemandState {
   return { framePending: false };
 }
@@ -53,5 +62,16 @@ export function shouldDispatchTileLocalCompositor(signals: TileLocalCompositorDi
     !signals.activeInput &&
     !signals.pendingGpuSort &&
     !signals.pendingAlphaDensity
+  );
+}
+
+export function shouldDeferTileLocalRebuildForActiveInput(signals: TileLocalRebuildDeferralSignals): boolean {
+  return Boolean(
+    signals.arenaBackend === "gpu" &&
+    signals.presentationStaleForCurrentView &&
+    (
+      signals.activeInput ||
+      signals.frameStartMs - signals.lastSignatureChangeMs < signals.settleMs
+    )
   );
 }
