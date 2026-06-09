@@ -32,7 +32,8 @@ test("tile-local visible conic coverage feeds sample-local Gaussian weight to al
 
   const shader = shaderSource();
   assert.match(shader, /let pixelCoverageWeight = conic_pixel_weight\(alphaParam, conicParam, pixelCenter\)/);
-  assert.match(shader, /let alphaTransferWeight = source_frontier_alpha_transfer_weight\(pixelCoverageWeight,\s*tileCoverageWeight,\s*sourceFrontierClassMask\)/);
+  assert.match(shader, /let sourceFrontierSupportWeight = conic_pixel_weight_with_falloff_scale\(alphaParam,\s*conicParam,\s*pixelCenter,\s*SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE\)/);
+  assert.match(shader, /let alphaTransferWeight = source_frontier_alpha_transfer_weight\(pixelCoverageWeight,\s*tileCoverageWeight,\s*sourceFrontierSupportWeight,\s*sourceFrontierClassMask\)/);
   assert.match(shader, /pow\(1\.0\s*-\s*sourceOpacity,\s*alphaTransferWeight\)/);
   assert.doesNotMatch(
     shader,
@@ -49,8 +50,8 @@ test("tile-local visible conic coverage keeps adaptive anisotropic falloff witho
   assert.doesNotMatch(shader, /frame\.tileSizePx >= 16\.0 && frame\.maxTileRefs >= 256u/);
   assert.match(shader, /fn conic_pixel_weight\(alphaParam: vec4f, conicParam: vec4f, pixelCenter: vec2f\) -> f32/);
   assert.match(shader, /2\.0 \* conicParam\.y \* delta\.x \* delta\.y/);
-  assert.match(shader, /exp\(-conic_falloff_scale\(\) \* mahalanobis2\)/);
-  assert.doesNotMatch(shader, /exp\(-0\.5 \* mahalanobis2\)/);
+  assert.match(shader, /return conic_pixel_weight_with_falloff_scale\(alphaParam,\s*conicParam,\s*pixelCenter,\s*conic_falloff_scale\(\)\)/);
+  assert.match(shader, /const SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE = 0\.5/);
   assert.match(shader, /fn gpu_live_projected_conic/);
   assert.match(shader, /fn gpu_live_compact_footprint_bounds\(conic: GpuLiveConic, centerPx: vec2f, tileSizePx: u32\) -> vec4u/);
 });

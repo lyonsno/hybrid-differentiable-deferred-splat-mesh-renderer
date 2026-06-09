@@ -188,6 +188,7 @@ const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_MASK =
   GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.retention |
   GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.support;
 const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE = 2;
+const SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE = 0.5;
 const COMPACT_SOURCE_RETENTION_SUPPORT_SAMPLES_PER_AXIS = 4;
 const COMPACT_SOURCE_EPSILON = 1e-9;
 const TILE_LOCAL_UNSAFE = selectedTileLocalUnsafeMode();
@@ -477,6 +478,7 @@ interface TileLocalCompositorInputReadback {
       readonly coverageWeight: number;
       readonly tileCoverageWeight: number;
       readonly pixelCoverageWeight: number;
+      readonly sourceFrontierSupportPixelWeight: number;
       readonly sourceOpacity: number;
       readonly opacity?: number;
       readonly coverageAlpha: number;
@@ -7774,6 +7776,7 @@ function readCompositorInputAnchor({
         coverageWeight: 0,
         tileCoverageWeight: 0,
         pixelCoverageWeight: 0,
+        sourceFrontierSupportPixelWeight: 0,
         sourceOpacity: 0,
         opacity: 0,
         coverageAlpha: 0,
@@ -7810,6 +7813,7 @@ function readCompositorInputAnchor({
         coverageWeight: 0,
         tileCoverageWeight: 0,
         pixelCoverageWeight: 0,
+        sourceFrontierSupportPixelWeight: 0,
         sourceOpacity: roundColorChannel(sourceOpacity),
         opacity: roundColorChannel(sourceOpacity),
         coverageAlpha: 0,
@@ -7825,9 +7829,11 @@ function readCompositorInputAnchor({
     const conicParam = readVec4(alphaParams, alphaParamIndex + plan.maxTileRefs);
     const sourceOpacity = Math.min(clamp01(alphaParam[0]), 0.999);
     const pixelCoverageWeight = conicPixelWeightFromParams(alphaParam, conicParam, pixelCenter);
+    const sourceFrontierSupportPixelWeight = sourceFrontierSupportPixelWeightFromParams(alphaParam, conicParam, pixelCenter);
     const alphaTransferWeight = sourceFrontierAlphaTransferWeight(
       pixelCoverageWeight,
       tileCoverageWeight,
+      sourceFrontierSupportPixelWeight,
       candidateSourceClassMask,
     );
     const coverageAlpha = clamp01(1 - Math.pow(1 - sourceOpacity, alphaTransferWeight));
@@ -7857,6 +7863,7 @@ function readCompositorInputAnchor({
       coverageWeight: roundColorChannel(tileCoverageWeight),
       tileCoverageWeight: roundColorChannel(tileCoverageWeight),
       pixelCoverageWeight: roundColorChannel(pixelCoverageWeight),
+      sourceFrontierSupportPixelWeight: roundColorChannel(sourceFrontierSupportPixelWeight),
       sourceOpacity: roundColorChannel(sourceOpacity),
       opacity: roundColorChannel(sourceOpacity),
       coverageAlpha: roundColorChannel(coverageAlpha),
@@ -8004,20 +8011,43 @@ function retentionBandForSourceRole(sourceRole: string): string {
   return "foreground";
 }
 
+function conicPixelWeightWithFalloffScaleFromParams(
+  alphaParam: readonly [number, number, number, number],
+  conicParam: readonly [number, number, number, number],
+  pixelCenter: readonly [number, number],
+  falloffScale: number,
+): number {
+  const dx = pixelCenter[0] - alphaParam[1];
+  const dy = pixelCenter[1] - alphaParam[2];
+  const mahalanobis2 = conicParam[0] * dx * dx + 2 * conicParam[1] * dx * dy + conicParam[2] * dy * dy;
+  return Math.exp(-falloffScale * mahalanobis2);
+}
+
 function conicPixelWeightFromParams(
   alphaParam: readonly [number, number, number, number],
   conicParam: readonly [number, number, number, number],
   pixelCenter: readonly [number, number]
 ): number {
-  const dx = pixelCenter[0] - alphaParam[1];
-  const dy = pixelCenter[1] - alphaParam[2];
-  const mahalanobis2 = conicParam[0] * dx * dx + 2 * conicParam[1] * dx * dy + conicParam[2] * dy * dy;
-  return Math.exp(-2 * mahalanobis2);
+  return conicPixelWeightWithFalloffScaleFromParams(alphaParam, conicParam, pixelCenter, 2);
+}
+
+function sourceFrontierSupportPixelWeightFromParams(
+  alphaParam: readonly [number, number, number, number],
+  conicParam: readonly [number, number, number, number],
+  pixelCenter: readonly [number, number]
+): number {
+  return conicPixelWeightWithFalloffScaleFromParams(
+    alphaParam,
+    conicParam,
+    pixelCenter,
+    SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE,
+  );
 }
 
 function sourceFrontierAlphaTransferWeight(
   pixelCoverageWeight: number,
   tileCoverageWeight: number,
+  sourceFrontierSupportPixelWeight: number,
   candidateSourceClassMask: number,
 ): number {
   const normalizedPixelWeight = Math.max(Number.isFinite(pixelCoverageWeight) ? pixelCoverageWeight : 0, 0);
@@ -8026,7 +8056,8 @@ function sourceFrontierAlphaTransferWeight(
   }
   const supportWeight =
     Math.max(Number.isFinite(tileCoverageWeight) ? tileCoverageWeight : 0, 0) *
-    SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE;
+    SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE *
+    Math.max(Number.isFinite(sourceFrontierSupportPixelWeight) ? sourceFrontierSupportPixelWeight : 0, 0);
   return Math.max(normalizedPixelWeight, supportWeight);
 }
 

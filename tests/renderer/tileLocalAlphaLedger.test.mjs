@@ -51,7 +51,7 @@ test("tile-local visible WGSL does not multiply tile-integrated coverage by coni
   assert.match(shader, /let tileCoverageWeight = max\(tileCoverageWeights\[refIndex\], 0\.0\)/);
   assert.match(shader, /if\s*\(tileCoverageWeight <= 0\.0\)\s*\{\s*continue;\s*\}/);
   assert.match(shader, /let pixelCoverageWeight = conic_pixel_weight\(alphaParam, conicParam, pixelCenter\)/);
-  assert.match(shader, /let alphaTransferWeight = source_frontier_alpha_transfer_weight\(pixelCoverageWeight,\s*tileCoverageWeight,\s*sourceFrontierClassMask\)/);
+  assert.match(shader, /let alphaTransferWeight = source_frontier_alpha_transfer_weight\(pixelCoverageWeight,\s*tileCoverageWeight,\s*sourceFrontierSupportWeight,\s*sourceFrontierClassMask\)/);
   assert.match(shader, /1\.0\s*-\s*pow\(1\.0\s*-\s*sourceOpacity,\s*alphaTransferWeight\)/);
   assert.doesNotMatch(shader, /tileCoverageWeights\[refIndex\][^;\n]*\*\s*conic_pixel_weight/);
 });
@@ -91,5 +91,60 @@ test("source-frontier foreground support preserves tile coverage as optical dept
     traceSource,
     /Math\.min\(\s*Math\.max\(Number\.isFinite\(tileCoverageWeight\) \? tileCoverageWeight : 0,\s*0\)\s*\*\s*SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE,\s*1,\s*\)/,
     "final accumulation trace mirror must not cap foreground support optical depth to one sample",
+  );
+});
+
+test("source-frontier foreground support is spatially attenuated instead of tile-wide", () => {
+  const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
+  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const traceSource = readFileSync(
+    new URL("../../src/rendererFidelityProbes/finalAccumulationTrace.js", import.meta.url),
+    "utf8",
+  );
+  const tileCoverageWeight = 8;
+  const supportScale = 2;
+  const mahalanobis2 = 4;
+  const legacyPixelWeight = Math.exp(-2 * mahalanobis2);
+  const spatialSupportPixelWeight = Math.exp(-0.5 * mahalanobis2);
+  const tileWideSupportWeight = tileCoverageWeight * supportScale;
+  const spatialSupportWeight = tileWideSupportWeight * spatialSupportPixelWeight;
+
+  assert.ok(
+    spatialSupportWeight > legacyPixelWeight * 1000,
+    `expected broad support envelope to repair sparse per-pixel conic underfill: ${spatialSupportWeight} vs ${legacyPixelWeight}`,
+  );
+  assert.ok(
+    spatialSupportWeight < tileWideSupportWeight * 0.2,
+    `expected support to remain spatially attenuated instead of tile-wide: ${spatialSupportWeight} vs ${tileWideSupportWeight}`,
+  );
+  assert.match(
+    shader,
+    /const SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE = 0\.5/,
+    "WGSL should name the broader source-frontier spatial support envelope",
+  );
+  assert.match(
+    shader,
+    /let sourceFrontierSupportWeight = conic_pixel_weight_with_falloff_scale\(alphaParam,\s*conicParam,\s*pixelCenter,\s*SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE\)/,
+    "WGSL should compute a per-pixel support envelope separate from the narrow color conic",
+  );
+  assert.match(
+    shader,
+    /let supportWeight = max\(tileCoverageWeight,\s*0\.0\)\s*\*\s*SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE\s*\*\s*max\(sourceFrontierSupportWeight,\s*0\.0\)/,
+    "source-frontier foreground support should scale tile coverage by a per-pixel support envelope",
+  );
+  assert.doesNotMatch(
+    shader,
+    /let supportWeight = max\(tileCoverageWeight,\s*0\.0\)\s*\*\s*SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE\s*;/,
+    "source-frontier foreground support must not apply a tile-wide support floor to every pixel in the tile",
+  );
+  assert.match(
+    mainSource,
+    /sourceFrontierSupportPixelWeightFromParams/,
+    "CPU readback mirror should expose the same spatial support envelope as WGSL",
+  );
+  assert.match(
+    traceSource,
+    /sourceFrontierSupportPixelWeight/,
+    "final accumulation trace should report the spatial support envelope used by source-frontier alpha transfer",
   );
 });

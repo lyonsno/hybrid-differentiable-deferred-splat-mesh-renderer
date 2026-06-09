@@ -13,8 +13,13 @@ test("tile-local visible shader uses the same conic pixel transfer law as final 
 
   assert.match(
     finalAccumulationTrace,
-    /Math\.exp\(-2 \* Math\.max\(mahalanobis2, 0\)\)/,
+    /function conicPixelWeight\(centerPx,\s*inverseConic,\s*pixelCenter\)\s*\{\s*return conicPixelWeightWithFalloffScale\(centerPx,\s*inverseConic,\s*pixelCenter,\s*2\);?\s*\}/,
     "final accumulation trace must continue to record the canonical exp(-2 * mahalanobis2) coverage transfer",
+  );
+  assert.match(
+    finalAccumulationTrace,
+    /Math\.exp\(-falloffScale \* Math\.max\(mahalanobis2, 0\)\)/,
+    "final accumulation trace should route canonical and source-frontier support envelopes through the same conic math",
   );
   assert.match(
     gpuLiveAnchorTrace,

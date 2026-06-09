@@ -22,6 +22,7 @@ const DEFAULT_DEFERRED_FIELDS = Object.freeze({
 });
 const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_MASK = 1 | 8;
 const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE = 2;
+const SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE = 0.5;
 
 export function buildFinalColorAccumulationTraceRecord({
   anchorPixel = BLACK_BAND_FINAL_ACCUMULATION_ANCHOR,
@@ -198,9 +199,13 @@ function composeFinalColorAccumulationSteps({
     const pixelCoverageWeight = tileCoverageWeight > 0
       ? conicPixelWeight(contributor.centerPx, contributor.inverseConic, pixelCenter)
       : 0;
+    const sourceFrontierSupportPixelWeight = tileCoverageWeight > 0
+      ? sourceFrontierSupportPixelWeightFromContributor(contributor, pixelCenter)
+      : 0;
     const alphaTransfer = sourceFrontierAlphaTransferWeight({
       pixelCoverageWeight,
       tileCoverageWeight,
+      sourceFrontierSupportPixelWeight,
       contributor,
     });
     const coverageAlpha = tileCoverageWeight > 0
@@ -221,6 +226,7 @@ function composeFinalColorAccumulationSteps({
       originalId: nonNegativeInteger(contributor.originalId ?? contributor.splatIndex, "contributor.originalId"),
       orderIndex,
       coverageWeight: round(pixelCoverageWeight),
+      sourceFrontierSupportPixelWeight: round(sourceFrontierSupportPixelWeight),
       alphaTransferWeight: round(alphaTransfer.weight),
       sourceFrontierAlphaSupport: alphaTransfer.support,
       opacity: round(opacity),
@@ -254,6 +260,7 @@ function composeFinalColorAccumulationSteps({
 function sourceFrontierAlphaTransferWeight({
   pixelCoverageWeight,
   tileCoverageWeight,
+  sourceFrontierSupportPixelWeight,
   contributor,
 }) {
   const normalizedPixelWeight = Math.max(Number.isFinite(pixelCoverageWeight) ? pixelCoverageWeight : 0, 0);
@@ -266,11 +273,12 @@ function sourceFrontierAlphaTransferWeight({
 
   const supportWeight =
     Math.max(Number.isFinite(tileCoverageWeight) ? tileCoverageWeight : 0, 0) *
-    SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE;
+    SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE *
+    Math.max(Number.isFinite(sourceFrontierSupportPixelWeight) ? sourceFrontierSupportPixelWeight : 0, 0);
   if (supportWeight <= normalizedPixelWeight) {
     return { weight: normalizedPixelWeight, support: "none" };
   }
-  return { weight: supportWeight, support: "foreground-support-floor" };
+  return { weight: supportWeight, support: "foreground-spatial-support" };
 }
 
 function selectAccumulationContributors(contributors, anchorPixel, tileAddress) {
@@ -330,13 +338,26 @@ function compareAccumulationOrder(left, right) {
   );
 }
 
-function conicPixelWeight(centerPx, inverseConic, pixelCenter) {
+function conicPixelWeightWithFalloffScale(centerPx, inverseConic, pixelCenter, falloffScale) {
   const center = normalizePair(centerPx, "centerPx");
   const conic = normalizeTriple(inverseConic, "inverseConic");
   const dx = pixelCenter[0] - center[0];
   const dy = pixelCenter[1] - center[1];
   const mahalanobis2 = conic[0] * dx * dx + 2 * conic[1] * dx * dy + conic[2] * dy * dy;
-  return Math.exp(-2 * Math.max(mahalanobis2, 0));
+  return Math.exp(-falloffScale * Math.max(mahalanobis2, 0));
+}
+
+function conicPixelWeight(centerPx, inverseConic, pixelCenter) {
+  return conicPixelWeightWithFalloffScale(centerPx, inverseConic, pixelCenter, 2);
+}
+
+function sourceFrontierSupportPixelWeightFromContributor(contributor, pixelCenter) {
+  return conicPixelWeightWithFalloffScale(
+    contributor.centerPx,
+    contributor.inverseConic,
+    pixelCenter,
+    SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE,
+  );
 }
 
 function resolveSourceColor(sourceColors, splatIndex, blockers) {

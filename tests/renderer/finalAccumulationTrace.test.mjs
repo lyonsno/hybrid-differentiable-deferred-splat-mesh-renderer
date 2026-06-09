@@ -230,7 +230,7 @@ test("per-pixel final accumulation traces can consume anchor-keyed source-fronti
   assert.equal(traces[0].orderedContributors[0].candidateSourceClassMask, 9);
 });
 
-test("source-frontier foreground support crosses the final alpha bulkhead without changing legacy conic transfer", () => {
+test("source-frontier foreground support crosses the final alpha bulkhead with spatial attenuation", () => {
   const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
   const foregroundSheet = Array.from({ length: 24 }, (_, index) =>
     accumulationContributor({
@@ -280,18 +280,22 @@ test("source-frontier foreground support crosses the final alpha bulkhead withou
   });
 
   assert.ok(
-    sourceFrontier.finalColorAccumulation.remainingTransmittance < 0.36,
-    `expected source-frontier foreground support to become optical mass, saw ${sourceFrontier.finalColorAccumulation.remainingTransmittance}`,
+    sourceFrontier.finalColorAccumulation.steps[0].sourceFrontierSupportPixelWeight > 0.1,
+    `expected broad support envelope above the legacy off-center conic, saw ${sourceFrontier.finalColorAccumulation.steps[0].sourceFrontierSupportPixelWeight}`,
+  );
+  assert.ok(
+    sourceFrontier.finalColorAccumulation.remainingTransmittance > 0.6,
+    `expected spatial support to avoid the old tile-wide seal, saw ${sourceFrontier.finalColorAccumulation.remainingTransmittance}`,
   );
   assert.ok(
     legacyConicOnly.finalColorAccumulation.remainingTransmittance > 0.96,
     `legacy conic-only transfer should stay weak for this off-center fixture, saw ${legacyConicOnly.finalColorAccumulation.remainingTransmittance}`,
   );
   assert.ok(
-    sourceFrontier.finalColorAccumulation.remainingTransmittance < legacyConicOnly.finalColorAccumulation.remainingTransmittance * 0.5,
+    sourceFrontier.finalColorAccumulation.remainingTransmittance < legacyConicOnly.finalColorAccumulation.remainingTransmittance * 0.85,
     "source-frontier foreground support should not be trapped behind the same conic-only alpha transfer as legacy refs",
   );
-  assert.equal(sourceFrontier.finalColorAccumulation.steps[0].sourceFrontierAlphaSupport, "foreground-support-floor");
+  assert.equal(sourceFrontier.finalColorAccumulation.steps[0].sourceFrontierAlphaSupport, "foreground-spatial-support");
   assert.equal(legacyConicOnly.finalColorAccumulation.steps[0].sourceFrontierAlphaSupport, "none");
 });
 

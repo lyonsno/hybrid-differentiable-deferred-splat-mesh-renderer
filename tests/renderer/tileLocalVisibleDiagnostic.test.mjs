@@ -39,7 +39,8 @@ test("tile-local visible shader composites ordered tile refs with sample-local c
   assert.match(shader, /let tileCoverageWeight = max\(tileCoverageWeights\[refIndex\], 0\.0\)/);
   assert.match(shader, /if\s*\(tileCoverageWeight <= 0\.0\)\s*\{\s*continue;\s*\}/);
   assert.match(shader, /let pixelCoverageWeight = conic_pixel_weight\(alphaParam, conicParam, pixelCenter\)/);
-  assert.match(shader, /let alphaTransferWeight = source_frontier_alpha_transfer_weight\(pixelCoverageWeight,\s*tileCoverageWeight,\s*sourceFrontierClassMask\)/);
+  assert.match(shader, /let sourceFrontierSupportWeight = conic_pixel_weight_with_falloff_scale\(alphaParam,\s*conicParam,\s*pixelCenter,\s*SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE\)/);
+  assert.match(shader, /let alphaTransferWeight = source_frontier_alpha_transfer_weight\(pixelCoverageWeight,\s*tileCoverageWeight,\s*sourceFrontierSupportWeight,\s*sourceFrontierClassMask\)/);
   assert.match(shader, /1\.0\s*-\s*pow\(1\.0\s*-\s*sourceOpacity,\s*alphaTransferWeight\)/);
   assert.match(shader, /let orderingKey = splatId/);
   assert.match(shader, /let sourceOpacity = clamp\(opacities\[splatId\]/);
@@ -49,8 +50,8 @@ test("tile-local visible shader composites ordered tile refs with sample-local c
   assert.match(shader, /fn conic_falloff_scale\(\) -> f32\s*\{\s*return 2\.0;\s*\}/);
   assert.doesNotMatch(shader, /frame\.tileSizePx >= 16\.0 && frame\.maxTileRefs >= 256u/);
   assert.match(shader, /mahalanobis2/);
-  assert.match(shader, /exp\(-conic_falloff_scale\(\) \* mahalanobis2\)/);
-  assert.doesNotMatch(shader, /exp\(-0\.5 \* mahalanobis2\)/);
+  assert.match(shader, /return conic_pixel_weight_with_falloff_scale\(alphaParam,\s*conicParam,\s*pixelCenter,\s*conic_falloff_scale\(\)\)/);
+  assert.match(shader, /const SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE = 0\.5/);
   assert.doesNotMatch(shader, /exp\(-2\.0 \* mahalanobis2\)/);
   assert.doesNotMatch(shader, /tileCoverageWeights\[refIndex\][^;]*\*\s*conic_pixel_weight/);
   assert.doesNotMatch(shader, /for \(var candidate = 0u; candidate < refLimit/);

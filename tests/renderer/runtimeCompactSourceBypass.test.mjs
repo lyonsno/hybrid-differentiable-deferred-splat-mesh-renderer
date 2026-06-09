@@ -645,7 +645,7 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     readCompositorInputAnchorSource,
-    /const alphaTransferWeight = sourceFrontierAlphaTransferWeight\(\s*pixelCoverageWeight,\s*tileCoverageWeight,\s*candidateSourceClassMask,\s*\)/,
+    /const alphaTransferWeight = sourceFrontierAlphaTransferWeight\(\s*pixelCoverageWeight,\s*tileCoverageWeight,\s*sourceFrontierSupportPixelWeight,\s*candidateSourceClassMask,\s*\)/,
     "source-frontier live compositor-input readback must use the same class-aware alpha-transfer weight as final composition",
   );
   assert.match(

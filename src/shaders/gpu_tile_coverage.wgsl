@@ -51,6 +51,7 @@ const CANDIDATE_SOURCE_CLASS_COVERAGE_MASK = 4u;
 const CANDIDATE_SOURCE_CLASS_SUPPORT_MASK = 8u;
 const SOURCE_FRONTIER_ALPHA_CLASS_MASK_SENTINEL = -1024.0;
 const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE = 2.0;
+const SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE = 0.5;
 const SOURCE_FRONTIER_FOREGROUND_RETENTION_SCORE_FLOOR = 224u;
 
 struct SplatShape {
@@ -522,12 +523,16 @@ fn conic_falloff_scale() -> f32 {
   return 2.0;
 }
 
-fn conic_pixel_weight(alphaParam: vec4f, conicParam: vec4f, pixelCenter: vec2f) -> f32 {
+fn conic_pixel_weight_with_falloff_scale(alphaParam: vec4f, conicParam: vec4f, pixelCenter: vec2f, falloffScale: f32) -> f32 {
   let delta = pixelCenter - alphaParam.yz;
   let mahalanobis2 = conicParam.x * delta.x * delta.x
     + 2.0 * conicParam.y * delta.x * delta.y
     + conicParam.z * delta.y * delta.y;
-  return exp(-conic_falloff_scale() * mahalanobis2);
+  return exp(-falloffScale * mahalanobis2);
+}
+
+fn conic_pixel_weight(alphaParam: vec4f, conicParam: vec4f, pixelCenter: vec2f) -> f32 {
+  return conic_pixel_weight_with_falloff_scale(alphaParam, conicParam, pixelCenter, conic_falloff_scale());
 }
 
 fn source_frontier_alpha_class_mask(alphaParam: vec4f) -> u32 {
@@ -538,11 +543,13 @@ fn source_frontier_alpha_class_mask(alphaParam: vec4f) -> u32 {
   return sourceFrontierClassMask;
 }
 
-fn source_frontier_alpha_transfer_weight(pixelCoverageWeight: f32, tileCoverageWeight: f32, sourceFrontierClassMask: u32) -> f32 {
+fn source_frontier_alpha_transfer_weight(pixelCoverageWeight: f32, tileCoverageWeight: f32, sourceFrontierSupportWeight: f32, sourceFrontierClassMask: u32) -> f32 {
   if ((sourceFrontierClassMask & (CANDIDATE_SOURCE_CLASS_RETENTION_MASK | CANDIDATE_SOURCE_CLASS_SUPPORT_MASK)) == 0u) {
     return pixelCoverageWeight;
   }
-  let supportWeight = max(tileCoverageWeight, 0.0) * SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE;
+  let supportWeight = max(tileCoverageWeight, 0.0)
+    * SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE
+    * max(sourceFrontierSupportWeight, 0.0);
   return max(pixelCoverageWeight, supportWeight);
 }
 
@@ -812,13 +819,14 @@ fn debug_heatmap_color(
       continue;
     }
     let pixelCoverageWeight = conic_pixel_weight(alphaParam, conicParam, pixelCenter);
+    let sourceFrontierSupportWeight = conic_pixel_weight_with_falloff_scale(alphaParam, conicParam, pixelCenter, SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE);
     coverageWeightSum = coverageWeightSum + pixelCoverageWeight;
     let conicRadii = inverse_conic_radii(conicParam);
     maxMajorRadiusPx = max(maxMajorRadiusPx, conicRadii.x);
     minMinorRadiusPx = min(minMinorRadiusPx, conicRadii.y);
     let sourceOpacity = min(clamp(alphaParam.x, 0.0, 1.0), 0.999);
     let sourceFrontierClassMask = source_frontier_alpha_class_mask(alphaParam);
-    let alphaTransferWeight = source_frontier_alpha_transfer_weight(pixelCoverageWeight, tileCoverageWeight, sourceFrontierClassMask);
+    let alphaTransferWeight = source_frontier_alpha_transfer_weight(pixelCoverageWeight, tileCoverageWeight, sourceFrontierSupportWeight, sourceFrontierClassMask);
     let coverageAlpha = clamp(1.0 - pow(1.0 - sourceOpacity, alphaTransferWeight), 0.0, 1.0);
     let colorBase = tileRef.x * 3u;
     let sourceColor = vec3f(colors[colorBase], colors[colorBase + 1u], colors[colorBase + 2u]);
