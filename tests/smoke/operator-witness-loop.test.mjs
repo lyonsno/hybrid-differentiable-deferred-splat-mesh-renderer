@@ -30,11 +30,56 @@ test("operator witness loop plan captures whole render before close crops and in
     plan.map((capture) => capture.witnessView),
     ["default", "dessert-close", "dessert-porous-close", "dessert-porous-close", "dessert-porous-close"]
   );
+  assert.deepEqual(
+    plan.map((capture) => capture.visualContract || ""),
+    ["", "", "alpha-fallthrough-close-view", "alpha-fallthrough-orbit-frame", "alpha-fallthrough-orbit-frame"]
+  );
   assert.ok(plan.every((capture) => capture.timeoutMs === 15000));
   assert.ok(plan.every((capture) => capture.timeoutCanvasClipMs === 1500));
   assert.ok(plan.every((capture) => capture.timeoutScreenshotMs === 15000));
   assert.deepEqual(plan[3].interactions, [{ type: "drag", button: "left", dx: -120, dy: 0 }]);
   assert.deepEqual(plan[4].interactions, [{ type: "drag", button: "left", dx: 120, dy: 0 }]);
+});
+
+test("operator witness loop classifier preserves alpha fallthrough exhibit identity", () => {
+  const result = classifyOperatorWitnessLoop({
+    captures: [
+      witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.wholeRender),
+      witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.dessertClose, { witnessView: "dessert-close" }),
+      witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.porousClose, {
+        witnessView: "dessert-porous-close",
+        visualContract: "alpha-fallthrough-close-view",
+      }),
+      witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.porousOrbitLeft, {
+        witnessView: "dessert-porous-close",
+        visualContract: "alpha-fallthrough-orbit-frame",
+      }),
+      witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.porousOrbitRight, {
+        witnessView: "dessert-porous-close",
+        visualContract: "alpha-fallthrough-orbit-frame",
+      }),
+    ],
+    contactSheetPath: "smoke-reports/operator-witness/contact-sheet.png",
+  });
+
+  assert.equal(result.closeable, true);
+  assert.deepEqual(result.metrics.visualContracts, [
+    "alpha-fallthrough-close-view",
+    "alpha-fallthrough-orbit-frame",
+  ]);
+});
+
+test("operator witness report prints alpha fallthrough visual contracts", () => {
+  const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
+  const reportStart = source.indexOf("function renderOperatorWitnessLoopReport");
+  const reportEnd = source.indexOf("function renderGpuLiveParityMugshotReport");
+  const reportSource = source.slice(reportStart, reportEnd);
+
+  assert.match(reportSource, /Visual contracts:/);
+  assert.match(reportSource, /metrics\.visualContracts/);
+  assert.match(reportSource, /Visual contract:/);
+  assert.match(reportSource, /capture\.visualContract/);
+  assert.match(reportSource, /general-operator-visual/);
 });
 
 test("operator witness loop plan keeps one canonical page route for warmed captures", () => {
@@ -2213,6 +2258,7 @@ function witnessCapture(
     arenaBackend = "gpu",
     tileSizePx = "16",
     maxRefsPerTile = "256",
+    visualContract,
     timing,
   } = {}
 ) {
@@ -2228,6 +2274,7 @@ function witnessCapture(
     id,
     title: id,
     evidenceRole: id.includes("orbit") ? "operator-filmstrip" : "operator-visual",
+    visualContract,
     screenshotPath: `smoke-reports/operator-witness/${id}.png`,
     classification: {
       harnessPassed,

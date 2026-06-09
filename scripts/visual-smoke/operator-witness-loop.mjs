@@ -66,6 +66,7 @@ export function buildOperatorWitnessLoopPlan(baseUrl, { timeoutMs = OPERATOR_CAP
       id: OPERATOR_WITNESS_CAPTURE_IDS.porousClose,
       title: "Porous close final color",
       evidenceRole: "operator-visual",
+      visualContract: "alpha-fallthrough-close-view",
       witnessView: "dessert-porous-close",
       timeoutMs,
     }),
@@ -73,6 +74,7 @@ export function buildOperatorWitnessLoopPlan(baseUrl, { timeoutMs = OPERATOR_CAP
       id: OPERATOR_WITNESS_CAPTURE_IDS.porousOrbitLeft,
       title: "Porous close orbit frame left",
       evidenceRole: "operator-filmstrip",
+      visualContract: "alpha-fallthrough-orbit-frame",
       witnessView: "dessert-porous-close",
       interactions: [{ type: "drag", button: "left", dx: -120, dy: 0 }],
       timeoutMs,
@@ -81,6 +83,7 @@ export function buildOperatorWitnessLoopPlan(baseUrl, { timeoutMs = OPERATOR_CAP
       id: OPERATOR_WITNESS_CAPTURE_IDS.porousOrbitRight,
       title: "Porous close orbit frame right",
       evidenceRole: "operator-filmstrip",
+      visualContract: "alpha-fallthrough-orbit-frame",
       witnessView: "dessert-porous-close",
       interactions: [{ type: "drag", button: "left", dx: 120, dy: 0 }],
       timeoutMs,
@@ -133,6 +136,7 @@ export function classifyOperatorWitnessLoop({ captures = [], contactSheetPath, s
       captureCount: captures.length,
       operatorVisualCaptures: captures.filter((capture) => capture.evidenceRole === "operator-visual").length,
       filmstripCaptures: captures.filter((capture) => capture.evidenceRole === "operator-filmstrip").length,
+      visualContracts: unique(captures.map((capture) => capture.visualContract).filter(Boolean)),
       witnessViews: unique(captures.map((capture) => routeWitnessView(capture))),
       renderers: unique(captures.map((capture) => routeField(capture, "renderer")).filter(Boolean)),
       arenaBackends: unique(captures.map((capture) => routeField(capture, "arenaBackend")).filter(Boolean)),
@@ -684,7 +688,7 @@ export async function writeOperatorWitnessContactSheet({ captures = [], appRoot 
   return path.relative(appRoot, outputPath);
 }
 
-function visualCapture(baseUrl, { id, title, evidenceRole, witnessView, timeoutMs, interactions = [] }) {
+function visualCapture(baseUrl, { id, title, evidenceRole, visualContract, witnessView, timeoutMs, interactions = [] }) {
   const url = new URL(baseUrl);
   scrubVisualRoute(url);
   applyCanonicalOperatorVisualRoute(url);
@@ -695,6 +699,7 @@ function visualCapture(baseUrl, { id, title, evidenceRole, witnessView, timeoutM
     id,
     title,
     evidenceRole,
+    visualContract,
     witnessView: witnessView ?? "default",
     expectedRendererLabel: "tile-local-visible",
     timeoutMs,

@@ -1952,6 +1952,7 @@ ${renderSmokeHandoffSection(result.smokeHandoff)}
 - Capture count: ${metrics.captureCount}
 - Operator visual captures: ${metrics.operatorVisualCaptures}
 - Filmstrip captures: ${metrics.filmstripCaptures}
+- Visual contracts: ${(metrics.visualContracts ?? []).join(", ") || "none"}
 - Witness views: ${metrics.witnessViews.join(", ") || "none"}
 - Renderers: ${metrics.renderers.join(", ") || "none"}
 - Arena backends: ${metrics.arenaBackends.join(", ") || "none"}
@@ -1985,6 +1986,7 @@ ${result.captures
 - Evidence role: ${capture.evidenceRole || "operator-visual"}
 - URL: ${capture.url}
 - Screenshot: ${renderCaptureScreenshotPath(result, capture)}
+- Visual contract: ${capture.visualContract || "general-operator-visual"}
 - Renderer label: ${capture.pageEvidence.rendererLabel || "not reported"}
 - Tile refs: ${capture.pageEvidence.tileLocal?.refs || 0}
 - Witness view: ${capture.routeIdentity?.witnessView || "default"}
