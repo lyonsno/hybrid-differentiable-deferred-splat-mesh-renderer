@@ -446,10 +446,24 @@ test("alpha density accounting uses dense tile arrays instead of Map-backed hot-
   const accountingBody = source.slice(accountingStart, accountingEnd);
 
   assert.ok(accountingBody.includes("const tileAlphaMass"), "expected dense alpha-mass tile storage");
+  assert.ok(
+    accountingBody.includes("const splatTileOffsets"),
+    "expected compact splat-to-tile offset storage instead of per-splat rows"
+  );
+  assert.match(
+    accountingBody,
+    /\b(?:const|let)\s+splatTileKeyStream\b/,
+    "expected compact splat-to-tile key stream instead of per-splat rows"
+  );
   assert.doesNotMatch(
     accountingBody,
     /Array\.from\(\{\s*length:\s*attributes\.count/,
     "alpha-density accounting should not eagerly allocate one tile-key row per splat"
+  );
+  assert.doesNotMatch(
+    accountingBody,
+    /const\s+splatTileKeys:\s*number\[\]\[\]|new Array\(attributes\.count\)|alphaDensitySplatTileKeys|const touchedTiles:\s*number\[\]/,
+    "alpha-density accounting should not allocate per-splat tile-key rows during the refresh hot path"
   );
   assert.doesNotMatch(
     accountingBody,
