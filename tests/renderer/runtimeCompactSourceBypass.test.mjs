@@ -1167,6 +1167,26 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
 });
 
+test("source-frontier alpha-density evidence separates CPU compensation from the GPU alpha-param carrier", () => {
+  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const frontierFactorySource = extractFunctionSource(mainSource, "createWgslProjectedSourceFrontierTileLocalSceneState");
+  const runtimeEvidenceSource = extractFunctionSource(mainSource, "exposeTileLocalRuntimeEvidence");
+  const statsOverlayStart = mainSource.indexOf("// Stats overlay");
+  const statsOverlayEnd = mainSource.indexOf("statsEl.textContent = statsText;", statsOverlayStart);
+  assert.ok(statsOverlayStart >= 0, "stats overlay source should exist");
+  assert.ok(statsOverlayEnd > statsOverlayStart, "stats overlay assignment should exist");
+  const statsOverlaySource = mainSource.slice(statsOverlayStart, statsOverlayEnd);
+
+  assert.match(mainSource, /interface AlphaDensityRouteEvidence/);
+  assert.match(frontierFactorySource, /alphaDensityRoute:\s*createSourceFrontierAlphaDensityRouteEvidence\(\)/);
+  assert.match(mainSource, /effectiveBackend:\s*"wgsl-source-frontier-alpha-param-carrier"/);
+  assert.match(mainSource, /compensatedOpacitySource:\s*"cpu-reference-opacity-buffer"/);
+  assert.match(mainSource, /falseClosureGuard:\s*"gpu-alpha-param-carrier-does-not-imply-gpu-opacity-compensation"/);
+  assert.match(runtimeEvidenceSource, /alphaDensityRoute:\s*tileLocalState\.alphaDensityRoute/);
+  assert.match(statsOverlaySource, /alpha-density route:/);
+  assert.match(statsOverlaySource, /scene\.tileLocalState\.alphaDensityRoute\.effectiveBackend/);
+});
+
 test("default live projected-ref stream mode uses source-frontier with explicit diagnostic opt-outs", () => {
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const modeSource = extractFunctionSource(mainSource, "selectedWgslProjectedRefStreamMode");

@@ -222,6 +222,22 @@ interface ActiveSplatScene {
   assetPath: string;
 }
 
+interface AlphaDensityRouteEvidence {
+  readonly requestedBackend: "alpha-density-gpu-accounting-carrier";
+  readonly effectiveBackend:
+    | "cpu-reference-alpha-param-upload"
+    | "gpu-arena-legacy-alpha-param-buffer"
+    | "wgsl-source-frontier-alpha-param-carrier";
+  readonly compensatedOpacitySource: "cpu-reference-opacity-buffer";
+  readonly alphaParamSource:
+    | "cpu-alpha-param-upload"
+    | "gpu-arena-legacy-alpha-param-buffer"
+    | "shader-built-source-frontier-alpha-params";
+  readonly runtimeConsumerBackend: "tile-local-visible-gaussian-compositor";
+  readonly falseClosureGuard: "gpu-alpha-param-carrier-does-not-imply-gpu-opacity-compensation";
+  readonly nextGpuOffloadStage: "gpu-alpha-density-compensation";
+}
+
 interface TileLocalSceneState {
   viewportWidth: number;
   viewportHeight: number;
@@ -259,6 +275,7 @@ interface TileLocalSceneState {
   retainedSourceConstruction?: RetainedSourceConstructionEvidence;
   wgslProjectedRefStream?: WgslProjectedRefStreamState | null;
   wgslProjectedRefStreamEvidence?: WgslProjectedRefStreamEvidence;
+  alphaDensityRoute: AlphaDensityRouteEvidence;
   tileRefSplatIds: Uint32Array;
   prepassSignature: string;
   debugMode: GpuTileCoverageDebugMode;
@@ -301,6 +318,42 @@ interface ArenaRuntimeEvidence {
   unavailableReason?: string;
   skippedReason?: string;
   fallbackReason?: string;
+}
+
+function createCpuAlphaDensityRouteEvidence(): AlphaDensityRouteEvidence {
+  return {
+    requestedBackend: "alpha-density-gpu-accounting-carrier",
+    effectiveBackend: "cpu-reference-alpha-param-upload",
+    compensatedOpacitySource: "cpu-reference-opacity-buffer",
+    alphaParamSource: "cpu-alpha-param-upload",
+    runtimeConsumerBackend: "tile-local-visible-gaussian-compositor",
+    falseClosureGuard: "gpu-alpha-param-carrier-does-not-imply-gpu-opacity-compensation",
+    nextGpuOffloadStage: "gpu-alpha-density-compensation",
+  };
+}
+
+function createGpuArenaAlphaDensityRouteEvidence(): AlphaDensityRouteEvidence {
+  return {
+    requestedBackend: "alpha-density-gpu-accounting-carrier",
+    effectiveBackend: "gpu-arena-legacy-alpha-param-buffer",
+    compensatedOpacitySource: "cpu-reference-opacity-buffer",
+    alphaParamSource: "gpu-arena-legacy-alpha-param-buffer",
+    runtimeConsumerBackend: "tile-local-visible-gaussian-compositor",
+    falseClosureGuard: "gpu-alpha-param-carrier-does-not-imply-gpu-opacity-compensation",
+    nextGpuOffloadStage: "gpu-alpha-density-compensation",
+  };
+}
+
+function createSourceFrontierAlphaDensityRouteEvidence(): AlphaDensityRouteEvidence {
+  return {
+    requestedBackend: "alpha-density-gpu-accounting-carrier",
+    effectiveBackend: "wgsl-source-frontier-alpha-param-carrier",
+    compensatedOpacitySource: "cpu-reference-opacity-buffer",
+    alphaParamSource: "shader-built-source-frontier-alpha-params",
+    runtimeConsumerBackend: "tile-local-visible-gaussian-compositor",
+    falseClosureGuard: "gpu-alpha-param-carrier-does-not-imply-gpu-opacity-compensation",
+    nextGpuOffloadStage: "gpu-alpha-density-compensation",
+  };
 }
 
 type RendererMode = "plate" | "tile-local" | "tile-local-visible";
@@ -1647,6 +1700,7 @@ async function main() {
         const projectedStream = scene.tileLocalState.wgslProjectedRefStreamEvidence;
         statsText += ` | projected-stream: ${projectedStream.effectiveBackend}`;
       }
+      statsText += ` | alpha-density route: ${scene.tileLocalState.alphaDensityRoute.compensatedOpacitySource}->${scene.tileLocalState.alphaDensityRoute.effectiveBackend}`;
     }
     const arenaRuntime = buildArenaRuntimeEvidence(
       REQUESTED_ARENA_BACKEND,
@@ -2044,6 +2098,7 @@ function createGpuArenaTileLocalSceneState(
     retainedSourceConstruction,
     wgslProjectedRefStream,
     wgslProjectedRefStreamEvidence,
+    alphaDensityRoute: createGpuArenaAlphaDensityRouteEvidence(),
     tileRefSplatIds: legacyProjection.tileRefSplatIds,
     prepassSignature,
     debugMode: TILE_LOCAL_DEBUG_MODE,
@@ -2334,6 +2389,7 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     retainedSourceConstruction,
     wgslProjectedRefStream: null,
     wgslProjectedRefStreamEvidence,
+    alphaDensityRoute: createSourceFrontierAlphaDensityRouteEvidence(),
     tileRefSplatIds,
     prepassSignature,
     debugMode: TILE_LOCAL_DEBUG_MODE,
@@ -6531,6 +6587,9 @@ function createCpuTileLocalSceneState(
       alphaParamData,
       sourceOpacities: effectiveOpacities,
     }),
+    alphaDensityRoute: gpuArenaRuntime
+      ? createGpuArenaAlphaDensityRouteEvidence()
+      : createCpuAlphaDensityRouteEvidence(),
     arenaBackend: gpuArenaRuntime ? "gpu" : "cpu",
     gpuArenaRuntime,
     gpuArenaProjectedContributors,
@@ -9346,6 +9405,7 @@ function exposeTileLocalRuntimeEvidence(
           compactSourceConstruction: tileLocalState.compactSourceConstruction,
           retainedSourceConstruction: tileLocalState.retainedSourceConstruction,
           wgslProjectedRefStream: tileLocalState.wgslProjectedRefStreamEvidence,
+          alphaDensityRoute: tileLocalState.alphaDensityRoute,
           budgetDiagnostics: tileLocalState.budgetDiagnostics,
           diagnostics,
           pixelContributorTrace,
