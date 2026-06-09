@@ -17,7 +17,12 @@ import {
 import { handleDoubleClickPivot } from "./clickToPivot.js";
 import { createStorageBuffer, createTexture2D, createUniformBuffer } from "./buffers.js";
 import {
+  createGpuAlphaDensityCompensationRuntime,
+  createGpuAlphaDensityCompensationRuntimeEvidence,
   createGpuAlphaDensityCompensationSubstrateEvidence,
+  dispatchGpuAlphaDensityCompensation,
+  type GpuAlphaDensityCompensationRuntime,
+  type GpuAlphaDensityCompensationRuntimeEvidence,
   type GpuAlphaDensityCompensationSubstrateEvidence,
 } from "./gpuAlphaDensityCompensation.js";
 import {
@@ -231,16 +236,23 @@ interface AlphaDensityRouteEvidence {
   readonly effectiveBackend:
     | "cpu-reference-alpha-param-upload"
     | "gpu-arena-legacy-alpha-param-buffer"
-    | "wgsl-source-frontier-alpha-param-carrier";
-  readonly compensatedOpacitySource: "cpu-reference-opacity-buffer";
+    | "wgsl-source-frontier-alpha-param-carrier"
+    | "gpu-alpha-density-compensation-runtime";
+  readonly compensatedOpacitySource: "cpu-reference-opacity-buffer" | "gpu-compensated-opacity-buffer";
+  readonly cpuReferenceCompensationSource?: "cpu-reference-opacity-buffer";
   readonly alphaParamSource:
     | "cpu-alpha-param-upload"
     | "gpu-arena-legacy-alpha-param-buffer"
     | "shader-built-source-frontier-alpha-params";
   readonly runtimeConsumerBackend: "tile-local-visible-gaussian-compositor";
-  readonly falseClosureGuard: "gpu-alpha-param-carrier-does-not-imply-gpu-opacity-compensation";
-  readonly nextGpuOffloadStage: "gpu-alpha-density-compensation";
+  readonly falseClosureGuard:
+    | "gpu-alpha-param-carrier-does-not-imply-gpu-opacity-compensation"
+    | "gpu-alpha-density-runtime-preserves-cpu-reference-witness";
+  readonly nextGpuOffloadStage:
+    | "gpu-alpha-density-compensation"
+    | "coverage-aware-gpu-alpha-density-compensation";
   readonly gpuCompensationSubstrate?: GpuAlphaDensityCompensationSubstrateEvidence;
+  readonly gpuCompensationRuntime?: GpuAlphaDensityCompensationRuntimeEvidence;
 }
 
 interface TileLocalSceneState {
@@ -280,6 +292,7 @@ interface TileLocalSceneState {
   retainedSourceConstruction?: RetainedSourceConstructionEvidence;
   wgslProjectedRefStream?: WgslProjectedRefStreamState | null;
   wgslProjectedRefStreamEvidence?: WgslProjectedRefStreamEvidence;
+  gpuAlphaDensityCompensation?: GpuAlphaDensityCompensationRuntime;
   alphaDensityRoute: AlphaDensityRouteEvidence;
   tileRefSplatIds: Uint32Array;
   prepassSignature: string;
@@ -352,13 +365,15 @@ function createGpuArenaAlphaDensityRouteEvidence(): AlphaDensityRouteEvidence {
 function createSourceFrontierAlphaDensityRouteEvidence(): AlphaDensityRouteEvidence {
   return {
     requestedBackend: "alpha-density-gpu-accounting-carrier",
-    effectiveBackend: "wgsl-source-frontier-alpha-param-carrier",
-    compensatedOpacitySource: "cpu-reference-opacity-buffer",
+    effectiveBackend: "gpu-alpha-density-compensation-runtime",
+    compensatedOpacitySource: "gpu-compensated-opacity-buffer",
+    cpuReferenceCompensationSource: "cpu-reference-opacity-buffer",
     alphaParamSource: "shader-built-source-frontier-alpha-params",
     runtimeConsumerBackend: "tile-local-visible-gaussian-compositor",
-    falseClosureGuard: "gpu-alpha-param-carrier-does-not-imply-gpu-opacity-compensation",
-    nextGpuOffloadStage: "gpu-alpha-density-compensation",
+    falseClosureGuard: "gpu-alpha-density-runtime-preserves-cpu-reference-witness",
+    nextGpuOffloadStage: "coverage-aware-gpu-alpha-density-compensation",
     gpuCompensationSubstrate: createGpuAlphaDensityCompensationSubstrateEvidence(),
+    gpuCompensationRuntime: createGpuAlphaDensityCompensationRuntimeEvidence(),
   };
 }
 
@@ -1364,6 +1379,10 @@ async function main() {
     const activeMinRadiusPx = shapeWitnessFixtureId !== null ? SHAPE_WITNESS_MIN_RADIUS_PX : REAL_SCANIVERSE_MIN_RADIUS_PX;
     if (alphaRefreshed) {
       timeFrameStage(frameTiming, "alpha-density", () => {
+        if (scene.tileLocalState?.gpuAlphaDensityCompensation) {
+          scene.tileLocalState.needsDispatch = true;
+          return;
+        }
         scene.alphaDensityState.summary = writeAlphaDensityCompensatedOpacities(
           scene.effectiveOpacities,
           scene.attributes,
@@ -1519,6 +1538,18 @@ async function main() {
           }
           if (tileLocalState.gpuArenaRuntime) {
             tileLocalState.gpuArenaRuntime.dispatch(tileLocalComputePass, tileLocalState.plan);
+          }
+          if (tileLocalState.gpuAlphaDensityCompensation) {
+            dispatchGpuAlphaDensityCompensation(
+              tileLocalState.gpuAlphaDensityCompensation,
+              {
+                queue: gpu.device.queue,
+                pass: tileLocalComputePass,
+                viewProj,
+                viewportWidth: width,
+                viewportHeight: height,
+              }
+            );
           }
           const compositePrebuiltCpuTileRefs = scene.rendererMode === "tile-local-visible" &&
             tileLocalState.arenaBackend === "cpu";
@@ -2279,6 +2310,19 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     })
   );
   const outputView = outputTexture.createView();
+  const gpuAlphaDensityCompensation = timeOptionalFrameStage(
+    frameTiming,
+    "tile-local-scene-state-refresh/create-state/source-frontier/create-alpha-density-runtime",
+    () => createGpuAlphaDensityCompensationRuntime({
+      device,
+      positionBuffer: buffers.positionBuffer,
+      rawOpacities: attributes.opacities,
+      splatCount: attributes.count,
+      tileColumns,
+      tileRows,
+      tileSizePx,
+    })
+  );
   const compactSourceConstruction = timeOptionalFrameStage(
     frameTiming,
     "tile-local-scene-state-refresh/create-state/source-frontier/compact-source-construction",
@@ -2303,7 +2347,7 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
       frameUniformBuffer,
       positionBuffer: buffers.positionBuffer,
       colorBuffer: buffers.colorBuffer,
-      opacityBuffer: buffers.opacityBuffer,
+      opacityBuffer: gpuAlphaDensityCompensation.compensatedOpacityBuffer,
       scaleBuffer: buffers.scaleBuffer,
       rotationBuffer: buffers.rotationBuffer,
       tileHeaderBuffer,
@@ -2395,6 +2439,7 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     retainedSourceConstruction,
     wgslProjectedRefStream: null,
     wgslProjectedRefStreamEvidence,
+    gpuAlphaDensityCompensation,
     alphaDensityRoute: createSourceFrontierAlphaDensityRouteEvidence(),
     tileRefSplatIds,
     prepassSignature,
@@ -8695,6 +8740,7 @@ function destroyTileLocalSceneState(state: TileLocalSceneState): void {
   state.productionElectionPrefixScatter?.prefixOffsetsBuffer.destroy();
   state.productionElectionPrefixScatter?.retainedRecordIndicesBuffer.destroy();
   state.productionElectionPrefixScatter?.witnessBuffer.destroy();
+  state.gpuAlphaDensityCompensation?.destroy();
   if (state.wgslProjectedRefStream) {
     if (state.wgslProjectedRefStream.pendingReadback) {
       state.wgslProjectedRefStream.pendingReadback.cancelled = true;

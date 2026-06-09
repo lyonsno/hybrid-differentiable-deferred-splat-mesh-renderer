@@ -1167,10 +1167,11 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
 });
 
-test("source-frontier alpha-density evidence separates CPU compensation from the GPU alpha-param carrier", () => {
+test("source-frontier alpha-density evidence separates CPU reference from live GPU compensation", () => {
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const frontierFactorySource = extractFunctionSource(mainSource, "createWgslProjectedSourceFrontierTileLocalSceneState");
   const runtimeEvidenceSource = extractFunctionSource(mainSource, "exposeTileLocalRuntimeEvidence");
+  const evidenceSource = extractFunctionSource(mainSource, "createSourceFrontierAlphaDensityRouteEvidence");
   const statsOverlayStart = mainSource.indexOf("// Stats overlay");
   const statsOverlayEnd = mainSource.indexOf("statsEl.textContent = statsText;", statsOverlayStart);
   assert.ok(statsOverlayStart >= 0, "stats overlay source should exist");
@@ -1179,15 +1180,16 @@ test("source-frontier alpha-density evidence separates CPU compensation from the
 
   assert.match(mainSource, /interface AlphaDensityRouteEvidence/);
   assert.match(frontierFactorySource, /alphaDensityRoute:\s*createSourceFrontierAlphaDensityRouteEvidence\(\)/);
-  assert.match(mainSource, /effectiveBackend:\s*"wgsl-source-frontier-alpha-param-carrier"/);
-  assert.match(mainSource, /compensatedOpacitySource:\s*"cpu-reference-opacity-buffer"/);
-  assert.match(mainSource, /falseClosureGuard:\s*"gpu-alpha-param-carrier-does-not-imply-gpu-opacity-compensation"/);
+  assert.match(evidenceSource, /effectiveBackend:\s*"gpu-alpha-density-compensation-runtime"/);
+  assert.match(evidenceSource, /compensatedOpacitySource:\s*"gpu-compensated-opacity-buffer"/);
+  assert.match(evidenceSource, /cpuReferenceCompensationSource:\s*"cpu-reference-opacity-buffer"/);
+  assert.match(evidenceSource, /falseClosureGuard:\s*"gpu-alpha-density-runtime-preserves-cpu-reference-witness"/);
   assert.match(runtimeEvidenceSource, /alphaDensityRoute:\s*tileLocalState\.alphaDensityRoute/);
   assert.match(statsOverlaySource, /alpha-density route:/);
   assert.match(statsOverlaySource, /scene\.tileLocalState\.alphaDensityRoute\.effectiveBackend/);
 });
 
-test("source-frontier declares a GPU alpha-density compensation substrate without claiming live runtime compensation", () => {
+test("GPU alpha-density substrate keeps no-live-runtime evidence separate from runtime evidence", () => {
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const gpuAlphaDensitySource = readFileSync(
     new URL("../../src/gpuAlphaDensityCompensation.ts", import.meta.url),
@@ -1197,14 +1199,17 @@ test("source-frontier declares a GPU alpha-density compensation substrate withou
     new URL("../../src/shaders/gpu_alpha_density_compensation.wgsl", import.meta.url),
     "utf8",
   );
-  const evidenceSource = extractFunctionSource(mainSource, "createSourceFrontierAlphaDensityRouteEvidence");
 
   assert.match(mainSource, /createGpuAlphaDensityCompensationSubstrateEvidence/);
-  assert.match(evidenceSource, /compensatedOpacitySource:\s*"cpu-reference-opacity-buffer"/);
   assert.match(
-    evidenceSource,
-    /gpuCompensationSubstrate:\s*createGpuAlphaDensityCompensationSubstrateEvidence\(\)/,
-    "source-frontier route evidence should expose the GPU compensation substrate separately from the live opacity source",
+    gpuAlphaDensitySource,
+    /runtimeIntegrated:\s*false/,
+    "substrate evidence must remain a no-live-runtime contract even after the runtime is added",
+  );
+  assert.match(
+    gpuAlphaDensitySource,
+    /runtimeIntegrated:\s*true/,
+    "runtime evidence must be a distinct stronger contract than the substrate proof",
   );
   assert.match(
     gpuAlphaDensitySource,
@@ -1214,13 +1219,69 @@ test("source-frontier declares a GPU alpha-density compensation substrate withou
   assert.match(
     gpuAlphaDensitySource,
     /falseClosureGuard:\s*"gpu-alpha-density-substrate-does-not-imply-live-runtime-compensation"/,
-    "substrate evidence must not close over live runtime compensation before wiring exists",
+    "substrate evidence must not be rewritten to close over live runtime compensation",
   );
   assert.match(shaderSource, /@compute[\s\S]*fn\s+clear_alpha_density_tile_mass/);
   assert.match(shaderSource, /@compute[\s\S]*fn\s+scatter_alpha_density_tile_mass/);
   assert.match(shaderSource, /@compute[\s\S]*fn\s+write_compensated_opacity/);
   assert.match(shaderSource, /var<storage,\s*read_write>\s+tileAlphaMass:\s*array<atomic<u32>>/);
   assert.match(shaderSource, /atomicAdd\(&tileAlphaMass\[/);
+});
+
+test("source-frontier routes live compositor opacity through GPU alpha-density compensation runtime", () => {
+  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const gpuAlphaDensitySource = readFileSync(
+    new URL("../../src/gpuAlphaDensityCompensation.ts", import.meta.url),
+    "utf8",
+  );
+  const frontierFactorySource = extractFunctionSource(mainSource, "createWgslProjectedSourceFrontierTileLocalSceneState");
+  const renderLoopStart = mainSource.indexOf("const tileLocalComputePass = encoder.beginComputePass");
+  const renderLoopEnd = mainSource.indexOf("tileLocalComputePass.end()", renderLoopStart);
+  assert.ok(renderLoopStart >= 0, "tile-local render loop source should exist");
+  assert.ok(renderLoopEnd > renderLoopStart, "tile-local render loop source should include compute pass end");
+  const renderLoopSource = mainSource.slice(renderLoopStart, renderLoopEnd);
+  const alphaRefreshStart = mainSource.indexOf("if (alphaRefreshed) {");
+  const alphaRefreshEnd = mainSource.indexOf("const activeNearFadeStart", alphaRefreshStart);
+  assert.ok(alphaRefreshStart >= 0, "alpha-density refresh branch should exist");
+  assert.ok(alphaRefreshEnd > alphaRefreshStart, "alpha-density refresh branch should be bounded");
+  const alphaRefreshSource = mainSource.slice(alphaRefreshStart, alphaRefreshEnd);
+  const evidenceSource = extractFunctionSource(mainSource, "createSourceFrontierAlphaDensityRouteEvidence");
+
+  assert.match(
+    gpuAlphaDensitySource,
+    /interface GpuAlphaDensityCompensationRuntime/,
+    "GPU alpha-density substrate must expose a live runtime object before route evidence can claim GPU compensation",
+  );
+  assert.match(
+    frontierFactorySource,
+    /const\s+gpuAlphaDensityCompensation\s*=\s*timeOptionalFrameStage\([\s\S]*createGpuAlphaDensityCompensationRuntime\(/,
+    "source-frontier state must allocate the GPU alpha-density compensation runtime",
+  );
+  assert.match(
+    frontierFactorySource,
+    /opacityBuffer:\s*gpuAlphaDensityCompensation\.compensatedOpacityBuffer/,
+    "source-frontier compositor bind group must consume the GPU-compensated opacity buffer instead of the CPU opacity buffer",
+  );
+  assert.match(
+    renderLoopSource,
+    /dispatchGpuAlphaDensityCompensation\(\s*tileLocalState\.gpuAlphaDensityCompensation/,
+    "render loop must dispatch the GPU alpha-density compensation stages before source-frontier composite dispatch",
+  );
+  assert.match(
+    alphaRefreshSource,
+    /if \(scene\.tileLocalState\?\.gpuAlphaDensityCompensation\) \{\s*scene\.tileLocalState\.needsDispatch = true;\s*return;\s*\}/,
+    "source-frontier GPU compensation must bypass the settled-camera CPU alpha-density refresh hot path",
+  );
+  assert.match(
+    evidenceSource,
+    /compensatedOpacitySource:\s*"gpu-compensated-opacity-buffer"/,
+    "source-frontier route evidence must name the live GPU compensated opacity buffer after runtime wiring",
+  );
+  assert.match(
+    evidenceSource,
+    /cpuReferenceCompensationSource:\s*"cpu-reference-opacity-buffer"/,
+    "source-frontier route evidence must preserve the CPU/reference compensation source as an explicit witness",
+  );
 });
 
 test("default live projected-ref stream mode uses source-frontier with explicit diagnostic opt-outs", () => {
