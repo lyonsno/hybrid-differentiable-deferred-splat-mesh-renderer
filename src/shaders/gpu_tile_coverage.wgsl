@@ -542,7 +542,7 @@ fn source_frontier_alpha_transfer_weight(pixelCoverageWeight: f32, tileCoverageW
   if ((sourceFrontierClassMask & (CANDIDATE_SOURCE_CLASS_RETENTION_MASK | CANDIDATE_SOURCE_CLASS_SUPPORT_MASK)) == 0u) {
     return pixelCoverageWeight;
   }
-  let supportWeight = min(max(tileCoverageWeight, 0.0) * SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE, 1.0);
+  let supportWeight = max(tileCoverageWeight, 0.0) * SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE;
   return max(pixelCoverageWeight, supportWeight);
 }
 

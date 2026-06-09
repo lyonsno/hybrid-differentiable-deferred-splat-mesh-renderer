@@ -264,11 +264,9 @@ function sourceFrontierAlphaTransferWeight({
     return { weight: normalizedPixelWeight, support: "none" };
   }
 
-  const supportWeight = Math.min(
+  const supportWeight =
     Math.max(Number.isFinite(tileCoverageWeight) ? tileCoverageWeight : 0, 0) *
-      SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE,
-    1,
-  );
+    SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE;
   if (supportWeight <= normalizedPixelWeight) {
     return { weight: normalizedPixelWeight, support: "none" };
   }

@@ -55,3 +55,41 @@ test("tile-local visible WGSL does not multiply tile-integrated coverage by coni
   assert.match(shader, /1\.0\s*-\s*pow\(1\.0\s*-\s*sourceOpacity,\s*alphaTransferWeight\)/);
   assert.doesNotMatch(shader, /tileCoverageWeights\[refIndex\][^;\n]*\*\s*conic_pixel_weight/);
 });
+
+test("source-frontier foreground support preserves tile coverage as optical depth above one", () => {
+  const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
+  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const traceSource = readFileSync(
+    new URL("../../src/rendererFidelityProbes/finalAccumulationTrace.js", import.meta.url),
+    "utf8",
+  );
+  const denseForegroundOpacity = 0.08;
+  const denseTileCoverageWeight = 8;
+  const cappedSingleSampleAlpha = alphaFromCoverageOpacity(denseForegroundOpacity, 1);
+  const opticalDepthAlpha = alphaFromCoverageOpacity(denseForegroundOpacity, denseTileCoverageWeight);
+
+  assert.ok(
+    opticalDepthAlpha > cappedSingleSampleAlpha * 4,
+    `expected dense support to seal with tile optical depth, saw ${opticalDepthAlpha} vs capped ${cappedSingleSampleAlpha}`,
+  );
+  assert.doesNotMatch(
+    shader,
+    /min\(\s*max\(tileCoverageWeight,\s*0\.0\)\s*\*\s*SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE,\s*1\.0\s*\)/,
+    "WGSL foreground support must not cap tile coverage optical depth to one sample",
+  );
+  assert.match(
+    shader,
+    /let supportWeight = max\(tileCoverageWeight,\s*0\.0\)\s*\*\s*SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE/,
+    "WGSL foreground support should carry scaled tile coverage as optical depth",
+  );
+  assert.doesNotMatch(
+    mainSource,
+    /Math\.min\(\s*Math\.max\(Number\.isFinite\(tileCoverageWeight\) \? tileCoverageWeight : 0,\s*0\)\s*\*\s*SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE,\s*1,\s*\)/,
+    "CPU readback mirror must not cap foreground support optical depth to one sample",
+  );
+  assert.doesNotMatch(
+    traceSource,
+    /Math\.min\(\s*Math\.max\(Number\.isFinite\(tileCoverageWeight\) \? tileCoverageWeight : 0,\s*0\)\s*\*\s*SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE,\s*1,\s*\)/,
+    "final accumulation trace mirror must not cap foreground support optical depth to one sample",
+  );
+});
