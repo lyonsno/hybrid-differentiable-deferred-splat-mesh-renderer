@@ -1187,6 +1187,42 @@ test("source-frontier alpha-density evidence separates CPU compensation from the
   assert.match(statsOverlaySource, /scene\.tileLocalState\.alphaDensityRoute\.effectiveBackend/);
 });
 
+test("source-frontier declares a GPU alpha-density compensation substrate without claiming live runtime compensation", () => {
+  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const gpuAlphaDensitySource = readFileSync(
+    new URL("../../src/gpuAlphaDensityCompensation.ts", import.meta.url),
+    "utf8",
+  );
+  const shaderSource = readFileSync(
+    new URL("../../src/shaders/gpu_alpha_density_compensation.wgsl", import.meta.url),
+    "utf8",
+  );
+  const evidenceSource = extractFunctionSource(mainSource, "createSourceFrontierAlphaDensityRouteEvidence");
+
+  assert.match(mainSource, /createGpuAlphaDensityCompensationSubstrateEvidence/);
+  assert.match(evidenceSource, /compensatedOpacitySource:\s*"cpu-reference-opacity-buffer"/);
+  assert.match(
+    evidenceSource,
+    /gpuCompensationSubstrate:\s*createGpuAlphaDensityCompensationSubstrateEvidence\(\)/,
+    "source-frontier route evidence should expose the GPU compensation substrate separately from the live opacity source",
+  );
+  assert.match(
+    gpuAlphaDensitySource,
+    /tileMassEncoding:\s*"fixed-point-u32-atomic"/,
+    "GPU substrate evidence must pin the atomic-safe tile-mass encoding",
+  );
+  assert.match(
+    gpuAlphaDensitySource,
+    /falseClosureGuard:\s*"gpu-alpha-density-substrate-does-not-imply-live-runtime-compensation"/,
+    "substrate evidence must not close over live runtime compensation before wiring exists",
+  );
+  assert.match(shaderSource, /@compute[\s\S]*fn\s+clear_alpha_density_tile_mass/);
+  assert.match(shaderSource, /@compute[\s\S]*fn\s+scatter_alpha_density_tile_mass/);
+  assert.match(shaderSource, /@compute[\s\S]*fn\s+write_compensated_opacity/);
+  assert.match(shaderSource, /var<storage,\s*read_write>\s+tileAlphaMass:\s*array<atomic<u32>>/);
+  assert.match(shaderSource, /atomicAdd\(&tileAlphaMass\[/);
+});
+
 test("default live projected-ref stream mode uses source-frontier with explicit diagnostic opt-outs", () => {
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const modeSource = extractFunctionSource(mainSource, "selectedWgslProjectedRefStreamMode");

@@ -17,6 +17,10 @@ import {
 import { handleDoubleClickPivot } from "./clickToPivot.js";
 import { createStorageBuffer, createTexture2D, createUniformBuffer } from "./buffers.js";
 import {
+  createGpuAlphaDensityCompensationSubstrateEvidence,
+  type GpuAlphaDensityCompensationSubstrateEvidence,
+} from "./gpuAlphaDensityCompensation.js";
+import {
   buildDeterministicGpuTileProjectionRetentionArena,
   buildGpuProjectionRetentionCandidateSourceInputs,
   buildGpuProjectionRetentionCandidateSourceElectionTable,
@@ -236,6 +240,7 @@ interface AlphaDensityRouteEvidence {
   readonly runtimeConsumerBackend: "tile-local-visible-gaussian-compositor";
   readonly falseClosureGuard: "gpu-alpha-param-carrier-does-not-imply-gpu-opacity-compensation";
   readonly nextGpuOffloadStage: "gpu-alpha-density-compensation";
+  readonly gpuCompensationSubstrate?: GpuAlphaDensityCompensationSubstrateEvidence;
 }
 
 interface TileLocalSceneState {
@@ -353,6 +358,7 @@ function createSourceFrontierAlphaDensityRouteEvidence(): AlphaDensityRouteEvide
     runtimeConsumerBackend: "tile-local-visible-gaussian-compositor",
     falseClosureGuard: "gpu-alpha-param-carrier-does-not-imply-gpu-opacity-compensation",
     nextGpuOffloadStage: "gpu-alpha-density-compensation",
+    gpuCompensationSubstrate: createGpuAlphaDensityCompensationSubstrateEvidence(),
   };
 }
 
