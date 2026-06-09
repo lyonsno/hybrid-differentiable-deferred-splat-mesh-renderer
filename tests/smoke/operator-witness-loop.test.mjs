@@ -1624,6 +1624,32 @@ test("source-frontier support sample retention clones records only after capped-
   );
 });
 
+test("source-frontier support sample replacement mirrors source record fields exhaustively", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const overwriteSource = extractFunctionSource(source, "compactOverwriteSupportSampleRecord");
+
+  assert.match(
+    overwriteSource,
+    /for\s*\(\s*const key of Object\.keys\(mutable\)\s*\)/,
+    "in-place replacement must inspect existing target keys so optional stale fields can be cleared",
+  );
+  assert.match(
+    overwriteSource,
+    /if\s*\(\s*!\(key in record\)\s*\)\s*\{\s*delete mutable\[key\];\s*\}/s,
+    "in-place replacement must remove target fields that are absent from the replacement source record",
+  );
+  assert.match(
+    overwriteSource,
+    /Object\.assign\(\s*mutable,\s*record,\s*\{\s*supportSampleWeight,\s*supportSampleRetentionWeight,\s*\},?\s*\)/s,
+    "in-place replacement must copy the full source record before applying support-sample weights",
+  );
+  assert.doesNotMatch(
+    overwriteSource,
+    /mutable\.(?:splatIndex|originalId|tileIndex|tileX|tileY|projectedIndex|viewRank|viewDepth|depthBand|coverageWeight|centerPx|inverseConic|opacity|coverageAlpha|transmittanceBefore|retentionWeight|occlusionWeight|occlusionDensity)\s*=/,
+    "manual contributor field assignments are not exhaustive when the record shape changes",
+  );
+});
+
 test("source-frontier support sample retention skips bounded candidates before per-sample conic evals", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const sourceFrontierSource = extractFunctionSource(source, "buildWgslSourceFrontierCandidateSources");

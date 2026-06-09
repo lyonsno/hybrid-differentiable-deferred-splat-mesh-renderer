@@ -4578,27 +4578,16 @@ function compactOverwriteSupportSampleRecord(
   supportSampleWeight: number,
   supportSampleRetentionWeight: number,
 ): void {
-  const mutable = target as MutableGpuTileContributorArenaProjectedContributor;
-  mutable.splatIndex = record.splatIndex;
-  mutable.originalId = record.originalId;
-  mutable.tileIndex = record.tileIndex;
-  mutable.tileX = record.tileX;
-  mutable.tileY = record.tileY;
-  mutable.projectedIndex = record.projectedIndex;
-  mutable.viewRank = record.viewRank;
-  mutable.viewDepth = record.viewDepth;
-  mutable.depthBand = record.depthBand;
-  mutable.coverageWeight = record.coverageWeight;
-  mutable.centerPx = record.centerPx;
-  mutable.inverseConic = record.inverseConic;
-  mutable.opacity = record.opacity;
-  mutable.coverageAlpha = record.coverageAlpha;
-  mutable.transmittanceBefore = record.transmittanceBefore;
-  mutable.retentionWeight = record.retentionWeight;
-  mutable.occlusionWeight = record.occlusionWeight;
-  mutable.occlusionDensity = record.occlusionDensity;
-  mutable.supportSampleWeight = supportSampleWeight;
-  mutable.supportSampleRetentionWeight = supportSampleRetentionWeight;
+  const mutable = target as MutableGpuTileContributorArenaProjectedContributor & Record<string, unknown>;
+  for (const key of Object.keys(mutable)) {
+    if (!(key in record)) {
+      delete mutable[key];
+    }
+  }
+  Object.assign(mutable, record, {
+    supportSampleWeight,
+    supportSampleRetentionWeight,
+  });
 }
 
 function compactCompareSupportSampleCandidateToRecord(
