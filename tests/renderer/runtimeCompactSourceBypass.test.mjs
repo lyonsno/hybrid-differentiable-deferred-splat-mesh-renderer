@@ -570,6 +570,16 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.doesNotMatch(
     shaderSource,
+    /let poolSlot = poolStart \+ \(\(depthLocalSlot \+ \(priorityOrdinal \/ 3u\)\) % poolWidth\)/,
+    "source-frontier bounded pool seats must not make candidate class pool bands the outer compositor draw order",
+  );
+  assert.match(
+    shaderSource,
+    /let orderedPoolSlot = gpu_live_depth_ordered_pool_slot\(\s*compositorOrderSlot,\s*projectedSlot,\s*tileId,\s*splatId,\s*pool,\s*safeCapacity,\s*\)/,
+    "source-frontier bounded pool seats must preserve compositor depth order as the outer slot coordinate",
+  );
+  assert.doesNotMatch(
+    shaderSource,
     /let slot = gpu_live_retention_election_slot\(projectedSlot,\s*tileId,\s*splatId,\s*tileCapacity\);/,
     "source-frontier must not let first-arrival projectedSlot impersonate compositor draw order",
   );
