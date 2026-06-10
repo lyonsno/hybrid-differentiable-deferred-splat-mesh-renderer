@@ -278,6 +278,7 @@ interface TileLocalSceneState {
   candidateSourceGroupsBuffer?: GPUBuffer;
   productionElectionComputeConsumer?: GpuProductionElectionConsumerContract;
   productionElectionPrefixScatter?: GpuProductionElectionPrefixScatterContract;
+  productionElectionStageTimings?: SourceFrontierProductionElectionStageTimings;
   alphaParamData: Float32Array;
   candidateSourceInputs?: GpuProjectionRetentionCandidateSourceInputs;
   sourceViewDepths: Float32Array;
@@ -766,6 +767,7 @@ interface RetainedSourceConstructionEvidence {
   readonly candidateSourceRuntimeBuffers?: SourceFrontierCandidateSourceRuntimeBufferEvidence;
   readonly productionElectionConsumer?: SourceFrontierProductionElectionConsumerEvidence;
   readonly productionElectionPrefixScatter?: SourceFrontierProductionElectionPrefixScatterEvidence;
+  readonly productionElectionTiming: SourceFrontierProductionElectionTimingEvidence;
 }
 
 interface SourceFrontierCandidateSourceIdentityEvidence {
@@ -922,6 +924,26 @@ interface FrameTimingSummary {
   readonly stages: readonly FrameTimingStage[];
 }
 
+interface SourceFrontierProductionElectionStageTiming {
+  readonly name: string;
+  readonly status: "present" | "pending";
+  readonly elapsedMs: number | null;
+}
+
+interface SourceFrontierProductionElectionStageTimings {
+  readonly projectedRefStream: SourceFrontierProductionElectionStageTiming;
+  readonly retainedRowPrefixScatter: SourceFrontierProductionElectionStageTiming;
+  readonly compositorConsumption: SourceFrontierProductionElectionStageTiming;
+}
+
+interface SourceFrontierProductionElectionTimingEvidence {
+  readonly status: "present" | "pending";
+  readonly source: "source-frontier-production-election-frame-timing";
+  readonly stageTimings: SourceFrontierProductionElectionStageTimings;
+  readonly dispatchEnqueueDurationMs?: number;
+  readonly falseClosureGuard: "production-election-timing-is-not-visual-quality-or-gpu-execution-proof";
+}
+
 const FRAME_TIMING_OVERLAY_RETAIN_THRESHOLD_MS = 50;
 const FRAME_TIMING_OVERLAY_RECENT_SLOW_TTL_MS = 10_000;
 
@@ -963,6 +985,86 @@ function recordOptionalFrameStageDetail(
     elapsedMs: 0,
     detail,
   });
+}
+
+function recordOptionalFrameStageElapsed(
+  timing: FrameTimingDraft | undefined,
+  name: string,
+  elapsedMs: number,
+  detail?: Readonly<Record<string, number | string | boolean | null>>
+): void {
+  if (!timing) {
+    return;
+  }
+  timing.stages.push({
+    name,
+    elapsedMs: roundRuntimeMetric(elapsedMs),
+    detail,
+  });
+}
+
+function extractProductionElectionFrameStageTimings(
+  timing?: FrameTimingDraft,
+): SourceFrontierProductionElectionStageTimings {
+  const projectedRefStreamStage = "tile-local-dispatch-encode/source-frontier/projected-ref-stream";
+  const retainedRowPrefixScatterStage = "tile-local-dispatch-encode/source-frontier/retained-row-prefix-scatter";
+  const compositorConsumptionStage = "tile-local-dispatch-encode/source-frontier/compositor-consumption";
+  return {
+    projectedRefStream: productionElectionStageTiming(timing, projectedRefStreamStage),
+    retainedRowPrefixScatter: productionElectionStageTiming(timing, retainedRowPrefixScatterStage),
+    compositorConsumption: productionElectionStageTiming(timing, compositorConsumptionStage),
+  };
+}
+
+function productionElectionStageTiming(
+  timing: FrameTimingDraft | undefined,
+  name: string,
+): SourceFrontierProductionElectionStageTiming {
+  const stage = [...(timing?.stages ?? [])].reverse().find((candidate) => candidate.name === name);
+  return {
+    name,
+    status: stage ? "present" : "pending",
+    elapsedMs: stage ? stage.elapsedMs : null,
+  };
+}
+
+function sourceFrontierProductionElectionTimingEvidence({
+  stageTimings,
+  dispatchEnqueueDurationMs,
+}: {
+  readonly stageTimings: SourceFrontierProductionElectionStageTimings;
+  readonly dispatchEnqueueDurationMs?: number;
+}): SourceFrontierProductionElectionTimingEvidence {
+  const stageValues = Object.values(stageTimings);
+  const hasPresentStage = stageValues.some((stage) => stage.status === "present");
+  return {
+    status: hasPresentStage ? "present" : "pending",
+    source: "source-frontier-production-election-frame-timing",
+    stageTimings,
+    dispatchEnqueueDurationMs,
+    falseClosureGuard: "production-election-timing-is-not-visual-quality-or-gpu-execution-proof",
+  };
+}
+
+function refreshSourceFrontierProductionElectionTimingEvidence(
+  state: TileLocalSceneState,
+  stageTimings: SourceFrontierProductionElectionStageTimings,
+): void {
+  state.productionElectionStageTimings = stageTimings;
+  const retainedSourceConstruction = state.retainedSourceConstruction;
+  if (
+    !retainedSourceConstruction ||
+    retainedSourceConstruction.effectiveSourceBackend !== "wgsl-projected-ref-stream-source-frontier"
+  ) {
+    return;
+  }
+  state.retainedSourceConstruction = {
+    ...retainedSourceConstruction,
+    productionElectionTiming: sourceFrontierProductionElectionTimingEvidence({
+      stageTimings,
+      dispatchEnqueueDurationMs: state.wgslProjectedRefStream?.dispatchEnqueueDurationMs,
+    }),
+  };
 }
 
 function finishFrameTiming(timing: FrameTimingDraft): FrameTimingSummary {
@@ -1531,13 +1633,39 @@ async function main() {
               0,
               tileLocalState.wgslProjectedRefStream.frameUniformData
             );
-            tileLocalState.pipeline.dispatchProjectedRefStream(
-              tileLocalComputePass,
-              tileLocalState.wgslProjectedRefStream.bindGroup,
-              tileLocalState.wgslProjectedRefStream.plan
-            );
+            if (tileLocalState.wgslProjectedRefStream.sourceRole === "visible-source-frontier-gpu-retention-election") {
+              timeFrameStage(frameTiming, "tile-local-dispatch-encode/source-frontier/projected-ref-stream", () => {
+                tileLocalState.pipeline.dispatchClearTiles(
+                  tileLocalComputePass,
+                  tileLocalState.wgslProjectedRefStream!.bindGroup,
+                  tileLocalState.wgslProjectedRefStream!.plan
+                );
+                tileLocalState.pipeline.dispatchBuildTileRefs(
+                  tileLocalComputePass,
+                  tileLocalState.wgslProjectedRefStream!.bindGroup,
+                  tileLocalState.wgslProjectedRefStream!.plan
+                );
+              });
+              timeFrameStage(frameTiming, "tile-local-dispatch-encode/source-frontier/retained-row-prefix-scatter", () => {
+                tileLocalState.pipeline.dispatchCompactRetainedRefs(
+                  tileLocalComputePass,
+                  tileLocalState.wgslProjectedRefStream!.bindGroup,
+                  tileLocalState.wgslProjectedRefStream!.plan
+                );
+              });
+            } else {
+              tileLocalState.pipeline.dispatchProjectedRefStream(
+                tileLocalComputePass,
+                tileLocalState.wgslProjectedRefStream.bindGroup,
+                tileLocalState.wgslProjectedRefStream.plan
+              );
+            }
             tileLocalState.wgslProjectedRefStream.dispatchEnqueueDurationMs = roundRuntimeMetric(
               performance.now() - streamDispatchStartedAtMs
+            );
+            refreshSourceFrontierProductionElectionTimingEvidence(
+              tileLocalState,
+              extractProductionElectionFrameStageTimings(frameTiming)
             );
             refreshWgslProjectedRefStreamEvidence(tileLocalState);
           }
@@ -1558,12 +1686,28 @@ async function main() {
           }
           const compositePrebuiltCpuTileRefs = scene.rendererMode === "tile-local-visible" &&
             tileLocalState.arenaBackend === "cpu";
+          const sourceFrontierCompositorStartedAtMs =
+            tileLocalState.wgslProjectedRefStream?.sourceRole === "visible-source-frontier-gpu-retention-election"
+              ? performance.now()
+              : undefined;
           if (tileLocalState.gpuArenaRuntime) {
             tileLocalState.pipeline.dispatchComposite(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
           } else if (compositePrebuiltCpuTileRefs) {
             tileLocalState.pipeline.dispatchComposite(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
           } else {
             tileLocalState.pipeline.dispatch(tileLocalComputePass, tileLocalState.bindGroup, tileLocalState.plan);
+            if (sourceFrontierCompositorStartedAtMs !== undefined) {
+              recordOptionalFrameStageElapsed(
+                frameTiming,
+                "tile-local-dispatch-encode/source-frontier/compositor-consumption",
+                performance.now() - sourceFrontierCompositorStartedAtMs,
+                { dispatch: "full-source-frontier-current-compositor-source" }
+              );
+              refreshSourceFrontierProductionElectionTimingEvidence(
+                tileLocalState,
+                extractProductionElectionFrameStageTimings(frameTiming)
+              );
+            }
           }
           if (gpuDispatchEnqueueStartedAtMs !== undefined) {
             tileLocalState.gpuDispatchEnqueueDurationMs = roundRuntimeMetric(
@@ -2393,6 +2537,7 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     () => buildWgslProjectedSourceFrontierConstructionEvidence(
       frontierSource,
       plan,
+      frameTiming,
     )
   );
   const wgslProjectedRefStreamEvidence = timeOptionalFrameStage(
@@ -3445,12 +3590,16 @@ function buildGpuArenaRetainedSourceConstructionEvidence(
     projectedRefs: compactSource.projectedContributorCount,
     retainedRefs: compactSource.retainedContributorCount,
     droppedRefs: compactSource.droppedContributorCount,
+    productionElectionTiming: sourceFrontierProductionElectionTimingEvidence({
+      stageTimings: extractProductionElectionFrameStageTimings(),
+    }),
   };
 }
 
 function buildWgslProjectedSourceFrontierConstructionEvidence(
   frontierSource: WgslProjectedSourceFrontierSource,
   plan: GpuTileCoveragePlan,
+  frameTiming?: FrameTimingDraft,
 ): RetainedSourceConstructionEvidence {
   const nextGpuOffloadStage = "live-wgsl-production-candidate-source-identity";
   return {
@@ -3495,6 +3644,9 @@ function buildWgslProjectedSourceFrontierConstructionEvidence(
       undefined,
       undefined,
     ),
+    productionElectionTiming: sourceFrontierProductionElectionTimingEvidence({
+      stageTimings: extractProductionElectionFrameStageTimings(frameTiming),
+    }),
     frontierBlockedStages: [
       nextGpuOffloadStage,
     ],
@@ -7266,6 +7418,15 @@ function publishTileLocalRefStatsReadback(
   const budgetDiagnostics = runtimeBudgetDiagnosticsForRefStatsReadback(state.budgetDiagnostics, state.plan, readback);
   state.budgetDiagnostics = budgetDiagnostics;
   refreshWgslSourceFrontierRetainedSourceConstructionEvidence(state, readback);
+  if (state.retainedSourceConstruction?.effectiveSourceBackend === "wgsl-projected-ref-stream-source-frontier") {
+    state.retainedSourceConstruction = {
+      ...state.retainedSourceConstruction,
+      productionElectionTiming: sourceFrontierProductionElectionTimingEvidence({
+        stageTimings: state.productionElectionStageTimings ?? extractProductionElectionFrameStageTimings(),
+        dispatchEnqueueDurationMs: state.wgslProjectedRefStream?.dispatchEnqueueDurationMs,
+      }),
+    };
+  }
   const diagnostics = refreshTileLocalDiagnostics(state, [], readback);
   const refAccounting = tileLocalRefAccounting(state, diagnostics, readback);
   refreshStatsOverlayTileLocalRefAccounting(state, refAccounting);

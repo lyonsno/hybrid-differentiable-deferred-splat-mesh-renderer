@@ -1069,6 +1069,26 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
     "source-frontier live ref-stat publication must keep arena-runtime retained-source evidence in sync when that surface exists",
   );
   assert.match(
+    mainSource,
+    /interface RetainedSourceConstructionEvidence[\s\S]*productionElectionTiming:\s*SourceFrontierProductionElectionTimingEvidence/,
+    "retained-source construction evidence must carry production-election timing telemetry on the route-bearing evidence surface",
+  );
+  assert.match(
+    retainedSourceEvidence,
+    /productionElectionTiming:\s*sourceFrontierProductionElectionTimingEvidence\(\{\s*stageTimings:\s*extractProductionElectionFrameStageTimings\(frameTiming\)/,
+    "source-frontier construction evidence must seed production-election timing from named frame stages instead of hiding it in generic frame timing",
+  );
+  assert.match(
+    refStatsPublisherSource,
+    /productionElectionTiming:\s*sourceFrontierProductionElectionTimingEvidence\(\{\s*stageTimings:\s*state\.productionElectionStageTimings \?\? extractProductionElectionFrameStageTimings\(\)/,
+    "live ref-stat publication must republish production-election timing telemetry after GPU accounting readback",
+  );
+  assert.match(
+    mainSource,
+    /function extractProductionElectionFrameStageTimings\([\s\S]*"tile-local-dispatch-encode\/source-frontier\/projected-ref-stream"[\s\S]*"tile-local-dispatch-encode\/source-frontier\/retained-row-prefix-scatter"[\s\S]*"tile-local-dispatch-encode\/source-frontier\/compositor-consumption"/,
+    "production-election timing telemetry must name projected stream, retained-row prefix/scatter, and compositor-consumption stages",
+  );
+  assert.match(
     retainedSourceEvidence,
     /frontierBlockedStages:\s*\[[\s\S]*nextGpuOffloadStage[\s\S]*\]/,
     "source-frontier retained-source evidence must name only the live candidate-source identity frontier after CPU materialization is removed",
