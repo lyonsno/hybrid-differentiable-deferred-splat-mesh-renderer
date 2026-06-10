@@ -2321,11 +2321,15 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     () => createGpuAlphaDensityCompensationRuntime({
       device,
       positionBuffer: buffers.positionBuffer,
+      scaleBuffer: buffers.scaleBuffer,
+      rotationBuffer: buffers.rotationBuffer,
       rawOpacities: attributes.opacities,
       splatCount: attributes.count,
       tileColumns,
       tileRows,
       tileSizePx,
+      splatScale: footprintParams.splatScale,
+      minRadiusPx: footprintParams.minRadiusPx,
     })
   );
   const compactSourceConstruction = timeOptionalFrameStage(

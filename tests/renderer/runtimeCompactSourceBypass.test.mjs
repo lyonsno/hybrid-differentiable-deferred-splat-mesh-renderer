@@ -1367,6 +1367,96 @@ test("GPU alpha-density runtime derives alpha mass cap from effective tile size"
   );
 });
 
+test("GPU alpha-density runtime crosses the center-tile coverage boundary", () => {
+  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const gpuAlphaDensitySource = readFileSync(
+    new URL("../../src/gpuAlphaDensityCompensation.ts", import.meta.url),
+    "utf8",
+  );
+  const shaderSource = readFileSync(
+    new URL("../../src/shaders/gpu_alpha_density_compensation.wgsl", import.meta.url),
+    "utf8",
+  );
+  const frontierFactorySource = extractFunctionSource(mainSource, "createWgslProjectedSourceFrontierTileLocalSceneState");
+  const runtimeEvidenceInterface = extractInterfaceSource(
+    gpuAlphaDensitySource,
+    "GpuAlphaDensityCompensationRuntimeEvidence",
+  );
+  const runtimeEvidenceFactorySource = extractFunctionSource(
+    gpuAlphaDensitySource,
+    "createGpuAlphaDensityCompensationRuntimeEvidence",
+  );
+  const runtimeInputInterface = extractInterfaceSource(
+    gpuAlphaDensitySource,
+    "CreateGpuAlphaDensityCompensationRuntimeInput",
+  );
+  const shaderContractSource = extractFunctionSource(
+    gpuAlphaDensitySource,
+    "gpuAlphaDensityCompensationShaderContract",
+  );
+
+  assert.match(
+    runtimeEvidenceInterface,
+    /coverageModel:\s*"projected-tile-bounds-substrate-first-pass"/,
+    "runtime evidence must no longer close over the old center-tile-only GPU alpha-density model",
+  );
+  assert.match(
+    runtimeEvidenceFactorySource,
+    /coverageModel:\s*"projected-tile-bounds-substrate-first-pass"/,
+    "runtime evidence factory must publish the projected tile-bounds coverage model",
+  );
+  assert.doesNotMatch(
+    runtimeEvidenceFactorySource,
+    /coverageModel:\s*"center-tile-substrate-first-pass"/,
+    "runtime evidence must not keep advertising center-tile alpha-density coverage after the boundary is crossed",
+  );
+  assert.match(
+    runtimeInputInterface,
+    /readonly\s+scaleBuffer:\s*GPUBuffer/,
+    "coverage-aware GPU alpha-density needs scale input instead of center-only position/opacities",
+  );
+  assert.match(
+    runtimeInputInterface,
+    /readonly\s+rotationBuffer:\s*GPUBuffer/,
+    "coverage-aware GPU alpha-density needs rotation input to preserve anisotropic source support",
+  );
+  assert.match(
+    frontierFactorySource,
+    /scaleBuffer:\s*buffers\.scaleBuffer/,
+    "source-frontier live route must pass scale data into the GPU alpha-density runtime",
+  );
+  assert.match(
+    frontierFactorySource,
+    /rotationBuffer:\s*buffers\.rotationBuffer/,
+    "source-frontier live route must pass rotation data into the GPU alpha-density runtime",
+  );
+  assert.match(
+    shaderSource,
+    /fn\s+alpha_density_tile_bounds_for_splat/,
+    "shader must compute tile bounds per splat instead of scattering to one center tile",
+  );
+  assert.match(
+    shaderSource,
+    /for\s*\(var\s+tileY[\s\S]*for\s*\(var\s+tileX[\s\S]*atomicAdd\(&tileAlphaMass\[/,
+    "scatter pass must add alpha mass to every projected overlapped tile",
+  );
+  assert.match(
+    shaderSource,
+    /for\s*\(var\s+tileY[\s\S]*for\s*\(var\s+tileX[\s\S]*atomicLoad\(&tileAlphaMass\[/,
+    "write pass must read the strongest hot tile across the projected support",
+  );
+  assert.doesNotMatch(
+    shaderSource,
+    /fn\s+alpha_density_center_tile_id/,
+    "center-tile helper must be removed so it cannot silently remain the live runtime route",
+  );
+  assert.match(
+    shaderContractSource,
+    /hasProjectedTileBoundsCoverage/,
+    "shader contract must expose the projected tile-bounds coverage boundary",
+  );
+});
+
 test("default live projected-ref stream mode uses source-frontier with explicit diagnostic opt-outs", () => {
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const modeSource = extractFunctionSource(mainSource, "selectedWgslProjectedRefStreamMode");

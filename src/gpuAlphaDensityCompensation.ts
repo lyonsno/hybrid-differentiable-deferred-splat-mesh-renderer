@@ -5,7 +5,7 @@ export const GPU_ALPHA_DENSITY_COMPENSATION_TILE_SIZE_PX = 48;
 export const GPU_ALPHA_DENSITY_COMPENSATION_FIXED_POINT_SCALE = 1024;
 export const GPU_ALPHA_DENSITY_COMPENSATION_ALPHA_MASS_CAP =
   gpuAlphaDensityCompensationAlphaMassCapForTileSize(GPU_ALPHA_DENSITY_COMPENSATION_TILE_SIZE_PX);
-export const GPU_ALPHA_DENSITY_COMPENSATION_FRAME_UNIFORM_BYTES = 96;
+export const GPU_ALPHA_DENSITY_COMPENSATION_FRAME_UNIFORM_BYTES = 112;
 export const GPU_ALPHA_DENSITY_COMPENSATION_STAGE_ORDER = [
   "clear-tile-mass",
   "scatter-fixed-point-tile-mass",
@@ -36,7 +36,7 @@ export interface GpuAlphaDensityCompensationRuntimeEvidence {
   readonly opacityInput: "raw-source-opacity-buffer";
   readonly opacityOutput: "gpu-compensated-opacity-buffer";
   readonly tileMassEncoding: "fixed-point-u32-atomic";
-  readonly coverageModel: "center-tile-substrate-first-pass";
+  readonly coverageModel: "projected-tile-bounds-substrate-first-pass";
   readonly stages: readonly GpuAlphaDensityCompensationStage[];
   readonly tileSizePx: number;
   readonly alphaMassCap: number;
@@ -62,6 +62,8 @@ export interface GpuAlphaDensityCompensationRuntime {
   readonly tileRows: number;
   readonly tileCount: number;
   readonly tileSizePx: number;
+  readonly splatScale: number;
+  readonly minRadiusPx: number;
   readonly fixedPointScale: number;
   readonly alphaMassCap: number;
   readonly evidence: GpuAlphaDensityCompensationRuntimeEvidence;
@@ -71,11 +73,15 @@ export interface GpuAlphaDensityCompensationRuntime {
 export interface CreateGpuAlphaDensityCompensationRuntimeInput {
   readonly device: GPUDevice;
   readonly positionBuffer: GPUBuffer;
+  readonly scaleBuffer: GPUBuffer;
+  readonly rotationBuffer: GPUBuffer;
   readonly rawOpacities: Float32Array;
   readonly splatCount: number;
   readonly tileColumns: number;
   readonly tileRows: number;
   readonly tileSizePx?: number;
+  readonly splatScale?: number;
+  readonly minRadiusPx?: number;
 }
 
 export interface DispatchGpuAlphaDensityCompensationFrameInput {
@@ -116,7 +122,7 @@ export function createGpuAlphaDensityCompensationRuntimeEvidence(input: {
     opacityInput: "raw-source-opacity-buffer",
     opacityOutput: "gpu-compensated-opacity-buffer",
     tileMassEncoding: "fixed-point-u32-atomic",
-    coverageModel: "center-tile-substrate-first-pass",
+    coverageModel: "projected-tile-bounds-substrate-first-pass",
     stages: GPU_ALPHA_DENSITY_COMPENSATION_STAGE_ORDER,
     tileSizePx,
     alphaMassCap,
@@ -137,6 +143,8 @@ export function createGpuAlphaDensityCompensationRuntime(
     input.tileSizePx,
     GPU_ALPHA_DENSITY_COMPENSATION_TILE_SIZE_PX,
   );
+  const splatScale = finitePositiveOrDefault(input.splatScale, 1);
+  const minRadiusPx = finitePositiveOrDefault(input.minRadiusPx, 0.5);
   const alphaMassCap = gpuAlphaDensityCompensationAlphaMassCapForTileSize(tileSizePx);
   const rawOpacityBytes = new ArrayBuffer(input.rawOpacities.byteLength);
   new Float32Array(rawOpacityBytes).set(input.rawOpacities);
@@ -170,8 +178,10 @@ export function createGpuAlphaDensityCompensationRuntime(
       uniformEntry(0),
       storageEntry(1, "read-only-storage"),
       storageEntry(2, "read-only-storage"),
-      storageEntry(3, "storage"),
-      storageEntry(4, "storage"),
+      storageEntry(3, "read-only-storage"),
+      storageEntry(4, "read-only-storage"),
+      storageEntry(5, "storage"),
+      storageEntry(6, "storage"),
     ],
   });
   const pipelineLayout = input.device.createPipelineLayout({
@@ -185,8 +195,10 @@ export function createGpuAlphaDensityCompensationRuntime(
       { binding: 0, resource: { buffer: frameUniformBuffer } },
       { binding: 1, resource: { buffer: input.positionBuffer } },
       { binding: 2, resource: { buffer: rawOpacityBuffer } },
-      { binding: 3, resource: { buffer: tileAlphaMassBuffer } },
-      { binding: 4, resource: { buffer: compensatedOpacityBuffer } },
+      { binding: 3, resource: { buffer: input.scaleBuffer } },
+      { binding: 4, resource: { buffer: input.rotationBuffer } },
+      { binding: 5, resource: { buffer: tileAlphaMassBuffer } },
+      { binding: 6, resource: { buffer: compensatedOpacityBuffer } },
     ],
   });
 
@@ -222,6 +234,8 @@ export function createGpuAlphaDensityCompensationRuntime(
     tileRows,
     tileCount,
     tileSizePx,
+    splatScale,
+    minRadiusPx,
     fixedPointScale: GPU_ALPHA_DENSITY_COMPENSATION_FIXED_POINT_SCALE,
     alphaMassCap,
     evidence: createGpuAlphaDensityCompensationRuntimeEvidence({
@@ -253,6 +267,7 @@ export function gpuAlphaDensityCompensationShaderContract(): {
   readonly shaderBytes: number;
   readonly hasFixedPointAtomicScatter: boolean;
   readonly hasThreeStageSubstrate: boolean;
+  readonly hasProjectedTileBoundsCoverage: boolean;
 } {
   return {
     shaderBytes: GPU_ALPHA_DENSITY_COMPENSATION_SHADER_SOURCE.length,
@@ -263,6 +278,10 @@ export function gpuAlphaDensityCompensationShaderContract(): {
       /fn\s+clear_alpha_density_tile_mass/.test(GPU_ALPHA_DENSITY_COMPENSATION_SHADER_SOURCE) &&
       /fn\s+scatter_alpha_density_tile_mass/.test(GPU_ALPHA_DENSITY_COMPENSATION_SHADER_SOURCE) &&
       /fn\s+write_compensated_opacity/.test(GPU_ALPHA_DENSITY_COMPENSATION_SHADER_SOURCE),
+    hasProjectedTileBoundsCoverage:
+      /fn\s+alpha_density_tile_bounds_for_splat/.test(GPU_ALPHA_DENSITY_COMPENSATION_SHADER_SOURCE) &&
+      /for\s*\(var\s+tileY[\s\S]*for\s*\(var\s+tileX[\s\S]*atomicAdd\(&tileAlphaMass\[/.test(GPU_ALPHA_DENSITY_COMPENSATION_SHADER_SOURCE) &&
+      /for\s*\(var\s+tileY[\s\S]*for\s*\(var\s+tileX[\s\S]*atomicLoad\(&tileAlphaMass\[/.test(GPU_ALPHA_DENSITY_COMPENSATION_SHADER_SOURCE),
   };
 }
 
@@ -293,6 +312,8 @@ function writeGpuAlphaDensityCompensationFrameUniforms(
   f32[21] = runtime.tileSizePx;
   f32[22] = runtime.alphaMassCap;
   f32[23] = runtime.fixedPointScale;
+  f32[24] = runtime.splatScale;
+  f32[25] = runtime.minRadiusPx;
   runtime.frameUniformData.set(new Float32Array(data));
 }
 
