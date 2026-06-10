@@ -346,13 +346,86 @@ test("WGSL source-frontier depth-ordered pool seats stay legal for tiny capaciti
   assert.deepEqual(illegalSlots, [], "depth-ordered pool seats should stay legal even when old pool bands were impossible");
   assert.match(
     shader,
-    /fn gpu_live_depth_ordered_pool_slot\([\s\S]*bucketWidth = max\(nextBucketStart - bucketStart,\s*1u\)[\s\S]*return min\(bucketStart \+ localSlot,\s*safeCapacity - 1u\)/,
-    "depth-ordered pool slots must clamp into legal capacity without old priority-pool fallback branches",
+    /fn gpu_live_depth_ordered_pool_slot\([\s\S]*poolStart = min\(rawPoolStart,\s*safeCapacity - 1u\)[\s\S]*poolEnd = max\(min\(rawPoolEnd,\s*safeCapacity\),\s*poolStart \+ 1u\)[\s\S]*return min\(poolStart \+ bucketStart \+ localSlot,\s*poolEnd - 1u\)/,
+    "depth-ordered pool slots must clamp into a legal requested-pool band even when old pool bands are empty",
   );
   assert.match(
     shader,
     /let orderedPoolSlot = gpu_live_depth_ordered_pool_slot\(\s*compositorOrderSlot,\s*projectedSlot,\s*tileId,\s*splatId,\s*pool,\s*safeCapacity,\s*\)/,
     "in-cap candidates must use the same legal depth-ordered slot helper as overflow candidates",
+  );
+});
+
+test("WGSL source-frontier depth-ordered seats preserve retention pool hard bands", () => {
+  const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
+  const bucketCount = 16;
+  const pools = {
+    retention: 0,
+    occlusion: 1,
+    coverage: 2,
+    support: 3,
+  };
+  const capacity = 16;
+  const supportTarget = Math.max(Math.floor(capacity / 4), 1);
+  const priorityTarget = Math.max(capacity - supportTarget, 1);
+  const poolBand = (pool) => {
+    if (pool === pools.support) {
+      return [priorityTarget, capacity];
+    }
+    return [
+      Math.floor((Math.min(pool, 2) * priorityTarget) / 3),
+      Math.floor(((Math.min(pool, 2) + 1) * priorityTarget) / 3),
+    ];
+  };
+  const overflowElectionSlot = ({ tileId, splatId, capacity }) => (
+    ((splatId * 747796405 + tileId * 2891336453 + 277803737) >>> 0) % capacity
+  );
+  const depthOrderedPoolSlot = ({ compositorOrderSlot, projectedSlot, tileId, splatId, pool }) => {
+    const [poolStart, poolEnd] = poolBand(pool);
+    const poolWidth = Math.max(poolEnd - poolStart, 1);
+    const effectiveBucketCount = Math.min(bucketCount, poolWidth);
+    const orderedSlot = Math.min(compositorOrderSlot, poolWidth - 1);
+    const depthBucket = Math.min(
+      Math.floor((orderedSlot * effectiveBucketCount) / poolWidth),
+      effectiveBucketCount - 1,
+    );
+    const bucketStart = Math.floor((depthBucket * poolWidth) / effectiveBucketCount);
+    const nextBucketStart = Math.floor(((depthBucket + 1) * poolWidth) / effectiveBucketCount);
+    const bucketWidth = Math.max(nextBucketStart - bucketStart, 1);
+    const orderedLocalSlot = orderedSlot - bucketStart;
+    const sparseOrdinal = Math.floor(projectedSlot / bucketWidth);
+    const hashedOrdinal = overflowElectionSlot({ tileId, splatId, capacity: bucketWidth });
+    const localSlot = (orderedLocalSlot + sparseOrdinal + hashedOrdinal) % bucketWidth;
+    return Math.min(poolStart + bucketStart + localSlot, poolEnd - 1);
+  };
+
+  const leakedSlots = [];
+  for (const [poolName, pool] of Object.entries(pools)) {
+    const [poolStart, poolEnd] = poolBand(pool);
+    for (let projectedSlot = 0; projectedSlot < capacity * 2; projectedSlot += 1) {
+      const slot = depthOrderedPoolSlot({
+        compositorOrderSlot: projectedSlot,
+        projectedSlot,
+        tileId: 11,
+        splatId: 700 + projectedSlot,
+        pool,
+      });
+      if (slot < poolStart || slot >= poolEnd) {
+        leakedSlots.push(`${poolName}:${projectedSlot}->${slot} outside ${poolStart}..${poolEnd - 1}`);
+      }
+    }
+  }
+
+  assert.deepEqual(leakedSlots, [], "depth-ordered source-frontier slots must remain inside each pool's hard seats");
+  assert.match(
+    shader,
+    /fn gpu_live_retention_pool_start\([\s\S]*RETENTION_POOL_SUPPORT[\s\S]*gpu_live_retention_priority_pool_start/,
+    "depth-ordered slot allocation must share the same hard-seat pool starts as fallback pool classification",
+  );
+  assert.match(
+    shader,
+    /fn gpu_live_depth_ordered_pool_slot\([\s\S]*rawPoolStart = gpu_live_retention_pool_start\([\s\S]*rawPoolEnd = gpu_live_retention_pool_end\([\s\S]*poolStart = min\(rawPoolStart,\s*safeCapacity - 1u\)[\s\S]*poolEnd = max\(min\(rawPoolEnd,\s*safeCapacity\),\s*poolStart \+ 1u\)[\s\S]*return min\(poolStart \+ bucketStart \+ localSlot,\s*poolEnd - 1u\)/,
+    "depth-ordered slots must bucket within a requested pool band, not across the whole tile capacity",
   );
 });
 

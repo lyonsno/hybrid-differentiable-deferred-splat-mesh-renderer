@@ -298,15 +298,32 @@ fn gpu_live_retention_priority_pool_end(priorityTarget: u32, pool: u32) -> u32 {
   return ((min(pool, 2u) + 1u) * priorityTarget) / 3u;
 }
 
+fn gpu_live_retention_pool_start(pool: u32, tileCapacity: u32) -> u32 {
+  let safeCapacity = max(tileCapacity, 1u);
+  let priorityTarget = gpu_live_retention_priority_target(safeCapacity);
+  if (min(pool, RETENTION_POOL_SUPPORT) == RETENTION_POOL_SUPPORT) {
+    return priorityTarget;
+  }
+  return gpu_live_retention_priority_pool_start(priorityTarget, pool);
+}
+
+fn gpu_live_retention_pool_end(pool: u32, tileCapacity: u32) -> u32 {
+  let safeCapacity = max(tileCapacity, 1u);
+  let priorityTarget = gpu_live_retention_priority_target(safeCapacity);
+  if (min(pool, RETENTION_POOL_SUPPORT) == RETENTION_POOL_SUPPORT) {
+    return safeCapacity;
+  }
+  return gpu_live_retention_priority_pool_end(priorityTarget, pool);
+}
+
 fn gpu_live_retention_pool_from_slot(slot: u32, tileCapacity: u32) -> u32 {
-  let priorityTarget = gpu_live_retention_priority_target(tileCapacity);
-  if (slot >= priorityTarget) {
+  if (slot >= gpu_live_retention_pool_start(RETENTION_POOL_SUPPORT, tileCapacity)) {
     return RETENTION_POOL_SUPPORT;
   }
-  if (slot < gpu_live_retention_priority_pool_end(priorityTarget, RETENTION_POOL_RETENTION)) {
+  if (slot < gpu_live_retention_pool_end(RETENTION_POOL_RETENTION, tileCapacity)) {
     return RETENTION_POOL_RETENTION;
   }
-  if (slot < gpu_live_retention_priority_pool_end(priorityTarget, RETENTION_POOL_OCCLUSION)) {
+  if (slot < gpu_live_retention_pool_end(RETENTION_POOL_OCCLUSION, tileCapacity)) {
     return RETENTION_POOL_OCCLUSION;
   }
   return RETENTION_POOL_COVERAGE;
@@ -337,18 +354,22 @@ fn gpu_live_depth_ordered_pool_slot(
   tileCapacity: u32,
 ) -> u32 {
   let safeCapacity = max(tileCapacity, 1u);
-  let bucketCount = min(SOURCE_FRONTIER_COMPOSITOR_ORDER_BUCKET_COUNT, safeCapacity);
-  let orderedSlot = min(compositorOrderSlot, safeCapacity - 1u);
-  let depthBucket = min((orderedSlot * bucketCount) / safeCapacity, bucketCount - 1u);
-  let bucketStart = (depthBucket * safeCapacity) / bucketCount;
-  let nextBucketStart = ((depthBucket + 1u) * safeCapacity) / bucketCount;
+  let rawPoolStart = gpu_live_retention_pool_start(pool, safeCapacity);
+  let rawPoolEnd = gpu_live_retention_pool_end(pool, safeCapacity);
+  let poolStart = min(rawPoolStart, safeCapacity - 1u);
+  let poolEnd = max(min(rawPoolEnd, safeCapacity), poolStart + 1u);
+  let poolWidth = max(poolEnd - poolStart, 1u);
+  let bucketCount = min(SOURCE_FRONTIER_COMPOSITOR_ORDER_BUCKET_COUNT, poolWidth);
+  let orderedSlot = min(compositorOrderSlot, poolWidth - 1u);
+  let depthBucket = min((orderedSlot * bucketCount) / poolWidth, bucketCount - 1u);
+  let bucketStart = (depthBucket * poolWidth) / bucketCount;
+  let nextBucketStart = ((depthBucket + 1u) * poolWidth) / bucketCount;
   let bucketWidth = max(nextBucketStart - bucketStart, 1u);
   let orderedLocalSlot = orderedSlot - bucketStart;
-  let poolLane = min(pool, RETENTION_POOL_SUPPORT);
   let sparseOrdinal = projectedSlot / bucketWidth;
   let hashedOrdinal = gpu_live_overflow_election_slot(tileId, splatId, bucketWidth);
-  let localSlot = (orderedLocalSlot + poolLane + sparseOrdinal + hashedOrdinal) % bucketWidth;
-  return min(bucketStart + localSlot, safeCapacity - 1u);
+  let localSlot = (orderedLocalSlot + sparseOrdinal + hashedOrdinal) % bucketWidth;
+  return min(poolStart + bucketStart + localSlot, poolEnd - 1u);
 }
 
 fn gpu_live_retention_overflow_pool_slot(
