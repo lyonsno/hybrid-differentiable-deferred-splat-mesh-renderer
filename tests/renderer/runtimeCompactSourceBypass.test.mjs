@@ -840,6 +840,11 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.doesNotMatch(
     frontierFactorySource,
+    /buildGpuProjectionRetentionCandidateSourceClassMasks\(/,
+    "source-frontier fallback retirement must not synthesize class masks from CPU candidate-source records on the live route",
+  );
+  assert.doesNotMatch(
+    frontierFactorySource,
     /buildWgslSourceFrontierCandidateSources\(/,
     "source-frontier fallback retirement must not reintroduce the CPU candidate-source packer onto the live route",
   );
