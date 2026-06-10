@@ -558,6 +558,7 @@ interface TileLocalCompositorInputReadback {
       readonly inverseConic: readonly [number, number, number];
       readonly coverageWeight: number;
       readonly tileCoverageWeight: number;
+      readonly tileLocalSupportWeight: number;
       readonly pixelCoverageWeight: number;
       readonly sourceFrontierSupportPixelWeight: number;
       readonly sourceOpacity: number;
@@ -7951,6 +7952,7 @@ function readCompositorInputAnchor({
         inverseConic: [roundColorChannel(conicParam[0]), roundColorChannel(conicParam[1]), roundColorChannel(conicParam[2])],
         coverageWeight: 0,
         tileCoverageWeight: 0,
+        tileLocalSupportWeight: roundColorChannel(Math.max(tileCoverageWeight, conicParam[3] ?? 0)),
         pixelCoverageWeight: 0,
         sourceFrontierSupportPixelWeight: 0,
         sourceOpacity: roundColorChannel(sourceOpacity),
@@ -7969,9 +7971,11 @@ function readCompositorInputAnchor({
     const sourceOpacity = Math.min(clamp01(alphaParam[0]), 0.999);
     const pixelCoverageWeight = conicPixelWeightFromParams(alphaParam, conicParam, pixelCenter);
     const sourceFrontierSupportPixelWeight = sourceFrontierSupportPixelWeightFromParams(alphaParam, conicParam, pixelCenter);
+    const tileLocalSupportWeight = Math.max(tileCoverageWeight, conicParam[3] ?? 0);
     const alphaTransferWeight = sourceFrontierAlphaTransferWeight(
       pixelCoverageWeight,
       tileCoverageWeight,
+      tileLocalSupportWeight,
       sourceFrontierSupportPixelWeight,
       candidateSourceClassMask,
     );
@@ -8001,6 +8005,7 @@ function readCompositorInputAnchor({
       inverseConic: [roundColorChannel(conicParam[0]), roundColorChannel(conicParam[1]), roundColorChannel(conicParam[2])],
       coverageWeight: roundColorChannel(tileCoverageWeight),
       tileCoverageWeight: roundColorChannel(tileCoverageWeight),
+      tileLocalSupportWeight: roundColorChannel(tileLocalSupportWeight),
       pixelCoverageWeight: roundColorChannel(pixelCoverageWeight),
       sourceFrontierSupportPixelWeight: roundColorChannel(sourceFrontierSupportPixelWeight),
       sourceOpacity: roundColorChannel(sourceOpacity),
@@ -8199,6 +8204,7 @@ function sourceFrontierSupportPixelWeightFromParams(
 function sourceFrontierAlphaTransferWeight(
   pixelCoverageWeight: number,
   tileCoverageWeight: number,
+  tileLocalSupportWeight: number,
   sourceFrontierSupportPixelWeight: number,
   candidateSourceClassMask: number,
 ): number {
@@ -8206,8 +8212,12 @@ function sourceFrontierAlphaTransferWeight(
   if ((candidateSourceClassMask & SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_MASK) === 0) {
     return normalizedPixelWeight;
   }
+  const normalizedTileSupportWeight = Math.max(
+    Math.max(Number.isFinite(tileCoverageWeight) ? tileCoverageWeight : 0, 0),
+    Math.max(Number.isFinite(tileLocalSupportWeight) ? tileLocalSupportWeight : 0, 0),
+  );
   const supportWeight =
-    Math.max(Number.isFinite(tileCoverageWeight) ? tileCoverageWeight : 0, 0) *
+    normalizedTileSupportWeight *
     SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE *
     Math.max(Number.isFinite(sourceFrontierSupportPixelWeight) ? sourceFrontierSupportPixelWeight : 0, 0);
   return Math.max(normalizedPixelWeight, supportWeight);

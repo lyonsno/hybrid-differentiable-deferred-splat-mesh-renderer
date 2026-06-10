@@ -273,6 +273,44 @@ fn gpu_live_tile_coverage_weight(conic: GpuLiveConic, tileCenterPx: vec2f) -> f3
   return exp(-0.5 * tileMahalanobis2);
 }
 
+fn gpu_live_mahalanobis2(conic: GpuLiveConic, delta: vec2f) -> f32 {
+  return conic.inverseConic.x * delta.x * delta.x
+    + 2.0 * conic.inverseConic.y * delta.x * delta.y
+    + conic.inverseConic.z * delta.y * delta.y;
+}
+
+fn gpu_live_minimum_mahalanobis2_in_rect(conic: GpuLiveConic, tileMinPx: vec2f, tileMaxPx: vec2f) -> f32 {
+  let minDelta = tileMinPx - conic.centerPx;
+  let maxDelta = tileMaxPx - conic.centerPx;
+  if (minDelta.x <= 0.0 && maxDelta.x >= 0.0 && minDelta.y <= 0.0 && maxDelta.y >= 0.0) {
+    return 0.0;
+  }
+
+  let inverseXx = max(conic.inverseConic.x, COMPACT_FOOTPRINT_EPSILON);
+  let inverseXy = conic.inverseConic.y;
+  let inverseYy = max(conic.inverseConic.z, COMPACT_FOOTPRINT_EPSILON);
+  var best = 100000000000000000000.0;
+
+  let leftDy = clamp(-(inverseXy * minDelta.x) / inverseYy, minDelta.y, maxDelta.y);
+  best = min(best, gpu_live_mahalanobis2(conic, vec2f(minDelta.x, leftDy)));
+
+  let rightDy = clamp(-(inverseXy * maxDelta.x) / inverseYy, minDelta.y, maxDelta.y);
+  best = min(best, gpu_live_mahalanobis2(conic, vec2f(maxDelta.x, rightDy)));
+
+  let topDx = clamp(-(inverseXy * minDelta.y) / inverseXx, minDelta.x, maxDelta.x);
+  best = min(best, gpu_live_mahalanobis2(conic, vec2f(topDx, minDelta.y)));
+
+  let bottomDx = clamp(-(inverseXy * maxDelta.y) / inverseXx, minDelta.x, maxDelta.x);
+  best = min(best, gpu_live_mahalanobis2(conic, vec2f(bottomDx, maxDelta.y)));
+
+  return max(best, 0.0);
+}
+
+fn gpu_live_tile_local_support_weight(conic: GpuLiveConic, tileMinPx: vec2f, tileMaxPx: vec2f) -> f32 {
+  let minMahalanobis2 = gpu_live_minimum_mahalanobis2_in_rect(conic, tileMinPx, tileMaxPx);
+  return exp(-conic_falloff_scale() * minMahalanobis2);
+}
+
 fn gpu_live_source_luminance(splatId: u32) -> f32 {
   let colorBase = splatId * 3u;
   let sourceColor = vec3f(colors[colorBase], colors[colorBase + 1u], colors[colorBase + 2u]);
@@ -523,6 +561,7 @@ fn gpu_live_try_commit_retained_ref(
   splatId: u32,
   tileId: u32,
   tileCoverageWeight: f32,
+  tileLocalSupportWeight: f32,
   sourceOpacity: f32,
   centerPx: vec2f,
   candidateSourceClassMask: u32,
@@ -548,7 +587,7 @@ fn gpu_live_try_commit_retained_ref(
       tileCoverageWeights[refIndex] = tileCoverageWeight;
       let alphaPayload = select(f32(splatId), SOURCE_FRONTIER_ALPHA_CLASS_MASK_SENTINEL - f32(candidateSourceClassMask), candidateSourceClassMask != 0u);
       alphaParams[refIndex] = vec4f(sourceOpacity, centerPx.x, centerPx.y, alphaPayload);
-      alphaParams[refIndex + frame.maxTileRefs] = vec4f(inverseConic, 0.0);
+      alphaParams[refIndex + frame.maxTileRefs] = vec4f(inverseConic, tileLocalSupportWeight);
       atomicStore(&tileRefs[scoreIndex], score);
       break;
     }
@@ -580,11 +619,12 @@ fn source_frontier_alpha_class_mask(alphaParam: vec4f) -> u32 {
   return sourceFrontierClassMask;
 }
 
-fn source_frontier_alpha_transfer_weight(pixelCoverageWeight: f32, tileCoverageWeight: f32, sourceFrontierSupportWeight: f32, sourceFrontierClassMask: u32) -> f32 {
+fn source_frontier_alpha_transfer_weight(pixelCoverageWeight: f32, tileCoverageWeight: f32, tileLocalSupportWeight: f32, sourceFrontierSupportWeight: f32, sourceFrontierClassMask: u32) -> f32 {
   if ((sourceFrontierClassMask & (CANDIDATE_SOURCE_CLASS_RETENTION_MASK | CANDIDATE_SOURCE_CLASS_SUPPORT_MASK)) == 0u) {
     return pixelCoverageWeight;
   }
-  let supportWeight = max(tileCoverageWeight, 0.0)
+  let tileSupportWeight = max(max(tileCoverageWeight, 0.0), max(tileLocalSupportWeight, 0.0));
+  let supportWeight = tileSupportWeight
     * SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE
     * max(sourceFrontierSupportWeight, 0.0);
   return max(pixelCoverageWeight, supportWeight);
@@ -748,6 +788,10 @@ fn debug_heatmap_color(
         conic,
         gpu_live_tile_center_px(tileX, tileY, tileSizePx)
       );
+      let tileSizeF = f32(tileSizePx);
+      let tileMinPx = vec2f(f32(tileX) * tileSizeF, f32(tileY) * tileSizeF);
+      let tileMaxPx = min(vec2f(f32(tileX + 1u) * tileSizeF, f32(tileY + 1u) * tileSizeF), frame.viewport);
+      let tileLocalSupportWeight = gpu_live_tile_local_support_weight(conic, tileMinPx, tileMaxPx);
       let sourceOpacity = clamp(opacities[splatId], 0.0, 0.999);
       let sourceLuminance = gpu_live_source_luminance(splatId);
       let retentionScore = gpu_live_retention_pool_score(
@@ -765,6 +809,7 @@ fn debug_heatmap_color(
         splatId,
         tileId,
         tileCoverageWeight,
+        tileLocalSupportWeight,
         sourceOpacity,
         centerPx,
         liveCandidateSourceClassMask,
@@ -864,7 +909,8 @@ fn debug_heatmap_color(
     minMinorRadiusPx = min(minMinorRadiusPx, conicRadii.y);
     let sourceOpacity = min(clamp(alphaParam.x, 0.0, 1.0), 0.999);
     let sourceFrontierClassMask = source_frontier_alpha_class_mask(alphaParam);
-    let alphaTransferWeight = source_frontier_alpha_transfer_weight(pixelCoverageWeight, tileCoverageWeight, sourceFrontierSupportWeight, sourceFrontierClassMask);
+    let tileLocalSupportWeight = max(tileCoverageWeight, conicParam.w);
+    let alphaTransferWeight = source_frontier_alpha_transfer_weight(pixelCoverageWeight, tileCoverageWeight, tileLocalSupportWeight, sourceFrontierSupportWeight, sourceFrontierClassMask);
     let coverageAlpha = clamp(1.0 - pow(1.0 - sourceOpacity, alphaTransferWeight), 0.0, 1.0);
     let colorBase = tileRef.x * 3u;
     let sourceColor = vec3f(colors[colorBase], colors[colorBase + 1u], colors[colorBase + 2u]);

@@ -51,7 +51,7 @@ test("tile-local visible WGSL does not multiply tile-integrated coverage by coni
   assert.match(shader, /let tileCoverageWeight = max\(tileCoverageWeights\[refIndex\], 0\.0\)/);
   assert.match(shader, /if\s*\(tileCoverageWeight <= 0\.0\)\s*\{\s*continue;\s*\}/);
   assert.match(shader, /let pixelCoverageWeight = conic_pixel_weight\(alphaParam, conicParam, pixelCenter\)/);
-  assert.match(shader, /let alphaTransferWeight = source_frontier_alpha_transfer_weight\(pixelCoverageWeight,\s*tileCoverageWeight,\s*sourceFrontierSupportWeight,\s*sourceFrontierClassMask\)/);
+  assert.match(shader, /let alphaTransferWeight = source_frontier_alpha_transfer_weight\(pixelCoverageWeight,\s*tileCoverageWeight,\s*tileLocalSupportWeight,\s*sourceFrontierSupportWeight,\s*sourceFrontierClassMask\)/);
   assert.match(shader, /1\.0\s*-\s*pow\(1\.0\s*-\s*sourceOpacity,\s*alphaTransferWeight\)/);
   assert.doesNotMatch(shader, /tileCoverageWeights\[refIndex\][^;\n]*\*\s*conic_pixel_weight/);
 });
@@ -79,8 +79,8 @@ test("source-frontier foreground support preserves tile coverage as optical dept
   );
   assert.match(
     shader,
-    /let supportWeight = max\(tileCoverageWeight,\s*0\.0\)\s*\*\s*SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE/,
-    "WGSL foreground support should carry scaled tile coverage as optical depth",
+    /let tileSupportWeight = max\(max\(tileCoverageWeight,\s*0\.0\),\s*max\(tileLocalSupportWeight,\s*0\.0\)\)/,
+    "WGSL foreground support should carry the strongest tile-local support as optical depth",
   );
   assert.doesNotMatch(
     mainSource,
@@ -164,8 +164,8 @@ test("source-frontier foreground support is spatially attenuated instead of tile
   );
   assert.match(
     shader,
-    /let supportWeight = max\(tileCoverageWeight,\s*0\.0\)\s*\*\s*SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE\s*\*\s*max\(sourceFrontierSupportWeight,\s*0\.0\)/,
-    "source-frontier foreground support should scale tile coverage by a per-pixel support envelope",
+    /let supportWeight = tileSupportWeight\s*\*\s*SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE\s*\*\s*max\(sourceFrontierSupportWeight,\s*0\.0\)/,
+    "source-frontier foreground support should scale tile-local support by a per-pixel support envelope",
   );
   assert.doesNotMatch(
     shader,

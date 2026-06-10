@@ -194,6 +194,11 @@ function composeFinalColorAccumulationSteps({
     const contributor = contributors[orderIndex];
     const sourceColor = resolveSourceColor(sourceColors, contributor.splatIndex, blockers);
     const tileCoverageWeight = Math.max(finiteNumber(contributor.coverageWeight, "contributor.coverageWeight"), 0);
+    const rawTileLocalSupportWeight = contributor.tileLocalSupportWeight ?? contributor.conicSupportWeight ?? 0;
+    const tileLocalSupportWeight = Math.max(
+      tileCoverageWeight,
+      Number.isFinite(rawTileLocalSupportWeight) ? rawTileLocalSupportWeight : 0,
+    );
     const opacity = Math.min(Math.max(finiteNumber(contributor.opacity, "contributor.opacity"), 0), 0.999);
     const transmittanceBefore = remainingTransmission;
     const pixelCoverageWeight = tileCoverageWeight > 0
@@ -205,6 +210,7 @@ function composeFinalColorAccumulationSteps({
     const alphaTransfer = sourceFrontierAlphaTransferWeight({
       pixelCoverageWeight,
       tileCoverageWeight,
+      tileLocalSupportWeight,
       sourceFrontierSupportPixelWeight,
       contributor,
     });
@@ -227,6 +233,7 @@ function composeFinalColorAccumulationSteps({
       orderIndex,
       coverageWeight: round(pixelCoverageWeight),
       sourceFrontierSupportPixelWeight: round(sourceFrontierSupportPixelWeight),
+      tileLocalSupportWeight: round(tileLocalSupportWeight),
       alphaTransferWeight: round(alphaTransfer.weight),
       sourceFrontierAlphaSupport: alphaTransfer.support,
       opacity: round(opacity),
@@ -260,6 +267,7 @@ function composeFinalColorAccumulationSteps({
 function sourceFrontierAlphaTransferWeight({
   pixelCoverageWeight,
   tileCoverageWeight,
+  tileLocalSupportWeight,
   sourceFrontierSupportPixelWeight,
   contributor,
 }) {
@@ -271,8 +279,12 @@ function sourceFrontierAlphaTransferWeight({
     return { weight: normalizedPixelWeight, support: "none" };
   }
 
+  const normalizedTileSupportWeight = Math.max(
+    Math.max(Number.isFinite(tileCoverageWeight) ? tileCoverageWeight : 0, 0),
+    Math.max(Number.isFinite(tileLocalSupportWeight) ? tileLocalSupportWeight : 0, 0),
+  );
   const supportWeight =
-    Math.max(Number.isFinite(tileCoverageWeight) ? tileCoverageWeight : 0, 0) *
+    normalizedTileSupportWeight *
     SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE *
     Math.max(Number.isFinite(sourceFrontierSupportPixelWeight) ? sourceFrontierSupportPixelWeight : 0, 0);
   if (supportWeight <= normalizedPixelWeight) {
