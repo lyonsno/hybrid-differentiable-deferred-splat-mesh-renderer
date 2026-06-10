@@ -42,7 +42,7 @@ test("main labels skipped tile-local rebuilds as stale cached presentations", ()
   );
 });
 
-test("main defers compact GPU retained-source rebuilds during active input and presents a plate preview", () => {
+test("main defers compact GPU retained-source rebuilds during active input without presenting plate", () => {
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
 
   assert.match(source, /const\s+tileLocalPresentationStaleForCurrentView\s*=\s*Boolean/);
@@ -64,11 +64,11 @@ test("main defers compact GPU retained-source rebuilds during active input and p
     source,
     /allowActiveInputDispatch:\s*scene\.tileLocalState\.arenaBackend === "gpu" && !deferTileLocalRebuildForActiveInput/,
   );
-  assert.match(source, /const\s+useTileLocalInteractionPreview\s*=/);
-  assert.match(source, /tile-local-visible-interaction-preview-plate/);
+  assert.doesNotMatch(source, /const\s+useTileLocalInteractionPreview\s*=/);
+  assert.doesNotMatch(source, /tile-local-visible-interaction-preview-plate/);
   assert.match(
     source,
-    /scene\.rendererMode === "tile-local-visible" && scene\.tileLocalState && !useTileLocalInteractionPreview[\s\S]*tileLocalPresenter\.draw/,
+    /scene\.rendererMode === "tile-local-visible" && scene\.tileLocalState\) \{\s*tileLocalPresenter\.draw/,
   );
   assert.match(
     source,

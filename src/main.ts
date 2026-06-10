@@ -1646,11 +1646,7 @@ async function main() {
       ts.labels.push("render", "render_end");
     }
 
-    const useTileLocalInteractionPreview = scene.rendererMode === "tile-local-visible" &&
-      Boolean(scene.tileLocalState) &&
-      activeInput &&
-      tileLocalPresentationStaleForCurrentView;
-    if (scene.rendererMode === "tile-local-visible" && scene.tileLocalState && !useTileLocalInteractionPreview) {
+    if (scene.rendererMode === "tile-local-visible" && scene.tileLocalState) {
       tileLocalPresenter.draw(renderPass, scene.tileLocalState.outputView);
     } else {
       renderPass.setBindGroup(0, bindGroup);
@@ -1684,14 +1680,12 @@ async function main() {
 
     // Stats overlay
     const alphaSummary = scene.alphaDensityState.summary;
-    const baseRendererLabel = useTileLocalInteractionPreview
-      ? "tile-local-visible-interaction-preview-plate"
-      : labelRendererMode(
-          scene.rendererMode,
-          scene.tileLocalState,
-          scene.tileLocalDisabledReason,
-          scene.tileLocalLastSkipReason
-        );
+    const baseRendererLabel = labelRendererMode(
+      scene.rendererMode,
+      scene.tileLocalState,
+      scene.tileLocalDisabledReason,
+      scene.tileLocalLastSkipReason
+    );
     // In shape-witness mode, prefix the renderer label so the capture harness sees "shape-witness".
     const rendererLabel = shapeWitnessFixtureId !== null
       ? `shape-witness`
