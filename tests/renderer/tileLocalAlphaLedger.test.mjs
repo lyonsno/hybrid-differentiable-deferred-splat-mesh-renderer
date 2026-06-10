@@ -148,3 +148,33 @@ test("source-frontier foreground support is spatially attenuated instead of tile
     "final accumulation trace should report the spatial support envelope used by source-frontier alpha transfer",
   );
 });
+
+test("source-frontier readback decodes foreground class masks from retained alpha payload", () => {
+  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+
+  assert.match(
+    mainSource,
+    /const SOURCE_FRONTIER_ALPHA_CLASS_MASK_SENTINEL = -1024/,
+    "CPU readback mirror should name the same class-mask sentinel as the GPU retained-row payload",
+  );
+  assert.match(
+    mainSource,
+    /function sourceFrontierAlphaClassMaskFromAlphaParam\(/,
+    "CPU readback mirror should decode source-frontier class masks from retained alpha payloads",
+  );
+  assert.match(
+    mainSource,
+    /const encodedCandidateSourceClassMask = sourceFrontierAlphaClassMaskFromAlphaParam\(alphaParam\)/,
+    "source-frontier readback should inspect the retained row's encoded class mask",
+  );
+  assert.match(
+    mainSource,
+    /encodedCandidateSourceClassMask !== 0\s*\?\s*encodedCandidateSourceClassMask\s*:\s*candidateSourceClassMaskForSplatId\(plan,\s*tileHeaders,\s*splatIndex\)/,
+    "source-frontier readback should prefer retained alpha payload role identity before falling back to source table lookup",
+  );
+  assert.doesNotMatch(
+    mainSource,
+    /const candidateSourceClassMask = tileRefPayloadEncoding === "source-frontier-score"\s*\?\s*candidateSourceClassMaskForSplatId\(plan,\s*tileHeaders,\s*splatIndex\)\s*:\s*0;/,
+    "source-frontier readback must not classify retained rows only by source-index table lookup",
+  );
+});

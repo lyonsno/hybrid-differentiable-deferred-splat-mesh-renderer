@@ -195,6 +195,7 @@ const COMPACT_SOURCE_PRESENTATION_TILE_NEIGHBORHOOD_RADIUS = 5;
 const COMPACT_SOURCE_FULL_SCENE_MAX_TILES_PER_SPLAT = 9;
 const COMPACT_SOURCE_ANCHOR_PREFILTER_MIN_MARGIN_PX = 96;
 const COMPACT_SOURCE_ANCHOR_PREFILTER_MAX_MARGIN_PX = 384;
+const SOURCE_FRONTIER_ALPHA_CLASS_MASK_SENTINEL = -1024;
 const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_MASK =
   GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.retention |
   GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.support;
@@ -7857,8 +7858,11 @@ function readCompositorInputAnchor({
     const alphaViewRank = Number.isFinite(alphaParam[3]) ? Math.trunc(alphaParam[3]) : -1;
     const viewRank = tileRefPayloadEncoding === "source-frontier-score" ? splatIndex : alphaViewRank;
     const retentionScore = tileRefPayloadEncoding === "source-frontier-score" ? tileRefAux : undefined;
+    const encodedCandidateSourceClassMask = sourceFrontierAlphaClassMaskFromAlphaParam(alphaParam);
     const candidateSourceClassMask = tileRefPayloadEncoding === "source-frontier-score"
-      ? candidateSourceClassMaskForSplatId(plan, tileHeaders, splatIndex)
+      ? encodedCandidateSourceClassMask !== 0
+        ? encodedCandidateSourceClassMask
+        : candidateSourceClassMaskForSplatId(plan, tileHeaders, splatIndex)
       : 0;
     const sourceRole = sourceRoleForCandidateSourceClassMask(candidateSourceClassMask);
     const roleClass = roleClassForSourceRole(sourceRole);
@@ -8082,6 +8086,19 @@ function candidateSourceClassMaskForSplatId(
     }
   }
   return 0;
+}
+
+function sourceFrontierAlphaClassMaskFromAlphaParam(
+  alphaParam: readonly [number, number, number, number],
+): number {
+  if (alphaParam[3] > SOURCE_FRONTIER_ALPHA_CLASS_MASK_SENTINEL) {
+    return 0;
+  }
+  const decodedMask = SOURCE_FRONTIER_ALPHA_CLASS_MASK_SENTINEL - alphaParam[3];
+  if (!Number.isFinite(decodedMask) || decodedMask <= 0) {
+    return 0;
+  }
+  return Math.trunc(decodedMask);
 }
 
 function sourceRoleForCandidateSourceClassMask(candidateSourceClassMask: number): string {
