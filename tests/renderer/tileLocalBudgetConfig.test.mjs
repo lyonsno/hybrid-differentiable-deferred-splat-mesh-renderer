@@ -86,7 +86,7 @@ test("compact source construction classifies full-scene overflow as a bounded pr
     forceAnchorOnly: false,
     allowAnchorOnlyBudgetFallback: false,
     anchorTileCount: 0,
-    maxTilesPerSplat: 9,
+    maxTilesPerSplat: 81,
   });
 
   assert.equal(verdict.classification, "compact-source-full-scene-bounded-overflow");
@@ -94,9 +94,19 @@ test("compact source construction classifies full-scene overflow as a bounded pr
   assert.equal(verdict.retainedBudgetWithinProjectedLimit, true);
   assert.equal(verdict.shouldRestrictToAnchorTiles, false);
   assert.equal(verdict.shouldBoundSplatTileFootprints, true);
-  assert.equal(verdict.maxTilesPerSplat, 9);
+  assert.equal(verdict.maxTilesPerSplat, 81);
   assert.equal(verdict.shouldThrowProjectedRefBudgetError, false);
   assert.match(verdict.diagnostic, /bounded presentation source/i);
+});
+
+test("source-frontier full-scene cap covers observed 57px conic support at 16px tiles", () => {
+  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+
+  assert.match(
+    source,
+    /const COMPACT_SOURCE_FULL_SCENE_MAX_TILES_PER_SPLAT = 81;/,
+    "the source-frontier full-scene route should use a 9x9 cap, not the old 3x3 cap",
+  );
 });
 
 test("compact source construction keeps already-bounded full-scene overflow as a blocker", () => {
