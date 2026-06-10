@@ -345,6 +345,22 @@ fn gpu_live_candidate_source_pool(candidateSourceClassMask: u32, fallbackPool: u
   return fallbackPool;
 }
 
+fn gpu_live_candidate_source_class_mask(candidateSourceClassMask: u32, selectedPool: u32) -> u32 {
+  if (candidateSourceClassMask != 0u) {
+    return candidateSourceClassMask;
+  }
+  if (selectedPool == RETENTION_POOL_SUPPORT) {
+    return CANDIDATE_SOURCE_CLASS_SUPPORT_MASK;
+  }
+  if (selectedPool == RETENTION_POOL_RETENTION) {
+    return CANDIDATE_SOURCE_CLASS_RETENTION_MASK;
+  }
+  if (selectedPool == RETENTION_POOL_OCCLUSION) {
+    return CANDIDATE_SOURCE_CLASS_OCCLUSION_MASK;
+  }
+  return CANDIDATE_SOURCE_CLASS_COVERAGE_MASK;
+}
+
 fn gpu_live_depth_ordered_pool_slot(
   compositorOrderSlot: u32,
   projectedSlot: u32,
@@ -723,6 +739,7 @@ fn debug_heatmap_color(
       let projectedSlot = atomicAdd(&tileScatterCursors[tileId], 1u);
       let compositorOrderSlot = gpu_live_compositor_order_slot(sourceDepthNdc, projectedSlot, tileCapacity);
       let poolSlot = gpu_live_retention_pool_slot(projectedSlot, compositorOrderSlot, tileId, splatId, candidateSourceClassMask, tileCapacity);
+      let liveCandidateSourceClassMask = gpu_live_candidate_source_class_mask(candidateSourceClassMask, poolSlot.pool);
       let refIndex = tileId * tileCapacity + poolSlot.slot;
       if (refIndex >= frame.maxTileRefs) {
         continue;
@@ -739,7 +756,7 @@ fn debug_heatmap_color(
         sourceLuminance,
         sourceDepthNdc,
         orderingKey,
-        candidateSourceClassMask,
+        liveCandidateSourceClassMask,
         poolSlot.pool
       );
       gpu_live_try_commit_retained_ref(
@@ -750,7 +767,7 @@ fn debug_heatmap_color(
         tileCoverageWeight,
         sourceOpacity,
         centerPx,
-        candidateSourceClassMask,
+        liveCandidateSourceClassMask,
         conic.inverseConic
       );
     }

@@ -550,8 +550,8 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     shaderSource,
-    /let sourceDepthNdc = centerClip\.z \/ max\(centerClip\.w, 0\.000001\)[\s\S]*let sourceLuminance = gpu_live_source_luminance\(splatId\)[\s\S]*gpu_live_retention_pool_score\([\s\S]*sourceLuminance[\s\S]*sourceDepthNdc[\s\S]*candidateSourceClassMask[\s\S]*poolSlot\.pool/,
-    "source-frontier build must pass projected depth, source class identity, and selected pool into the retained-ref pool score",
+    /let sourceDepthNdc = centerClip\.z \/ max\(centerClip\.w, 0\.000001\)[\s\S]*let poolSlot = gpu_live_retention_pool_slot\([\s\S]*candidateSourceClassMask[\s\S]*tileCapacity\)[\s\S]*let liveCandidateSourceClassMask = gpu_live_candidate_source_class_mask\(candidateSourceClassMask,\s*poolSlot\.pool\)[\s\S]*let sourceLuminance = gpu_live_source_luminance\(splatId\)[\s\S]*gpu_live_retention_pool_score\([\s\S]*sourceLuminance[\s\S]*sourceDepthNdc[\s\S]*liveCandidateSourceClassMask[\s\S]*poolSlot\.pool/,
+    "source-frontier build must pass projected depth, effective live source class identity, and selected pool into the retained-ref pool score",
   );
   assert.match(
     shaderSource,
@@ -567,6 +567,16 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
     shaderSource,
     /let compositorOrderSlot = gpu_live_compositor_order_slot\(sourceDepthNdc,\s*projectedSlot,\s*tileCapacity\)[\s\S]*let poolSlot = gpu_live_retention_pool_slot\(projectedSlot,\s*compositorOrderSlot,\s*tileId,\s*splatId,\s*candidateSourceClassMask,\s*tileCapacity\)[\s\S]*poolSlot\.slot/,
     "source-frontier retained refs must feed provisional back-to-front order through bounded retention pool slots",
+  );
+  assert.match(
+    shaderSource,
+    /fn gpu_live_candidate_source_class_mask\([\s\S]*candidateSourceClassMask:\s*u32[\s\S]*selectedPool:\s*u32[\s\S]*CANDIDATE_SOURCE_CLASS_SUPPORT_MASK[\s\S]*CANDIDATE_SOURCE_CLASS_RETENTION_MASK[\s\S]*CANDIDATE_SOURCE_CLASS_OCCLUSION_MASK[\s\S]*CANDIDATE_SOURCE_CLASS_COVERAGE_MASK/,
+    "source-frontier GPU retention must derive a live candidate-source class mask from the selected pool when the compact source table has no class mask",
+  );
+  assert.match(
+    shaderSource,
+    /let liveCandidateSourceClassMask = gpu_live_candidate_source_class_mask\(candidateSourceClassMask,\s*poolSlot\.pool\)[\s\S]*gpu_live_retention_pool_score\([\s\S]*liveCandidateSourceClassMask[\s\S]*poolSlot\.pool[\s\S]*gpu_live_try_commit_retained_ref\([\s\S]*liveCandidateSourceClassMask/,
+    "source-frontier score and alpha payload must carry the selected live candidate-source class mask instead of preserving zero-mask fallthrough",
   );
   assert.doesNotMatch(
     shaderSource,
