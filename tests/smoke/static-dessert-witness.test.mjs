@@ -381,6 +381,82 @@ test("static dessert witness classifier classifies source-frontier plate seepage
   assert.equal(result.observations.plateSeepage.boundary.includes("retention-election"), true);
 });
 
+test("static dessert witness classifier preserves effective source-frontier route identity", () => {
+  const anchors = [
+    { id: "visual-gap-1", kind: "plate-through-dessert", x: 640, y: 342, score: 71, plateDelta: 88, tileLocalDelta: 9 },
+  ];
+  const sourceFrontierRoute = {
+    ...visualGapTraceRoute(anchors),
+    effectiveWgslProjectedRefStream: "wgsl-projected-ref-stream-source-frontier",
+  };
+  const result = classifyStaticDessertWitness({
+    captures: [
+      witnessCapture("final-color", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        routeIdentity: {
+          ...sourceFrontierRoute,
+          traceAnchors: "",
+        },
+      }),
+      ...staticDessertRequiredCaptures().filter((capture) => capture.id !== "final-color"),
+      witnessCapture("visual-gap-trace", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        routeIdentity: sourceFrontierRoute,
+        visualGapAnchors: anchors,
+        perPixelFinalColorAccumulation: finalAccumulationRowsFor(anchors),
+        perPixelRetainedToOrderedSurvivalLedger: survivalLedgerFor(anchors, {
+          category: "narrower-role-source-blocker",
+          mechanism: "no-retained-foreground-role-support",
+          counts: { projectedForeground: 0, retainedForeground: 0, orderedForeground: 0 },
+        }),
+      }),
+    ],
+  });
+
+  assert.equal(result.closeable, true);
+  assert.equal(result.metrics.visualGapTrace.status, "present");
+  assert.equal(
+    result.metrics.plateSeepageClassification.sourceRoute,
+    "wgsl-projected-ref-stream-source-frontier",
+  );
+  assert.equal(result.metrics.plateSeepageClassification.category, "source-role-loss");
+  assert.equal(result.metrics.plateSeepageClassification.stage, "source-construction");
+});
+
+test("static dessert witness classifier refuses effective source route drift on visual gap traces", () => {
+  const anchors = [
+    { id: "visual-gap-1", kind: "plate-through-dessert", x: 640, y: 342, score: 71, plateDelta: 88, tileLocalDelta: 9 },
+  ];
+  const result = classifyStaticDessertWitness({
+    captures: [
+      witnessCapture("final-color", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        routeIdentity: {
+          ...visualGapTraceRoute([]),
+          effectiveWgslProjectedRefStream: "wgsl-projected-ref-stream-source-frontier",
+          traceAnchors: "",
+        },
+      }),
+      ...staticDessertRequiredCaptures().filter((capture) => capture.id !== "final-color"),
+      witnessCapture("visual-gap-trace", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        routeIdentity: {
+          ...visualGapTraceRoute(anchors),
+          effectiveWgslProjectedRefStream: "wgsl-projected-ref-stream-legacy-default",
+        },
+        visualGapAnchors: anchors,
+        perPixelFinalColorAccumulation: finalAccumulationRowsFor(anchors),
+        perPixelRetainedToOrderedSurvivalLedger: survivalLedgerFor(anchors),
+      }),
+    ],
+  });
+
+  assert.equal(result.closeable, false);
+  assert.equal(result.metrics.visualGapTrace.status, "malformed");
+  assert.match(result.metrics.visualGapTrace.routeStatus, /effectiveWgslProjectedRefStream/);
+  assert.equal(result.findings.some((finding) => finding.kind === "visual-gap-trace-malformed"), true);
+});
+
 test("static dessert witness classifier does not blame alpha transfer without projected foreground authority", () => {
   const anchors = [
     { id: "visual-gap-1", kind: "plate-through-dessert", x: 640, y: 342, score: 71, plateDelta: 88, tileLocalDelta: 9 },

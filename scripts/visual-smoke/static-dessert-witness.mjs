@@ -645,6 +645,7 @@ function visualGapTraceRouteStatus(capture, anchors, expectedRoute = {}) {
     ["tileSizePx", DEFAULT_STATIC_TILE_LOCAL_ROUTE.tileSizePx],
     ["maxRefsPerTile", DEFAULT_STATIC_TILE_LOCAL_ROUTE.maxRefsPerTile],
     ["wgslProjectedRefStream", expectedRoute.wgslProjectedRefStream],
+    ["effectiveWgslProjectedRefStream", expectedRoute.effectiveWgslProjectedRefStream],
   ];
   for (const [field, expected] of routeChecks) {
     const actual = routeValue(capture, routeIdentity, field);
@@ -736,10 +737,13 @@ function staticTileLocalRouteExpectation(finalColorCapture = {}) {
   const identity = finalColorCapture?.routeIdentity && typeof finalColorCapture.routeIdentity === "object"
     ? finalColorCapture.routeIdentity
     : {};
+  const requestedWgslProjectedRefStream = routeValue(finalColorCapture, identity, "wgslProjectedRefStream");
   return {
     assetPath: stringValue(identity.assetPath) || assetPath(finalColorCapture),
     witnessView: stringValue(identity.witnessView) || "default",
-    wgslProjectedRefStream: routeValue(finalColorCapture, identity, "wgslProjectedRefStream"),
+    wgslProjectedRefStream: requestedWgslProjectedRefStream,
+    requestedWgslProjectedRefStream,
+    effectiveWgslProjectedRefStream: routeValue(finalColorCapture, identity, "effectiveWgslProjectedRefStream"),
   };
 }
 
@@ -773,7 +777,9 @@ function anchorPixelMatches(anchor, anchorPixel) {
 
 function classifyPlateSeepageFromVisualGapTrace(visualGapTrace = {}, expectedRoute = {}) {
   const anchors = Array.isArray(visualGapTrace.anchors) ? visualGapTrace.anchors : [];
-  const sourceRoute = sourceRouteLabel(expectedRoute.wgslProjectedRefStream);
+  const sourceRoute = sourceRouteLabel(
+    expectedRoute.effectiveWgslProjectedRefStream || expectedRoute.wgslProjectedRefStream
+  );
   const base = {
     status: "blocked",
     category: "unclassified",
@@ -892,6 +898,9 @@ function classifyPlateSeepageCategories(categories) {
 
 function sourceRouteLabel(wgslProjectedRefStream) {
   const stream = stringValue(wgslProjectedRefStream);
+  if (stream.startsWith("wgsl-projected-ref-stream-")) {
+    return stream;
+  }
   if (stream === "source-frontier") {
     return "wgsl-projected-ref-stream-source-frontier";
   }
