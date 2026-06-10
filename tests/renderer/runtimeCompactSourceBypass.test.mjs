@@ -834,6 +834,16 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
     "source-frontier evidence must expose candidate-source identity as the next GPU frontier instead of laundering CPU candidate-source inputs",
   );
   assert.match(
+    mainSource,
+    /function sourceFrontierCandidateSourceIdentityEvidence\([\s\S]*fallbackIdentityPath:\s*"selected-pool-derived-class-mask"[\s\S]*sourceIndexTableClassMaskSource:\s*"blocked-missing-wgsl-candidate-source-inputs"[\s\S]*retirementBlocker:\s*"live-wgsl-production-candidate-source-identity"/,
+    "source-frontier identity evidence must make the selected-pool class-mask fallback explicit until a source-table class-mask producer exists",
+  );
+  assert.doesNotMatch(
+    frontierFactorySource,
+    /buildWgslSourceFrontierCandidateSources\(/,
+    "source-frontier fallback retirement must not reintroduce the CPU candidate-source packer onto the live route",
+  );
+  assert.match(
     retainedSourceEvidence,
     /const nextGpuOffloadStage = "live-wgsl-production-candidate-source-identity"[\s\S]*nextGpuOffloadStage,/,
     "source-frontier construction evidence must name candidate-source identity as the remaining GPU frontier",

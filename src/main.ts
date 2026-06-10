@@ -772,13 +772,13 @@ interface RetainedSourceConstructionEvidence {
 interface SourceFrontierCandidateSourceIdentityEvidence {
   readonly status:
     | "blocked-missing-wgsl-candidate-source-inputs"
-    | "present-not-consumed"
     | "class-mask-consumed-record-groups-not-yet-consumed"
     | "record-group-election-sidecar-consumed"
     | "production-election-contract-consumed";
   readonly source: "wgsl-source-frontier-candidate-source-identity-contract";
   readonly availableIdentity:
     | "selected-slot-pool-only"
+    | "source-index-table-class-mask"
     | "class-tagged-wgsl-candidate-source-inputs"
     | "record-group-production-election-contract";
   readonly consumptionPath?:
@@ -788,6 +788,11 @@ interface SourceFrontierCandidateSourceIdentityEvidence {
   readonly requiredWgslInputs: readonly string[];
   readonly presentWgslInputs?: readonly string[];
   readonly sourceInputConsumption?: readonly string[];
+  readonly fallbackIdentityPath?: "selected-pool-derived-class-mask";
+  readonly sourceIndexTableClassMaskSource?:
+    | "source-index-table-class-mask"
+    | "blocked-missing-wgsl-candidate-source-inputs";
+  readonly retirementBlocker?: "live-wgsl-production-candidate-source-identity";
   readonly recordCount?: number;
   readonly groupCount?: number;
   readonly retainedRecordCount?: number;
@@ -3640,6 +3645,7 @@ function sourceFrontierCandidateSourceRuntimeBufferEvidence(
 function sourceFrontierCandidateSourceIdentityEvidence(
   candidateSourceInputs?: GpuProjectionRetentionCandidateSourceInputs,
   productionElection?: GpuProjectionRetentionCandidateSourceProductionElection,
+  candidateSourceClassMasks?: Uint32Array | null,
 ): SourceFrontierCandidateSourceIdentityEvidence {
   if (candidateSourceInputs && productionElection && candidateSourceInputs.recordCount > 0) {
     return {
@@ -3662,6 +3668,19 @@ function sourceFrontierCandidateSourceIdentityEvidence(
       crossPoolDuplicateSuppressedCount: productionElection.crossPoolDuplicateSuppressedCount,
       classesPresent: candidateSourceInputs.classesPresent,
       falseClosureGuard: "packed-production-election-contract-is-not-live-wgsl-compositor-consumption",
+    };
+  }
+  if (candidateSourceClassMasks?.some((mask) => mask !== 0)) {
+    return {
+      status: "class-mask-consumed-record-groups-not-yet-consumed",
+      source: "wgsl-source-frontier-candidate-source-identity-contract",
+      availableIdentity: "source-index-table-class-mask",
+      consumptionPath: "source-index-table-class-mask",
+      requiredWgslInputs: ["candidate-source-record-group-election-sidecar"],
+      presentWgslInputs: ["source-index-table-class-masks"],
+      sourceIndexTableClassMaskSource: "source-index-table-class-mask",
+      recordCount: candidateSourceClassMasks.length,
+      falseClosureGuard: "source-index-class-masks-do-not-consume-full-candidate-record-groups",
     };
   }
   if (candidateSourceInputs && candidateSourceInputs.recordCount > 0) {
@@ -3687,6 +3706,9 @@ function sourceFrontierCandidateSourceIdentityEvidence(
     status: "blocked-missing-wgsl-candidate-source-inputs",
     source: "wgsl-source-frontier-candidate-source-identity-contract",
     availableIdentity: "selected-slot-pool-only",
+    fallbackIdentityPath: "selected-pool-derived-class-mask",
+    sourceIndexTableClassMaskSource: "blocked-missing-wgsl-candidate-source-inputs",
+    retirementBlocker: "live-wgsl-production-candidate-source-identity",
     requiredWgslInputs: [
       "retention-candidate-records",
       "occlusion-candidate-records",
