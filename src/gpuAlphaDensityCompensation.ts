@@ -4,7 +4,7 @@ import { createStorageBuffer } from "./buffers.js";
 export const GPU_ALPHA_DENSITY_COMPENSATION_TILE_SIZE_PX = 48;
 export const GPU_ALPHA_DENSITY_COMPENSATION_FIXED_POINT_SCALE = 1024;
 export const GPU_ALPHA_DENSITY_COMPENSATION_ALPHA_MASS_CAP =
-  GPU_ALPHA_DENSITY_COMPENSATION_TILE_SIZE_PX * GPU_ALPHA_DENSITY_COMPENSATION_TILE_SIZE_PX * 0.75;
+  gpuAlphaDensityCompensationAlphaMassCapForTileSize(GPU_ALPHA_DENSITY_COMPENSATION_TILE_SIZE_PX);
 export const GPU_ALPHA_DENSITY_COMPENSATION_FRAME_UNIFORM_BYTES = 96;
 export const GPU_ALPHA_DENSITY_COMPENSATION_STAGE_ORDER = [
   "clear-tile-mass",
@@ -38,6 +38,8 @@ export interface GpuAlphaDensityCompensationRuntimeEvidence {
   readonly tileMassEncoding: "fixed-point-u32-atomic";
   readonly coverageModel: "center-tile-substrate-first-pass";
   readonly stages: readonly GpuAlphaDensityCompensationStage[];
+  readonly tileSizePx: number;
+  readonly alphaMassCap: number;
   readonly runtimeIntegrated: true;
   readonly cpuReferencePreserved: true;
   readonly falseClosureGuard: "gpu-alpha-density-runtime-preserves-cpu-reference-witness";
@@ -101,7 +103,11 @@ export function createGpuAlphaDensityCompensationSubstrateEvidence(): GpuAlphaDe
   };
 }
 
-export function createGpuAlphaDensityCompensationRuntimeEvidence(): GpuAlphaDensityCompensationRuntimeEvidence {
+export function createGpuAlphaDensityCompensationRuntimeEvidence(input: {
+  readonly tileSizePx: number;
+  readonly alphaMassCap: number;
+}): GpuAlphaDensityCompensationRuntimeEvidence {
+  const { tileSizePx, alphaMassCap } = input;
   return {
     requestedBackend: "gpu-alpha-density-compensation",
     effectiveBackend: "gpu-alpha-density-compensation-runtime",
@@ -112,6 +118,8 @@ export function createGpuAlphaDensityCompensationRuntimeEvidence(): GpuAlphaDens
     tileMassEncoding: "fixed-point-u32-atomic",
     coverageModel: "center-tile-substrate-first-pass",
     stages: GPU_ALPHA_DENSITY_COMPENSATION_STAGE_ORDER,
+    tileSizePx,
+    alphaMassCap,
     runtimeIntegrated: true,
     cpuReferencePreserved: true,
     falseClosureGuard: "gpu-alpha-density-runtime-preserves-cpu-reference-witness",
@@ -129,6 +137,7 @@ export function createGpuAlphaDensityCompensationRuntime(
     input.tileSizePx,
     GPU_ALPHA_DENSITY_COMPENSATION_TILE_SIZE_PX,
   );
+  const alphaMassCap = gpuAlphaDensityCompensationAlphaMassCapForTileSize(tileSizePx);
   const rawOpacityBytes = new ArrayBuffer(input.rawOpacities.byteLength);
   new Float32Array(rawOpacityBytes).set(input.rawOpacities);
   const rawOpacityBuffer = createStorageBuffer(
@@ -214,8 +223,11 @@ export function createGpuAlphaDensityCompensationRuntime(
     tileCount,
     tileSizePx,
     fixedPointScale: GPU_ALPHA_DENSITY_COMPENSATION_FIXED_POINT_SCALE,
-    alphaMassCap: GPU_ALPHA_DENSITY_COMPENSATION_ALPHA_MASS_CAP,
-    evidence: createGpuAlphaDensityCompensationRuntimeEvidence(),
+    alphaMassCap,
+    evidence: createGpuAlphaDensityCompensationRuntimeEvidence({
+      tileSizePx,
+      alphaMassCap,
+    }),
     destroy(): void {
       frameUniformBuffer.destroy();
       rawOpacityBuffer.destroy();
@@ -252,6 +264,14 @@ export function gpuAlphaDensityCompensationShaderContract(): {
       /fn\s+scatter_alpha_density_tile_mass/.test(GPU_ALPHA_DENSITY_COMPENSATION_SHADER_SOURCE) &&
       /fn\s+write_compensated_opacity/.test(GPU_ALPHA_DENSITY_COMPENSATION_SHADER_SOURCE),
   };
+}
+
+export function gpuAlphaDensityCompensationAlphaMassCapForTileSize(tileSizePx: number): number {
+  const effectiveTileSizePx = finitePositiveOrDefault(
+    tileSizePx,
+    GPU_ALPHA_DENSITY_COMPENSATION_TILE_SIZE_PX,
+  );
+  return effectiveTileSizePx * effectiveTileSizePx * 0.75;
 }
 
 function writeGpuAlphaDensityCompensationFrameUniforms(

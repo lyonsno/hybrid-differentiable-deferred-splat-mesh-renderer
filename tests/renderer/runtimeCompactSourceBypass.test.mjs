@@ -1179,7 +1179,10 @@ test("source-frontier alpha-density evidence separates CPU reference from live G
   const statsOverlaySource = mainSource.slice(statsOverlayStart, statsOverlayEnd);
 
   assert.match(mainSource, /interface AlphaDensityRouteEvidence/);
-  assert.match(frontierFactorySource, /alphaDensityRoute:\s*createSourceFrontierAlphaDensityRouteEvidence\(\)/);
+  assert.match(
+    frontierFactorySource,
+    /alphaDensityRoute:\s*createSourceFrontierAlphaDensityRouteEvidence\(\{\s*tileSizePx:\s*plan\.tileSizePx\s*\}\)/,
+  );
   assert.match(evidenceSource, /effectiveBackend:\s*"gpu-alpha-density-compensation-runtime"/);
   assert.match(evidenceSource, /compensatedOpacitySource:\s*"gpu-compensated-opacity-buffer"/);
   assert.match(evidenceSource, /cpuReferenceCompensationSource:\s*"cpu-reference-opacity-buffer"/);
@@ -1281,6 +1284,61 @@ test("source-frontier routes live compositor opacity through GPU alpha-density c
     evidenceSource,
     /cpuReferenceCompensationSource:\s*"cpu-reference-opacity-buffer"/,
     "source-frontier route evidence must preserve the CPU/reference compensation source as an explicit witness",
+  );
+});
+
+test("GPU alpha-density runtime derives alpha mass cap from effective tile size", () => {
+  const gpuAlphaDensitySource = readFileSync(
+    new URL("../../src/gpuAlphaDensityCompensation.ts", import.meta.url),
+    "utf8",
+  );
+  const runtimeEvidenceInterface = extractInterfaceSource(
+    gpuAlphaDensitySource,
+    "GpuAlphaDensityCompensationRuntimeEvidence",
+  );
+  const runtimeFactorySource = extractFunctionSource(
+    gpuAlphaDensitySource,
+    "createGpuAlphaDensityCompensationRuntime",
+  );
+  const runtimeEvidenceFactorySource = extractFunctionSource(
+    gpuAlphaDensitySource,
+    "createGpuAlphaDensityCompensationRuntimeEvidence",
+  );
+
+  assert.match(
+    gpuAlphaDensitySource,
+    /export function gpuAlphaDensityCompensationAlphaMassCapForTileSize\(/,
+    "alpha-density cap must have one named helper instead of open-coded default-tile math",
+  );
+  assert.match(
+    runtimeFactorySource,
+    /const\s+alphaMassCap\s*=\s*gpuAlphaDensityCompensationAlphaMassCapForTileSize\(tileSizePx\)/,
+    "runtime alpha mass cap must derive from the effective runtime tileSizePx",
+  );
+  assert.doesNotMatch(
+    runtimeFactorySource,
+    /alphaMassCap:\s*GPU_ALPHA_DENSITY_COMPENSATION_ALPHA_MASS_CAP/,
+    "runtime must not reuse the 48px default cap when smoke asks for 16px tiles",
+  );
+  assert.match(
+    runtimeEvidenceInterface,
+    /readonly\s+tileSizePx:\s*number/,
+    "runtime evidence must expose the effective tile size so smoke can catch default substitution",
+  );
+  assert.match(
+    runtimeEvidenceInterface,
+    /readonly\s+alphaMassCap:\s*number/,
+    "runtime evidence must expose the effective alpha mass cap so smoke can catch default substitution",
+  );
+  assert.match(
+    runtimeEvidenceFactorySource,
+    /tileSizePx,/,
+    "runtime evidence factory must carry effective tile size into route evidence",
+  );
+  assert.match(
+    runtimeEvidenceFactorySource,
+    /alphaMassCap,/,
+    "runtime evidence factory must carry effective alpha mass cap into route evidence",
   );
 });
 
@@ -1455,7 +1513,7 @@ test("live production-election materializer consumes projected contributor paylo
 });
 
 function extractFunctionSource(source, name) {
-  const start = source.indexOf(`function ${name}`);
+  const start = source.indexOf(`function ${name}(`);
   assert.ok(start >= 0, `${name} should exist`);
   const parameterStart = source.indexOf("(", start);
   assert.ok(parameterStart > start, `${name} should have parameters`);
@@ -1489,6 +1547,14 @@ function extractFunctionSource(source, name) {
     }
   }
   assert.fail(`${name} function body was not closed`);
+}
+
+function extractInterfaceSource(source, name) {
+  const start = source.indexOf(`interface ${name}`);
+  assert.ok(start >= 0, `${name} should exist`);
+  const end = source.indexOf("\n}\n", start);
+  assert.ok(end > start, `${name} source should be bounded`);
+  return source.slice(start, end + 3);
 }
 
 function extractSourceBetween(source, startMarker, endMarker) {

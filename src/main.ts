@@ -21,6 +21,7 @@ import {
   createGpuAlphaDensityCompensationRuntimeEvidence,
   createGpuAlphaDensityCompensationSubstrateEvidence,
   dispatchGpuAlphaDensityCompensation,
+  gpuAlphaDensityCompensationAlphaMassCapForTileSize,
   type GpuAlphaDensityCompensationRuntime,
   type GpuAlphaDensityCompensationRuntimeEvidence,
   type GpuAlphaDensityCompensationSubstrateEvidence,
@@ -362,7 +363,8 @@ function createGpuArenaAlphaDensityRouteEvidence(): AlphaDensityRouteEvidence {
   };
 }
 
-function createSourceFrontierAlphaDensityRouteEvidence(): AlphaDensityRouteEvidence {
+function createSourceFrontierAlphaDensityRouteEvidence(input: { readonly tileSizePx: number }): AlphaDensityRouteEvidence {
+  const alphaMassCap = gpuAlphaDensityCompensationAlphaMassCapForTileSize(input.tileSizePx);
   return {
     requestedBackend: "alpha-density-gpu-accounting-carrier",
     effectiveBackend: "gpu-alpha-density-compensation-runtime",
@@ -373,7 +375,10 @@ function createSourceFrontierAlphaDensityRouteEvidence(): AlphaDensityRouteEvide
     falseClosureGuard: "gpu-alpha-density-runtime-preserves-cpu-reference-witness",
     nextGpuOffloadStage: "coverage-aware-gpu-alpha-density-compensation",
     gpuCompensationSubstrate: createGpuAlphaDensityCompensationSubstrateEvidence(),
-    gpuCompensationRuntime: createGpuAlphaDensityCompensationRuntimeEvidence(),
+    gpuCompensationRuntime: createGpuAlphaDensityCompensationRuntimeEvidence({
+      tileSizePx: input.tileSizePx,
+      alphaMassCap,
+    }),
   };
 }
 
@@ -2440,7 +2445,7 @@ function createWgslProjectedSourceFrontierTileLocalSceneState(
     wgslProjectedRefStream: null,
     wgslProjectedRefStreamEvidence,
     gpuAlphaDensityCompensation,
-    alphaDensityRoute: createSourceFrontierAlphaDensityRouteEvidence(),
+    alphaDensityRoute: createSourceFrontierAlphaDensityRouteEvidence({ tileSizePx: plan.tileSizePx }),
     tileRefSplatIds,
     prepassSignature,
     debugMode: TILE_LOCAL_DEBUG_MODE,
