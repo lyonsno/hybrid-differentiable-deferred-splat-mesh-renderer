@@ -21,7 +21,7 @@ const DEFAULT_DEFERRED_FIELDS = Object.freeze({
   missingReason: "production deferred G-buffer voting is outside the trace packet scope",
 });
 const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_MASK = 1 | 8;
-const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE = 2;
+const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE = 8;
 const SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE = 0.5;
 
 export function buildFinalColorAccumulationTraceRecord({

@@ -94,6 +94,41 @@ test("source-frontier foreground support preserves tile coverage as optical dept
   );
 });
 
+test("source-frontier weak-anchor foreground slate seals through support-class optical depth", () => {
+  const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
+  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const traceSource = readFileSync(
+    new URL("../../src/rendererFidelityProbes/finalAccumulationTrace.js", import.meta.url),
+    "utf8",
+  );
+  const supportScale = numericConst(shader, "SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE");
+  const weakAnchorSupportRows = [
+    { opacity: 0.372549, pixelCoverageWeight: 0.009460411758, tileCoverageWeight: 0.539417, sourceFrontierSupportPixelWeight: 0.311872807467 },
+    { opacity: 0.464706, pixelCoverageWeight: 0.000392458726, tileCoverageWeight: 0.898066, sourceFrontierSupportPixelWeight: 0.140750030408 },
+    { opacity: 0.229412, pixelCoverageWeight: 0.001673966555, tileCoverageWeight: 0.471458, sourceFrontierSupportPixelWeight: 0.20227243107 },
+    { opacity: 0.098039, pixelCoverageWeight: 0.00000497852, tileCoverageWeight: 0.59525, sourceFrontierSupportPixelWeight: 0.04723621197 },
+    { opacity: 0.196078, pixelCoverageWeight: 1.1e-11, tileCoverageWeight: 0.902387, sourceFrontierSupportPixelWeight: 0.001808808842 },
+    { opacity: 0.462745, pixelCoverageWeight: 0, tileCoverageWeight: 0.621911, sourceFrontierSupportPixelWeight: 0.000783001392 },
+    { opacity: 0.105882, pixelCoverageWeight: 0, tileCoverageWeight: 0.608511, sourceFrontierSupportPixelWeight: 0.000502424184 },
+    { opacity: 0.464706, pixelCoverageWeight: 0, tileCoverageWeight: 0.28513, sourceFrontierSupportPixelWeight: 0.000679743557 },
+    { opacity: 0.205882, pixelCoverageWeight: 0, tileCoverageWeight: 0.918075, sourceFrontierSupportPixelWeight: 0.000151997943 },
+    { opacity: 0.317647, pixelCoverageWeight: 0, tileCoverageWeight: 0.33147, sourceFrontierSupportPixelWeight: 0.000325750114 },
+    { opacity: 0.15098, pixelCoverageWeight: 0, tileCoverageWeight: 0.954736, sourceFrontierSupportPixelWeight: 0.000073932281 },
+    { opacity: 0.317647, pixelCoverageWeight: 0, tileCoverageWeight: 0.97402, sourceFrontierSupportPixelWeight: 0.000012117079 },
+    { opacity: 0.188235, pixelCoverageWeight: 0, tileCoverageWeight: 0.907382, sourceFrontierSupportPixelWeight: 0.000011170306 },
+  ];
+  const repairedAlpha = composeSourceFrontierSupportSlateAlpha(weakAnchorSupportRows, supportScale);
+  const oldAlpha = composeSourceFrontierSupportSlateAlpha(weakAnchorSupportRows, 2);
+
+  assert.ok(oldAlpha < 0.35, `expected the old 2x support scale to leak the weak anchor, saw ${oldAlpha}`);
+  assert.ok(
+    repairedAlpha > 0.75,
+    `expected source-frontier foreground support to seal the weak anchor slate, saw ${repairedAlpha}`,
+  );
+  assert.equal(numericConst(mainSource, "SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE"), supportScale);
+  assert.equal(numericConst(traceSource, "SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE"), supportScale);
+});
+
 test("source-frontier foreground support is spatially attenuated instead of tile-wide", () => {
   const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
@@ -102,7 +137,7 @@ test("source-frontier foreground support is spatially attenuated instead of tile
     "utf8",
   );
   const tileCoverageWeight = 8;
-  const supportScale = 2;
+  const supportScale = numericConst(shader, "SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE");
   const mahalanobis2 = 4;
   const legacyPixelWeight = Math.exp(-2 * mahalanobis2);
   const spatialSupportPixelWeight = Math.exp(-0.5 * mahalanobis2);
@@ -148,6 +183,24 @@ test("source-frontier foreground support is spatially attenuated instead of tile
     "final accumulation trace should report the spatial support envelope used by source-frontier alpha transfer",
   );
 });
+
+function composeSourceFrontierSupportSlateAlpha(rows, supportScale) {
+  let transmission = 1;
+  for (const row of rows) {
+    const alphaTransferWeight = Math.max(
+      row.pixelCoverageWeight,
+      row.tileCoverageWeight * supportScale * row.sourceFrontierSupportPixelWeight,
+    );
+    transmission *= 1 - alphaFromCoverageOpacity(row.opacity, alphaTransferWeight);
+  }
+  return 1 - transmission;
+}
+
+function numericConst(source, name) {
+  const match = source.match(new RegExp(`const ${name} = ([0-9.]+)`));
+  assert.ok(match, `expected source to define ${name}`);
+  return Number(match[1]);
+}
 
 test("source-frontier readback decodes foreground class masks from retained alpha payload", () => {
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");

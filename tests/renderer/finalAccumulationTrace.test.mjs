@@ -278,14 +278,17 @@ test("source-frontier foreground support crosses the final alpha bulkhead with s
     tileSizePx: 16,
     tileColumns: 216,
   });
+  const tileWideRemainingTransmittance = tileWideSupportRemainingTransmittance(
+    sourceFrontier.finalColorAccumulation.steps,
+  );
 
   assert.ok(
     sourceFrontier.finalColorAccumulation.steps[0].sourceFrontierSupportPixelWeight > 0.1,
     `expected broad support envelope above the legacy off-center conic, saw ${sourceFrontier.finalColorAccumulation.steps[0].sourceFrontierSupportPixelWeight}`,
   );
   assert.ok(
-    sourceFrontier.finalColorAccumulation.remainingTransmittance > 0.6,
-    `expected spatial support to avoid the old tile-wide seal, saw ${sourceFrontier.finalColorAccumulation.remainingTransmittance}`,
+    sourceFrontier.finalColorAccumulation.remainingTransmittance > tileWideRemainingTransmittance * 100,
+    `expected spatial support to avoid a tile-wide seal: spatial T ${sourceFrontier.finalColorAccumulation.remainingTransmittance}, tile-wide T ${tileWideRemainingTransmittance}`,
   );
   assert.ok(
     legacyConicOnly.finalColorAccumulation.remainingTransmittance > 0.96,
@@ -298,6 +301,15 @@ test("source-frontier foreground support crosses the final alpha bulkhead with s
   assert.equal(sourceFrontier.finalColorAccumulation.steps[0].sourceFrontierAlphaSupport, "foreground-spatial-support");
   assert.equal(legacyConicOnly.finalColorAccumulation.steps[0].sourceFrontierAlphaSupport, "none");
 });
+
+function tileWideSupportRemainingTransmittance(steps) {
+  return steps.reduce((remainingTransmittance, step) => {
+    const supportPixelWeight = Math.max(step.sourceFrontierSupportPixelWeight, EPSILON);
+    const tileWideTransferWeight = step.alphaTransferWeight / supportPixelWeight;
+    const tileWideCoverageAlpha = 1 - Math.pow(1 - step.opacity, tileWideTransferWeight);
+    return remainingTransmittance * (1 - tileWideCoverageAlpha);
+  }, 1);
+}
 
 function accumulationContributor(overrides = {}) {
   const anchor = overrides.anchor ?? BLACK_BAND_FINAL_ACCUMULATION_ANCHOR;
