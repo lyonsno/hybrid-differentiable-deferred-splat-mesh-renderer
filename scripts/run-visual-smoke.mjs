@@ -1908,6 +1908,8 @@ ${result.captures
 ### Visible holes
 
 - Status: ${observations.visibleHoles.status}
+- Category: ${observations.visibleHoles.category}
+- Stage: ${observations.visibleHoles.stage}
 - Evidence IDs: ${observations.visibleHoles.evidenceIds.join(", ")}
 - Boundary: ${observations.visibleHoles.boundary}
 

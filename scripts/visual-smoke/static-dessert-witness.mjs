@@ -246,6 +246,54 @@ export function classifyStaticDessertWitness({ captures = [] } = {}) {
     );
   }
 
+  const metrics = {
+    fixedView: {
+      assetPath: assets[0] ?? "",
+      viewport: viewports[0] ?? "",
+      tileGrid: tileGrids[0] ?? "",
+    },
+    tileRefs: {
+      total: finiteNumber(refDiagnostics?.tileRefs?.total) ?? 0,
+      maxPerTile: finiteNumber(refDiagnostics?.tileRefs?.maxPerTile) ?? 0,
+      nonEmptyTiles: finiteNumber(refDiagnostics?.tileRefs?.nonEmptyTiles) ?? 0,
+    },
+    tileRefCustody: normalizeTileRefCustody(refDiagnostics?.tileRefCustody, refDiagnostics?.tileRefs),
+    retentionAudit: normalizeRetentionAudit(refDiagnostics?.retentionAudit),
+    alpha: {
+      estimatedMaxAccumulatedAlpha: finiteNumber(alphaDiagnostics?.alpha?.estimatedMaxAccumulatedAlpha) ?? 0,
+      estimatedMinTransmittance: finiteNumber(transmittanceDiagnostics?.alpha?.estimatedMinTransmittance) ?? 0,
+    },
+    rendererBridge: {
+      plateRendererLabel: rendererLabel(plateFinalColor),
+      tileLocalRendererLabel: rendererLabel(finalColor),
+      sameAsset: assetPath(plateFinalColor) !== "" && assetPath(plateFinalColor) === assetPath(finalColor),
+      sameViewport: viewportKey(plateFinalColor) !== "" && viewportKey(plateFinalColor) === viewportKey(finalColor),
+      plateChangedPixelRatio,
+      tileLocalChangedPixelRatio,
+      tileLocalToPlateChangedPixelRatio,
+      maxTileLocalToPlateChangedPixelRatio: MAX_TILE_LOCAL_TO_PLATE_CHANGED_PIXEL_RATIO,
+    },
+    sourceSupport: {
+      rimBand: normalizeRimBandSourceSupport(
+        plateFinalColor?.pageEvidence?.witness?.projection?.cropSupport?.rimBand ??
+          finalColor?.pageEvidence?.witness?.projection?.cropSupport?.rimBand
+      ),
+      porousBody: normalizeRimBandSourceSupport(
+        plateFinalColor?.pageEvidence?.witness?.projection?.cropSupport?.porousBody ??
+          finalColor?.pageEvidence?.witness?.projection?.cropSupport?.porousBody
+      ),
+    },
+    conicShape: {
+      maxMajorRadiusPx: finiteNumber(conicDiagnostics?.conicShape?.maxMajorRadiusPx) ?? 0,
+      minMinorRadiusPx: finiteNumber(conicDiagnostics?.conicShape?.minMinorRadiusPx) ?? 0,
+      maxAnisotropy:
+        finiteNumber(conicDiagnostics?.conicShape?.maxAnisotropyRatio) ??
+        finiteNumber(conicDiagnostics?.conicShape?.maxAnisotropy) ??
+        0,
+    },
+    visualGapTrace,
+    plateSeepageClassification,
+  };
   const closeable = findings.length === 0;
   return {
     closeable,
@@ -255,55 +303,8 @@ export function classifyStaticDessertWitness({ captures = [] } = {}) {
         ? "PASS: static dessert final color and debug witnesses share one asset, viewport, and tile grid."
         : `FAIL: ${findings[0]?.summary ?? "static dessert witness criteria were not satisfied"}`,
     },
-    metrics: {
-      fixedView: {
-        assetPath: assets[0] ?? "",
-        viewport: viewports[0] ?? "",
-        tileGrid: tileGrids[0] ?? "",
-      },
-      tileRefs: {
-        total: finiteNumber(refDiagnostics?.tileRefs?.total) ?? 0,
-        maxPerTile: finiteNumber(refDiagnostics?.tileRefs?.maxPerTile) ?? 0,
-        nonEmptyTiles: finiteNumber(refDiagnostics?.tileRefs?.nonEmptyTiles) ?? 0,
-      },
-      tileRefCustody: normalizeTileRefCustody(refDiagnostics?.tileRefCustody, refDiagnostics?.tileRefs),
-      retentionAudit: normalizeRetentionAudit(refDiagnostics?.retentionAudit),
-      alpha: {
-        estimatedMaxAccumulatedAlpha: finiteNumber(alphaDiagnostics?.alpha?.estimatedMaxAccumulatedAlpha) ?? 0,
-        estimatedMinTransmittance: finiteNumber(transmittanceDiagnostics?.alpha?.estimatedMinTransmittance) ?? 0,
-      },
-      rendererBridge: {
-        plateRendererLabel: rendererLabel(plateFinalColor),
-        tileLocalRendererLabel: rendererLabel(finalColor),
-        sameAsset: assetPath(plateFinalColor) !== "" && assetPath(plateFinalColor) === assetPath(finalColor),
-        sameViewport: viewportKey(plateFinalColor) !== "" && viewportKey(plateFinalColor) === viewportKey(finalColor),
-        plateChangedPixelRatio,
-        tileLocalChangedPixelRatio,
-        tileLocalToPlateChangedPixelRatio,
-        maxTileLocalToPlateChangedPixelRatio: MAX_TILE_LOCAL_TO_PLATE_CHANGED_PIXEL_RATIO,
-      },
-      sourceSupport: {
-        rimBand: normalizeRimBandSourceSupport(
-          plateFinalColor?.pageEvidence?.witness?.projection?.cropSupport?.rimBand ??
-            finalColor?.pageEvidence?.witness?.projection?.cropSupport?.rimBand
-        ),
-        porousBody: normalizeRimBandSourceSupport(
-          plateFinalColor?.pageEvidence?.witness?.projection?.cropSupport?.porousBody ??
-            finalColor?.pageEvidence?.witness?.projection?.cropSupport?.porousBody
-        ),
-      },
-      conicShape: {
-        maxMajorRadiusPx: finiteNumber(conicDiagnostics?.conicShape?.maxMajorRadiusPx) ?? 0,
-        minMinorRadiusPx: finiteNumber(conicDiagnostics?.conicShape?.minMinorRadiusPx) ?? 0,
-        maxAnisotropy:
-          finiteNumber(conicDiagnostics?.conicShape?.maxAnisotropyRatio) ??
-          finiteNumber(conicDiagnostics?.conicShape?.maxAnisotropy) ??
-          0,
-      },
-      visualGapTrace,
-      plateSeepageClassification,
-    },
-    observations: staticDessertObservations(plateSeepageClassification),
+    metrics,
+    observations: staticDessertObservations(plateSeepageClassification, metrics),
     findings,
   };
 }
@@ -919,22 +920,25 @@ function countBy(values) {
   return counts;
 }
 
-function staticDessertObservations(plateSeepageClassification = {}) {
+function staticDessertObservations(plateSeepageClassification = {}, metrics = {}) {
   const plateSeepageStatus = plateSeepageClassification.status === "classified"
     ? "classified-for-review"
     : "captured-for-review";
   const plateSeepageBoundary = plateSeepageClassification.status === "classified"
     ? `Plate/background seepage is classified at ${plateSeepageClassification.stage} (${plateSeepageClassification.category}) for ${plateSeepageClassification.sourceRoute}.`
     : "Plate/background seepage is witnessed through final color plus alpha/transmittance debug modes, not by opacity tuning.";
+  const visibleHoleClassification = classifyVisibleHoleObservation(plateSeepageClassification, metrics);
   return {
     visibleHoles: {
-      status: "captured-for-review",
+      status: visibleHoleClassification.status,
+      category: visibleHoleClassification.category,
+      stage: visibleHoleClassification.stage,
       evidenceIds: [
         STATIC_DESSERT_WITNESS_CAPTURE_IDS.finalColor,
         STATIC_DESSERT_WITNESS_CAPTURE_IDS.coverageWeight,
         STATIC_DESSERT_WITNESS_CAPTURE_IDS.conicShape,
       ],
-      boundary: "Porous/non-square final-color gaps are witnessed separately from tile-ref density and alpha transfer.",
+      boundary: visibleHoleClassification.boundary,
     },
     plateSeepage: {
       status: plateSeepageStatus,
@@ -953,6 +957,35 @@ function staticDessertObservations(plateSeepageClassification = {}) {
       repro: "Run the same smoke URL at a high viewport such as 3456x1916 and capture overlay text containing `tile-local skipped: projected tile refs exceed budget`.",
     },
   };
+}
+
+function classifyVisibleHoleObservation(plateSeepageClassification = {}, metrics = {}) {
+  const conicAnisotropy = finiteNumber(metrics.conicShape?.maxAnisotropy) ?? 0;
+  const tileLocalToPlateRatio = finiteNumber(metrics.rendererBridge?.tileLocalToPlateChangedPixelRatio) ?? 0;
+  const plateSeepageSealed =
+    plateSeepageClassification.status === "classified" &&
+    plateSeepageClassification.category === "no-seepage";
+  if (plateSeepageSealed && conicAnisotropy >= 8 && tileLocalToPlateRatio > 1) {
+    return {
+      status: "classified-for-review",
+      category: "conic-coverage-pressure",
+      stage: "conic-coverage-support",
+      boundary:
+        `Porous/non-square final-color gaps remain after plate seepage sealed; conic anisotropy ${formatObservationMetric(conicAnisotropy)} and tile-local/plate changed-pixel ratio ${formatObservationMetric(tileLocalToPlateRatio)} route the next repair to conic/coverage support, not alpha transfer.`,
+    };
+  }
+  return {
+    status: "captured-for-review",
+    category: "unclassified",
+    stage: "visual-evidence",
+    boundary: "Porous/non-square final-color gaps are witnessed separately from tile-ref density and alpha transfer.",
+  };
+}
+
+function formatObservationMetric(value) {
+  const number = finiteNumber(value);
+  if (number === undefined) return "unknown";
+  return Number.isInteger(number) ? String(number) : number.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
 }
 
 function diagnostics(capture = {}) {

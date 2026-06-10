@@ -845,6 +845,76 @@ test("static dessert witness classifier flags tile-local final-color footprint e
   );
 });
 
+test("static dessert witness classifier classifies residual holes after plate seepage is sealed", () => {
+  const anchors = [
+    { id: "visual-gap-1", kind: "plate-covered-tile-local-missing", x: 640, y: 342, score: 71, plateDelta: 88, tileLocalDelta: 9 },
+  ];
+  const result = classifyStaticDessertWitness({
+    captures: [
+      witnessCapture("final-color", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        changedPixelRatio: 0.0556642795138889,
+        routeIdentity: {
+          ...visualGapTraceRoute([]),
+          traceAnchors: "",
+          wgslProjectedRefStream: "source-frontier",
+        },
+      }),
+      witnessCapture("plate-final-color", {
+        rendererLabel: "plate",
+        changedPixelRatio: 0.03407335069444444,
+      }),
+      witnessCapture("coverage-weight"),
+      witnessCapture("accumulated-alpha", {
+        diagnostics: {
+          alpha: { estimatedMaxAccumulatedAlpha: 1, estimatedMinTransmittance: 0 },
+        },
+      }),
+      witnessCapture("transmittance", {
+        diagnostics: {
+          alpha: { estimatedMaxAccumulatedAlpha: 1, estimatedMinTransmittance: 0 },
+        },
+      }),
+      witnessCapture("tile-ref-count"),
+      witnessCapture("conic-shape", {
+        diagnostics: {
+          conicShape: { maxMajorRadiusPx: 57.2, minMinorRadiusPx: 1.5, maxAnisotropy: 21.8 },
+        },
+      }),
+      witnessCapture("visual-gap-trace", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        routeIdentity: {
+          ...visualGapTraceRoute(anchors),
+          wgslProjectedRefStream: "source-frontier",
+        },
+        visualGapAnchors: anchors,
+        perPixelFinalColorAccumulation: [
+          {
+            status: "present",
+            anchorPixel: { id: "visual-gap-1", x: 640, y: 342 },
+            finalColorAccumulation: { steps: [{ splatIndex: 1 }], outputColor: [0.1, 0.2, 0.3, 0.98], remainingTransmittance: 0.02 },
+          },
+        ],
+        perPixelRetainedToOrderedSurvivalLedger: survivalLedgerFor(anchors, {
+          category: "ordered-present",
+          mechanism: "retained-foreground-identity-survives-to-final-accumulation",
+          counts: { projectedForeground: 4, retainedForeground: 4, orderedForeground: 4 },
+          metrics: { projectedForegroundOcclusionWeight: 1.25, finalForegroundAlpha: 0.98 },
+        }),
+      }),
+    ],
+  });
+
+  assert.equal(result.closeable, true);
+  assert.equal(result.metrics.plateSeepageClassification.category, "no-seepage");
+  assert.equal(result.observations.visibleHoles.status, "classified-for-review");
+  assert.equal(result.observations.visibleHoles.category, "conic-coverage-pressure");
+  assert.equal(result.observations.visibleHoles.stage, "conic-coverage-support");
+  assert.equal(result.observations.visibleHoles.boundary.includes("conic anisotropy"), true);
+  assert.equal(result.observations.visibleHoles.evidenceIds.includes("conic-shape"), true);
+  assert.equal(result.observations.visibleHoles.evidenceIds.includes("coverage-weight"), true);
+});
+
 test("visual smoke CLI exposes a static dessert witness batch mode", () => {
   const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
 
@@ -863,6 +933,8 @@ test("visual smoke CLI exposes a static dessert witness batch mode", () => {
   assert.match(source, /Visual Gap Trace/);
   assert.match(source, /Plate Seepage Classification/);
   assert.match(source, /metrics\.visualGapTrace\.anchors/);
+  assert.match(source, /observations\.visibleHoles\.category/);
+  assert.match(source, /observations\.visibleHoles\.stage/);
 });
 
 function staticDessertRequiredCaptures() {
