@@ -49,11 +49,68 @@ test("tile-local visible WGSL does not multiply tile-integrated coverage by coni
   const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
 
   assert.match(shader, /let tileCoverageWeight = max\(tileCoverageWeights\[refIndex\], 0\.0\)/);
-  assert.match(shader, /if\s*\(tileCoverageWeight <= 0\.0\)\s*\{\s*continue;\s*\}/);
   assert.match(shader, /let pixelCoverageWeight = conic_pixel_weight\(alphaParam, conicParam, pixelCenter\)/);
   assert.match(shader, /let alphaTransferWeight = source_frontier_alpha_transfer_weight\(pixelCoverageWeight,\s*tileCoverageWeight,\s*tileLocalSupportWeight,\s*sourceFrontierSupportWeight,\s*sourceFrontierClassMask\)/);
   assert.match(shader, /1\.0\s*-\s*pow\(1\.0\s*-\s*sourceOpacity,\s*alphaTransferWeight\)/);
   assert.doesNotMatch(shader, /tileCoverageWeights\[refIndex\][^;\n]*\*\s*conic_pixel_weight/);
+});
+
+test("source-frontier retained conic support is not skipped by zero tile-center coverage", () => {
+  const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
+  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const supportScale = numericConst(shader, "SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE");
+  const zeroCenterRetainedRows = Array.from({ length: 4 }, (_, index) => ({
+    opacity: 0.34,
+    pixelCoverageWeight: 0,
+    tileCoverageWeight: 0,
+    tileLocalSupportWeight: 1.4 - index * 0.1,
+    sourceFrontierSupportPixelWeight: 0.22,
+  }));
+  const prematureSkipAlpha = 0;
+  const repairedAlpha = composeSourceFrontierSupportSlateAlpha(zeroCenterRetainedRows, supportScale);
+
+  assert.ok(
+    repairedAlpha > 0.7,
+    `expected retained tile-local support to seal despite zero tile-center coverage, saw ${repairedAlpha}`,
+  );
+  assert.ok(
+    repairedAlpha > prematureSkipAlpha + 0.7,
+    "zero tile-center coverage must not make retained source-frontier support invisible",
+  );
+  assert.doesNotMatch(
+    shader,
+    /if\s*\(tileCoverageWeight <= 0\.0\)\s*\{\s*continue;\s*\}/,
+    "WGSL compositor must not skip retained source-frontier support before reading tile-local conic support",
+  );
+  assert.match(
+    shader,
+    /let tileLocalSupportWeight = max\(tileCoverageWeight,\s*conicParam\.w\)[\s\S]*if\s*\(tileCoverageWeight <= 0\.0 && tileLocalSupportWeight <= 0\.0\)\s*\{\s*continue;\s*\}/,
+    "WGSL compositor should skip only when both center coverage and tile-local support are absent",
+  );
+  assert.match(
+    shader,
+    /fn retained_ref_is_live\(refIndex: u32\) -> bool \{[\s\S]*let conicParam = alphaParams\[refIndex \+ frame\.maxTileRefs\];[\s\S]*let tileLocalSupportWeight = max\(tileCoverageWeight,\s*conicParam\.w\);[\s\S]*tileLocalSupportWeight > 0\.0/,
+    "WGSL compaction liveness should keep retained refs alive when conic support exists without tile-center coverage",
+  );
+  assert.doesNotMatch(
+    mainSource,
+    /if\s*\(tileCoverageWeight <= 0\)\s*\{[\s\S]*status:\s*"skipped-zero-tile-coverage"[\s\S]*continue;/,
+    "CPU readback mirror must not classify retained local-support rows as skipped solely because tile-center coverage is zero",
+  );
+  assert.match(
+    mainSource,
+    /const tileLocalSupportWeight = Math\.max\(tileCoverageWeight,\s*conicParam\[3\] \?\? 0\)[\s\S]*if\s*\(tileCoverageWeight <= 0 && tileLocalSupportWeight <= 0\)\s*\{/,
+    "CPU readback mirror should skip only when both center coverage and tile-local support are absent",
+  );
+  const traceSource = readFileSync(
+    new URL("../../src/rendererFidelityProbes/finalAccumulationTrace.js", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    traceSource,
+    /function contributorCanEnterFinalAccumulation\(contributor, anchorPixel, tileAddress\) \{[\s\S]*const tileLocalSupportWeight = Math\.max\(tileCoverageWeight,\s*rawTileLocalSupportWeight,\s*0\);[\s\S]*if\s*\(tileCoverageWeight <= 0 && tileLocalSupportWeight <= 0\)\s*\{[\s\S]*return false;/,
+    "final accumulation trace should not admit zero-center rows unless tile-local support is also present",
+  );
 });
 
 test("source-frontier foreground support preserves tile coverage as optical depth above one", () => {
@@ -187,9 +244,10 @@ test("source-frontier foreground support is spatially attenuated instead of tile
 function composeSourceFrontierSupportSlateAlpha(rows, supportScale) {
   let transmission = 1;
   for (const row of rows) {
+    const tileSupportWeight = Math.max(row.tileCoverageWeight, row.tileLocalSupportWeight ?? 0);
     const alphaTransferWeight = Math.max(
       row.pixelCoverageWeight,
-      row.tileCoverageWeight * supportScale * row.sourceFrontierSupportPixelWeight,
+      tileSupportWeight * supportScale * row.sourceFrontierSupportPixelWeight,
     );
     transmission *= 1 - alphaFromCoverageOpacity(row.opacity, alphaTransferWeight);
   }

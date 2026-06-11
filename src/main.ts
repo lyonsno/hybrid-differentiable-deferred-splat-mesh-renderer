@@ -7937,8 +7937,9 @@ function readCompositorInputAnchor({
       continue;
     }
     const tileCoverageWeight = Math.max(tileCoverageWeights[refIndex] ?? 0, 0);
-    if (tileCoverageWeight <= 0) {
-      const conicParam = readVec4(alphaParams, alphaParamIndex + plan.maxTileRefs);
+    const conicParam = readVec4(alphaParams, alphaParamIndex + plan.maxTileRefs);
+    const tileLocalSupportWeight = Math.max(tileCoverageWeight, conicParam[3] ?? 0);
+    if (tileCoverageWeight <= 0 && tileLocalSupportWeight <= 0) {
       const sourceOpacity = Math.min(clamp01(alphaParam[0]), 0.999);
       contributors.push({
         layer,
@@ -7959,7 +7960,7 @@ function readCompositorInputAnchor({
         inverseConic: [roundColorChannel(conicParam[0]), roundColorChannel(conicParam[1]), roundColorChannel(conicParam[2])],
         coverageWeight: 0,
         tileCoverageWeight: 0,
-        tileLocalSupportWeight: roundColorChannel(Math.max(tileCoverageWeight, conicParam[3] ?? 0)),
+        tileLocalSupportWeight: roundColorChannel(tileLocalSupportWeight),
         pixelCoverageWeight: 0,
         sourceFrontierSupportPixelWeight: 0,
         sourceOpacity: roundColorChannel(sourceOpacity),
@@ -7977,11 +7978,9 @@ function readCompositorInputAnchor({
       });
       continue;
     }
-    const conicParam = readVec4(alphaParams, alphaParamIndex + plan.maxTileRefs);
     const sourceOpacity = Math.min(clamp01(alphaParam[0]), 0.999);
     const pixelCoverageWeight = conicPixelWeightFromParams(alphaParam, conicParam, pixelCenter);
     const sourceFrontierSupportPixelWeight = sourceFrontierSupportPixelWeightFromParams(alphaParam, conicParam, pixelCenter);
-    const tileLocalSupportWeight = Math.max(tileCoverageWeight, conicParam[3] ?? 0);
     const alphaTransferWeight = sourceFrontierAlphaTransferWeight(
       pixelCoverageWeight,
       tileCoverageWeight,

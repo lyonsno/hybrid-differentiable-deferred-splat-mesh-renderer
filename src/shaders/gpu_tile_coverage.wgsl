@@ -103,8 +103,10 @@ fn clear_tile_ref(refIndex: u32, tileId: u32) {
 fn retained_ref_is_live(refIndex: u32) -> bool {
   let splatId = atomicLoad(&tileRefs[tile_ref_word_index(refIndex, 0u)]);
   let retentionScore = atomicLoad(&tileRefs[tile_ref_word_index(refIndex, 1u)]) & RETENTION_SCORE_VALUE_MASK;
-  let tileCoverageWeight = tileCoverageWeights[refIndex];
-  return splatId < frame.splatCount && (retentionScore > 0u || tileCoverageWeight > 0.0);
+  let tileCoverageWeight = max(tileCoverageWeights[refIndex], 0.0);
+  let conicParam = alphaParams[refIndex + frame.maxTileRefs];
+  let tileLocalSupportWeight = max(tileCoverageWeight, conicParam.w);
+  return splatId < frame.splatCount && (retentionScore > 0u || tileCoverageWeight > 0.0 || tileLocalSupportWeight > 0.0);
 }
 
 fn copy_retained_ref_payload(sourceRefIndex: u32, compactRefIndex: u32) {
@@ -909,7 +911,8 @@ fn debug_heatmap_color(
     let alphaParam = alphaParams[alphaParamIndex];
     let conicParam = alphaParams[alphaParamIndex + frame.maxTileRefs];
     let tileCoverageWeight = max(tileCoverageWeights[refIndex], 0.0);
-    if (tileCoverageWeight <= 0.0) {
+    let tileLocalSupportWeight = max(tileCoverageWeight, conicParam.w);
+    if (tileCoverageWeight <= 0.0 && tileLocalSupportWeight <= 0.0) {
       continue;
     }
     let pixelCoverageWeight = conic_pixel_weight(alphaParam, conicParam, pixelCenter);
@@ -920,7 +923,6 @@ fn debug_heatmap_color(
     minMinorRadiusPx = min(minMinorRadiusPx, conicRadii.y);
     let sourceOpacity = min(clamp(alphaParam.x, 0.0, 1.0), 0.999);
     let sourceFrontierClassMask = source_frontier_alpha_class_mask(alphaParam);
-    let tileLocalSupportWeight = max(tileCoverageWeight, conicParam.w);
     let alphaTransferWeight = source_frontier_alpha_transfer_weight(pixelCoverageWeight, tileCoverageWeight, tileLocalSupportWeight, sourceFrontierSupportWeight, sourceFrontierClassMask);
     let coverageAlpha = clamp(1.0 - pow(1.0 - sourceOpacity, alphaTransferWeight), 0.0, 1.0);
     let colorTransferWeight = source_frontier_color_transfer_weight(pixelCoverageWeight, sourceFrontierSupportWeight, alphaTransferWeight, sourceFrontierClassMask);

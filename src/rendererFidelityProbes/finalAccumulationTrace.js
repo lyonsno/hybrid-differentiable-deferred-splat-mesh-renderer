@@ -199,12 +199,13 @@ function composeFinalColorAccumulationSteps({
       tileCoverageWeight,
       Number.isFinite(rawTileLocalSupportWeight) ? rawTileLocalSupportWeight : 0,
     );
+    const hasTileSupport = tileCoverageWeight > 0 || tileLocalSupportWeight > 0;
     const opacity = Math.min(Math.max(finiteNumber(contributor.opacity, "contributor.opacity"), 0), 0.999);
     const transmittanceBefore = remainingTransmission;
-    const pixelCoverageWeight = tileCoverageWeight > 0
+    const pixelCoverageWeight = hasTileSupport
       ? conicPixelWeight(contributor.centerPx, contributor.inverseConic, pixelCenter)
       : 0;
-    const sourceFrontierSupportPixelWeight = tileCoverageWeight > 0
+    const sourceFrontierSupportPixelWeight = hasTileSupport
       ? sourceFrontierSupportPixelWeightFromContributor(contributor, pixelCenter)
       : 0;
     const alphaTransfer = sourceFrontierAlphaTransferWeight({
@@ -214,17 +215,17 @@ function composeFinalColorAccumulationSteps({
       sourceFrontierSupportPixelWeight,
       contributor,
     });
-    const coverageAlpha = tileCoverageWeight > 0
+    const coverageAlpha = hasTileSupport
       ? clamp01(1 - Math.pow(1 - opacity, alphaTransfer.weight))
       : 0;
-    const colorAlpha = tileCoverageWeight > 0
+    const colorAlpha = hasTileSupport
       ? clamp01(1 - Math.pow(1 - opacity, alphaTransfer.colorWeight))
       : 0;
     const contributionColor = sourceColor.map((channel) => round(channel * colorAlpha));
-    const nextRunningColor = tileCoverageWeight > 0
+    const nextRunningColor = hasTileSupport
       ? sourceColor.map((channel, index) => channel * colorAlpha + runningColor[index] * (1 - coverageAlpha))
       : runningColor;
-    const transmittanceAfter = tileCoverageWeight > 0
+    const transmittanceAfter = hasTileSupport
       ? remainingTransmission * (1 - coverageAlpha)
       : remainingTransmission;
     remainingTransmission = transmittanceAfter;
@@ -248,7 +249,7 @@ function composeFinalColorAccumulationSteps({
       sourceColor: sourceColor.map(round),
       contributionColor,
       runningColor: runningColor.map(round),
-      accumulationStatus: tileCoverageWeight > 0 ? "accumulated" : "skipped-zero-tile-coverage",
+      accumulationStatus: hasTileSupport ? "accumulated" : "skipped-zero-tile-coverage",
       tileCoverageWeight: round(tileCoverageWeight),
       viewRank: Number.isInteger(contributor.viewRank) ? contributor.viewRank : orderIndex,
       viewDepth: Number.isFinite(contributor.viewDepth) ? contributor.viewDepth : 0,
@@ -323,8 +324,14 @@ function contributorCanEnterFinalAccumulation(contributor, anchorPixel, tileAddr
     return false;
   }
   const tileCoverageWeight = Math.max(Number.isFinite(contributor.coverageWeight) ? contributor.coverageWeight : 0, 0);
-  if (tileCoverageWeight <= 0) {
-    return true;
+  const rawTileLocalSupportWeight = Number.isFinite(contributor.tileLocalSupportWeight)
+    ? contributor.tileLocalSupportWeight
+    : Number.isFinite(contributor.conicSupportWeight)
+      ? contributor.conicSupportWeight
+      : 0;
+  const tileLocalSupportWeight = Math.max(tileCoverageWeight, rawTileLocalSupportWeight, 0);
+  if (tileCoverageWeight <= 0 && tileLocalSupportWeight <= 0) {
+    return false;
   }
   return conicPixelWeight(contributor.centerPx, contributor.inverseConic, [anchorPixel.x + 0.5, anchorPixel.y + 0.5]) >= 0;
 }

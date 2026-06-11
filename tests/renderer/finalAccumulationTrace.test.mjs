@@ -81,7 +81,7 @@ test("final accumulation trace matches ordered shader alpha transfer for a synth
   ]);
 });
 
-test("final accumulation trace distinguishes ordered-but-skipped contributors from accumulated contributors", () => {
+test("final accumulation trace filters zero-support contributors before accumulated contributors", () => {
   const record = buildFinalColorAccumulationTraceRecord({
     contributors: [
       accumulationContributor({
@@ -107,11 +107,9 @@ test("final accumulation trace distinguishes ordered-but-skipped contributors fr
     retainedContributors: [],
   });
 
-  assert.equal(record.finalColorAccumulation.steps.length, 2);
-  assert.equal(record.finalColorAccumulation.steps[0].accumulationStatus, "skipped-zero-tile-coverage");
-  assert.equal(record.finalColorAccumulation.steps[0].coverageAlpha, 0);
-  assertColorClose(record.finalColorAccumulation.steps[0].runningColor, [0.02, 0.02, 0.04]);
-  assert.equal(record.finalColorAccumulation.steps[1].accumulationStatus, "accumulated");
+  assert.equal(record.finalColorAccumulation.steps.length, 1);
+  assert.equal(record.finalColorAccumulation.steps[0].splatIndex, 4);
+  assert.equal(record.finalColorAccumulation.steps[0].accumulationStatus, "accumulated");
   assertColorClose(record.finalColorAccumulation.outputColor, [0.015, 0.265, 0.03, 0.25]);
   assert.deepEqual(validatePixelContributorTraceRecord(record), []);
 });
