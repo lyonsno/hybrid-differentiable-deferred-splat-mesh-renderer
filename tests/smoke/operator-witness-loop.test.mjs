@@ -69,6 +69,75 @@ test("operator witness loop classifier preserves alpha fallthrough exhibit ident
   ]);
 });
 
+test("operator witness loop classifier blocks close-view support-color darkening against a baseline", () => {
+  const result = classifyOperatorWitnessLoop({
+    captures: [
+      witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.wholeRender, {
+        visualBaselineComparison: {
+          comparable: true,
+          darkenedPixelRatio: 0.035,
+          supportDarkeningPixelRatio: 0.017,
+          averageDelta: 3.1,
+          baselinePath: "baseline/whole-render-final-color.png",
+        },
+      }),
+      witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.dessertClose, { witnessView: "dessert-close" }),
+      witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.porousClose, {
+        witnessView: "dessert-porous-close",
+        visualContract: "alpha-fallthrough-close-view",
+        visualBaselineComparison: {
+          comparable: true,
+          darkenedPixelRatio: 0.418,
+          supportDarkeningPixelRatio: 0.229,
+          averageDelta: 35.6,
+          baselinePath: "baseline/porous-close-final-color.png",
+        },
+      }),
+      witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.porousOrbitLeft, {
+        witnessView: "dessert-porous-close",
+        visualContract: "alpha-fallthrough-orbit-frame",
+        visualBaselineComparison: {
+          comparable: true,
+          darkenedPixelRatio: 0.435,
+          supportDarkeningPixelRatio: 0.224,
+          averageDelta: 37.5,
+          baselinePath: "baseline/porous-close-orbit-left.png",
+        },
+      }),
+      witnessCapture(OPERATOR_WITNESS_CAPTURE_IDS.porousOrbitRight, {
+        witnessView: "dessert-porous-close",
+        visualContract: "alpha-fallthrough-orbit-frame",
+        visualBaselineComparison: {
+          comparable: true,
+          darkenedPixelRatio: 0.394,
+          supportDarkeningPixelRatio: 0.196,
+          averageDelta: 35.1,
+          baselinePath: "baseline/porous-close-orbit-right.png",
+        },
+      }),
+    ],
+    contactSheetPath: "smoke-reports/operator-witness/contact-sheet.png",
+  });
+
+  assert.equal(result.closeable, false);
+  assert.deepEqual(
+    result.findings.map((finding) => finding.kind),
+    [
+      "operator-baseline-support-darkening",
+      "operator-baseline-support-darkening",
+      "operator-baseline-support-darkening",
+    ]
+  );
+  assert.match(result.findings[0].summary, /porous-close-final-color/);
+  assert.equal(result.metrics.baselineComparisons[0].captureId, OPERATOR_WITNESS_CAPTURE_IDS.wholeRender);
+  assert.equal(
+    result.metrics.baselineComparisons.find(
+      (comparison) => comparison.captureId === OPERATOR_WITNESS_CAPTURE_IDS.porousClose
+    ).supportDarkeningPixelRatio,
+    0.229
+  );
+});
+
 test("operator witness report prints alpha fallthrough visual contracts", () => {
   const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
   const reportStart = source.indexOf("function renderOperatorWitnessLoopReport");
@@ -80,6 +149,18 @@ test("operator witness report prints alpha fallthrough visual contracts", () => 
   assert.match(reportSource, /Visual contract:/);
   assert.match(reportSource, /capture\.visualContract/);
   assert.match(reportSource, /general-operator-visual/);
+});
+
+test("operator witness report prints baseline comparison evidence", () => {
+  const source = readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
+  const reportStart = source.indexOf("function renderOperatorWitnessLoopReport");
+  const reportEnd = source.indexOf("function renderGpuLiveParityMugshotReport");
+  const reportSource = source.slice(reportStart, reportEnd);
+
+  assert.match(reportSource, /Baseline comparison:/);
+  assert.match(reportSource, /formatOperatorBaselineComparison/);
+  assert.match(source, /--operator-witness-baseline-dir/);
+  assert.match(source, /operatorWitnessBaselineDir/);
 });
 
 test("operator witness report separates blocking harness findings from witness-only diagnostics", () => {
@@ -2297,6 +2378,7 @@ function witnessCapture(
     tileSizePx = "16",
     maxRefsPerTile = "256",
     visualContract,
+    visualBaselineComparison,
     timing,
   } = {}
 ) {
@@ -2337,6 +2419,7 @@ function witnessCapture(
       traceAnchors: null,
       presentationAnchors: null,
     },
+    visualBaselineComparison,
     timing,
   };
 }

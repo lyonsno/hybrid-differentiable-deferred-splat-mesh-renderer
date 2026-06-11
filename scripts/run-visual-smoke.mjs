@@ -54,6 +54,10 @@ const TILE_LOCAL_SCENE_STATE_STAGE_PREFIX = "tile-local-scene-state-refresh/";
 const COMPACT_SOURCE_STAGE_PREFIX = "compact-source-";
 const GPU_ARENA_COMPACT_SOURCE_STAGE =
   "tile-local-scene-state-refresh/create-state/gpu-arena/build-compact-source";
+const OPERATOR_BASELINE_CHANGED_PIXEL_DELTA = 12;
+const OPERATOR_BASELINE_DARKENING_DELTA = 24;
+const OPERATOR_BASELINE_SUPPORT_LUMA_MIN = 50;
+const OPERATOR_BASELINE_BRANCH_DARK_LUMA_MAX = 40;
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
@@ -678,6 +682,13 @@ async function captureOperatorWitnessFrame({
       timeout: capture.timeoutScreenshotMs ?? TIMEOUT_SCREENSHOT_MS,
     }));
     const imageAnalysis = timeSyncStage(timing, "image-analysis", () => analyzePngBuffer(screenshot, options.imageThresholds));
+    const visualBaselineComparison = await timeStage(timing, "operator-baseline-comparison", () =>
+      compareOperatorWitnessBaseline({
+        screenshot,
+        capture,
+        options,
+      })
+    );
     pageEvidence = timeSyncStage(timing, "trace-canvas-parity", () => attachTraceCanvasParityEvidence({
       pageEvidence,
       screenshot,
@@ -702,6 +713,7 @@ async function captureOperatorWitnessFrame({
       routeIdentity: routeIdentityFromCapture(capture, pageEvidence, options),
       pageEvidence,
       imageAnalysis,
+      visualBaselineComparison,
       classification,
       witnessDiagnostics,
       consoleMessages: [...consoleMessages],
@@ -724,6 +736,115 @@ async function captureOperatorWitnessFrame({
       clip,
     });
   }
+}
+
+async function compareOperatorWitnessBaseline({ screenshot, capture, options }) {
+  const baselineRoot = options.operatorWitnessBaselineDir;
+  if (!baselineRoot) return undefined;
+
+  const baselinePath = path.join(
+    path.isAbsolute(baselineRoot) ? baselineRoot : path.resolve(options.appRoot, baselineRoot),
+    `${capture.id}.png`
+  );
+  const reportedBaselinePath = path.isAbsolute(baselinePath)
+    ? baselinePath
+    : path.relative(options.appRoot, baselinePath);
+
+  let baselineBuffer;
+  try {
+    baselineBuffer = await readFile(baselinePath);
+  } catch (error) {
+    return {
+      comparable: false,
+      reason: "missing-baseline",
+      baselinePath: reportedBaselinePath,
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  let currentImage;
+  let baselineImage;
+  try {
+    currentImage = decodePng(screenshot);
+    baselineImage = decodePng(baselineBuffer);
+  } catch (error) {
+    return {
+      comparable: false,
+      reason: "png-decode-failed",
+      baselinePath: reportedBaselinePath,
+      detail: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  if (currentImage.width !== baselineImage.width || currentImage.height !== baselineImage.height) {
+    return {
+      comparable: false,
+      reason: "dimension-mismatch",
+      baselinePath: reportedBaselinePath,
+      currentSize: `${currentImage.width}x${currentImage.height}`,
+      baselineSize: `${baselineImage.width}x${baselineImage.height}`,
+    };
+  }
+
+  const totalPixels = currentImage.width * currentImage.height;
+  let changedPixels = 0;
+  let darkenedPixels = 0;
+  let supportDarkeningPixels = 0;
+  let deltaSum = 0;
+  let currentLumaSum = 0;
+  let baselineLumaSum = 0;
+
+  for (let offset = 0; offset < currentImage.rgba.length; offset += 4) {
+    const currentR = currentImage.rgba[offset];
+    const currentG = currentImage.rgba[offset + 1];
+    const currentB = currentImage.rgba[offset + 2];
+    const baselineR = baselineImage.rgba[offset];
+    const baselineG = baselineImage.rgba[offset + 1];
+    const baselineB = baselineImage.rgba[offset + 2];
+    const delta =
+      (Math.abs(currentR - baselineR) + Math.abs(currentG - baselineG) + Math.abs(currentB - baselineB)) / 3;
+    const currentLuma = luma(currentR, currentG, currentB);
+    const baselineLuma = luma(baselineR, baselineG, baselineB);
+    const darkening = baselineLuma - currentLuma;
+
+    deltaSum += delta;
+    currentLumaSum += currentLuma;
+    baselineLumaSum += baselineLuma;
+    if (delta >= OPERATOR_BASELINE_CHANGED_PIXEL_DELTA) {
+      changedPixels += 1;
+    }
+    if (darkening > OPERATOR_BASELINE_DARKENING_DELTA) {
+      darkenedPixels += 1;
+    }
+    if (
+      baselineLuma > OPERATOR_BASELINE_SUPPORT_LUMA_MIN &&
+      currentLuma < OPERATOR_BASELINE_BRANCH_DARK_LUMA_MAX &&
+      darkening > OPERATOR_BASELINE_DARKENING_DELTA
+    ) {
+      supportDarkeningPixels += 1;
+    }
+  }
+
+  return {
+    comparable: true,
+    baselinePath: reportedBaselinePath,
+    width: currentImage.width,
+    height: currentImage.height,
+    totalPixels,
+    changedPixels,
+    changedPixelRatio: totalPixels === 0 ? 0 : changedPixels / totalPixels,
+    averageDelta: totalPixels === 0 ? 0 : deltaSum / totalPixels,
+    darkenedPixels,
+    darkenedPixelRatio: totalPixels === 0 ? 0 : darkenedPixels / totalPixels,
+    supportDarkeningPixels,
+    supportDarkeningPixelRatio: totalPixels === 0 ? 0 : supportDarkeningPixels / totalPixels,
+    branchAverageLuma: totalPixels === 0 ? 0 : currentLumaSum / totalPixels,
+    baselineAverageLuma: totalPixels === 0 ? 0 : baselineLumaSum / totalPixels,
+  };
+}
+
+function luma(r, g, b) {
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
 async function captureVisualSmoke({ browser, options, capture, reportDir }) {
@@ -1996,6 +2117,7 @@ ${result.captures
 - Nonblank: ${capture.classification.nonblank}
 - Real splat evidence: ${capture.classification.realSplatEvidence}
 - Changed pixels: ${capture.imageAnalysis.changedPixels} / ${capture.imageAnalysis.totalPixels} (${formatPercent(capture.imageAnalysis.changedPixelRatio)})
+- Baseline comparison: ${formatOperatorBaselineComparison(capture.visualBaselineComparison)}
 - Total capture ms: ${capture.timing?.totalMs ?? "not reported"}
 - Readiness diagnostics: ${formatReadinessDiagnostics(capture.pageEvidence.readinessDiagnostics)}
 - Readiness stages: ${formatReadinessDiagnosticsByStage(capture.pageEvidence.readinessDiagnosticsByStage)}
@@ -2045,6 +2167,20 @@ function formatOperatorWitnessDiagnostics(captures = []) {
     }
   }
   return lines.length ? lines.join("\n") : "- No witness-only diagnostics reported.";
+}
+
+function formatOperatorBaselineComparison(comparison) {
+  if (!comparison) return "not requested";
+  if (!comparison.comparable) {
+    return `not comparable (${comparison.reason || "unknown"}; baseline ${comparison.baselinePath || "not reported"})`;
+  }
+  return [
+    `baseline ${comparison.baselinePath || "not reported"}`,
+    `changed ${comparison.changedPixels ?? "?"}/${comparison.totalPixels ?? "?"} (${formatPercent(comparison.changedPixelRatio)})`,
+    `darkened ${comparison.darkenedPixels ?? "?"}/${comparison.totalPixels ?? "?"} (${formatPercent(comparison.darkenedPixelRatio)})`,
+    `support-darkened ${comparison.supportDarkeningPixels ?? "?"}/${comparison.totalPixels ?? "?"} (${formatPercent(comparison.supportDarkeningPixelRatio)})`,
+    `avgDelta ${Number.isFinite(comparison.averageDelta) ? comparison.averageDelta.toFixed(2) : "n/a"}`,
+  ].join("; ");
 }
 
 function renderGpuLiveParityMugshotReport(result) {
@@ -2466,6 +2602,7 @@ function parseArgs(args) {
     tileLocalDiagnostics: false,
     staticDessertWitness: false,
     operatorWitnessLoop: false,
+    operatorWitnessBaselineDir: undefined,
     gpuLiveParityMugshot: false,
     gpuLiveParitySourceMode: "cpu-vs-direct-gpu",
     smokeKind: undefined,
@@ -2563,6 +2700,10 @@ function parseArgs(args) {
           options.settleMs = 5000;
         }
         break;
+      case "--operator-witness-baseline-dir":
+      case "--operator-visual-baseline-dir":
+        options.operatorWitnessBaselineDir = next();
+        break;
       case "--gpu-live-parity-mugshot":
       case "--cpu-gpu-live-parity":
         options.gpuLiveParityMugshot = true;
@@ -2631,6 +2772,7 @@ function publicOptions(options) {
     tileLocalDiagnostics: options.tileLocalDiagnostics,
     staticDessertWitness: options.staticDessertWitness,
     operatorWitnessLoop: options.operatorWitnessLoop,
+    operatorWitnessBaselineDir: options.operatorWitnessBaselineDir,
     gpuLiveParityMugshot: options.gpuLiveParityMugshot,
     gpuLiveParitySourceMode: options.gpuLiveParitySourceMode,
     smokeHandoff: buildSmokeHandoff(options),

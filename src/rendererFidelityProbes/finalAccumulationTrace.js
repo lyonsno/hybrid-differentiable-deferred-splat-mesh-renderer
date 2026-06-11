@@ -217,9 +217,12 @@ function composeFinalColorAccumulationSteps({
     const coverageAlpha = tileCoverageWeight > 0
       ? clamp01(1 - Math.pow(1 - opacity, alphaTransfer.weight))
       : 0;
-    const contributionColor = sourceColor.map((channel) => round(channel * coverageAlpha));
+    const colorAlpha = tileCoverageWeight > 0
+      ? clamp01(1 - Math.pow(1 - opacity, alphaTransfer.colorWeight))
+      : 0;
+    const contributionColor = sourceColor.map((channel) => round(channel * colorAlpha));
     const nextRunningColor = tileCoverageWeight > 0
-      ? sourceColor.map((channel, index) => channel * coverageAlpha + runningColor[index] * (1 - coverageAlpha))
+      ? sourceColor.map((channel, index) => channel * colorAlpha + runningColor[index] * (1 - coverageAlpha))
       : runningColor;
     const transmittanceAfter = tileCoverageWeight > 0
       ? remainingTransmission * (1 - coverageAlpha)
@@ -235,9 +238,11 @@ function composeFinalColorAccumulationSteps({
       sourceFrontierSupportPixelWeight: round(sourceFrontierSupportPixelWeight),
       tileLocalSupportWeight: round(tileLocalSupportWeight),
       alphaTransferWeight: round(alphaTransfer.weight),
+      colorTransferWeight: round(alphaTransfer.colorWeight),
       sourceFrontierAlphaSupport: alphaTransfer.support,
       opacity: round(opacity),
       coverageAlpha: round(coverageAlpha),
+      colorAlpha: round(colorAlpha),
       transmittanceBefore: round(transmittanceBefore),
       transmittanceAfter: round(transmittanceAfter),
       sourceColor: sourceColor.map(round),
@@ -276,7 +281,7 @@ function sourceFrontierAlphaTransferWeight({
     ? contributor.candidateSourceClassMask
     : 0;
   if ((candidateSourceClassMask & SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_MASK) === 0) {
-    return { weight: normalizedPixelWeight, support: "none" };
+    return { weight: normalizedPixelWeight, colorWeight: normalizedPixelWeight, support: "none" };
   }
 
   const normalizedTileSupportWeight = Math.max(
@@ -288,9 +293,13 @@ function sourceFrontierAlphaTransferWeight({
     SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE *
     Math.max(Number.isFinite(sourceFrontierSupportPixelWeight) ? sourceFrontierSupportPixelWeight : 0, 0);
   if (supportWeight <= normalizedPixelWeight) {
-    return { weight: normalizedPixelWeight, support: "none" };
+    return { weight: normalizedPixelWeight, colorWeight: normalizedPixelWeight, support: "none" };
   }
-  return { weight: supportWeight, support: "foreground-spatial-support" };
+  return {
+    weight: supportWeight,
+    colorWeight: supportWeight,
+    support: "foreground-spatial-support",
+  };
 }
 
 function selectAccumulationContributors(contributors, anchorPixel, tileAddress) {

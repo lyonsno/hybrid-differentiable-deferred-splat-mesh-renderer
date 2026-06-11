@@ -34,7 +34,10 @@ test("tile-local visible conic coverage feeds sample-local Gaussian weight to al
   assert.match(shader, /let pixelCoverageWeight = conic_pixel_weight\(alphaParam, conicParam, pixelCenter\)/);
   assert.match(shader, /let sourceFrontierSupportWeight = conic_pixel_weight_with_falloff_scale\(alphaParam,\s*conicParam,\s*pixelCenter,\s*SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE\)/);
   assert.match(shader, /let alphaTransferWeight = source_frontier_alpha_transfer_weight\(pixelCoverageWeight,\s*tileCoverageWeight,\s*tileLocalSupportWeight,\s*sourceFrontierSupportWeight,\s*sourceFrontierClassMask\)/);
+  assert.match(shader, /let colorTransferWeight = source_frontier_color_transfer_weight\(pixelCoverageWeight,\s*sourceFrontierSupportWeight,\s*alphaTransferWeight,\s*sourceFrontierClassMask\)/);
   assert.match(shader, /pow\(1\.0\s*-\s*sourceOpacity,\s*alphaTransferWeight\)/);
+  assert.match(shader, /pow\(1\.0\s*-\s*sourceOpacity,\s*colorTransferWeight\)/);
+  assert.match(shader, /composedColor = sourceColor \* colorAlpha \+ composedColor \* \(1\.0 - coverageAlpha\)/);
   assert.doesNotMatch(
     shader,
     /tileCoverageWeights\[selectedRefIndex\][^;]*\*\s*conic_pixel_weight/,
@@ -83,5 +86,15 @@ test("source-frontier alpha support carries tile-local conic support beyond the 
     shader,
     /source_frontier_alpha_transfer_weight\(pixelCoverageWeight,\s*tileCoverageWeight,\s*tileLocalSupportWeight,\s*sourceFrontierSupportWeight,\s*sourceFrontierClassMask\)/,
     "source-frontier alpha transfer should use tile-local support rather than only tile-center coverage",
+  );
+  assert.match(
+    shader,
+    /fn source_frontier_color_transfer_weight\(pixelCoverageWeight: f32,\s*sourceFrontierSupportWeight: f32,\s*alphaTransferWeight: f32,\s*sourceFrontierClassMask: u32\) -> f32/,
+    "source-frontier color transfer should be split from broad support alpha transfer",
+  );
+  assert.match(
+    shader,
+    /return normalizedAlphaTransferWeight/,
+    "foreground support color must not under-color broad sealing alpha into an invisible occluder",
   );
 });

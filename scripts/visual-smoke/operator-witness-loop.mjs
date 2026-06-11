@@ -34,6 +34,9 @@ const DEFAULT_OPERATOR_VISUAL_ROUTE = Object.freeze({
 });
 const OPERATOR_CAPTURE_TIMEOUT_MS = 15000;
 const OPERATOR_TIMEOUT_CANVAS_CLIP_MS = 1500;
+const MAX_BASELINE_SUPPORT_DARKENING_RATIO = 0.15;
+const MAX_BASELINE_DARKENED_PIXEL_RATIO = 0.30;
+const MIN_BASELINE_DARKENING_AVERAGE_DELTA = 20;
 const OPERATOR_READINESS_STAGE_NAMES = Object.freeze(new Set([
   "initial-readiness",
   "view-readiness",
@@ -117,6 +120,10 @@ export function classifyOperatorWitnessLoop({ captures = [], contactSheetPath, s
     for (const routeFinding of routeFindings) {
       findings.push(routeFinding);
     }
+    const baselineFinding = classifyOperatorBaselineComparison(capture);
+    if (baselineFinding) {
+      findings.push(baselineFinding);
+    }
   }
 
   if (!contactSheetPath) {
@@ -149,11 +156,61 @@ export function classifyOperatorWitnessLoop({ captures = [], contactSheetPath, s
           })
           .filter(Boolean)
       ),
+      baselineComparisons: captures
+        .map((capture) => normalizeBaselineComparison(capture))
+        .filter(Boolean),
       contactSheetPath: contactSheetPath ?? "",
       timing: summarizeOperatorWitnessTiming(captures, sessionTiming),
     },
     findings,
   };
+}
+
+function classifyOperatorBaselineComparison(capture = {}) {
+  const comparison = normalizeBaselineComparison(capture);
+  if (!comparison) return null;
+  if (!comparison.comparable) {
+    return finding(
+      "operator-baseline-uncomparable",
+      `${capture.id ?? "operator capture"} could not be compared against its operator visual baseline.`
+    );
+  }
+  const visualContract = capture.visualContract || "";
+  const isCloseViewContract =
+    visualContract === "alpha-fallthrough-close-view" ||
+    visualContract === "alpha-fallthrough-orbit-frame";
+  if (!isCloseViewContract) return null;
+  const exceedsSupportDarkening =
+    comparison.supportDarkeningPixelRatio > MAX_BASELINE_SUPPORT_DARKENING_RATIO;
+  const exceedsBroadDarkening =
+    comparison.darkenedPixelRatio > MAX_BASELINE_DARKENED_PIXEL_RATIO &&
+    comparison.averageDelta > MIN_BASELINE_DARKENING_AVERAGE_DELTA;
+  if (!exceedsSupportDarkening && !exceedsBroadDarkening) return null;
+  return finding(
+    "operator-baseline-support-darkening",
+    `${capture.id ?? "operator capture"} darkened ${formatRatio(comparison.darkenedPixelRatio)} of pixels vs baseline ` +
+      `with ${formatRatio(comparison.supportDarkeningPixelRatio)} support-darkened pixels; baseline ${comparison.baselinePath || "not reported"}.`
+  );
+}
+
+function normalizeBaselineComparison(capture = {}) {
+  const comparison = capture.visualBaselineComparison;
+  if (!comparison || typeof comparison !== "object") return null;
+  return {
+    captureId: capture.id ?? "",
+    comparable: Boolean(comparison.comparable),
+    changedPixelRatio: finiteNumber(comparison.changedPixelRatio) ?? 0,
+    averageDelta: finiteNumber(comparison.averageDelta) ?? 0,
+    darkenedPixelRatio: finiteNumber(comparison.darkenedPixelRatio) ?? 0,
+    supportDarkeningPixelRatio: finiteNumber(comparison.supportDarkeningPixelRatio) ?? 0,
+    branchAverageLuma: finiteNumber(comparison.branchAverageLuma) ?? 0,
+    baselineAverageLuma: finiteNumber(comparison.baselineAverageLuma) ?? 0,
+    baselinePath: typeof comparison.baselinePath === "string" ? comparison.baselinePath : "",
+  };
+}
+
+function formatRatio(value) {
+  return Number.isFinite(value) ? `${(value * 100).toFixed(3)}%` : "n/a";
 }
 
 export function summarizeOperatorWitnessTiming(captures = [], sessionTiming = {}) {

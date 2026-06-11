@@ -630,6 +630,14 @@ fn source_frontier_alpha_transfer_weight(pixelCoverageWeight: f32, tileCoverageW
   return max(pixelCoverageWeight, supportWeight);
 }
 
+fn source_frontier_color_transfer_weight(pixelCoverageWeight: f32, sourceFrontierSupportWeight: f32, alphaTransferWeight: f32, sourceFrontierClassMask: u32) -> f32 {
+  if ((sourceFrontierClassMask & (CANDIDATE_SOURCE_CLASS_RETENTION_MASK | CANDIDATE_SOURCE_CLASS_SUPPORT_MASK)) == 0u) {
+    return alphaTransferWeight;
+  }
+  let normalizedAlphaTransferWeight = max(alphaTransferWeight, 0.0);
+  return normalizedAlphaTransferWeight;
+}
+
 fn inverse_conic_radii(conicParam: vec4f) -> vec2f {
   let xx = conicParam.x;
   let xy = conicParam.y;
@@ -912,9 +920,11 @@ fn debug_heatmap_color(
     let tileLocalSupportWeight = max(tileCoverageWeight, conicParam.w);
     let alphaTransferWeight = source_frontier_alpha_transfer_weight(pixelCoverageWeight, tileCoverageWeight, tileLocalSupportWeight, sourceFrontierSupportWeight, sourceFrontierClassMask);
     let coverageAlpha = clamp(1.0 - pow(1.0 - sourceOpacity, alphaTransferWeight), 0.0, 1.0);
+    let colorTransferWeight = source_frontier_color_transfer_weight(pixelCoverageWeight, sourceFrontierSupportWeight, alphaTransferWeight, sourceFrontierClassMask);
+    let colorAlpha = clamp(1.0 - pow(1.0 - sourceOpacity, colorTransferWeight), 0.0, 1.0);
     let colorBase = tileRef.x * 3u;
     let sourceColor = vec3f(colors[colorBase], colors[colorBase + 1u], colors[colorBase + 2u]);
-    composedColor = sourceColor * coverageAlpha + composedColor * (1.0 - coverageAlpha);
+    composedColor = sourceColor * colorAlpha + composedColor * (1.0 - coverageAlpha);
     remainingTransmission = remainingTransmission * (1.0 - coverageAlpha);
   }
   let accumulatedAlpha = 1.0 - remainingTransmission;
