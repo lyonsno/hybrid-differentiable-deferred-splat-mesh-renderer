@@ -535,8 +535,8 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     shaderSource,
-    /fn gpu_live_retention_pool_score\([\s\S]*sourceLuminance:\s*f32[\s\S]*pool:\s*u32[\s\S]*retentionSignal[\s\S]*tileCoverageWeight \* max\(sourceOpacity[\s\S]*max\(sourceLuminance[\s\S]*occlusionSignal[\s\S]*tileCoverageWeight \* max\(sourceOpacity[\s\S]*retentionBucket[\s\S]*occlusionWeightBucket/,
-    "source-frontier GPU retention pool scoring must carry production-like retention and occlusion score channels before depth tie-breaking",
+    /fn gpu_live_retention_pool_score\([\s\S]*tileLocalSupportWeight:\s*f32[\s\S]*sourceLuminance:\s*f32[\s\S]*pool:\s*u32[\s\S]*retentionSupportWeight = max\(max\(tileCoverageWeight,\s*0\.0\),\s*max\(tileLocalSupportWeight,\s*0\.0\)\)[\s\S]*retentionSignal[\s\S]*retentionSupportWeight \* max\(sourceOpacity[\s\S]*max\(sourceLuminance[\s\S]*occlusionSignal[\s\S]*retentionSupportWeight \* max\(sourceOpacity[\s\S]*retentionBucket[\s\S]*occlusionWeightBucket/,
+    "source-frontier GPU retention pool scoring must carry production-like support-aware retention and occlusion score channels before depth tie-breaking",
   );
   assert.match(
     shaderSource,

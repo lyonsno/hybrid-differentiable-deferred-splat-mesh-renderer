@@ -481,6 +481,7 @@ fn gpu_live_retention_pool_slot(
 
 fn gpu_live_retention_pool_score(
   tileCoverageWeight: f32,
+  tileLocalSupportWeight: f32,
   sourceOpacity: f32,
   sourceLuminance: f32,
   sourceDepthNdc: f32,
@@ -489,8 +490,9 @@ fn gpu_live_retention_pool_score(
   pool: u32,
 ) -> u32 {
   let coverageBucket = min(u32(clamp(tileCoverageWeight, 0.0, 1.0) * 255.0), 255u);
-  let retentionSignal = clamp(tileCoverageWeight * max(sourceOpacity, 0.000001) * max(sourceLuminance, 0.000001), 0.0, 1.0);
-  let occlusionSignal = clamp(tileCoverageWeight * max(sourceOpacity, 0.000001), 0.0, 1.0);
+  let retentionSupportWeight = max(max(tileCoverageWeight, 0.0), max(tileLocalSupportWeight, 0.0));
+  let retentionSignal = clamp(retentionSupportWeight * max(sourceOpacity, 0.000001) * max(sourceLuminance, 0.000001), 0.0, 1.0);
+  let occlusionSignal = clamp(retentionSupportWeight * max(sourceOpacity, 0.000001), 0.0, 1.0);
   let occlusionDensityBucket = min(u32(clamp(sourceOpacity, 0.0, 1.0) * 255.0), 255u);
   let occlusionWeightBucket = min(u32(occlusionSignal * 255.0), 255u);
   let retentionBucket = min(u32(retentionSignal * 255.0), 255u);
@@ -804,6 +806,7 @@ fn debug_heatmap_color(
       let sourceLuminance = gpu_live_source_luminance(splatId);
       let retentionScore = gpu_live_retention_pool_score(
         tileCoverageWeight,
+        tileLocalSupportWeight,
         sourceOpacity,
         sourceLuminance,
         sourceDepthNdc,

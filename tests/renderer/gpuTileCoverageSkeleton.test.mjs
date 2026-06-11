@@ -511,6 +511,36 @@ test("WGSL compact candidate shader does not inflate footprint bounds through sc
   assert.match(buildTileRefs, /maxTileY = tileBounds\.w/);
 });
 
+test("WGSL source-frontier retention election ranks by tile-local conic support", () => {
+  const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
+
+  assert.match(
+    shader,
+    /fn gpu_live_retention_pool_score\(\s*tileCoverageWeight: f32,\s*tileLocalSupportWeight: f32,/,
+    "GPU retention election should receive the tile-local support bound alongside tile-center coverage",
+  );
+  assert.match(
+    shader,
+    /let retentionSupportWeight = max\(max\(tileCoverageWeight,\s*0\.0\),\s*max\(tileLocalSupportWeight,\s*0\.0\)\)/,
+    "GPU retention election should mirror CPU source-frontier admission's max(coverage, localSupport) policy",
+  );
+  assert.match(
+    shader,
+    /let retentionSignal = clamp\(retentionSupportWeight \* max\(sourceOpacity/,
+    "foreground retention strength should not collapse when a rotated conic misses the tile center",
+  );
+  assert.match(
+    shader,
+    /let occlusionSignal = clamp\(retentionSupportWeight \* max\(sourceOpacity/,
+    "foreground occlusion strength should not collapse when a rotated conic misses the tile center",
+  );
+  assert.match(
+    shader,
+    /gpu_live_retention_pool_score\(\s*tileCoverageWeight,\s*tileLocalSupportWeight,/,
+    "build_tile_refs should pass the measured tile-local support into retention scoring",
+  );
+});
+
 test("GPU contributor arena layout extends the legacy flat tile-ref buffers without replacing them", () => {
   const plan = createGpuTileCoveragePlan({
     viewportWidth: 320,
