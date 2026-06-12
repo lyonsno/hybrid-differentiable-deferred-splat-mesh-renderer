@@ -511,7 +511,7 @@ fn gpu_live_retention_pool_score(
     let supportBucket = source_frontier_retention_primary_bucket(
       candidateSourceClassMask,
       pool,
-      max(retentionBucket, coverageBucket)
+      max(max(retentionBucket, coverageBucket), occlusionWeightBucket)
     );
     return max((supportBucket << 23u) | (occlusionWeightBucket << 15u) | (depthBucket << 2u) | splatTie, 1u);
   }

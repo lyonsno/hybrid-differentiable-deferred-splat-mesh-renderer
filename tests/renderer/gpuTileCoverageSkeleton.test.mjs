@@ -541,6 +541,32 @@ test("WGSL source-frontier retention election ranks by tile-local conic support"
   );
 });
 
+test("WGSL source-frontier support pool primary score is occlusion-backed instead of luminance-gated", () => {
+  const shader = readFileSync(new URL("../../src/shaders/gpu_tile_coverage.wgsl", import.meta.url), "utf8");
+  const retentionScoreSource = shader.slice(
+    shader.indexOf("fn gpu_live_retention_pool_score"),
+    shader.indexOf("fn source_frontier_retention_primary_bucket"),
+  );
+
+  const tileCoverageBucket = 0;
+  const tileLocalSupportWeight = 1;
+  const opacity = 0.92;
+  const darkLuminance = 0.02;
+  const retentionBucket = Math.floor(tileLocalSupportWeight * opacity * darkLuminance * 255);
+  const occlusionWeightBucket = Math.floor(tileLocalSupportWeight * opacity * 255);
+  const foregroundFloor = 224;
+
+  assert.ok(
+    Math.max(retentionBucket, tileCoverageBucket, foregroundFloor) < occlusionWeightBucket,
+    "fixture should expose the old support-pool failure: dark opaque support is flattened to the foreground floor",
+  );
+  assert.match(
+    retentionScoreSource,
+    /if \(pool == RETENTION_POOL_SUPPORT\)[\s\S]*let supportBucket = source_frontier_retention_primary_bucket\([\s\S]*max\(max\(retentionBucket,\s*coverageBucket\),\s*occlusionWeightBucket\)/,
+    "support-pool primary election should rank source-frontier support by opaque occlusion strength even when luminance is low",
+  );
+});
+
 test("GPU contributor arena layout extends the legacy flat tile-ref buffers without replacing them", () => {
   const plan = createGpuTileCoveragePlan({
     viewportWidth: 320,
