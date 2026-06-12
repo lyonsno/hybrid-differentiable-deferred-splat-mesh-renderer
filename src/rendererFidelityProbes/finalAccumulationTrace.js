@@ -31,6 +31,7 @@ export function buildFinalColorAccumulationTraceRecord({
   projectedContributors = [],
   retainedContributors = null,
   orderedContributors = null,
+  preserveContributorOrder = false,
   dispatchCache = DEFAULT_DISPATCH_CACHE,
   rendererMetadata = DEFAULT_RENDERER_METADATA,
   deferredFields = DEFAULT_DEFERRED_FIELDS,
@@ -42,7 +43,9 @@ export function buildFinalColorAccumulationTraceRecord({
     throw new Error("black-band-dropout-2300-1055 anchor is missing from the pixel contributor trace schema");
   }
   const tileAddress = tileAddressForAnchor(anchorPixel, tileSizePx, tileColumns);
-  const orderedRuntimeContributors = selectAccumulationContributors(contributors, anchorPixel, tileAddress);
+  const orderedRuntimeContributors = preserveContributorOrder
+    ? selectAccumulationContributorsInInputOrder(contributors, anchorPixel, tileAddress)
+    : selectAccumulationContributors(contributors, anchorPixel, tileAddress);
   const blockers = [];
   if (retainedContributors === null) {
     blockers.push({
@@ -111,13 +114,15 @@ export function buildPerPixelFinalColorAccumulationTraces({
   anchors = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors,
 } = {}) {
   return anchors.map((anchorPixel) => {
+    const orderedContributors = lookupOptionalAnchorList(orderedContributorsByAnchorId, anchorPixel.id);
     const record = buildFinalColorAccumulationTraceRecord({
       anchorPixel,
       contributors: lookupOptionalAnchorList(contributorsByAnchorId, anchorPixel.id) ?? contributors,
       sourceColors,
       projectedContributors: lookupAnchorList(projectedContributorsByAnchorId, anchorPixel.id),
       retainedContributors: lookupAnchorList(retainedContributorsByAnchorId, anchorPixel.id),
-      orderedContributors: lookupOptionalAnchorList(orderedContributorsByAnchorId, anchorPixel.id),
+      orderedContributors,
+      preserveContributorOrder: orderedContributors !== null,
       dispatchCache,
       rendererMetadata,
       deferredFields,
@@ -310,6 +315,15 @@ function selectAccumulationContributors(contributors, anchorPixel, tileAddress) 
   return contributors
     .filter((contributor) => contributorCanEnterFinalAccumulation(contributor, anchorPixel, tileAddress))
     .sort(compareAccumulationOrder);
+}
+
+function selectAccumulationContributorsInInputOrder(contributors, anchorPixel, tileAddress) {
+  if (!Array.isArray(contributors)) {
+    throw new TypeError("final accumulation contributors must be an array");
+  }
+  return contributors.filter((contributor) =>
+    contributorCanEnterFinalAccumulation(contributor, anchorPixel, tileAddress)
+  );
 }
 
 function contributorCanEnterFinalAccumulation(contributor, anchorPixel, tileAddress) {

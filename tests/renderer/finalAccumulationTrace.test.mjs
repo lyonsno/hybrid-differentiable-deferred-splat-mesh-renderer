@@ -228,6 +228,50 @@ test("per-pixel final accumulation traces can consume anchor-keyed source-fronti
   assert.equal(traces[0].orderedContributors[0].candidateSourceClassMask, 9);
 });
 
+test("per-pixel final accumulation preserves explicit live compositor input order for final color replay", () => {
+  const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
+  const tileIndex = tileIndexForAnchor(anchor);
+  const liveFirst = accumulationContributor({
+    anchor,
+    tileIndex,
+    splatIndex: 51,
+    originalId: 5100,
+    viewRank: 20,
+    opacity: 0.5,
+  });
+  const liveSecond = accumulationContributor({
+    anchor,
+    tileIndex,
+    splatIndex: 52,
+    originalId: 5200,
+    viewRank: 10,
+    opacity: 0.5,
+  });
+  const liveCompositorInputOrder = [liveFirst, liveSecond];
+
+  const traces = buildPerPixelFinalColorAccumulationTraces({
+    contributors: [],
+    contributorsByAnchorId: new Map([[anchor.id, liveCompositorInputOrder]]),
+    sourceColors: new Map([
+      [51, [0, 0, 1]],
+      [52, [1, 0, 0]],
+    ]),
+    retainedContributorsByAnchorId: new Map([[anchor.id, liveCompositorInputOrder]]),
+    orderedContributorsByAnchorId: new Map([[anchor.id, liveCompositorInputOrder]]),
+    tileSizePx: 16,
+    tileColumns: 216,
+    anchors: [anchor],
+  });
+
+  const trace = traces[0];
+  assert.deepEqual(
+    trace.finalColorAccumulation.steps.map((step) => step.splatIndex),
+    [51, 52],
+    "live compositor input readback is already in physical compositor order and must not be resorted",
+  );
+  assertColorClose(trace.finalColorAccumulation.outputColor, [0.505, 0.005, 0.26, 0.75]);
+});
+
 test("source-frontier foreground support crosses the final alpha bulkhead with spatial attenuation", () => {
   const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
   const foregroundSheet = Array.from({ length: 24 }, (_, index) =>
