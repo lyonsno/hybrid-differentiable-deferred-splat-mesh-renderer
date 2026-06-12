@@ -574,6 +574,10 @@ export function deriveStaticDessertOperatorVisibleBadPixelAnchorsFromImages({
   minFinalLuma = 145,
   minFinalVsPlateLuma = 48,
   minFinalVsPlateDelta = 42,
+  minPlateLumaForDarkFallthrough = 80,
+  maxFinalLumaForDarkFallthrough = 70,
+  minPlateVsFinalLuma = 48,
+  minPlateVsFinalDelta = 42,
 } = {}) {
   if (
     !validImage(plateImage) ||
@@ -595,6 +599,27 @@ export function deriveStaticDessertOperatorVisibleBadPixelAnchorsFromImages({
       const plateLuma = rgbLuma(platePixel);
       const finalLuma = rgbLuma(finalPixel);
       const finalLumaExcess = finalLuma - plateLuma;
+      const plateLumaExcess = plateLuma - finalLuma;
+      if (
+        plateLuma >= minPlateLumaForDarkFallthrough &&
+        finalLuma <= maxFinalLumaForDarkFallthrough &&
+        plateLumaExcess >= minPlateVsFinalLuma &&
+        finalVsPlate >= minPlateVsFinalDelta &&
+        plateDelta > finalDelta * 1.2
+      ) {
+        candidates.push({
+          id: `operator-bad-pixel-${candidates.length + 1}`,
+          kind: "operator-visible-dark-fallthrough",
+          x,
+          y,
+          score: roundMetric(finalVsPlate + plateLumaExcess + Math.max(0, plateDelta - finalDelta) * 0.25),
+          plateDelta: roundMetric(plateDelta),
+          finalDelta: roundMetric(finalDelta),
+          plateLuma: roundMetric(plateLuma),
+          finalLuma: roundMetric(finalLuma),
+        });
+        continue;
+      }
       if (
         finalLuma < minFinalLuma ||
         finalLumaExcess < minFinalVsPlateLuma ||
@@ -624,15 +649,35 @@ export function deriveStaticDessertOperatorVisibleBadPixelAnchorsFromImages({
   ));
   const selected = [];
   const minSpacingSquared = minSpacingPx * minSpacingPx;
-  for (const candidate of candidates) {
-    if (selected.every((anchor) => squaredDistance(anchor, candidate) >= minSpacingSquared)) {
+  const addCandidate = (candidate, { respectSpacing = true } = {}) => {
+    if (!respectSpacing || selected.every((anchor) => squaredDistance(anchor, candidate) >= minSpacingSquared)) {
       selected.push({
         ...candidate,
         id: `operator-bad-pixel-${selected.length + 1}`,
       });
     }
+  };
+  const strongestByKind = new Map();
+  for (const candidate of candidates) {
+    if (!strongestByKind.has(candidate.kind)) {
+      strongestByKind.set(candidate.kind, candidate);
+    }
+  }
+  for (const candidate of strongestByKind.values()) {
+    addCandidate(candidate, { respectSpacing: false });
     if (selected.length >= maxAnchors) {
       break;
+    }
+  }
+  if (selected.length < maxAnchors) {
+    for (const candidate of candidates) {
+      if (selected.some((anchor) => anchor.x === candidate.x && anchor.y === candidate.y && anchor.kind === candidate.kind)) {
+        continue;
+      }
+      addCandidate(candidate);
+      if (selected.length >= maxAnchors) {
+        break;
+      }
     }
   }
   return selected;

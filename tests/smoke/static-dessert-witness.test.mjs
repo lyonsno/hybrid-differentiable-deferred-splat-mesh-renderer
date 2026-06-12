@@ -255,6 +255,86 @@ test("static dessert operator-visible bad-pixel derivation catches off-grid sing
   assert.equal(anchors[0].y, 5);
 });
 
+test("static dessert operator-visible bad-pixel derivation selects dark fall-through holes", () => {
+  const plateImage = imageFromPixels(12, 12, (x, y) => {
+    if (x === 5 && y === 5) return [214, 180, 118, 255];
+    if (x === 8 && y === 8) return [95, 70, 45, 255];
+    return [0, 0, 0, 255];
+  });
+  const finalImage = imageFromPixels(12, 12, (x, y) => {
+    if (x === 5 && y === 5) return [5, 4, 3, 255];
+    if (x === 8 && y === 8) return [92, 70, 46, 255];
+    return [0, 0, 0, 255];
+  });
+
+  const anchors = deriveStaticDessertOperatorVisibleBadPixelAnchorsFromImages({
+    plateImage,
+    finalImage,
+    minSpacingPx: 1,
+  });
+
+  assert.equal(anchors.length, 1);
+  assert.equal(anchors[0].x, 5);
+  assert.equal(anchors[0].y, 5);
+  assert.equal(anchors[0].kind, "operator-visible-dark-fallthrough");
+  assert.ok(anchors[0].plateLuma > anchors[0].finalLuma);
+});
+
+test("static dessert operator-visible bad-pixel derivation preserves dark and bright failure classes", () => {
+  const plateImage = imageFromPixels(24, 12, (x, y) => {
+    if (x === 4 && y === 4) return [40, 32, 24, 255];
+    if (x === 10 && y === 4) return [45, 35, 24, 255];
+    if (x === 20 && y === 4) return [205, 172, 112, 255];
+    return [0, 0, 0, 255];
+  });
+  const finalImage = imageFromPixels(24, 12, (x, y) => {
+    if (x === 4 && y === 4) return [250, 246, 238, 255];
+    if (x === 10 && y === 4) return [246, 242, 230, 255];
+    if (x === 20 && y === 4) return [5, 4, 3, 255];
+    return [0, 0, 0, 255];
+  });
+
+  const anchors = deriveStaticDessertOperatorVisibleBadPixelAnchorsFromImages({
+    plateImage,
+    finalImage,
+    maxAnchors: 2,
+    minSpacingPx: 1,
+  });
+
+  assert.equal(anchors.length, 2);
+  assert.deepEqual(
+    new Set(anchors.map((anchor) => anchor.kind)),
+    new Set(["operator-visible-bright-outlier", "operator-visible-dark-fallthrough"]),
+  );
+});
+
+test("static dessert operator-visible bad-pixel derivation preserves clustered failure classes", () => {
+  const plateImage = imageFromPixels(160, 24, (x, y) => {
+    if (x === 20 && y === 10) return [40, 32, 24, 255];
+    if (x === 45 && y === 10) return [205, 172, 112, 255];
+    if (x === 120 && y === 10) return [45, 35, 24, 255];
+    return [0, 0, 0, 255];
+  });
+  const finalImage = imageFromPixels(160, 24, (x, y) => {
+    if (x === 20 && y === 10) return [250, 246, 238, 255];
+    if (x === 45 && y === 10) return [5, 4, 3, 255];
+    if (x === 120 && y === 10) return [246, 242, 230, 255];
+    return [0, 0, 0, 255];
+  });
+
+  const anchors = deriveStaticDessertOperatorVisibleBadPixelAnchorsFromImages({
+    plateImage,
+    finalImage,
+    maxAnchors: 2,
+  });
+
+  assert.equal(anchors.length, 2);
+  assert.deepEqual(
+    new Set(anchors.map((anchor) => anchor.kind)),
+    new Set(["operator-visible-bright-outlier", "operator-visible-dark-fallthrough"]),
+  );
+});
+
 test("static dessert operator-visible bad-pixel trace route preserves trace anchors without presentation or debug state", () => {
   const anchors = [
     { id: "operator-bad-pixel-1", kind: "operator-visible-bright-outlier", x: 640, y: 342, score: 71, plateLuma: 90, finalLuma: 225 },
@@ -1588,6 +1668,7 @@ test("visual smoke CLI exposes a static dessert witness batch mode", () => {
   assert.match(source, /deriveStaticDessertOperatorVisibleBadPixelAnchors/);
   assert.match(source, /Operator-Visible Bad Pixel Trace/);
   assert.match(source, /Operator-Visible Bad Pixel Classification/);
+  assert.match(source, /unknown-kind/);
   assert.match(source, /Plate Seepage Classification/);
   assert.match(source, /metrics\.visualGapTrace\.anchors/);
   assert.match(source, /metrics\.operatorVisibleBadPixelTrace\.anchors/);
