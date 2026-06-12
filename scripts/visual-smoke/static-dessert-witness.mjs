@@ -1291,7 +1291,7 @@ function classifyOperatorVisibleBadPixelsFromTrace(operatorVisibleBadPixelTrace 
   if (operatorVisibleBadPixelTrace.status !== "present") {
     return base;
   }
-  if (operatorVisibleBadPixelTrace.traceCanvasParity?.status !== TRACE_CANVAS_PARITY_KINDS.match) {
+  if (!operatorVisibleTraceCanvasParityIsAttributionGrade(operatorVisibleBadPixelTrace.traceCanvasParity)) {
     return {
       ...base,
       category: "trace-canvas-parity-blocked",
@@ -1324,6 +1324,14 @@ function classifyOperatorVisibleBadPixelsFromTrace(operatorVisibleBadPixelTrace 
     classifiedAnchorCount: 0,
     blockerCount: anchors.length,
   };
+}
+
+function operatorVisibleTraceCanvasParityIsAttributionGrade(traceCanvasParity = {}) {
+  return (
+    traceCanvasParity.status === TRACE_CANVAS_PARITY_KINDS.match &&
+    traceCanvasParity.predictionSource === "live-compositor-input-readback" &&
+    traceCanvasParity.liveCompositorInputReadbackStatus === "present"
+  );
 }
 
 function plateSeepageCategoryForAnchor(anchor = {}) {
