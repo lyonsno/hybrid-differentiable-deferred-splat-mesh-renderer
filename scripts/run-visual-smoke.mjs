@@ -20,9 +20,11 @@ import {
   classifyTileLocalDiagnostics,
 } from "./visual-smoke/tile-local-diagnostics.mjs";
 import {
+  buildStaticDessertOperatorVisibleBadPixelTraceCapture,
   buildStaticDessertVisualGapTraceCapture,
   buildStaticDessertWitnessPlan,
   classifyStaticDessertWitness,
+  deriveStaticDessertOperatorVisibleBadPixelAnchorsFromImages,
   deriveStaticDessertVisualGapAnchorsFromImages,
   STATIC_DESSERT_WITNESS_CAPTURE_IDS,
 } from "./visual-smoke/static-dessert-witness.mjs";
@@ -395,6 +397,11 @@ async function runStaticDessertWitness({ browser, options, baseUrl, reportDir, a
     const traceCapture = buildStaticDessertVisualGapTraceCapture(baseUrl, visualGapAnchors);
     captures.push(await captureVisualSmoke({ browser, options, capture: traceCapture, reportDir }));
   }
+  const operatorVisibleBadPixelAnchors = await deriveStaticDessertOperatorVisibleBadPixelAnchors({ captures, options });
+  if (operatorVisibleBadPixelAnchors.length > 0) {
+    const traceCapture = buildStaticDessertOperatorVisibleBadPixelTraceCapture(baseUrl, operatorVisibleBadPixelAnchors);
+    captures.push(await captureVisualSmoke({ browser, options, capture: traceCapture, reportDir }));
+  }
   const classification = classifyStaticDessertWitness({ captures });
 
   return {
@@ -409,9 +416,15 @@ async function runStaticDessertWitness({ browser, options, baseUrl, reportDir, a
       evidenceSurface: "static dessert witness report, analysis.json, final-color capture, and debug captures",
     }),
     options: publicOptions(options),
-    plan: visualGapAnchors.length > 0
-      ? [...plan, buildStaticDessertVisualGapTraceCapture(baseUrl, visualGapAnchors)]
-      : plan,
+    plan: [
+      ...plan,
+      ...(visualGapAnchors.length > 0
+        ? [buildStaticDessertVisualGapTraceCapture(baseUrl, visualGapAnchors)]
+        : []),
+      ...(operatorVisibleBadPixelAnchors.length > 0
+        ? [buildStaticDessertOperatorVisibleBadPixelTraceCapture(baseUrl, operatorVisibleBadPixelAnchors)]
+        : []),
+    ],
     captures,
     classification,
   };
@@ -434,6 +447,30 @@ async function deriveStaticDessertVisualGapAnchors({ captures, options }) {
   const plateBackground = imageAnalysisBackground(plate.imageAnalysis) ?? [0, 0, 0, 255];
   const finalBackground = imageAnalysisBackground(finalColor.imageAnalysis) ?? plateBackground;
   return deriveStaticDessertVisualGapAnchorsFromImages({
+    plateImage,
+    finalImage,
+    plateBackground,
+    finalBackground,
+  });
+}
+
+async function deriveStaticDessertOperatorVisibleBadPixelAnchors({ captures, options }) {
+  const byId = new Map(captures.map((capture) => [capture.id, capture]));
+  const plate = byId.get(STATIC_DESSERT_WITNESS_CAPTURE_IDS.plateFinalColor);
+  const finalColor = byId.get(STATIC_DESSERT_WITNESS_CAPTURE_IDS.finalColor);
+  if (!plate?.screenshotPath || !finalColor?.screenshotPath) {
+    return [];
+  }
+
+  const plateImage = decodePng(await readFile(path.resolve(options.appRoot, plate.screenshotPath)));
+  const finalImage = decodePng(await readFile(path.resolve(options.appRoot, finalColor.screenshotPath)));
+  if (plateImage.width !== finalImage.width || plateImage.height !== finalImage.height) {
+    return [];
+  }
+
+  const plateBackground = imageAnalysisBackground(plate.imageAnalysis) ?? [0, 0, 0, 255];
+  const finalBackground = imageAnalysisBackground(finalColor.imageAnalysis) ?? plateBackground;
+  return deriveStaticDessertOperatorVisibleBadPixelAnchorsFromImages({
     plateImage,
     finalImage,
     plateBackground,
@@ -1996,6 +2033,25 @@ ${renderSmokeHandoffSection(result.smokeHandoff)}
 - Trace changed pixels: ${formatPercent(metrics.visualGapTrace.changedPixelRatio)}
 
 ${metrics.visualGapTrace.anchors.length === 0 ? "- None" : metrics.visualGapTrace.anchors.map((anchor) => `- ${anchor.id}@${anchor.x},${anchor.y}: ${anchor.traceStatus}; score ${anchor.score}; plate delta ${anchor.plateDelta}; tile-local delta ${anchor.tileLocalDelta}; ${anchor.category}/${anchor.mechanism}; steps ${anchor.finalStepCount}; alpha ${anchor.outputAlpha}; remaining T ${anchor.remainingTransmittance}; foreground ${anchor.orderedForegroundCount}; foreground alpha ${anchor.finalForegroundAlpha}`).join("\n")}
+
+## Operator-Visible Bad Pixel Trace
+
+- Status: ${metrics.operatorVisibleBadPixelTrace.status}
+- Capture: ${metrics.operatorVisibleBadPixelTrace.captureId || "not captured"}
+- Screenshot: ${metrics.operatorVisibleBadPixelTrace.screenshotPath ? `\`${path.relative(path.dirname(result.reportPath), metrics.operatorVisibleBadPixelTrace.screenshotPath)}\`` : "not captured"}
+- Derived anchor count: ${metrics.operatorVisibleBadPixelTrace.anchorCount}
+- Trace changed pixels: ${formatPercent(metrics.operatorVisibleBadPixelTrace.changedPixelRatio)}
+
+${metrics.operatorVisibleBadPixelTrace.anchors.length === 0 ? "- None" : metrics.operatorVisibleBadPixelTrace.anchors.map((anchor) => `- ${anchor.id}@${anchor.x},${anchor.y}: ${anchor.traceStatus}; score ${anchor.score}; plate luma ${anchor.plateLuma}; final luma ${anchor.finalLuma}; output luma ${anchor.outputLuma}; ${anchor.category}/${anchor.mechanism}; steps ${anchor.finalStepCount}; alpha ${anchor.outputAlpha}; remaining T ${anchor.remainingTransmittance}; foreground ${anchor.orderedForegroundCount}; foreground alpha ${anchor.finalForegroundAlpha}`).join("\n")}
+
+## Operator-Visible Bad Pixel Classification
+
+- Status: ${metrics.operatorVisibleBadPixelClassification.status}
+- Category: ${metrics.operatorVisibleBadPixelClassification.category}
+- Stage: ${metrics.operatorVisibleBadPixelClassification.stage}
+- Source route: ${metrics.operatorVisibleBadPixelClassification.sourceRoute}
+- Classified anchors: ${metrics.operatorVisibleBadPixelClassification.classifiedAnchorCount} / ${metrics.operatorVisibleBadPixelClassification.anchorCount}
+- Blockers: ${metrics.operatorVisibleBadPixelClassification.blockerCount}
 
 ## Plate Seepage Classification
 

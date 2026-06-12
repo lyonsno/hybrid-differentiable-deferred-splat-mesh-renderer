@@ -2,6 +2,7 @@ export const STATIC_DESSERT_WITNESS_CAPTURE_IDS = {
   plateFinalColor: "plate-final-color",
   finalColor: "final-color",
   visualGapTrace: "visual-gap-trace",
+  operatorVisibleBadPixelTrace: "operator-visible-bad-pixel-trace",
   coverageWeight: "coverage-weight",
   accumulatedAlpha: "accumulated-alpha",
   transmittance: "transmittance",
@@ -11,7 +12,10 @@ export const STATIC_DESSERT_WITNESS_CAPTURE_IDS = {
 
 const REQUIRED_CAPTURE_IDS = new Set(
   Object.values(STATIC_DESSERT_WITNESS_CAPTURE_IDS)
-    .filter((id) => id !== STATIC_DESSERT_WITNESS_CAPTURE_IDS.visualGapTrace)
+    .filter((id) => (
+      id !== STATIC_DESSERT_WITNESS_CAPTURE_IDS.visualGapTrace &&
+      id !== STATIC_DESSERT_WITNESS_CAPTURE_IDS.operatorVisibleBadPixelTrace
+    ))
 );
 const DEBUG_CAPTURE_IDS = new Set([
   STATIC_DESSERT_WITNESS_CAPTURE_IDS.coverageWeight,
@@ -74,6 +78,24 @@ export function buildStaticDessertVisualGapTraceCapture(baseUrl, anchors) {
   };
 }
 
+export function buildStaticDessertOperatorVisibleBadPixelTraceCapture(baseUrl, anchors) {
+  const url = new URL(baseUrl);
+  url.searchParams.set("renderer", "tile-local-visible");
+  applyStaticTileLocalRoute(url);
+  url.searchParams.delete("tileDebug");
+  url.searchParams.delete("debug");
+  clearTraceRoute(url);
+  clearPresentationRoute(url);
+  url.searchParams.set("traceAnchors", encodeStaticDessertOperatorVisibleBadPixelTraceAnchors(anchors));
+  return {
+    id: STATIC_DESSERT_WITNESS_CAPTURE_IDS.operatorVisibleBadPixelTrace,
+    title: "Operator-visible bad-pixel final-color trace anchors",
+    expectedRendererLabel: "tile-local-visible",
+    operatorVisibleBadPixelAnchors: normalizeStaticDessertOperatorVisibleBadPixelAnchors(anchors),
+    url: url.toString().replaceAll("%2F", "/"),
+  };
+}
+
 export function classifyStaticDessertWitness({ captures = [] } = {}) {
   const byId = new Map(captures.map((capture) => [capture.id, capture]));
   const findings = [];
@@ -100,6 +122,14 @@ export function classifyStaticDessertWitness({ captures = [] } = {}) {
   );
   const plateSeepageClassification = classifyPlateSeepageFromVisualGapTrace(
     visualGapTrace,
+    staticTileLocalRouteExpectation(finalColor)
+  );
+  const operatorVisibleBadPixelTrace = summarizeOperatorVisibleBadPixelTrace(
+    byId.get(STATIC_DESSERT_WITNESS_CAPTURE_IDS.operatorVisibleBadPixelTrace),
+    staticTileLocalRouteExpectation(finalColor)
+  );
+  const operatorVisibleBadPixelClassification = classifyOperatorVisibleBadPixelsFromTrace(
+    operatorVisibleBadPixelTrace,
     staticTileLocalRouteExpectation(finalColor)
   );
   if (plateFinalColor && rendererLabel(plateFinalColor) !== "plate") {
@@ -245,6 +275,45 @@ export function classifyStaticDessertWitness({ captures = [] } = {}) {
       )
     );
   }
+  if (operatorVisibleBadPixelTrace.status === "malformed") {
+    findings.push(
+      finding(
+        "operator-visible-bad-pixel-trace-malformed",
+        operatorVisibleBadPixelTrace.routeStatus || "Operator-visible bad-pixel trace did not preserve the expected tile-local trace route."
+      )
+    );
+  } else if (operatorVisibleBadPixelTrace.status === "partial") {
+    const incomplete = operatorVisibleBadPixelTrace.anchors
+      .filter((anchor) => !anchor.traceComplete)
+      .map((anchor) => `${anchor.id}:${anchor.traceStatus}`)
+      .join(", ");
+    findings.push(
+      finding(
+        "operator-visible-bad-pixel-trace-incomplete",
+        `Operator-visible bad-pixel trace anchors were captured but missing required trace diagnostics: ${incomplete || "unknown"}.`
+      )
+    );
+  } else if (
+    operatorVisibleBadPixelTrace.status === "present" &&
+    operatorVisibleBadPixelClassification.category === "alpha-sealed-rgb-transfer-mismatch"
+  ) {
+    findings.push(
+      finding(
+        "operator-visible-bad-pixels-alpha-sealed",
+        "Operator-visible bad pixels remain even though traced foreground survived and alpha/transmittance are sealed."
+      )
+    );
+  } else if (
+    operatorVisibleBadPixelTrace.status === "present" &&
+    operatorVisibleBadPixelClassification.status === "blocked"
+  ) {
+    findings.push(
+      finding(
+        "operator-visible-bad-pixels-unclassified",
+        `Operator-visible bad pixels were traced but not classified for repair: ${operatorVisibleBadPixelClassification.category}/${operatorVisibleBadPixelClassification.stage}.`
+      )
+    );
+  }
 
   const metrics = {
     fixedView: {
@@ -293,6 +362,8 @@ export function classifyStaticDessertWitness({ captures = [] } = {}) {
     },
     visualGapTrace,
     plateSeepageClassification,
+    operatorVisibleBadPixelTrace,
+    operatorVisibleBadPixelClassification,
   };
   const closeable = findings.length === 0;
   return {
@@ -467,6 +538,81 @@ export function deriveStaticDessertVisualGapAnchorsFromImages({
   return selected;
 }
 
+export function deriveStaticDessertOperatorVisibleBadPixelAnchorsFromImages({
+  plateImage,
+  finalImage,
+  plateBackground = [0, 0, 0, 255],
+  finalBackground = plateBackground,
+  maxAnchors = 3,
+  stridePx = 1,
+  minSpacingPx = 72,
+  minFinalLuma = 145,
+  minFinalVsPlateLuma = 48,
+  minFinalVsPlateDelta = 42,
+} = {}) {
+  if (
+    !validImage(plateImage) ||
+    !validImage(finalImage) ||
+    plateImage.width !== finalImage.width ||
+    plateImage.height !== finalImage.height
+  ) {
+    return [];
+  }
+
+  const candidates = [];
+  for (let y = 0; y < plateImage.height; y += stridePx) {
+    for (let x = 0; x < plateImage.width; x += stridePx) {
+      const platePixel = readImagePixel(plateImage, x, y);
+      const finalPixel = readImagePixel(finalImage, x, y);
+      const plateDelta = rgbDelta(platePixel, plateBackground);
+      const finalDelta = rgbDelta(finalPixel, finalBackground);
+      const finalVsPlate = rgbDelta(finalPixel, platePixel);
+      const plateLuma = rgbLuma(platePixel);
+      const finalLuma = rgbLuma(finalPixel);
+      const finalLumaExcess = finalLuma - plateLuma;
+      if (
+        finalLuma < minFinalLuma ||
+        finalLumaExcess < minFinalVsPlateLuma ||
+        finalVsPlate < minFinalVsPlateDelta ||
+        finalDelta < plateDelta * 1.2
+      ) {
+        continue;
+      }
+      candidates.push({
+        id: `operator-bad-pixel-${candidates.length + 1}`,
+        kind: "operator-visible-bright-outlier",
+        x,
+        y,
+        score: roundMetric(finalVsPlate + finalLumaExcess + finalDelta * 0.25),
+        plateDelta: roundMetric(plateDelta),
+        finalDelta: roundMetric(finalDelta),
+        plateLuma: roundMetric(plateLuma),
+        finalLuma: roundMetric(finalLuma),
+      });
+    }
+  }
+
+  candidates.sort((left, right) => (
+    right.score - left.score ||
+    left.y - right.y ||
+    left.x - right.x
+  ));
+  const selected = [];
+  const minSpacingSquared = minSpacingPx * minSpacingPx;
+  for (const candidate of candidates) {
+    if (selected.every((anchor) => squaredDistance(anchor, candidate) >= minSpacingSquared)) {
+      selected.push({
+        ...candidate,
+        id: `operator-bad-pixel-${selected.length + 1}`,
+      });
+    }
+    if (selected.length >= maxAnchors) {
+      break;
+    }
+  }
+  return selected;
+}
+
 function validImage(image) {
   return Boolean(
     image &&
@@ -497,6 +643,10 @@ function rgbDelta(left, right) {
   ) / 3;
 }
 
+function rgbLuma(pixel) {
+  return pixel[0] * 0.2126 + pixel[1] * 0.7152 + pixel[2] * 0.0722;
+}
+
 function squaredDistance(left, right) {
   const dx = left.x - right.x;
   const dy = left.y - right.y;
@@ -513,6 +663,12 @@ function encodeStaticDessertTraceAnchors(anchors) {
     .join(";");
 }
 
+function encodeStaticDessertOperatorVisibleBadPixelTraceAnchors(anchors) {
+  return normalizeStaticDessertOperatorVisibleBadPixelAnchors(anchors)
+    .map((anchor) => `${anchor.id}@${anchor.x},${anchor.y}:${anchor.kind}`)
+    .join(";");
+}
+
 function normalizeStaticDessertVisualGapAnchors(anchors) {
   return (Array.isArray(anchors) ? anchors : [])
     .map((anchor, index) => ({
@@ -523,6 +679,21 @@ function normalizeStaticDessertVisualGapAnchors(anchors) {
       score: finiteNumber(anchor?.score) ?? 0,
       plateDelta: finiteNumber(anchor?.plateDelta) ?? 0,
       tileLocalDelta: finiteNumber(anchor?.tileLocalDelta) ?? 0,
+    }));
+}
+
+function normalizeStaticDessertOperatorVisibleBadPixelAnchors(anchors) {
+  return (Array.isArray(anchors) ? anchors : [])
+    .map((anchor, index) => ({
+      id: sanitizeAnchorToken(anchor?.id || `operator-bad-pixel-${index + 1}`, index),
+      kind: sanitizeAnchorToken(anchor?.kind || "operator-visible-bright-outlier", index),
+      x: Math.max(0, Math.floor(finiteNumber(anchor?.x) ?? 0)),
+      y: Math.max(0, Math.floor(finiteNumber(anchor?.y) ?? 0)),
+      score: finiteNumber(anchor?.score) ?? 0,
+      plateDelta: finiteNumber(anchor?.plateDelta) ?? 0,
+      finalDelta: finiteNumber(anchor?.finalDelta) ?? 0,
+      plateLuma: finiteNumber(anchor?.plateLuma) ?? 0,
+      finalLuma: finiteNumber(anchor?.finalLuma) ?? 0,
     }));
 }
 
@@ -621,6 +792,99 @@ function summarizeVisualGapTrace(capture, expectedRoute = {}) {
   };
 }
 
+function summarizeOperatorVisibleBadPixelTrace(capture, expectedRoute = {}) {
+  const anchors = normalizeStaticDessertOperatorVisibleBadPixelAnchors(capture?.operatorVisibleBadPixelAnchors);
+  const routeStatus = operatorVisibleBadPixelTraceRouteStatus(capture, anchors, expectedRoute);
+  const tileLocal = capture?.pageEvidence?.tileLocal;
+  const accumulationById = new Map(
+    (Array.isArray(tileLocal?.perPixelFinalColorAccumulation) ? tileLocal.perPixelFinalColorAccumulation : [])
+      .map((trace) => [trace?.anchorPixel?.id, trace])
+      .filter(([id]) => typeof id === "string")
+  );
+  const ledgersById = new Map(
+    (Array.isArray(tileLocal?.perPixelRetainedToOrderedSurvivalLedger?.anchorLedgers)
+      ? tileLocal.perPixelRetainedToOrderedSurvivalLedger.anchorLedgers
+      : [])
+      .map((ledger) => [ledger?.anchorPixel?.id, ledger])
+      .filter(([id]) => typeof id === "string")
+  );
+  const anchorSummaries = anchors.map((anchor) => {
+    const accumulation = accumulationById.get(anchor.id);
+    const ledger = ledgersById.get(anchor.id);
+    const hasFinalAccumulation = Boolean(accumulation?.finalColorAccumulation);
+    const hasSurvivalLedger = Boolean(ledger);
+    const accumulationAnchorMatches = anchorPixelMatches(anchor, accumulation?.anchorPixel);
+    const ledgerAnchorMatches = anchorPixelMatches(anchor, ledger?.anchorPixel);
+    const outputColor = Array.isArray(accumulation?.finalColorAccumulation?.outputColor)
+      ? accumulation.finalColorAccumulation.outputColor
+      : [];
+    const outputAlpha = finiteNumber(outputColor[3]);
+    const remainingTransmittance = finiteNumber(accumulation?.finalColorAccumulation?.remainingTransmittance);
+    const outputLuma = outputColor.length >= 3
+      ? rgbLuma([
+        (finiteNumber(outputColor[0]) ?? 0) * 255,
+        (finiteNumber(outputColor[1]) ?? 0) * 255,
+        (finiteNumber(outputColor[2]) ?? 0) * 255,
+      ])
+      : undefined;
+    const category = ledger?.category || "unclassified";
+    const ledgerCounts = ledger?.counts && typeof ledger.counts === "object" ? ledger.counts : {};
+    const ledgerMetrics = ledger?.metrics && typeof ledger.metrics === "object" ? ledger.metrics : {};
+    const finalForegroundAlpha = finiteNumber(ledger?.metrics?.finalForegroundAlpha);
+    const hasAlphaTransferEvidence = outputAlpha !== undefined && remainingTransmittance !== undefined;
+    const traceStatus = !accumulation
+      ? "missing-final-accumulation"
+      : !hasFinalAccumulation
+        ? "missing-final-accumulation-record"
+        : !hasSurvivalLedger
+          ? "missing-survival-ledger"
+          : !accumulationAnchorMatches
+            ? "final-accumulation-anchor-mismatch"
+            : !ledgerAnchorMatches
+              ? "survival-ledger-anchor-mismatch"
+              : !hasAlphaTransferEvidence
+                ? "missing-alpha-transfer-evidence"
+                : accumulation.status || "present";
+    return {
+      ...anchor,
+      traceStatus,
+      traceComplete: hasFinalAccumulation && hasSurvivalLedger && accumulationAnchorMatches && ledgerAnchorMatches && hasAlphaTransferEvidence,
+      finalStepCount: Array.isArray(accumulation?.finalColorAccumulation?.steps)
+        ? accumulation.finalColorAccumulation.steps.length
+        : 0,
+      outputAlpha: outputAlpha ?? null,
+      remainingTransmittance: remainingTransmittance ?? null,
+      outputLuma: outputLuma === undefined ? null : roundMetric(outputLuma),
+      category,
+      mechanism: ledger?.mechanism || "unclassified",
+      projectedForegroundCount: finiteNumber(ledgerCounts.projectedForeground) ?? 0,
+      retainedForegroundCount: finiteNumber(ledgerCounts.retainedForeground) ?? 0,
+      orderedForegroundCount: finiteNumber(ledgerCounts.orderedForeground) ?? 0,
+      projectedForegroundOcclusionWeight: finiteNumber(ledgerMetrics.projectedForegroundOcclusionWeight) ?? 0,
+      retainedForegroundOcclusionWeight: finiteNumber(ledgerMetrics.retainedForegroundOcclusionWeight) ?? 0,
+      orderedForegroundOcclusionWeight: finiteNumber(ledgerMetrics.orderedForegroundOcclusionWeight) ?? 0,
+      finalForegroundAlpha: finalForegroundAlpha ?? null,
+    };
+  });
+  return {
+    status: !capture
+      ? "not-captured"
+      : anchorSummaries.length === 0
+        ? "empty"
+        : routeStatus !== "ok"
+          ? "malformed"
+          : anchorSummaries.some((anchor) => !anchor.traceComplete)
+            ? "partial"
+            : "present",
+    captureId: capture?.id || "",
+    screenshotPath: capture?.screenshotPath || "",
+    anchorCount: anchorSummaries.length,
+    anchors: anchorSummaries,
+    changedPixelRatio: finiteNumber(capture?.imageAnalysis?.changedPixelRatio) ?? 0,
+    routeStatus,
+  };
+}
+
 function visualGapTraceRouteStatus(capture, anchors, expectedRoute = {}) {
   if (!capture) {
     return "not-captured";
@@ -686,6 +950,75 @@ function visualGapTraceRouteStatus(capture, anchors, expectedRoute = {}) {
   const stalePresentationScope = stalePresentationScopeFields.find((field) => routeValue(capture, routeIdentity, field) !== "");
   if (stalePresentationScope) {
     return `visual-gap trace route carried stale ${stalePresentationScope}`;
+  }
+  return "ok";
+}
+
+function operatorVisibleBadPixelTraceRouteStatus(capture, anchors, expectedRoute = {}) {
+  if (!capture) {
+    return "not-captured";
+  }
+  if (!capture.classification?.harnessPassed) {
+    return "operator-visible bad-pixel trace capture did not pass visual smoke classification";
+  }
+  if (!capture.classification?.realSplatEvidence) {
+    return "operator-visible bad-pixel trace capture did not report real Scaniverse splat evidence";
+  }
+  const label = rendererLabel(capture);
+  if (!label.includes("tile-local-visible") || label.includes("-debug-")) {
+    return `operator-visible bad-pixel trace capture reported renderer label ${rendererLabel(capture) || "missing"}`;
+  }
+  const routeIdentity = capture.routeIdentity && typeof capture.routeIdentity === "object"
+    ? capture.routeIdentity
+    : {};
+  const routeChecks = [
+    ["assetPath", expectedRoute.assetPath],
+    ["witnessView", expectedRoute.witnessView],
+    ["renderer", "tile-local-visible"],
+    ["arenaBackend", DEFAULT_STATIC_TILE_LOCAL_ROUTE.arenaBackend],
+    ["tileSizePx", DEFAULT_STATIC_TILE_LOCAL_ROUTE.tileSizePx],
+    ["maxRefsPerTile", DEFAULT_STATIC_TILE_LOCAL_ROUTE.maxRefsPerTile],
+    ["wgslProjectedRefStream", expectedRoute.wgslProjectedRefStream],
+    ["effectiveWgslProjectedRefStream", expectedRoute.effectiveWgslProjectedRefStream],
+  ];
+  for (const [field, expected] of routeChecks) {
+    const actual = routeValue(capture, routeIdentity, field);
+    if (stringValue(expected) !== "" && actual !== stringValue(expected)) {
+      return `operator-visible bad-pixel trace route carried ${actual || "missing"} ${field} instead of ${expected}`;
+    }
+  }
+  const traceAnchors = routeValue(capture, routeIdentity, "traceAnchors");
+  const expectedTraceAnchors = encodeStaticDessertOperatorVisibleBadPixelTraceAnchors(anchors);
+  if (traceAnchors !== expectedTraceAnchors) {
+    return `operator-visible bad-pixel trace route carried ${traceAnchors || "missing"} trace anchors instead of ${expectedTraceAnchors || "none"}`;
+  }
+  if (routeValue(capture, routeIdentity, "traceAnchor") !== "") {
+    return "operator-visible bad-pixel trace route carried stale singular traceAnchor";
+  }
+  const presentationAnchorFields = [
+    "presentationAnchors",
+    "presentationAnchor",
+    "tileLocalPresentationAnchors",
+    "tileLocalPresentationAnchor",
+  ];
+  if (presentationAnchorFields.some((field) => routeValue(capture, routeIdentity, field) !== "")) {
+    return "operator-visible bad-pixel trace route carried presentation anchors";
+  }
+  if (routeValue(capture, routeIdentity, "tileDebug") !== "" || routeValue(capture, routeIdentity, "debug") !== "") {
+    return "operator-visible bad-pixel trace route carried debug mode params";
+  }
+  const presentationScope = routeValue(capture, routeIdentity, "presentationScope");
+  if (presentationScope !== "" && presentationScope !== "full-scene") {
+    return `operator-visible bad-pixel trace route carried presentation scope ${presentationScope}`;
+  }
+  const stalePresentationScopeFields = [
+    "presentationMode",
+    "tileLocalPresentationScope",
+    "tileLocalPresentationMode",
+  ];
+  const stalePresentationScope = stalePresentationScopeFields.find((field) => routeValue(capture, routeIdentity, field) !== "");
+  if (stalePresentationScope) {
+    return `operator-visible bad-pixel trace route carried stale ${stalePresentationScope}`;
   }
   return "ok";
 }
@@ -835,6 +1168,67 @@ function classifyPlateSeepageFromVisualGapTrace(visualGapTrace = {}, expectedRou
   };
 }
 
+function classifyOperatorVisibleBadPixelsFromTrace(operatorVisibleBadPixelTrace = {}, expectedRoute = {}) {
+  const anchors = Array.isArray(operatorVisibleBadPixelTrace.anchors) ? operatorVisibleBadPixelTrace.anchors : [];
+  const sourceRoute = sourceRouteLabel(
+    expectedRoute.effectiveWgslProjectedRefStream || expectedRoute.wgslProjectedRefStream
+  );
+  const base = {
+    status: "blocked",
+    category: "unclassified",
+    stage: "trace",
+    sourceRoute,
+    anchorCount: anchors.length,
+    classifiedAnchorCount: 0,
+    blockerCount: anchors.length,
+  };
+  if (operatorVisibleBadPixelTrace.status === "not-captured") {
+    return { ...base, status: "not-captured", category: "not-captured", stage: "trace-capture", blockerCount: 0 };
+  }
+  if (operatorVisibleBadPixelTrace.status === "empty") {
+    return { ...base, status: "empty", category: "no-operator-visible-bad-pixels", stage: "anchor-derivation", blockerCount: 0 };
+  }
+  if (operatorVisibleBadPixelTrace.status === "malformed") {
+    return { ...base, category: "trace-route-malformed", stage: "trace-route" };
+  }
+  if (operatorVisibleBadPixelTrace.status === "partial") {
+    return {
+      ...base,
+      category: "trace-incomplete",
+      stage: "trace-readback",
+      blockerCount: anchors.filter((anchor) => !anchor.traceComplete).length,
+    };
+  }
+  if (operatorVisibleBadPixelTrace.status !== "present") {
+    return base;
+  }
+  const alphaSealedMismatchCount = anchors.filter((anchor) => (
+    anchor.traceComplete &&
+    anchor.category === "ordered-present" &&
+    (finiteNumber(anchor.remainingTransmittance) ?? 1) <= MAX_VISUAL_GAP_REMAINING_TRANSMITTANCE_FOR_SEALED &&
+    (finiteNumber(anchor.outputAlpha) ?? 0) >= MIN_VISUAL_GAP_ALPHA_FOR_SEALED &&
+    (finiteNumber(anchor.finalForegroundAlpha) ?? 0) >= MIN_VISUAL_GAP_ALPHA_FOR_SEALED
+  )).length;
+  if (alphaSealedMismatchCount > 0) {
+    return {
+      ...base,
+      status: "classified",
+      category: "alpha-sealed-rgb-transfer-mismatch",
+      stage: "color-transfer-after-alpha-seal",
+      classifiedAnchorCount: alphaSealedMismatchCount,
+      blockerCount: 0,
+    };
+  }
+  return {
+    ...base,
+    status: "blocked",
+    category: "operator-visible-bad-pixels-unclassified",
+    stage: "visual-evidence",
+    classifiedAnchorCount: 0,
+    blockerCount: anchors.length,
+  };
+}
+
 function plateSeepageCategoryForAnchor(anchor = {}) {
   const category = anchor.category || "unclassified";
   if (category === "ordered-present" && visualGapAnchorHasWeakFinalAlpha(anchor)) {
@@ -933,11 +1327,7 @@ function staticDessertObservations(plateSeepageClassification = {}, metrics = {}
       status: visibleHoleClassification.status,
       category: visibleHoleClassification.category,
       stage: visibleHoleClassification.stage,
-      evidenceIds: [
-        STATIC_DESSERT_WITNESS_CAPTURE_IDS.finalColor,
-        STATIC_DESSERT_WITNESS_CAPTURE_IDS.coverageWeight,
-        STATIC_DESSERT_WITNESS_CAPTURE_IDS.conicShape,
-      ],
+      evidenceIds: visibleHoleClassification.evidenceIds,
       boundary: visibleHoleClassification.boundary,
     },
     plateSeepage: {
@@ -960,6 +1350,22 @@ function staticDessertObservations(plateSeepageClassification = {}, metrics = {}
 }
 
 function classifyVisibleHoleObservation(plateSeepageClassification = {}, metrics = {}) {
+  const operatorVisibleBadPixelClassification = metrics.operatorVisibleBadPixelClassification ?? {};
+  if (operatorVisibleBadPixelClassification.category === "alpha-sealed-rgb-transfer-mismatch") {
+    return {
+      status: "classified-for-review",
+      category: "operator-visible-bad-pixels",
+      stage: "color-transfer-after-alpha-seal",
+      evidenceIds: [
+        STATIC_DESSERT_WITNESS_CAPTURE_IDS.finalColor,
+        STATIC_DESSERT_WITNESS_CAPTURE_IDS.operatorVisibleBadPixelTrace,
+        STATIC_DESSERT_WITNESS_CAPTURE_IDS.accumulatedAlpha,
+        STATIC_DESSERT_WITNESS_CAPTURE_IDS.transmittance,
+      ],
+      boundary:
+        `Operator-visible bad pixels remain after alpha/transmittance seal and foreground survival; ${operatorVisibleBadPixelClassification.classifiedAnchorCount || 0} traced anchors route the next repair to RGB/color-transfer or support-footprint semantics instead of plate-seepage closure.`,
+    };
+  }
   const conicAnisotropy = finiteNumber(metrics.conicShape?.maxAnisotropy) ?? 0;
   const tileLocalToPlateRatio = finiteNumber(metrics.rendererBridge?.tileLocalToPlateChangedPixelRatio) ?? 0;
   const plateSeepageSealed =
@@ -967,17 +1373,27 @@ function classifyVisibleHoleObservation(plateSeepageClassification = {}, metrics
     plateSeepageClassification.category === "no-seepage";
   if (plateSeepageSealed && conicAnisotropy >= 8 && tileLocalToPlateRatio > 1) {
     return {
-      status: "classified-for-review",
-      category: "conic-coverage-pressure",
-      stage: "conic-coverage-support",
-      boundary:
-        `Porous/non-square final-color gaps remain after plate seepage sealed; conic anisotropy ${formatObservationMetric(conicAnisotropy)} and tile-local/plate changed-pixel ratio ${formatObservationMetric(tileLocalToPlateRatio)} route the next repair to conic/coverage support, not alpha transfer.`,
-    };
+    status: "classified-for-review",
+    category: "conic-coverage-pressure",
+    stage: "conic-coverage-support",
+    evidenceIds: [
+      STATIC_DESSERT_WITNESS_CAPTURE_IDS.finalColor,
+      STATIC_DESSERT_WITNESS_CAPTURE_IDS.coverageWeight,
+      STATIC_DESSERT_WITNESS_CAPTURE_IDS.conicShape,
+    ],
+    boundary:
+      `Porous/non-square final-color gaps remain after plate seepage sealed; conic anisotropy ${formatObservationMetric(conicAnisotropy)} and tile-local/plate changed-pixel ratio ${formatObservationMetric(tileLocalToPlateRatio)} route the next repair to conic/coverage support, not alpha transfer.`,
+  };
   }
   return {
     status: "captured-for-review",
     category: "unclassified",
     stage: "visual-evidence",
+    evidenceIds: [
+      STATIC_DESSERT_WITNESS_CAPTURE_IDS.finalColor,
+      STATIC_DESSERT_WITNESS_CAPTURE_IDS.coverageWeight,
+      STATIC_DESSERT_WITNESS_CAPTURE_IDS.conicShape,
+    ],
     boundary: "Porous/non-square final-color gaps are witnessed separately from tile-ref density and alpha transfer.",
   };
 }
