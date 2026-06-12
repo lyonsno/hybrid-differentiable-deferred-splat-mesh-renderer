@@ -1339,6 +1339,138 @@ test("static dessert witness classifier blocks operator-visible bad-pixel accusa
   );
 });
 
+test("static dessert witness classifier blocks color-transfer accusation when trace model diverges from live compositor input", () => {
+  const visualGapAnchors = [
+    { id: "visual-gap-1", kind: "plate-covered-tile-local-missing", x: 640, y: 342, score: 71, plateDelta: 88, tileLocalDelta: 9 },
+  ];
+  const badPixelAnchors = [
+    {
+      id: "operator-bad-pixel-1",
+      kind: "operator-visible-bright-outlier",
+      x: 612,
+      y: 355,
+      score: 142,
+      plateLuma: 82,
+      finalLuma: 224,
+      plateDelta: 120,
+      finalDelta: 224,
+    },
+  ];
+  const liveInputParityWithTraceModelMismatch = traceCanvasParityForTest(badPixelAnchors);
+  liveInputParityWithTraceModelMismatch.traceModelVsLive = {
+    status: "mismatch",
+    mismatchAnchors: ["operator-bad-pixel-1"],
+    maxDelta: 56,
+  };
+  liveInputParityWithTraceModelMismatch.anchors = liveInputParityWithTraceModelMismatch.anchors.map((anchor) => ({
+    ...anchor,
+    predictedRgba8: [222, 218, 208, 255],
+    sampledRgba8: [222, 218, 208, 255],
+    deltaRgba8: [0, 0, 0, 0],
+    maxDelta: 0,
+    status: "match",
+    cpuFinalTraceRgba8: [199, 188, 177, 255],
+    liveCompositorRgba8: [222, 218, 208, 255],
+    traceModelVsLiveDeltaRgba8: [23, 30, 31, 0],
+    traceModelVsLiveMaxDelta: 31,
+  }));
+  const result = classifyStaticDessertWitness({
+    captures: [
+      witnessCapture("final-color", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        changedPixelRatio: 0.0556642795138889,
+        routeIdentity: {
+          ...visualGapTraceRoute([]),
+          traceAnchors: "",
+          wgslProjectedRefStream: "source-frontier",
+        },
+      }),
+      witnessCapture("plate-final-color", {
+        rendererLabel: "plate",
+        changedPixelRatio: 0.03407335069444444,
+      }),
+      witnessCapture("coverage-weight"),
+      witnessCapture("accumulated-alpha", {
+        diagnostics: {
+          alpha: { estimatedMaxAccumulatedAlpha: 1, estimatedMinTransmittance: 0 },
+        },
+      }),
+      witnessCapture("transmittance", {
+        diagnostics: {
+          alpha: { estimatedMaxAccumulatedAlpha: 1, estimatedMinTransmittance: 0 },
+        },
+      }),
+      witnessCapture("tile-ref-count"),
+      witnessCapture("conic-shape", {
+        diagnostics: {
+          conicShape: { maxMajorRadiusPx: 57.2, minMinorRadiusPx: 1.5, maxAnisotropy: 21.8 },
+        },
+      }),
+      witnessCapture("visual-gap-trace", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        routeIdentity: {
+          ...visualGapTraceRoute(visualGapAnchors),
+          wgslProjectedRefStream: "source-frontier",
+        },
+        visualGapAnchors,
+        perPixelFinalColorAccumulation: [
+          {
+            status: "present",
+            anchorPixel: { id: "visual-gap-1", x: 640, y: 342 },
+            finalColorAccumulation: { steps: [{ splatIndex: 1 }], outputColor: [0.1, 0.2, 0.3, 0.98], remainingTransmittance: 0.02 },
+          },
+        ],
+        perPixelRetainedToOrderedSurvivalLedger: survivalLedgerFor(visualGapAnchors, {
+          category: "ordered-present",
+          mechanism: "retained-foreground-identity-survives-to-final-accumulation",
+          counts: { projectedForeground: 4, retainedForeground: 4, orderedForeground: 4 },
+          metrics: { projectedForegroundOcclusionWeight: 1.25, finalForegroundAlpha: 0.98 },
+        }),
+      }),
+      witnessCapture("operator-visible-bad-pixel-trace", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        routeIdentity: {
+          ...visualGapTraceRoute(badPixelAnchors),
+          wgslProjectedRefStream: "source-frontier",
+        },
+        operatorVisibleBadPixelAnchors: badPixelAnchors,
+        perPixelFinalColorAccumulation: [
+          {
+            status: "present",
+            anchorPixel: { id: "operator-bad-pixel-1", x: 612, y: 355 },
+            finalColorAccumulation: {
+              steps: [{ splatIndex: 11, sourceRole: "foreground", sourceFrontierSupportPixelWeight: 0.01 }],
+              outputColor: [0.93, 0.88, 0.79, 1],
+              remainingTransmittance: 0,
+            },
+          },
+        ],
+        perPixelRetainedToOrderedSurvivalLedger: survivalLedgerFor(badPixelAnchors, {
+          category: "ordered-present",
+          mechanism: "retained-foreground-identity-survives-to-final-accumulation",
+          counts: { projectedForeground: 4, retainedForeground: 4, orderedForeground: 4 },
+          metrics: { projectedForegroundOcclusionWeight: 1.25, finalForegroundAlpha: 1 },
+        }),
+        traceCanvasParity: liveInputParityWithTraceModelMismatch,
+      }),
+    ],
+  });
+
+  assert.equal(result.closeable, false);
+  assert.equal(result.metrics.operatorVisibleBadPixelTrace.status, "present");
+  assert.equal(result.metrics.operatorVisibleBadPixelTrace.traceCanvasParity.status, "trace-canvas-match");
+  assert.equal(result.metrics.operatorVisibleBadPixelTrace.traceCanvasParity.predictionSource, "live-compositor-input-readback");
+  assert.equal(result.metrics.operatorVisibleBadPixelTrace.traceCanvasParity.liveCompositorInputReadbackStatus, "present");
+  assert.equal(result.metrics.operatorVisibleBadPixelTrace.traceCanvasParity.traceModelVsLive.status, "mismatch");
+  assert.equal(result.metrics.operatorVisibleBadPixelClassification.category, "trace-model-live-parity-blocked");
+  assert.equal(result.metrics.operatorVisibleBadPixelClassification.stage, "trace-model-vs-live");
+  assert.equal(
+    result.findings.some((finding) => finding.kind === "operator-visible-bad-pixel-trace-model-live-mismatch"),
+    true,
+  );
+  assert.notEqual(result.observations.visibleHoles.stage, "color-transfer-after-alpha-seal");
+});
+
 test("static dessert witness classifier refuses closure for unclassified operator-visible bad pixels", () => {
   const visualGapAnchors = [
     { id: "visual-gap-1", kind: "plate-covered-tile-local-missing", x: 640, y: 342, score: 71, plateDelta: 88, tileLocalDelta: 9 },

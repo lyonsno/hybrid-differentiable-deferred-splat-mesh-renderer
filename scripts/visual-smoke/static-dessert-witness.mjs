@@ -320,6 +320,16 @@ export function classifyStaticDessertWitness({ captures = [] } = {}) {
     );
   } else if (
     operatorVisibleBadPixelTrace.status === "present" &&
+    operatorVisibleBadPixelClassification.category === "trace-model-live-parity-blocked"
+  ) {
+    findings.push(
+      finding(
+        "operator-visible-bad-pixel-trace-model-live-mismatch",
+        `Operator-visible bad pixels match live compositor input at the canvas, but CPU trace-model output diverges from live compositor input at ${operatorVisibleBadPixelTrace.traceCanvasParity?.traceModelVsLive?.mismatchCount || "unknown"} anchor(s).`
+      )
+    );
+  } else if (
+    operatorVisibleBadPixelTrace.status === "present" &&
     operatorVisibleBadPixelClassification.status === "blocked"
   ) {
     findings.push(
@@ -822,6 +832,7 @@ function summarizeOperatorVisibleTraceCanvasParity(capture, anchors = []) {
       blockerCount: anchors.length,
       missingAnchorIds: anchors.map((anchor) => anchor.id),
       maxDelta: 0,
+      traceModelVsLive: summarizeTraceModelVsLive(),
       summary: "Operator-visible bad-pixel trace/canvas parity evidence is missing.",
     };
   }
@@ -841,6 +852,7 @@ function summarizeOperatorVisibleTraceCanvasParity(capture, anchors = []) {
   const mismatchAnchors = parityAnchors.filter((anchor) => anchor?.status === "mismatch");
   const matchedAnchors = parityAnchors.filter((anchor) => anchor?.status === "match");
   const blockedReasons = Array.isArray(evidence.blockedReasons) ? evidence.blockedReasons : [];
+  const traceModelVsLive = summarizeTraceModelVsLive(evidence.traceModelVsLive);
   const maxDelta = finiteNumber(evidence.maxDelta) ?? mismatchAnchors.reduce(
     (max, anchor) => Math.max(max, finiteNumber(anchor?.maxDelta) ?? 0),
     0
@@ -858,6 +870,7 @@ function summarizeOperatorVisibleTraceCanvasParity(capture, anchors = []) {
       blockerCount: missingAnchorIds.length + mismatchAnchors.length + blockedReasons.length,
       missingAnchorIds,
       maxDelta,
+      traceModelVsLive,
       summary: `Trace/canvas parity omitted operator-visible anchors: ${missingAnchorIds.join(", ")}.`,
     };
   }
@@ -875,7 +888,20 @@ function summarizeOperatorVisibleTraceCanvasParity(capture, anchors = []) {
       : Math.max(1, mismatchAnchors.length + blockedReasons.length),
     missingAnchorIds,
     maxDelta,
+    traceModelVsLive,
     summary: classification.summary,
+  };
+}
+
+function summarizeTraceModelVsLive(traceModelVsLive = {}) {
+  const mismatchAnchors = Array.isArray(traceModelVsLive?.mismatchAnchors)
+    ? traceModelVsLive.mismatchAnchors.map(stringValue).filter(Boolean)
+    : [];
+  return {
+    status: stringValue(traceModelVsLive?.status) || "missing",
+    mismatchAnchors,
+    mismatchCount: mismatchAnchors.length,
+    maxDelta: finiteNumber(traceModelVsLive?.maxDelta) ?? 0,
   };
 }
 
@@ -1299,6 +1325,14 @@ function classifyOperatorVisibleBadPixelsFromTrace(operatorVisibleBadPixelTrace 
       blockerCount: Math.max(1, finiteNumber(operatorVisibleBadPixelTrace.traceCanvasParity?.blockerCount) ?? anchors.length),
     };
   }
+  if (operatorVisibleTraceModelLiveBlocksAttribution(operatorVisibleBadPixelTrace.traceCanvasParity)) {
+    return {
+      ...base,
+      category: "trace-model-live-parity-blocked",
+      stage: "trace-model-vs-live",
+      blockerCount: Math.max(1, finiteNumber(operatorVisibleBadPixelTrace.traceCanvasParity?.traceModelVsLive?.mismatchCount) ?? anchors.length),
+    };
+  }
   const alphaSealedMismatchCount = anchors.filter((anchor) => (
     anchor.traceComplete &&
     anchor.category === "ordered-present" &&
@@ -1332,6 +1366,10 @@ function operatorVisibleTraceCanvasParityIsAttributionGrade(traceCanvasParity = 
     traceCanvasParity.predictionSource === "live-compositor-input-readback" &&
     traceCanvasParity.liveCompositorInputReadbackStatus === "present"
   );
+}
+
+function operatorVisibleTraceModelLiveBlocksAttribution(traceCanvasParity = {}) {
+  return traceCanvasParity?.traceModelVsLive?.status === "mismatch";
 }
 
 function plateSeepageCategoryForAnchor(anchor = {}) {
@@ -1469,6 +1507,19 @@ function classifyVisibleHoleObservation(plateSeepageClassification = {}, metrics
       ],
       boundary:
         `Operator-visible bad pixels remain after alpha/transmittance seal and foreground survival; ${operatorVisibleBadPixelClassification.classifiedAnchorCount || 0} traced anchors route the next repair to RGB/color-transfer or support-footprint semantics instead of plate-seepage closure.`,
+    };
+  }
+  if (operatorVisibleBadPixelClassification.category === "trace-model-live-parity-blocked") {
+    return {
+      status: "captured-for-review",
+      category: "operator-visible-bad-pixels",
+      stage: "trace-model-vs-live",
+      evidenceIds: [
+        STATIC_DESSERT_WITNESS_CAPTURE_IDS.finalColor,
+        STATIC_DESSERT_WITNESS_CAPTURE_IDS.operatorVisibleBadPixelTrace,
+      ],
+      boundary:
+        "Operator-visible bad pixels remain and live compositor input matches the canvas, but the CPU trace model diverges from live compositor input; defer RGB/color-transfer attribution until the model/live split is resolved.",
     };
   }
   const conicAnisotropy = finiteNumber(metrics.conicShape?.maxAnisotropy) ?? 0;
