@@ -2043,6 +2043,9 @@ ${metrics.visualGapTrace.anchors.length === 0 ? "- None" : metrics.visualGapTrac
 - Screenshot: ${metrics.operatorVisibleBadPixelTrace.screenshotPath ? `\`${path.relative(path.dirname(result.reportPath), metrics.operatorVisibleBadPixelTrace.screenshotPath)}\`` : "not captured"}
 - Derived anchor count: ${metrics.operatorVisibleBadPixelTrace.anchorCount}
 - Trace changed pixels: ${formatPercent(metrics.operatorVisibleBadPixelTrace.changedPixelRatio)}
+- Trace/canvas parity: ${metrics.operatorVisibleBadPixelTrace.traceCanvasParity?.status || "not reported"}
+- Trace/canvas parity source: ${metrics.operatorVisibleBadPixelTrace.traceCanvasParity?.predictionSource || "not reported"}
+- Trace/canvas parity mismatches: ${metrics.operatorVisibleBadPixelTrace.traceCanvasParity?.mismatchCount ?? "not reported"}; missing anchors: ${(metrics.operatorVisibleBadPixelTrace.traceCanvasParity?.missingAnchorIds || []).join(", ") || "none"}; max delta: ${metrics.operatorVisibleBadPixelTrace.traceCanvasParity?.maxDelta ?? "not reported"}
 
 ${metrics.operatorVisibleBadPixelTrace.anchors.length === 0 ? "- None" : metrics.operatorVisibleBadPixelTrace.anchors.map((anchor) => `- ${anchor.id}@${anchor.x},${anchor.y}: ${anchor.traceStatus}; score ${anchor.score}; plate luma ${anchor.plateLuma}; final luma ${anchor.finalLuma}; output luma ${anchor.outputLuma}; ${anchor.category}/${anchor.mechanism}; steps ${anchor.finalStepCount}; alpha ${anchor.outputAlpha}; remaining T ${anchor.remainingTransmittance}; foreground ${anchor.orderedForegroundCount}; foreground alpha ${anchor.finalForegroundAlpha}`).join("\n")}
 
