@@ -300,12 +300,12 @@ export function classifyStaticDessertWitness({ captures = [] } = {}) {
     );
   } else if (
     operatorVisibleBadPixelTrace.status === "present" &&
-    operatorVisibleBadPixelClassification.category === "alpha-sealed-rgb-transfer-mismatch"
+    operatorVisibleBadPixelClassification.category === "selected-anchor-post-alpha-color-mismatch"
   ) {
     findings.push(
       finding(
-        "operator-visible-bad-pixels-alpha-sealed",
-        "Operator-visible bad pixels remain even though traced foreground survived and alpha/transmittance are sealed."
+        "operator-visible-bad-pixels-selected-anchor-post-alpha",
+        "Selected operator-visible bad-pixel anchors remain mismatched after traced foreground survived and per-anchor alpha/transmittance saturated."
       )
     );
   } else if (
@@ -1333,20 +1333,20 @@ function classifyOperatorVisibleBadPixelsFromTrace(operatorVisibleBadPixelTrace 
       blockerCount: Math.max(1, finiteNumber(operatorVisibleBadPixelTrace.traceCanvasParity?.traceModelVsLive?.mismatchCount) ?? anchors.length),
     };
   }
-  const alphaSealedMismatchCount = anchors.filter((anchor) => (
+  const postAlphaMismatchCount = anchors.filter((anchor) => (
     anchor.traceComplete &&
     anchor.category === "ordered-present" &&
     (finiteNumber(anchor.remainingTransmittance) ?? 1) <= MAX_VISUAL_GAP_REMAINING_TRANSMITTANCE_FOR_SEALED &&
     (finiteNumber(anchor.outputAlpha) ?? 0) >= MIN_VISUAL_GAP_ALPHA_FOR_SEALED &&
     (finiteNumber(anchor.finalForegroundAlpha) ?? 0) >= MIN_VISUAL_GAP_ALPHA_FOR_SEALED
   )).length;
-  if (alphaSealedMismatchCount > 0) {
+  if (postAlphaMismatchCount > 0) {
     return {
       ...base,
       status: "classified",
-      category: "alpha-sealed-rgb-transfer-mismatch",
-      stage: "color-transfer-after-alpha-seal",
-      classifiedAnchorCount: alphaSealedMismatchCount,
+      category: "selected-anchor-post-alpha-color-mismatch",
+      stage: "selected-anchor-color-transfer",
+      classifiedAnchorCount: postAlphaMismatchCount,
       blockerCount: 0,
     };
   }
@@ -1494,11 +1494,11 @@ function staticDessertObservations(plateSeepageClassification = {}, metrics = {}
 
 function classifyVisibleHoleObservation(plateSeepageClassification = {}, metrics = {}) {
   const operatorVisibleBadPixelClassification = metrics.operatorVisibleBadPixelClassification ?? {};
-  if (operatorVisibleBadPixelClassification.category === "alpha-sealed-rgb-transfer-mismatch") {
+  if (operatorVisibleBadPixelClassification.category === "selected-anchor-post-alpha-color-mismatch") {
     return {
       status: "classified-for-review",
       category: "operator-visible-bad-pixels",
-      stage: "color-transfer-after-alpha-seal",
+      stage: "selected-anchor-color-transfer",
       evidenceIds: [
         STATIC_DESSERT_WITNESS_CAPTURE_IDS.finalColor,
         STATIC_DESSERT_WITNESS_CAPTURE_IDS.operatorVisibleBadPixelTrace,
@@ -1506,7 +1506,7 @@ function classifyVisibleHoleObservation(plateSeepageClassification = {}, metrics
         STATIC_DESSERT_WITNESS_CAPTURE_IDS.transmittance,
       ],
       boundary:
-        `Operator-visible bad pixels remain after alpha/transmittance seal and foreground survival; ${operatorVisibleBadPixelClassification.classifiedAnchorCount || 0} traced anchors route the next repair to RGB/color-transfer or support-footprint semantics instead of plate-seepage closure.`,
+        `Selected operator-visible bad-pixel anchors remain mismatched after traced foreground survival and per-anchor alpha/transmittance saturation; ${operatorVisibleBadPixelClassification.classifiedAnchorCount || 0} traced anchors route the next repair to RGB/color-transfer or support-footprint semantics without claiming global alpha seal.`,
     };
   }
   if (operatorVisibleBadPixelClassification.category === "trace-model-live-parity-blocked") {

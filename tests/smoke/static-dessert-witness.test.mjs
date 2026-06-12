@@ -990,7 +990,7 @@ test("static dessert witness classifier classifies residual holes after plate se
   assert.equal(result.observations.visibleHoles.evidenceIds.includes("coverage-weight"), true);
 });
 
-test("static dessert witness classifier refuses no-seepage closure when operator-visible bad pixels remain alpha-sealed", () => {
+test("static dessert witness classifier refuses no-seepage closure when selected operator-visible bad-pixel anchors are post-alpha", () => {
   const visualGapAnchors = [
     { id: "visual-gap-1", kind: "plate-covered-tile-local-missing", x: 640, y: 342, score: 71, plateDelta: 88, tileLocalDelta: 9 },
   ];
@@ -1093,13 +1093,13 @@ test("static dessert witness classifier refuses no-seepage closure when operator
   assert.equal(result.metrics.plateSeepageClassification.category, "no-seepage");
   assert.equal(result.metrics.operatorVisibleBadPixelTrace.status, "present");
   assert.equal(result.metrics.operatorVisibleBadPixelTrace.traceCanvasParity.status, "trace-canvas-match");
-  assert.equal(result.metrics.operatorVisibleBadPixelClassification.category, "alpha-sealed-rgb-transfer-mismatch");
+  assert.equal(result.metrics.operatorVisibleBadPixelClassification.category, "selected-anchor-post-alpha-color-mismatch");
   assert.equal(
-    result.findings.some((finding) => finding.kind === "operator-visible-bad-pixels-alpha-sealed"),
+    result.findings.some((finding) => finding.kind === "operator-visible-bad-pixels-selected-anchor-post-alpha"),
     true,
   );
   assert.equal(result.observations.visibleHoles.category, "operator-visible-bad-pixels");
-  assert.equal(result.observations.visibleHoles.stage, "color-transfer-after-alpha-seal");
+  assert.equal(result.observations.visibleHoles.stage, "selected-anchor-color-transfer");
 });
 
 test("static dessert witness classifier blocks operator-visible bad-pixel accusation until trace/canvas parity matches", () => {
@@ -1468,7 +1468,7 @@ test("static dessert witness classifier blocks color-transfer accusation when tr
     result.findings.some((finding) => finding.kind === "operator-visible-bad-pixel-trace-model-live-mismatch"),
     true,
   );
-  assert.notEqual(result.observations.visibleHoles.stage, "color-transfer-after-alpha-seal");
+  assert.notEqual(result.observations.visibleHoles.stage, "selected-anchor-color-transfer");
 });
 
 test("static dessert witness classifier refuses closure for unclassified operator-visible bad pixels", () => {
