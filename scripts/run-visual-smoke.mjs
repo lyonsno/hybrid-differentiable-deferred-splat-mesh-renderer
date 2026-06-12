@@ -1977,11 +1977,13 @@ function renderStaticDessertWitnessReport(result) {
   const classification = result.classification;
   const metrics = classification.metrics;
   const observations = classification.observations;
+  const operatorSmokeUrl = staticDessertOperatorSmokeUrl(result);
   return `# Static Dessert Witness Report
 
 - Status: ${classification.summary.status}
 - Generated: ${result.generatedAt}
 - Base URL: ${result.baseUrl}
+- Operator smoke URL: ${operatorSmokeUrl || "not captured"}
 - Analysis JSON: \`${path.relative(path.dirname(result.reportPath), result.analysisPath)}\`
 
 ${renderSmokeHandoffSection(result.smokeHandoff)}
@@ -2110,6 +2112,10 @@ ${classification.findings.length === 0 ? "- None" : classification.findings.map(
 
 ${classification.summary.text}
 `;
+}
+
+function staticDessertOperatorSmokeUrl(result) {
+  return result.captures.find((capture) => capture.id === STATIC_DESSERT_WITNESS_CAPTURE_IDS.finalColor)?.url;
 }
 
 function renderOperatorWitnessLoopReport(result) {

@@ -11,6 +11,16 @@ import {
   deriveStaticDessertVisualGapAnchorsFromImages,
 } from "../../scripts/visual-smoke/static-dessert-witness.mjs";
 
+const smokeSource = () => readFileSync(new URL("../../scripts/run-visual-smoke.mjs", import.meta.url), "utf8");
+
+test("static dessert report exposes route-pinned operator smoke URL instead of the unpinned base URL", () => {
+  const source = smokeSource();
+
+  assert.match(source, /Operator smoke URL/);
+  assert.match(source, /operatorSmokeUrl/);
+  assert.match(source, /STATIC_DESSERT_WITNESS_CAPTURE_IDS\.finalColor/);
+});
+
 test("static dessert witness plan captures final color and all debug modes for one fixed view", () => {
   const plan = buildStaticDessertWitnessPlan("http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json");
 
