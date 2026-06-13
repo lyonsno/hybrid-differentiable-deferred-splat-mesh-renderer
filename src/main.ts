@@ -201,6 +201,7 @@ const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_MASK =
   GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.support;
 const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE = 8;
 const SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE = 0.5;
+const SOURCE_FRONTIER_COLOR_OCCLUSION_GAP_SCALE = 0.5;
 const COMPACT_SOURCE_RETENTION_SUPPORT_SAMPLES_PER_AXIS = 4;
 const COMPACT_SOURCE_EPSILON = 1e-9;
 const TILE_LOCAL_UNSAFE = selectedTileLocalUnsafeMode();
@@ -567,6 +568,7 @@ interface TileLocalCompositorInputReadback {
       readonly colorTransferWeight: number;
       readonly coverageAlpha: number;
       readonly colorAlpha: number;
+      readonly colorOcclusionAlpha: number;
       readonly transmittanceBefore: number;
       readonly transmittanceAfter: number;
       readonly sourceColor: readonly [number, number, number];
@@ -7927,6 +7929,7 @@ function readCompositorInputAnchor({
         colorTransferWeight: 0,
         coverageAlpha: 0,
         colorAlpha: 0,
+        colorOcclusionAlpha: 0,
         transmittanceBefore: roundColorChannel(remainingTransmission),
         transmittanceAfter: roundColorChannel(remainingTransmission),
         sourceColor: [0, 0, 0],
@@ -7969,6 +7972,7 @@ function readCompositorInputAnchor({
         colorTransferWeight: 0,
         coverageAlpha: 0,
         colorAlpha: 0,
+        colorOcclusionAlpha: 0,
         transmittanceBefore: roundColorChannel(remainingTransmission),
         transmittanceAfter: roundColorChannel(remainingTransmission),
         sourceColor: readSourceColor(sourceColors, splatIndex),
@@ -7996,10 +8000,11 @@ function readCompositorInputAnchor({
       candidateSourceClassMask,
     );
     const colorAlpha = clamp01(1 - Math.pow(1 - sourceOpacity, colorTransferWeight));
+    const colorOcclusionAlpha = sourceFrontierColorOcclusionAlpha(colorAlpha, coverageAlpha);
     const sourceColor = readSourceColor(sourceColors, splatIndex);
     const transmittanceBefore = remainingTransmission;
     runningColor = sourceColor.map((channel, index) =>
-      channel * colorAlpha + runningColor[index] * (1 - coverageAlpha)
+      channel * colorAlpha + runningColor[index] * (1 - colorOcclusionAlpha)
     ) as [number, number, number];
     remainingTransmission *= 1 - coverageAlpha;
     contributors.push({
@@ -8030,6 +8035,7 @@ function readCompositorInputAnchor({
       colorTransferWeight: roundColorChannel(colorTransferWeight),
       coverageAlpha: roundColorChannel(coverageAlpha),
       colorAlpha: roundColorChannel(colorAlpha),
+      colorOcclusionAlpha: roundColorChannel(colorOcclusionAlpha),
       transmittanceBefore: roundColorChannel(transmittanceBefore),
       transmittanceAfter: roundColorChannel(remainingTransmission),
       sourceColor: sourceColor.map(roundColorChannel) as [number, number, number],
@@ -8257,6 +8263,13 @@ function sourceFrontierColorTransferWeight(
     Math.max(Number.isFinite(sourceFrontierSupportPixelWeight) ? sourceFrontierSupportPixelWeight : 0, 0),
   );
   return Math.min(normalizedAlphaTransferWeight, supportColorWeight);
+}
+
+function sourceFrontierColorOcclusionAlpha(colorAlpha: number, coverageAlpha: number): number {
+  const normalizedColorAlpha = clamp01(colorAlpha);
+  const normalizedCoverageAlpha = clamp01(coverageAlpha);
+  const alphaColorGap = Math.max(normalizedCoverageAlpha - normalizedColorAlpha, 0);
+  return clamp01(normalizedColorAlpha + alphaColorGap * SOURCE_FRONTIER_COLOR_OCCLUSION_GAP_SCALE);
 }
 
 function clamp01(value: number): number {

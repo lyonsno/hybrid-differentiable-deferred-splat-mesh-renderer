@@ -391,6 +391,140 @@ test("source-frontier foreground support seals transmission without tile-amplify
   );
 });
 
+test("source-frontier support alpha does not erase retained foreground color faster than color transfer arrives", () => {
+  const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
+  const nearForeground = accumulationContributor({
+    anchor,
+    tileIndex: tileIndexForAnchor(anchor),
+    splatIndex: 910,
+    originalId: 910,
+    viewRank: 0,
+    sourceRole: "foreground-sealing",
+    role: "foreground-sealing",
+    candidateSourceClassMask: 9,
+    coverageWeight: 1,
+    centerPx: [anchor.x + 0.5, anchor.y + 0.5],
+    inverseConic: [1, 0, 1],
+    opacity: 0.55,
+  });
+  const broadSupport = accumulationContributor({
+    anchor,
+    tileIndex: tileIndexForAnchor(anchor),
+    splatIndex: 911,
+    originalId: 911,
+    viewRank: 1,
+    sourceRole: "foreground-sealing",
+    role: "foreground-sealing",
+    candidateSourceClassMask: 9,
+    coverageWeight: 0.95,
+    centerPx: [anchor.x + 3, anchor.y + 0.5],
+    inverseConic: [1, 0, 1],
+    opacity: 0.85,
+  });
+  const record = buildFinalColorAccumulationTraceRecord({
+    anchorPixel: anchor,
+    contributors: [nearForeground, broadSupport],
+    sourceColors: new Map([
+      [nearForeground.splatIndex, [0.95, 0.78, 0.52]],
+      [broadSupport.splatIndex, [0.06, 0.04, 0.03]],
+    ]),
+    retainedContributors: [nearForeground, broadSupport],
+    preserveContributorOrder: true,
+    tileSizePx: 16,
+    tileColumns: 216,
+  });
+  const firstStep = record.finalColorAccumulation.steps[0];
+  const supportStep = record.finalColorAccumulation.steps[1];
+
+  assert.equal(supportStep.sourceFrontierAlphaSupport, "foreground-spatial-support");
+  assert.ok(
+    supportStep.coverageAlpha > supportStep.colorAlpha * 2,
+    `expected fixture to expose alpha/color mass gap: coverage ${supportStep.coverageAlpha}, color ${supportStep.colorAlpha}`,
+  );
+  assert.ok(
+    record.finalColorAccumulation.remainingTransmittance < 0.05,
+    `expected broad support to preserve the alpha seal, saw ${record.finalColorAccumulation.remainingTransmittance}`,
+  );
+  const fullCoverageWipeRed =
+    supportStep.sourceColor[0] * supportStep.colorAlpha + firstStep.runningColor[0] * (1 - supportStep.coverageAlpha);
+  const freePreservationRed =
+    supportStep.sourceColor[0] * supportStep.colorAlpha + firstStep.runningColor[0] * (1 - supportStep.colorAlpha);
+  assert.ok(
+    supportStep.colorOcclusionAlpha > supportStep.colorAlpha,
+    `expected support occlusion to bind the alpha/color mass gap: color ${supportStep.colorAlpha}, occlusion ${supportStep.colorOcclusionAlpha}`,
+  );
+  assert.ok(
+    supportStep.colorOcclusionAlpha < supportStep.coverageAlpha,
+    `expected support occlusion to stay below full alpha wipe: occlusion ${supportStep.colorOcclusionAlpha}, coverage ${supportStep.coverageAlpha}`,
+  );
+  assert.ok(
+    record.finalColorAccumulation.outputColor[0] > fullCoverageWipeRed,
+    `support alpha should not fall back to full coverage dark wipe: full wipe ${fullCoverageWipeRed}, final ${record.finalColorAccumulation.outputColor[0]}`,
+  );
+  assert.ok(
+    record.finalColorAccumulation.outputColor[0] < freePreservationRed,
+    `support alpha should not freely preserve stale color: free preservation ${freePreservationRed}, final ${record.finalColorAccumulation.outputColor[0]}`,
+  );
+});
+
+test("source-frontier support alpha attenuates stale bright color through the alpha/color mass gap", () => {
+  const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
+  const staleBrightLayer = accumulationContributor({
+    anchor,
+    tileIndex: tileIndexForAnchor(anchor),
+    splatIndex: 920,
+    originalId: 920,
+    viewRank: 0,
+    sourceRole: "foreground-sealing",
+    role: "foreground-sealing",
+    candidateSourceClassMask: 9,
+    coverageWeight: 1,
+    centerPx: [anchor.x + 0.5, anchor.y + 0.5],
+    inverseConic: [1, 0, 1],
+    opacity: 0.6,
+  });
+  const broadDarkSupport = accumulationContributor({
+    anchor,
+    tileIndex: tileIndexForAnchor(anchor),
+    splatIndex: 921,
+    originalId: 921,
+    viewRank: 1,
+    sourceRole: "foreground-sealing",
+    role: "foreground-sealing",
+    candidateSourceClassMask: 9,
+    coverageWeight: 0.95,
+    centerPx: [anchor.x + 3, anchor.y + 0.5],
+    inverseConic: [1, 0, 1],
+    opacity: 0.85,
+  });
+  const record = buildFinalColorAccumulationTraceRecord({
+    anchorPixel: anchor,
+    contributors: [staleBrightLayer, broadDarkSupport],
+    sourceColors: new Map([
+      [staleBrightLayer.splatIndex, [1, 0.96, 0.9]],
+      [broadDarkSupport.splatIndex, [0.04, 0.035, 0.03]],
+    ]),
+    retainedContributors: [staleBrightLayer, broadDarkSupport],
+    preserveContributorOrder: true,
+    tileSizePx: 16,
+    tileColumns: 216,
+  });
+  const firstStep = record.finalColorAccumulation.steps[0];
+  const supportStep = record.finalColorAccumulation.steps[1];
+  const alphaColorGap = supportStep.coverageAlpha - supportStep.colorAlpha;
+  const maximumFreePreservation = firstStep.runningColor[0] * (1 - alphaColorGap * 0.25);
+
+  assert.equal(supportStep.sourceFrontierAlphaSupport, "foreground-spatial-support");
+  assert.ok(
+    alphaColorGap > 0.3,
+    `expected fixture to expose a large alpha/color mass gap: coverage ${supportStep.coverageAlpha}, color ${supportStep.colorAlpha}`,
+  );
+  assert.ok(
+    record.finalColorAccumulation.outputColor[0] < maximumFreePreservation,
+    `support alpha should attenuate stale bright color through the mass gap: first ${firstStep.runningColor[0]}, final ${record.finalColorAccumulation.outputColor[0]}, gap ${alphaColorGap}, max free preservation ${maximumFreePreservation}`,
+  );
+});
+
 function tileWideSupportRemainingTransmittance(steps) {
   return steps.reduce((remainingTransmittance, step) => {
     const supportPixelWeight = Math.max(step.sourceFrontierSupportPixelWeight, EPSILON);

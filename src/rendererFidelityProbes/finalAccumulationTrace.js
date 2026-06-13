@@ -23,6 +23,7 @@ const DEFAULT_DEFERRED_FIELDS = Object.freeze({
 const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_MASK = 1 | 8;
 const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE = 8;
 const SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE = 0.5;
+const SOURCE_FRONTIER_COLOR_OCCLUSION_GAP_SCALE = 0.5;
 
 export function buildFinalColorAccumulationTraceRecord({
   anchorPixel = BLACK_BAND_FINAL_ACCUMULATION_ANCHOR,
@@ -226,9 +227,12 @@ function composeFinalColorAccumulationSteps({
     const colorAlpha = hasTileSupport
       ? clamp01(1 - Math.pow(1 - opacity, alphaTransfer.colorWeight))
       : 0;
+    const colorOcclusionAlpha = hasTileSupport
+      ? sourceFrontierColorOcclusionAlpha(colorAlpha, coverageAlpha)
+      : 0;
     const contributionColor = sourceColor.map((channel) => round(channel * colorAlpha));
     const nextRunningColor = hasTileSupport
-      ? sourceColor.map((channel, index) => channel * colorAlpha + runningColor[index] * (1 - coverageAlpha))
+      ? sourceColor.map((channel, index) => channel * colorAlpha + runningColor[index] * (1 - colorOcclusionAlpha))
       : runningColor;
     const transmittanceAfter = hasTileSupport
       ? remainingTransmission * (1 - coverageAlpha)
@@ -249,6 +253,7 @@ function composeFinalColorAccumulationSteps({
       opacity: round(opacity),
       coverageAlpha: round(coverageAlpha),
       colorAlpha: round(colorAlpha),
+      colorOcclusionAlpha: round(colorOcclusionAlpha),
       transmittanceBefore: round(transmittanceBefore),
       transmittanceAfter: round(transmittanceAfter),
       sourceColor: sourceColor.map(round),
@@ -273,6 +278,13 @@ function composeFinalColorAccumulationSteps({
     clearColor: normalizeColor(clearColor, "clearColor").map(round),
     remainingTransmittance: round(remainingTransmission),
   };
+}
+
+function sourceFrontierColorOcclusionAlpha(colorAlpha, coverageAlpha) {
+  const normalizedColorAlpha = clamp01(colorAlpha);
+  const normalizedCoverageAlpha = clamp01(coverageAlpha);
+  const alphaColorGap = Math.max(normalizedCoverageAlpha - normalizedColorAlpha, 0);
+  return clamp01(normalizedColorAlpha + alphaColorGap * SOURCE_FRONTIER_COLOR_OCCLUSION_GAP_SCALE);
 }
 
 function sourceFrontierAlphaTransferWeight({

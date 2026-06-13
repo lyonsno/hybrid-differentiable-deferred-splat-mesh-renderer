@@ -37,7 +37,8 @@ test("tile-local visible conic coverage feeds sample-local Gaussian weight to al
   assert.match(shader, /let colorTransferWeight = source_frontier_color_transfer_weight\(pixelCoverageWeight,\s*sourceFrontierSupportWeight,\s*alphaTransferWeight,\s*sourceFrontierClassMask\)/);
   assert.match(shader, /pow\(1\.0\s*-\s*sourceOpacity,\s*alphaTransferWeight\)/);
   assert.match(shader, /pow\(1\.0\s*-\s*sourceOpacity,\s*colorTransferWeight\)/);
-  assert.match(shader, /composedColor = sourceColor \* colorAlpha \+ composedColor \* \(1\.0 - coverageAlpha\)/);
+  assert.match(shader, /let colorOcclusionAlpha = source_frontier_color_occlusion_alpha\(colorAlpha,\s*coverageAlpha\)/);
+  assert.match(shader, /composedColor = sourceColor \* colorAlpha \+ composedColor \* \(1\.0 - colorOcclusionAlpha\)/);
   assert.doesNotMatch(
     shader,
     /tileCoverageWeights\[selectedRefIndex\][^;]*\*\s*conic_pixel_weight/,

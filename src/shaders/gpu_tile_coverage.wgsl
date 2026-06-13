@@ -52,6 +52,7 @@ const CANDIDATE_SOURCE_CLASS_SUPPORT_MASK = 8u;
 const SOURCE_FRONTIER_ALPHA_CLASS_MASK_SENTINEL = -1024.0;
 const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE = 8.0;
 const SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE = 0.5;
+const SOURCE_FRONTIER_COLOR_OCCLUSION_GAP_SCALE = 0.5;
 const SOURCE_FRONTIER_FOREGROUND_RETENTION_SCORE_FLOOR = 224u;
 
 struct SplatShape {
@@ -643,6 +644,13 @@ fn source_frontier_color_transfer_weight(pixelCoverageWeight: f32, sourceFrontie
   return min(normalizedAlphaTransferWeight, supportColorWeight);
 }
 
+fn source_frontier_color_occlusion_alpha(colorAlpha: f32, coverageAlpha: f32) -> f32 {
+  let normalizedColorAlpha = clamp(colorAlpha, 0.0, 1.0);
+  let normalizedCoverageAlpha = clamp(coverageAlpha, 0.0, 1.0);
+  let alphaColorGap = max(normalizedCoverageAlpha - normalizedColorAlpha, 0.0);
+  return clamp(normalizedColorAlpha + alphaColorGap * SOURCE_FRONTIER_COLOR_OCCLUSION_GAP_SCALE, 0.0, 1.0);
+}
+
 fn inverse_conic_radii(conicParam: vec4f) -> vec2f {
   let xx = conicParam.x;
   let xy = conicParam.y;
@@ -928,9 +936,10 @@ fn debug_heatmap_color(
     let coverageAlpha = clamp(1.0 - pow(1.0 - sourceOpacity, alphaTransferWeight), 0.0, 1.0);
     let colorTransferWeight = source_frontier_color_transfer_weight(pixelCoverageWeight, sourceFrontierSupportWeight, alphaTransferWeight, sourceFrontierClassMask);
     let colorAlpha = clamp(1.0 - pow(1.0 - sourceOpacity, colorTransferWeight), 0.0, 1.0);
+    let colorOcclusionAlpha = source_frontier_color_occlusion_alpha(colorAlpha, coverageAlpha);
     let colorBase = tileRef.x * 3u;
     let sourceColor = vec3f(colors[colorBase], colors[colorBase + 1u], colors[colorBase + 2u]);
-    composedColor = sourceColor * colorAlpha + composedColor * (1.0 - coverageAlpha);
+    composedColor = sourceColor * colorAlpha + composedColor * (1.0 - colorOcclusionAlpha);
     remainingTransmission = remainingTransmission * (1.0 - coverageAlpha);
   }
   let accumulatedAlpha = 1.0 - remainingTransmission;
