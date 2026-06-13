@@ -391,6 +391,47 @@ test("source-frontier foreground support seals transmission without tile-amplify
   );
 });
 
+test("source-frontier support color carries a bounded portion of the support alpha gap", () => {
+  const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
+  const broadSupport = accumulationContributor({
+    anchor,
+    tileIndex: tileIndexForAnchor(anchor),
+    splatIndex: 905,
+    originalId: 905,
+    viewRank: 0,
+    sourceRole: "foreground-sealing",
+    role: "foreground-sealing",
+    candidateSourceClassMask: 9,
+    coverageWeight: 0.9,
+    centerPx: [anchor.x + 3, anchor.y + 0.5],
+    inverseConic: [1, 0, 1],
+    opacity: 0.8,
+  });
+  const record = buildFinalColorAccumulationTraceRecord({
+    anchorPixel: anchor,
+    contributors: [broadSupport],
+    sourceColors: new Map([[broadSupport.splatIndex, [1, 0.5, 0.25]]]),
+    retainedContributors: [broadSupport],
+    tileSizePx: 16,
+    tileColumns: 216,
+  });
+  const step = record.finalColorAccumulation.steps[0];
+
+  assert.equal(step.sourceFrontierAlphaSupport, "foreground-spatial-support");
+  assert.ok(
+    step.alphaTransferWeight > step.sourceFrontierSupportPixelWeight * 4,
+    `expected fixture to expose support/alpha gap: support ${step.sourceFrontierSupportPixelWeight}, alpha ${step.alphaTransferWeight}`,
+  );
+  assert.ok(
+    step.colorTransferWeight > step.sourceFrontierSupportPixelWeight,
+    `expected support color to carry bounded gap mass instead of pinning to sparse support weight: color ${step.colorTransferWeight}, support ${step.sourceFrontierSupportPixelWeight}`,
+  );
+  assert.ok(
+    step.colorTransferWeight < step.alphaTransferWeight * 0.25,
+    `expected support color to stay below tile-amplified alpha transfer: color ${step.colorTransferWeight}, alpha ${step.alphaTransferWeight}`,
+  );
+});
+
 test("source-frontier support alpha does not erase retained foreground color faster than color transfer arrives", () => {
   const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
   const nearForeground = accumulationContributor({

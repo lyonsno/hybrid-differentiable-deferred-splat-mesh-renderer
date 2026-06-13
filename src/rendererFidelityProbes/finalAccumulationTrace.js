@@ -23,6 +23,7 @@ const DEFAULT_DEFERRED_FIELDS = Object.freeze({
 const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_MASK = 1 | 8;
 const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE = 8;
 const SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE = 0.5;
+const SOURCE_FRONTIER_COLOR_TRANSFER_GAP_SCALE = 0.1;
 const SOURCE_FRONTIER_COLOR_OCCLUSION_GAP_SCALE = 0.5;
 
 export function buildFinalColorAccumulationTraceRecord({
@@ -317,9 +318,11 @@ function sourceFrontierAlphaTransferWeight({
     normalizedPixelWeight,
     Math.max(Number.isFinite(sourceFrontierSupportPixelWeight) ? sourceFrontierSupportPixelWeight : 0, 0),
   );
+  const colorGap = Math.max(supportWeight - supportColorWeight, 0);
+  const colorWeight = supportColorWeight + colorGap * SOURCE_FRONTIER_COLOR_TRANSFER_GAP_SCALE;
   return {
     weight: supportWeight,
-    colorWeight: Math.min(supportWeight, supportColorWeight),
+    colorWeight: Math.min(supportWeight, colorWeight),
     support: "foreground-spatial-support",
   };
 }

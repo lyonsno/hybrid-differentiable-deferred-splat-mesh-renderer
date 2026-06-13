@@ -95,7 +95,12 @@ test("source-frontier alpha support carries tile-local conic support beyond the 
   );
   assert.match(
     shader,
-    /return min\(normalizedAlphaTransferWeight,\s*supportColorWeight\)/,
-    "foreground support color should use the local support color envelope without tile-amplifying off-center RGB",
+    /let colorWeight = supportColorWeight \+ colorGap \* SOURCE_FRONTIER_COLOR_TRANSFER_GAP_SCALE/,
+    "foreground support color should carry only a bounded part of the alpha/support gap",
+  );
+  assert.match(
+    shader,
+    /return min\(normalizedAlphaTransferWeight,\s*colorWeight\)/,
+    "foreground support color should stay capped by alpha transfer after bounded gap transfer",
   );
 });

@@ -201,6 +201,7 @@ const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_MASK =
   GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.support;
 const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE = 8;
 const SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE = 0.5;
+const SOURCE_FRONTIER_COLOR_TRANSFER_GAP_SCALE = 0.1;
 const SOURCE_FRONTIER_COLOR_OCCLUSION_GAP_SCALE = 0.5;
 const COMPACT_SOURCE_RETENTION_SUPPORT_SAMPLES_PER_AXIS = 4;
 const COMPACT_SOURCE_EPSILON = 1e-9;
@@ -8262,7 +8263,9 @@ function sourceFrontierColorTransferWeight(
     Math.max(Number.isFinite(pixelCoverageWeight) ? pixelCoverageWeight : 0, 0),
     Math.max(Number.isFinite(sourceFrontierSupportPixelWeight) ? sourceFrontierSupportPixelWeight : 0, 0),
   );
-  return Math.min(normalizedAlphaTransferWeight, supportColorWeight);
+  const colorGap = Math.max(normalizedAlphaTransferWeight - supportColorWeight, 0);
+  const colorWeight = supportColorWeight + colorGap * SOURCE_FRONTIER_COLOR_TRANSFER_GAP_SCALE;
+  return Math.min(normalizedAlphaTransferWeight, colorWeight);
 }
 
 function sourceFrontierColorOcclusionAlpha(colorAlpha: number, coverageAlpha: number): number {

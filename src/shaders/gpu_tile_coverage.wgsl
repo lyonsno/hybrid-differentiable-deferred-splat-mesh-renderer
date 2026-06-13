@@ -52,6 +52,7 @@ const CANDIDATE_SOURCE_CLASS_SUPPORT_MASK = 8u;
 const SOURCE_FRONTIER_ALPHA_CLASS_MASK_SENTINEL = -1024.0;
 const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE = 8.0;
 const SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE = 0.5;
+const SOURCE_FRONTIER_COLOR_TRANSFER_GAP_SCALE = 0.1;
 const SOURCE_FRONTIER_COLOR_OCCLUSION_GAP_SCALE = 0.5;
 const SOURCE_FRONTIER_FOREGROUND_RETENTION_SCORE_FLOOR = 224u;
 
@@ -641,7 +642,9 @@ fn source_frontier_color_transfer_weight(pixelCoverageWeight: f32, sourceFrontie
   }
   let normalizedAlphaTransferWeight = max(alphaTransferWeight, 0.0);
   let supportColorWeight = max(max(pixelCoverageWeight, 0.0), max(sourceFrontierSupportWeight, 0.0));
-  return min(normalizedAlphaTransferWeight, supportColorWeight);
+  let colorGap = max(normalizedAlphaTransferWeight - supportColorWeight, 0.0);
+  let colorWeight = supportColorWeight + colorGap * SOURCE_FRONTIER_COLOR_TRANSFER_GAP_SCALE;
+  return min(normalizedAlphaTransferWeight, colorWeight);
 }
 
 fn source_frontier_color_occlusion_alpha(colorAlpha: f32, coverageAlpha: f32) -> f32 {
