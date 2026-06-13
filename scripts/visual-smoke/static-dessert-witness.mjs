@@ -1117,6 +1117,9 @@ function summarizeSelectedAnchorRgbProvenance(steps = []) {
       supportStepCount: 0,
       maxSourceLuma: 0,
       maxContributionLuma: 0,
+      maxCoverageAlpha: 0,
+      maxColorAlpha: 0,
+      maxColorOcclusionAlpha: 0,
       totalAlphaTransferWeight: 0,
       totalColorTransferWeight: 0,
       colorTransferRatio: 0,
@@ -1128,14 +1131,23 @@ function summarizeSelectedAnchorRgbProvenance(steps = []) {
   let supportStepCount = 0;
   let maxSourceLuma = 0;
   let maxContributionLuma = 0;
+  let maxCoverageAlpha = 0;
+  let maxColorAlpha = 0;
+  let maxColorOcclusionAlpha = 0;
   let totalAlphaTransferWeight = 0;
   let totalColorTransferWeight = 0;
 
   for (const step of records) {
     const alphaTransferWeight = finiteNumber(step?.alphaTransferWeight) ?? 0;
     const colorTransferWeight = finiteNumber(step?.colorTransferWeight) ?? 0;
+    const coverageAlpha = finiteNumber(step?.coverageAlpha) ?? 0;
+    const colorAlpha = finiteNumber(step?.colorAlpha) ?? 0;
+    const colorOcclusionAlpha = finiteNumber(step?.colorOcclusionAlpha) ?? 0;
     totalAlphaTransferWeight += Math.max(0, alphaTransferWeight);
     totalColorTransferWeight += Math.max(0, colorTransferWeight);
+    maxCoverageAlpha = Math.max(maxCoverageAlpha, coverageAlpha);
+    maxColorAlpha = Math.max(maxColorAlpha, colorAlpha);
+    maxColorOcclusionAlpha = Math.max(maxColorOcclusionAlpha, colorOcclusionAlpha);
     if (stringValue(step?.sourceFrontierAlphaSupport) && step.sourceFrontierAlphaSupport !== "none") {
       supportStepCount += 1;
     }
@@ -1176,6 +1188,11 @@ function summarizeSelectedAnchorRgbProvenance(steps = []) {
     maxContributionLuma < maxSourceLuma * 0.25
   ) {
     category = "selected-source-color-underpowered";
+  } else if (
+    brightSourceStepCount > 0 &&
+    (maxContributionLuma >= maxSourceLuma * 0.25 || colorTransferRatio >= 0.5)
+  ) {
+    category = "selected-source-color-transferred-still-mismatched";
   } else if (brightSourceStepCount > 0) {
     category = "selected-source-color-present";
   }
@@ -1189,6 +1206,9 @@ function summarizeSelectedAnchorRgbProvenance(steps = []) {
     supportStepCount,
     maxSourceLuma: roundMetric(maxSourceLuma),
     maxContributionLuma: roundMetric(maxContributionLuma),
+    maxCoverageAlpha: roundMetric(maxCoverageAlpha),
+    maxColorAlpha: roundMetric(maxColorAlpha),
+    maxColorOcclusionAlpha: roundMetric(maxColorOcclusionAlpha),
     totalAlphaTransferWeight: roundMetric(totalAlphaTransferWeight),
     totalColorTransferWeight: roundMetric(totalColorTransferWeight),
     colorTransferRatio: roundMetric(colorTransferRatio),
