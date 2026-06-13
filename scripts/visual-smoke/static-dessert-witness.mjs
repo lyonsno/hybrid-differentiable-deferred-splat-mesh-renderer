@@ -727,6 +727,13 @@ function roundMetric(value) {
   return Number.isFinite(value) ? Math.round(value * 1000) / 1000 : 0;
 }
 
+function numericArray(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((entry) => finiteNumber(entry)).filter((entry) => entry !== undefined);
+}
+
 function encodeStaticDessertTraceAnchors(anchors) {
   return normalizeStaticDessertVisualGapAnchors(anchors)
     .map((anchor) => `${anchor.id}@${anchor.x},${anchor.y}:${anchor.kind}`)
@@ -878,6 +885,7 @@ function summarizeOperatorVisibleTraceCanvasParity(capture, anchors = []) {
       missingAnchorIds: anchors.map((anchor) => anchor.id),
       maxDelta: 0,
       traceModelVsLive: summarizeTraceModelVsLive(),
+      anchors: [],
       summary: "Operator-visible bad-pixel trace/canvas parity evidence is missing.",
     };
   }
@@ -916,6 +924,7 @@ function summarizeOperatorVisibleTraceCanvasParity(capture, anchors = []) {
       missingAnchorIds,
       maxDelta,
       traceModelVsLive,
+      anchors: parityAnchors.map(summarizeParityAnchor),
       summary: `Trace/canvas parity omitted operator-visible anchors: ${missingAnchorIds.join(", ")}.`,
     };
   }
@@ -934,7 +943,24 @@ function summarizeOperatorVisibleTraceCanvasParity(capture, anchors = []) {
     missingAnchorIds,
     maxDelta,
     traceModelVsLive,
+    anchors: parityAnchors.map(summarizeParityAnchor),
     summary: classification.summary,
+  };
+}
+
+function summarizeParityAnchor(anchor = {}) {
+  return {
+    id: stringValue(anchor?.id),
+    status: stringValue(anchor?.status) || "missing",
+    predictionSource: stringValue(anchor?.predictionSource),
+    predictedRgba8: numericArray(anchor?.predictedRgba8),
+    sampledRgba8: numericArray(anchor?.sampledRgba8),
+    deltaRgba8: numericArray(anchor?.deltaRgba8),
+    maxDelta: finiteNumber(anchor?.maxDelta) ?? 0,
+    cpuFinalTraceRgba8: numericArray(anchor?.cpuFinalTraceRgba8),
+    liveCompositorRgba8: numericArray(anchor?.liveCompositorRgba8),
+    traceModelVsLiveDeltaRgba8: numericArray(anchor?.traceModelVsLiveDeltaRgba8),
+    traceModelVsLiveMaxDelta: finiteNumber(anchor?.traceModelVsLiveMaxDelta) ?? 0,
   };
 }
 
@@ -1025,23 +1051,55 @@ function summarizeOperatorVisibleBadPixelTrace(capture, expectedRoute = {}) {
     };
   });
   const traceCanvasParity = summarizeOperatorVisibleTraceCanvasParity(capture, anchorSummaries);
+  const anchorsWithParity = anchorSummaries.map((anchor) => ({
+    ...anchor,
+    ...operatorVisibleAnchorParitySummary(traceCanvasParity, anchor.id),
+  }));
   return {
     status: !capture
       ? "not-captured"
-      : anchorSummaries.length === 0
+      : anchorsWithParity.length === 0
         ? "empty"
         : routeStatus !== "ok"
           ? "malformed"
-          : anchorSummaries.some((anchor) => !anchor.traceComplete)
+          : anchorsWithParity.some((anchor) => !anchor.traceComplete)
             ? "partial"
             : "present",
     captureId: capture?.id || "",
     screenshotPath: capture?.screenshotPath || "",
-    anchorCount: anchorSummaries.length,
-    anchors: anchorSummaries,
+    anchorCount: anchorsWithParity.length,
+    anchors: anchorsWithParity,
     changedPixelRatio: finiteNumber(capture?.imageAnalysis?.changedPixelRatio) ?? 0,
     routeStatus,
     traceCanvasParity,
+  };
+}
+
+function operatorVisibleAnchorParitySummary(traceCanvasParity = {}, anchorId = "") {
+  const parityAnchors = Array.isArray(traceCanvasParity?.anchors) ? traceCanvasParity.anchors : [];
+  const parityAnchor = parityAnchors.find((anchor) => anchor.id === anchorId);
+  const traceModelVsLive = traceCanvasParity?.traceModelVsLive && typeof traceCanvasParity.traceModelVsLive === "object"
+    ? traceCanvasParity.traceModelVsLive
+    : {};
+  const mismatchAnchors = Array.isArray(traceModelVsLive.mismatchAnchors) ? traceModelVsLive.mismatchAnchors : [];
+  const traceModelLiveStatus = parityAnchor
+    ? mismatchAnchors.includes(anchorId)
+      ? "mismatch"
+      : traceModelVsLive.status === "not-compared" || traceModelVsLive.status === "missing"
+        ? traceModelVsLive.status
+        : "match"
+    : "missing";
+  return {
+    traceCanvasParityStatus: parityAnchor?.status || "missing",
+    traceCanvasParityMaxDelta: finiteNumber(parityAnchor?.maxDelta) ?? null,
+    traceCanvasParityDeltaRgba8: numericArray(parityAnchor?.deltaRgba8),
+    predictedRgba8: numericArray(parityAnchor?.predictedRgba8),
+    sampledRgba8: numericArray(parityAnchor?.sampledRgba8),
+    cpuFinalTraceRgba8: numericArray(parityAnchor?.cpuFinalTraceRgba8),
+    liveCompositorRgba8: numericArray(parityAnchor?.liveCompositorRgba8),
+    traceModelLiveStatus,
+    traceModelVsLiveDeltaRgba8: numericArray(parityAnchor?.traceModelVsLiveDeltaRgba8),
+    traceModelVsLiveMaxDelta: finiteNumber(parityAnchor?.traceModelVsLiveMaxDelta) ?? null,
   };
 }
 
@@ -1362,7 +1420,13 @@ function classifyOperatorVisibleBadPixelsFromTrace(operatorVisibleBadPixelTrace 
   if (operatorVisibleBadPixelTrace.status !== "present") {
     return base;
   }
-  if (!operatorVisibleTraceCanvasParityIsAttributionGrade(operatorVisibleBadPixelTrace.traceCanvasParity)) {
+  const attributionGradeAnchors = anchors.filter((anchor) =>
+    operatorVisibleAnchorHasAttributionGradeParity(anchor, operatorVisibleBadPixelTrace.traceCanvasParity)
+  );
+  if (
+    attributionGradeAnchors.length === 0 &&
+    !operatorVisibleTraceCanvasParityIsAttributionGrade(operatorVisibleBadPixelTrace.traceCanvasParity)
+  ) {
     return {
       ...base,
       category: "trace-canvas-parity-blocked",
@@ -1370,7 +1434,10 @@ function classifyOperatorVisibleBadPixelsFromTrace(operatorVisibleBadPixelTrace 
       blockerCount: Math.max(1, finiteNumber(operatorVisibleBadPixelTrace.traceCanvasParity?.blockerCount) ?? anchors.length),
     };
   }
-  if (operatorVisibleTraceModelLiveBlocksAttribution(operatorVisibleBadPixelTrace.traceCanvasParity)) {
+  if (
+    attributionGradeAnchors.length === 0 &&
+    operatorVisibleTraceModelLiveBlocksAttribution(operatorVisibleBadPixelTrace.traceCanvasParity)
+  ) {
     return {
       ...base,
       category: "trace-model-live-parity-blocked",
@@ -1379,6 +1446,7 @@ function classifyOperatorVisibleBadPixelsFromTrace(operatorVisibleBadPixelTrace 
     };
   }
   const postAlphaMismatchCount = anchors.filter((anchor) => (
+    operatorVisibleAnchorHasAttributionGradeParity(anchor, operatorVisibleBadPixelTrace.traceCanvasParity) &&
     anchor.traceComplete &&
     anchor.category === "ordered-present" &&
     (finiteNumber(anchor.remainingTransmittance) ?? 1) <= MAX_VISUAL_GAP_REMAINING_TRANSMITTANCE_FOR_SEALED &&
@@ -1386,13 +1454,14 @@ function classifyOperatorVisibleBadPixelsFromTrace(operatorVisibleBadPixelTrace 
     (finiteNumber(anchor.finalForegroundAlpha) ?? 0) >= MIN_VISUAL_GAP_ALPHA_FOR_SEALED
   )).length;
   if (postAlphaMismatchCount > 0) {
+    const blockerCount = Math.max(0, anchors.length - postAlphaMismatchCount);
     return {
       ...base,
-      status: "classified",
+      status: blockerCount > 0 ? "blocked" : "classified",
       category: "selected-anchor-post-alpha-color-mismatch",
       stage: "selected-anchor-color-transfer",
       classifiedAnchorCount: postAlphaMismatchCount,
-      blockerCount: 0,
+      blockerCount,
     };
   }
   return {
@@ -1415,6 +1484,15 @@ function operatorVisibleTraceCanvasParityIsAttributionGrade(traceCanvasParity = 
 
 function operatorVisibleTraceModelLiveBlocksAttribution(traceCanvasParity = {}) {
   return traceCanvasParity?.traceModelVsLive?.status === "mismatch";
+}
+
+function operatorVisibleAnchorHasAttributionGradeParity(anchor = {}, traceCanvasParity = {}) {
+  return (
+    traceCanvasParity.predictionSource === "live-compositor-input-readback" &&
+    traceCanvasParity.liveCompositorInputReadbackStatus === "present" &&
+    anchor.traceCanvasParityStatus === "match" &&
+    anchor.traceModelLiveStatus !== "mismatch"
+  );
 }
 
 function plateSeepageCategoryForAnchor(anchor = {}) {

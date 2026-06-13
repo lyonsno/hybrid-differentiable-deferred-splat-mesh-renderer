@@ -2048,7 +2048,7 @@ ${metrics.visualGapTrace.anchors.length === 0 ? "- None" : metrics.visualGapTrac
 - Trace/canvas parity mismatches: ${metrics.operatorVisibleBadPixelTrace.traceCanvasParity?.mismatchCount ?? "not reported"}; missing anchors: ${(metrics.operatorVisibleBadPixelTrace.traceCanvasParity?.missingAnchorIds || []).join(", ") || "none"}; max delta: ${metrics.operatorVisibleBadPixelTrace.traceCanvasParity?.maxDelta ?? "not reported"}
 - Trace model/live parity: ${metrics.operatorVisibleBadPixelTrace.traceCanvasParity?.traceModelVsLive?.status || "not reported"}; mismatches: ${(metrics.operatorVisibleBadPixelTrace.traceCanvasParity?.traceModelVsLive?.mismatchAnchors || []).join(", ") || "none"}; max delta: ${metrics.operatorVisibleBadPixelTrace.traceCanvasParity?.traceModelVsLive?.maxDelta ?? "not reported"}
 
-${metrics.operatorVisibleBadPixelTrace.anchors.length === 0 ? "- None" : metrics.operatorVisibleBadPixelTrace.anchors.map((anchor) => `- ${anchor.id}@${anchor.x},${anchor.y} (${anchor.kind || "unknown-kind"}): ${anchor.traceStatus}; score ${anchor.score}; plate luma ${anchor.plateLuma}; final luma ${anchor.finalLuma}; output luma ${anchor.outputLuma}; ${anchor.category}/${anchor.mechanism}; steps ${anchor.finalStepCount}; alpha ${anchor.outputAlpha}; remaining T ${anchor.remainingTransmittance}; foreground ${anchor.orderedForegroundCount}; foreground alpha ${anchor.finalForegroundAlpha}`).join("\n")}
+${metrics.operatorVisibleBadPixelTrace.anchors.length === 0 ? "- None" : metrics.operatorVisibleBadPixelTrace.anchors.map((anchor) => `- ${anchor.id}@${anchor.x},${anchor.y} (${anchor.kind || "unknown-kind"}): ${anchor.traceStatus}; score ${anchor.score}; plate luma ${anchor.plateLuma}; final luma ${anchor.finalLuma}; output luma ${anchor.outputLuma}; ${anchor.category}/${anchor.mechanism}; steps ${anchor.finalStepCount}; alpha ${anchor.outputAlpha}; remaining T ${anchor.remainingTransmittance}; foreground ${anchor.orderedForegroundCount}; foreground alpha ${anchor.finalForegroundAlpha}; parity ${anchor.traceCanvasParityStatus || "missing"} delta ${anchor.traceCanvasParityMaxDelta ?? "not reported"}; predicted ${formatRgba8(anchor.predictedRgba8)}; sampled ${formatRgba8(anchor.sampledRgba8)}; cpu-trace ${formatRgba8(anchor.cpuFinalTraceRgba8)}; live ${formatRgba8(anchor.liveCompositorRgba8)}; model/live ${anchor.traceModelLiveStatus || "missing"} delta ${anchor.traceModelVsLiveMaxDelta ?? "not reported"}`).join("\n")}
 
 ## Operator-Visible Bad Pixel Classification
 
@@ -2931,6 +2931,10 @@ function defaultReportDir() {
 
 function formatPercent(value) {
   return `${(value * 100).toFixed(3)}%`;
+}
+
+function formatRgba8(value) {
+  return Array.isArray(value) && value.length === 4 ? `[${value.join(",")}]` : "not reported";
 }
 
 async function findFreePort(host) {

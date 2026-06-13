@@ -1173,7 +1173,11 @@ test("static dessert witness classifier refuses no-seepage closure when selected
   assert.equal(result.metrics.plateSeepageClassification.category, "no-seepage");
   assert.equal(result.metrics.operatorVisibleBadPixelTrace.status, "present");
   assert.equal(result.metrics.operatorVisibleBadPixelTrace.traceCanvasParity.status, "trace-canvas-match");
+  assert.equal(result.metrics.operatorVisibleBadPixelTrace.anchors[0].traceCanvasParityStatus, "match");
+  assert.equal(result.metrics.operatorVisibleBadPixelClassification.status, "classified");
   assert.equal(result.metrics.operatorVisibleBadPixelClassification.category, "selected-anchor-post-alpha-color-mismatch");
+  assert.equal(result.metrics.operatorVisibleBadPixelClassification.classifiedAnchorCount, 1);
+  assert.equal(result.metrics.operatorVisibleBadPixelClassification.blockerCount, 0);
   assert.equal(
     result.findings.some((finding) => finding.kind === "operator-visible-bad-pixels-selected-anchor-post-alpha"),
     true,
@@ -1549,6 +1553,152 @@ test("static dessert witness classifier blocks color-transfer accusation when tr
     true,
   );
   assert.notEqual(result.observations.visibleHoles.stage, "selected-anchor-color-transfer");
+});
+
+test("static dessert witness classifier attributes matching dark fall-through anchors while keeping mismatched anchors blocked", () => {
+  const visualGapAnchors = [
+    { id: "visual-gap-1", kind: "plate-covered-tile-local-missing", x: 640, y: 342, score: 71, plateDelta: 88, tileLocalDelta: 9 },
+  ];
+  const badPixelAnchors = [
+    {
+      id: "operator-bad-pixel-1",
+      kind: "operator-visible-bright-outlier",
+      x: 612,
+      y: 355,
+      score: 142,
+      plateLuma: 82,
+      finalLuma: 224,
+      plateDelta: 120,
+      finalDelta: 224,
+    },
+    {
+      id: "operator-bad-pixel-2",
+      kind: "operator-visible-dark-fallthrough",
+      x: 591,
+      y: 361,
+      score: 340,
+      plateLuma: 191,
+      finalLuma: 32,
+      plateDelta: 216,
+      finalDelta: 40,
+    },
+  ];
+  const mixedParity = traceCanvasParityForTest(badPixelAnchors);
+  mixedParity.anchors = mixedParity.anchors.map((anchor) => {
+    if (anchor.id !== "operator-bad-pixel-1") {
+      return anchor;
+    }
+    return {
+      ...anchor,
+      sampledRgba8: [212, 199, 178, 255],
+      deltaRgba8: [-25, -25, -23, 0],
+      maxDelta: 25,
+      status: "mismatch",
+    };
+  });
+  mixedParity.status = "mismatch";
+  const result = classifyStaticDessertWitness({
+    captures: [
+      witnessCapture("final-color", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        changedPixelRatio: 0.0556642795138889,
+        routeIdentity: {
+          ...visualGapTraceRoute([]),
+          traceAnchors: "",
+          wgslProjectedRefStream: "source-frontier",
+        },
+      }),
+      witnessCapture("plate-final-color", {
+        rendererLabel: "plate",
+        changedPixelRatio: 0.03407335069444444,
+      }),
+      witnessCapture("coverage-weight"),
+      witnessCapture("accumulated-alpha", {
+        diagnostics: {
+          alpha: { estimatedMaxAccumulatedAlpha: 1, estimatedMinTransmittance: 0 },
+        },
+      }),
+      witnessCapture("transmittance", {
+        diagnostics: {
+          alpha: { estimatedMaxAccumulatedAlpha: 1, estimatedMinTransmittance: 0 },
+        },
+      }),
+      witnessCapture("tile-ref-count"),
+      witnessCapture("conic-shape", {
+        diagnostics: {
+          conicShape: { maxMajorRadiusPx: 57.2, minMinorRadiusPx: 1.5, maxAnisotropy: 21.8 },
+        },
+      }),
+      witnessCapture("visual-gap-trace", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        routeIdentity: {
+          ...visualGapTraceRoute(visualGapAnchors),
+          wgslProjectedRefStream: "source-frontier",
+        },
+        visualGapAnchors,
+        perPixelFinalColorAccumulation: [
+          {
+            status: "present",
+            anchorPixel: { id: "visual-gap-1", x: 640, y: 342 },
+            finalColorAccumulation: { steps: [{ splatIndex: 1 }], outputColor: [0.1, 0.2, 0.3, 0.98], remainingTransmittance: 0.02 },
+          },
+        ],
+        perPixelRetainedToOrderedSurvivalLedger: survivalLedgerFor(visualGapAnchors, {
+          category: "ordered-present",
+          mechanism: "retained-foreground-identity-survives-to-final-accumulation",
+          counts: { projectedForeground: 4, retainedForeground: 4, orderedForeground: 4 },
+          metrics: { projectedForegroundOcclusionWeight: 1.25, finalForegroundAlpha: 0.98 },
+        }),
+      }),
+      witnessCapture("operator-visible-bad-pixel-trace", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        routeIdentity: {
+          ...visualGapTraceRoute(badPixelAnchors),
+          wgslProjectedRefStream: "source-frontier",
+        },
+        operatorVisibleBadPixelAnchors: badPixelAnchors,
+        perPixelFinalColorAccumulation: [
+          {
+            status: "present",
+            anchorPixel: { id: "operator-bad-pixel-1", x: 612, y: 355 },
+            finalColorAccumulation: {
+              steps: [{ splatIndex: 11, sourceRole: "foreground", sourceFrontierSupportPixelWeight: 0.01 }],
+              outputColor: [0.93, 0.88, 0.79, 1],
+              remainingTransmittance: 0,
+            },
+          },
+          {
+            status: "present",
+            anchorPixel: { id: "operator-bad-pixel-2", x: 591, y: 361 },
+            finalColorAccumulation: {
+              steps: [{ splatIndex: 22, sourceRole: "foreground", sourceFrontierSupportPixelWeight: 0.04 }],
+              outputColor: [0.38, 0.34, 0.27, 1],
+              remainingTransmittance: 0,
+            },
+          },
+        ],
+        perPixelRetainedToOrderedSurvivalLedger: survivalLedgerFor(badPixelAnchors, {
+          category: "ordered-present",
+          mechanism: "retained-foreground-identity-survives-to-final-accumulation",
+          counts: { projectedForeground: 4, retainedForeground: 4, orderedForeground: 4 },
+          metrics: { projectedForegroundOcclusionWeight: 1.25, finalForegroundAlpha: 1 },
+        }),
+        traceCanvasParity: mixedParity,
+      }),
+    ],
+  });
+
+  const darkAnchor = result.metrics.operatorVisibleBadPixelTrace.anchors.find(
+    (anchor) => anchor.kind === "operator-visible-dark-fallthrough",
+  );
+  assert.equal(result.closeable, false);
+  assert.equal(result.metrics.operatorVisibleBadPixelTrace.traceCanvasParity.status, "trace-canvas-mismatch");
+  assert.equal(darkAnchor.traceCanvasParityStatus, "match");
+  assert.equal(darkAnchor.liveCompositorRgba8.length, 4);
+  assert.equal(result.metrics.operatorVisibleBadPixelClassification.status, "blocked");
+  assert.equal(result.metrics.operatorVisibleBadPixelClassification.category, "selected-anchor-post-alpha-color-mismatch");
+  assert.equal(result.metrics.operatorVisibleBadPixelClassification.classifiedAnchorCount, 1);
+  assert.equal(result.metrics.operatorVisibleBadPixelClassification.blockerCount, 1);
 });
 
 test("static dessert witness classifier refuses closure for unclassified operator-visible bad pixels", () => {
