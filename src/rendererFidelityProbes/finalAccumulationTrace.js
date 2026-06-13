@@ -301,9 +301,13 @@ function sourceFrontierAlphaTransferWeight({
   if (supportWeight <= normalizedPixelWeight) {
     return { weight: normalizedPixelWeight, colorWeight: normalizedPixelWeight, support: "none" };
   }
+  const supportColorWeight = Math.max(
+    normalizedPixelWeight,
+    Math.max(Number.isFinite(sourceFrontierSupportPixelWeight) ? sourceFrontierSupportPixelWeight : 0, 0),
+  );
   return {
     weight: supportWeight,
-    colorWeight: supportWeight,
+    colorWeight: Math.min(supportWeight, supportColorWeight),
     support: "foreground-spatial-support",
   };
 }

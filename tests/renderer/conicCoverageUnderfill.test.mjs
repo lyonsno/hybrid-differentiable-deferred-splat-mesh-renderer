@@ -94,7 +94,7 @@ test("source-frontier alpha support carries tile-local conic support beyond the 
   );
   assert.match(
     shader,
-    /return normalizedAlphaTransferWeight/,
-    "foreground support color must not under-color broad sealing alpha into an invisible occluder",
+    /return min\(normalizedAlphaTransferWeight,\s*supportColorWeight\)/,
+    "foreground support color should use the local support color envelope without tile-amplifying off-center RGB",
   );
 });

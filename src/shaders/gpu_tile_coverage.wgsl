@@ -639,7 +639,8 @@ fn source_frontier_color_transfer_weight(pixelCoverageWeight: f32, sourceFrontie
     return alphaTransferWeight;
   }
   let normalizedAlphaTransferWeight = max(alphaTransferWeight, 0.0);
-  return normalizedAlphaTransferWeight;
+  let supportColorWeight = max(max(pixelCoverageWeight, 0.0), max(sourceFrontierSupportWeight, 0.0));
+  return min(normalizedAlphaTransferWeight, supportColorWeight);
 }
 
 fn inverse_conic_radii(conicParam: vec4f) -> vec2f {

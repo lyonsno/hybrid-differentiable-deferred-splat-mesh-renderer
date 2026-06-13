@@ -344,7 +344,7 @@ test("source-frontier foreground support crosses the final alpha bulkhead with s
   assert.equal(legacyConicOnly.finalColorAccumulation.steps[0].sourceFrontierAlphaSupport, "none");
 });
 
-test("source-frontier foreground support seals transmission without under-coloring the support alpha", () => {
+test("source-frontier foreground support seals transmission without tile-amplifying off-center color", () => {
   const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
   const offConicSupport = Array.from({ length: 4 }, (_, index) =>
     accumulationContributor({
@@ -373,15 +373,21 @@ test("source-frontier foreground support seals transmission without under-colori
   const step = record.finalColorAccumulation.steps[0];
 
   assert.equal(step.sourceFrontierAlphaSupport, "foreground-spatial-support");
-  assert.equal(step.coverageAlpha, step.colorAlpha);
-  assert.equal(step.colorTransferWeight, step.alphaTransferWeight);
+  assert.ok(
+    step.colorTransferWeight < step.alphaTransferWeight * 0.25,
+    `expected off-center support color to avoid tile-amplified transfer: color ${step.colorTransferWeight}, alpha ${step.alphaTransferWeight}`,
+  );
+  assert.ok(
+    step.colorTransferWeight >= step.sourceFrontierSupportPixelWeight,
+    `expected color to keep the spatial support envelope, saw ${step.colorTransferWeight} vs ${step.sourceFrontierSupportPixelWeight}`,
+  );
   assert.ok(
     record.finalColorAccumulation.remainingTransmittance < 0.5,
     `expected support to still seal transmission, saw ${record.finalColorAccumulation.remainingTransmittance}`,
   );
   assert.ok(
-    record.finalColorAccumulation.outputColor[0] > 0.5,
-    `expected foreground support color to avoid invisible-occluder output, saw ${record.finalColorAccumulation.outputColor[0]}`,
+    record.finalColorAccumulation.outputColor[0] < 0.35,
+    `expected off-center support not to paint a full bright tile, saw ${record.finalColorAccumulation.outputColor[0]}`,
   );
 });
 

@@ -7990,6 +7990,8 @@ function readCompositorInputAnchor({
     );
     const coverageAlpha = clamp01(1 - Math.pow(1 - sourceOpacity, alphaTransferWeight));
     const colorTransferWeight = sourceFrontierColorTransferWeight(
+      pixelCoverageWeight,
+      sourceFrontierSupportPixelWeight,
       alphaTransferWeight,
       candidateSourceClassMask,
     );
@@ -8241,6 +8243,8 @@ function sourceFrontierAlphaTransferWeight(
 }
 
 function sourceFrontierColorTransferWeight(
+  pixelCoverageWeight: number,
+  sourceFrontierSupportPixelWeight: number,
   alphaTransferWeight: number,
   candidateSourceClassMask: number,
 ): number {
@@ -8248,7 +8252,11 @@ function sourceFrontierColorTransferWeight(
     return Math.max(Number.isFinite(alphaTransferWeight) ? alphaTransferWeight : 0, 0);
   }
   const normalizedAlphaTransferWeight = Math.max(Number.isFinite(alphaTransferWeight) ? alphaTransferWeight : 0, 0);
-  return normalizedAlphaTransferWeight;
+  const supportColorWeight = Math.max(
+    Math.max(Number.isFinite(pixelCoverageWeight) ? pixelCoverageWeight : 0, 0),
+    Math.max(Number.isFinite(sourceFrontierSupportPixelWeight) ? sourceFrontierSupportPixelWeight : 0, 0),
+  );
+  return Math.min(normalizedAlphaTransferWeight, supportColorWeight);
 }
 
 function clamp01(value: number): number {
