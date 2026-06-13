@@ -1011,7 +1011,10 @@ function summarizeOperatorVisibleBadPixelTrace(capture, expectedRoute = {}) {
         (finiteNumber(outputColor[2]) ?? 0) * 255,
       ])
       : undefined;
-    const rgbProvenance = summarizeSelectedAnchorRgbProvenance(accumulation?.finalColorAccumulation?.steps);
+    const rgbProvenance = summarizeSelectedAnchorRgbProvenance(
+      accumulation?.finalColorAccumulation?.steps,
+      { outputLuma },
+    );
     const category = ledger?.category || "unclassified";
     const ledgerCounts = ledger?.counts && typeof ledger.counts === "object" ? ledger.counts : {};
     const ledgerMetrics = ledger?.metrics && typeof ledger.metrics === "object" ? ledger.metrics : {};
@@ -1105,8 +1108,9 @@ function operatorVisibleAnchorParitySummary(traceCanvasParity = {}, anchorId = "
   };
 }
 
-function summarizeSelectedAnchorRgbProvenance(steps = []) {
+function summarizeSelectedAnchorRgbProvenance(steps = [], { outputLuma } = {}) {
   const records = Array.isArray(steps) ? steps : [];
+  const finalOutputLuma = finiteNumber(outputLuma);
   if (records.length === 0) {
     return {
       status: "missing",
@@ -1120,6 +1124,9 @@ function summarizeSelectedAnchorRgbProvenance(steps = []) {
       maxCoverageAlpha: 0,
       maxColorAlpha: 0,
       maxColorOcclusionAlpha: 0,
+      maxColorOcclusionGap: 0,
+      finalOutputLuma: finalOutputLuma === undefined ? 0 : roundMetric(finalOutputLuma),
+      finalToContributionLumaRatio: 0,
       totalAlphaTransferWeight: 0,
       totalColorTransferWeight: 0,
       colorTransferRatio: 0,
@@ -1176,6 +1183,11 @@ function summarizeSelectedAnchorRgbProvenance(steps = []) {
   const colorTransferRatio = totalAlphaTransferWeight > 0
     ? totalColorTransferWeight / totalAlphaTransferWeight
     : 0;
+  const maxColorOcclusionGap = Math.max(maxColorOcclusionAlpha - maxColorAlpha, 0);
+  const finalToContributionLumaRatio =
+    finalOutputLuma !== undefined && maxContributionLuma > 0
+      ? finalOutputLuma / maxContributionLuma
+      : 0;
   let category = "selected-source-color-midrange";
   if (sourceColorStepCount === 0) {
     category = "selected-source-color-missing";
@@ -1188,6 +1200,14 @@ function summarizeSelectedAnchorRgbProvenance(steps = []) {
     maxContributionLuma < maxSourceLuma * 0.25
   ) {
     category = "selected-source-color-underpowered";
+  } else if (
+    brightSourceStepCount > 0 &&
+    (maxContributionLuma >= maxSourceLuma * 0.25 || colorTransferRatio >= 0.5) &&
+    finalOutputLuma !== undefined &&
+    finalOutputLuma < maxContributionLuma * 0.5 &&
+    maxColorOcclusionGap >= 0.05
+  ) {
+    category = "selected-source-color-transferred-overoccluded";
   } else if (
     brightSourceStepCount > 0 &&
     (maxContributionLuma >= maxSourceLuma * 0.25 || colorTransferRatio >= 0.5)
@@ -1209,6 +1229,9 @@ function summarizeSelectedAnchorRgbProvenance(steps = []) {
     maxCoverageAlpha: roundMetric(maxCoverageAlpha),
     maxColorAlpha: roundMetric(maxColorAlpha),
     maxColorOcclusionAlpha: roundMetric(maxColorOcclusionAlpha),
+    maxColorOcclusionGap: roundMetric(maxColorOcclusionGap),
+    finalOutputLuma: finalOutputLuma === undefined ? 0 : roundMetric(finalOutputLuma),
+    finalToContributionLumaRatio: roundMetric(finalToContributionLumaRatio),
     totalAlphaTransferWeight: roundMetric(totalAlphaTransferWeight),
     totalColorTransferWeight: roundMetric(totalColorTransferWeight),
     colorTransferRatio: roundMetric(colorTransferRatio),
