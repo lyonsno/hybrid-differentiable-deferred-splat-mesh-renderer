@@ -1125,6 +1125,10 @@ function summarizeSelectedAnchorRgbProvenance(steps = [], { outputLuma } = {}) {
       maxColorAlpha: 0,
       maxColorOcclusionAlpha: 0,
       maxColorOcclusionGap: 0,
+      maxRunningLuma: 0,
+      maxPostPeakRunningLumaDrop: 0,
+      postPeakRunningLumaRatio: 0,
+      maxPostPeakSupportColorOcclusionGap: 0,
       finalOutputLuma: finalOutputLuma === undefined ? 0 : roundMetric(finalOutputLuma),
       finalToContributionLumaRatio: 0,
       totalAlphaTransferWeight: 0,
@@ -1141,26 +1145,34 @@ function summarizeSelectedAnchorRgbProvenance(steps = [], { outputLuma } = {}) {
   let maxCoverageAlpha = 0;
   let maxColorAlpha = 0;
   let maxColorOcclusionAlpha = 0;
+  let maxRunningLuma = 0;
+  let maxRunningLumaIndex = -1;
   let totalAlphaTransferWeight = 0;
   let totalColorTransferWeight = 0;
+  const stepSummaries = [];
 
-  for (const step of records) {
+  for (const [index, step] of records.entries()) {
     const alphaTransferWeight = finiteNumber(step?.alphaTransferWeight) ?? 0;
     const colorTransferWeight = finiteNumber(step?.colorTransferWeight) ?? 0;
     const coverageAlpha = finiteNumber(step?.coverageAlpha) ?? 0;
     const colorAlpha = finiteNumber(step?.colorAlpha) ?? 0;
     const colorOcclusionAlpha = finiteNumber(step?.colorOcclusionAlpha) ?? 0;
+    const colorOcclusionGap = Math.max(colorOcclusionAlpha - colorAlpha, 0);
+    const isSupportStep = Boolean(stringValue(step?.sourceFrontierAlphaSupport) && step.sourceFrontierAlphaSupport !== "none");
+    let sourceLuma = 0;
+    let contributionLuma = 0;
+    let runningLuma = undefined;
     totalAlphaTransferWeight += Math.max(0, alphaTransferWeight);
     totalColorTransferWeight += Math.max(0, colorTransferWeight);
     maxCoverageAlpha = Math.max(maxCoverageAlpha, coverageAlpha);
     maxColorAlpha = Math.max(maxColorAlpha, colorAlpha);
     maxColorOcclusionAlpha = Math.max(maxColorOcclusionAlpha, colorOcclusionAlpha);
-    if (stringValue(step?.sourceFrontierAlphaSupport) && step.sourceFrontierAlphaSupport !== "none") {
+    if (isSupportStep) {
       supportStepCount += 1;
     }
     if (Array.isArray(step?.sourceColor) && step.sourceColor.length >= 3) {
       sourceColorStepCount += 1;
-      const sourceLuma = rgbLuma([
+      sourceLuma = rgbLuma([
         (finiteNumber(step.sourceColor[0]) ?? 0) * 255,
         (finiteNumber(step.sourceColor[1]) ?? 0) * 255,
         (finiteNumber(step.sourceColor[2]) ?? 0) * 255,
@@ -1171,23 +1183,68 @@ function summarizeSelectedAnchorRgbProvenance(steps = [], { outputLuma } = {}) {
       }
     }
     if (Array.isArray(step?.contributionColor) && step.contributionColor.length >= 3) {
-      const contributionLuma = rgbLuma([
+      contributionLuma = rgbLuma([
         (finiteNumber(step.contributionColor[0]) ?? 0) * 255,
         (finiteNumber(step.contributionColor[1]) ?? 0) * 255,
         (finiteNumber(step.contributionColor[2]) ?? 0) * 255,
       ]);
       maxContributionLuma = Math.max(maxContributionLuma, contributionLuma);
     }
+    if (Array.isArray(step?.runningColor) && step.runningColor.length >= 3) {
+      runningLuma = rgbLuma([
+        (finiteNumber(step.runningColor[0]) ?? 0) * 255,
+        (finiteNumber(step.runningColor[1]) ?? 0) * 255,
+        (finiteNumber(step.runningColor[2]) ?? 0) * 255,
+      ]);
+      if (runningLuma > maxRunningLuma) {
+        maxRunningLuma = runningLuma;
+        maxRunningLumaIndex = index;
+      }
+    }
+    stepSummaries.push({
+      index,
+      isSupportStep,
+      colorOcclusionGap,
+      runningLuma,
+    });
   }
 
   const colorTransferRatio = totalAlphaTransferWeight > 0
     ? totalColorTransferWeight / totalAlphaTransferWeight
     : 0;
   const maxColorOcclusionGap = Math.max(maxColorOcclusionAlpha - maxColorAlpha, 0);
+  let maxPostPeakRunningLumaDrop = 0;
+  let minPostPeakRunningLuma = maxRunningLuma > 0 ? maxRunningLuma : 0;
+  let maxPostPeakSupportColorOcclusionGap = 0;
+  if (maxRunningLumaIndex >= 0 && maxRunningLuma > 0) {
+    for (const stepSummary of stepSummaries) {
+      if (stepSummary.index <= maxRunningLumaIndex) {
+        continue;
+      }
+      if (stepSummary.runningLuma !== undefined) {
+        minPostPeakRunningLuma = Math.min(minPostPeakRunningLuma, stepSummary.runningLuma);
+        maxPostPeakRunningLumaDrop = Math.max(
+          maxPostPeakRunningLumaDrop,
+          maxRunningLuma - stepSummary.runningLuma,
+        );
+      }
+      if (stepSummary.isSupportStep) {
+        maxPostPeakSupportColorOcclusionGap = Math.max(
+          maxPostPeakSupportColorOcclusionGap,
+          stepSummary.colorOcclusionGap,
+        );
+      }
+    }
+  }
+  const postPeakRunningLumaRatio = maxRunningLuma > 0
+    ? minPostPeakRunningLuma / maxRunningLuma
+    : 0;
   const finalToContributionLumaRatio =
     finalOutputLuma !== undefined && maxContributionLuma > 0
       ? finalOutputLuma / maxContributionLuma
       : 0;
+  const hasTransferredSelectedColor = brightSourceStepCount > 0 &&
+    (maxContributionLuma >= maxSourceLuma * 0.25 || colorTransferRatio >= 0.5);
   let category = "selected-source-color-midrange";
   if (sourceColorStepCount === 0) {
     category = "selected-source-color-missing";
@@ -1209,8 +1266,15 @@ function summarizeSelectedAnchorRgbProvenance(steps = [], { outputLuma } = {}) {
   ) {
     category = "selected-source-color-transferred-overoccluded";
   } else if (
-    brightSourceStepCount > 0 &&
-    (maxContributionLuma >= maxSourceLuma * 0.25 || colorTransferRatio >= 0.5)
+    hasTransferredSelectedColor &&
+    supportStepCount > 0 &&
+    maxPostPeakRunningLumaDrop >= 20 &&
+    postPeakRunningLumaRatio <= 0.8 &&
+    maxPostPeakSupportColorOcclusionGap >= 0.15
+  ) {
+    category = "selected-source-color-transferred-late-support-suppressed";
+  } else if (
+    hasTransferredSelectedColor
   ) {
     category = "selected-source-color-transferred-still-mismatched";
   } else if (brightSourceStepCount > 0) {
@@ -1230,6 +1294,10 @@ function summarizeSelectedAnchorRgbProvenance(steps = [], { outputLuma } = {}) {
     maxColorAlpha: roundMetric(maxColorAlpha),
     maxColorOcclusionAlpha: roundMetric(maxColorOcclusionAlpha),
     maxColorOcclusionGap: roundMetric(maxColorOcclusionGap),
+    maxRunningLuma: roundMetric(maxRunningLuma),
+    maxPostPeakRunningLumaDrop: roundMetric(maxPostPeakRunningLumaDrop),
+    postPeakRunningLumaRatio: roundMetric(postPeakRunningLumaRatio),
+    maxPostPeakSupportColorOcclusionGap: roundMetric(maxPostPeakSupportColorOcclusionGap),
     finalOutputLuma: finalOutputLuma === undefined ? 0 : roundMetric(finalOutputLuma),
     finalToContributionLumaRatio: roundMetric(finalToContributionLumaRatio),
     totalAlphaTransferWeight: roundMetric(totalAlphaTransferWeight),
