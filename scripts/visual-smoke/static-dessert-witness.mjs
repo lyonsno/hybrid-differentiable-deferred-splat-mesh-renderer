@@ -1011,6 +1011,7 @@ function summarizeOperatorVisibleBadPixelTrace(capture, expectedRoute = {}) {
         (finiteNumber(outputColor[2]) ?? 0) * 255,
       ])
       : undefined;
+    const rgbProvenance = summarizeSelectedAnchorRgbProvenance(accumulation?.finalColorAccumulation?.steps);
     const category = ledger?.category || "unclassified";
     const ledgerCounts = ledger?.counts && typeof ledger.counts === "object" ? ledger.counts : {};
     const ledgerMetrics = ledger?.metrics && typeof ledger.metrics === "object" ? ledger.metrics : {};
@@ -1039,6 +1040,7 @@ function summarizeOperatorVisibleBadPixelTrace(capture, expectedRoute = {}) {
       outputAlpha: outputAlpha ?? null,
       remainingTransmittance: remainingTransmittance ?? null,
       outputLuma: outputLuma === undefined ? null : roundMetric(outputLuma),
+      rgbProvenance,
       category,
       mechanism: ledger?.mechanism || "unclassified",
       projectedForegroundCount: finiteNumber(ledgerCounts.projectedForeground) ?? 0,
@@ -1100,6 +1102,96 @@ function operatorVisibleAnchorParitySummary(traceCanvasParity = {}, anchorId = "
     traceModelLiveStatus,
     traceModelVsLiveDeltaRgba8: numericArray(parityAnchor?.traceModelVsLiveDeltaRgba8),
     traceModelVsLiveMaxDelta: finiteNumber(parityAnchor?.traceModelVsLiveMaxDelta) ?? null,
+  };
+}
+
+function summarizeSelectedAnchorRgbProvenance(steps = []) {
+  const records = Array.isArray(steps) ? steps : [];
+  if (records.length === 0) {
+    return {
+      status: "missing",
+      category: "missing-final-color-steps",
+      stepCount: 0,
+      sourceColorStepCount: 0,
+      brightSourceStepCount: 0,
+      supportStepCount: 0,
+      maxSourceLuma: 0,
+      maxContributionLuma: 0,
+      totalAlphaTransferWeight: 0,
+      totalColorTransferWeight: 0,
+      colorTransferRatio: 0,
+    };
+  }
+
+  let sourceColorStepCount = 0;
+  let brightSourceStepCount = 0;
+  let supportStepCount = 0;
+  let maxSourceLuma = 0;
+  let maxContributionLuma = 0;
+  let totalAlphaTransferWeight = 0;
+  let totalColorTransferWeight = 0;
+
+  for (const step of records) {
+    const alphaTransferWeight = finiteNumber(step?.alphaTransferWeight) ?? 0;
+    const colorTransferWeight = finiteNumber(step?.colorTransferWeight) ?? 0;
+    totalAlphaTransferWeight += Math.max(0, alphaTransferWeight);
+    totalColorTransferWeight += Math.max(0, colorTransferWeight);
+    if (stringValue(step?.sourceFrontierAlphaSupport) && step.sourceFrontierAlphaSupport !== "none") {
+      supportStepCount += 1;
+    }
+    if (Array.isArray(step?.sourceColor) && step.sourceColor.length >= 3) {
+      sourceColorStepCount += 1;
+      const sourceLuma = rgbLuma([
+        (finiteNumber(step.sourceColor[0]) ?? 0) * 255,
+        (finiteNumber(step.sourceColor[1]) ?? 0) * 255,
+        (finiteNumber(step.sourceColor[2]) ?? 0) * 255,
+      ]);
+      maxSourceLuma = Math.max(maxSourceLuma, sourceLuma);
+      if (sourceLuma >= 128) {
+        brightSourceStepCount += 1;
+      }
+    }
+    if (Array.isArray(step?.contributionColor) && step.contributionColor.length >= 3) {
+      const contributionLuma = rgbLuma([
+        (finiteNumber(step.contributionColor[0]) ?? 0) * 255,
+        (finiteNumber(step.contributionColor[1]) ?? 0) * 255,
+        (finiteNumber(step.contributionColor[2]) ?? 0) * 255,
+      ]);
+      maxContributionLuma = Math.max(maxContributionLuma, contributionLuma);
+    }
+  }
+
+  const colorTransferRatio = totalAlphaTransferWeight > 0
+    ? totalColorTransferWeight / totalAlphaTransferWeight
+    : 0;
+  let category = "selected-source-color-midrange";
+  if (sourceColorStepCount === 0) {
+    category = "selected-source-color-missing";
+  } else if (maxSourceLuma < 48) {
+    category = "selected-source-color-dark";
+  } else if (
+    brightSourceStepCount > 0 &&
+    totalAlphaTransferWeight > 0 &&
+    totalColorTransferWeight < totalAlphaTransferWeight * 0.5 &&
+    maxContributionLuma < maxSourceLuma * 0.25
+  ) {
+    category = "selected-source-color-underpowered";
+  } else if (brightSourceStepCount > 0) {
+    category = "selected-source-color-present";
+  }
+
+  return {
+    status: "classified",
+    category,
+    stepCount: records.length,
+    sourceColorStepCount,
+    brightSourceStepCount,
+    supportStepCount,
+    maxSourceLuma: roundMetric(maxSourceLuma),
+    maxContributionLuma: roundMetric(maxContributionLuma),
+    totalAlphaTransferWeight: roundMetric(totalAlphaTransferWeight),
+    totalColorTransferWeight: roundMetric(totalColorTransferWeight),
+    colorTransferRatio: roundMetric(colorTransferRatio),
   };
 }
 
@@ -1399,6 +1491,7 @@ function classifyOperatorVisibleBadPixelsFromTrace(operatorVisibleBadPixelTrace 
     anchorCount: anchors.length,
     classifiedAnchorCount: 0,
     blockerCount: anchors.length,
+    rgbProvenanceCategoryCounts: {},
   };
   if (operatorVisibleBadPixelTrace.status === "not-captured") {
     return { ...base, status: "not-captured", category: "not-captured", stage: "trace-capture", blockerCount: 0 };
@@ -1445,14 +1538,15 @@ function classifyOperatorVisibleBadPixelsFromTrace(operatorVisibleBadPixelTrace 
       blockerCount: Math.max(1, finiteNumber(operatorVisibleBadPixelTrace.traceCanvasParity?.traceModelVsLive?.mismatchCount) ?? anchors.length),
     };
   }
-  const postAlphaMismatchCount = anchors.filter((anchor) => (
+  const postAlphaAnchors = anchors.filter((anchor) => (
     operatorVisibleAnchorHasAttributionGradeParity(anchor, operatorVisibleBadPixelTrace.traceCanvasParity) &&
     anchor.traceComplete &&
     anchor.category === "ordered-present" &&
     (finiteNumber(anchor.remainingTransmittance) ?? 1) <= MAX_VISUAL_GAP_REMAINING_TRANSMITTANCE_FOR_SEALED &&
     (finiteNumber(anchor.outputAlpha) ?? 0) >= MIN_VISUAL_GAP_ALPHA_FOR_SEALED &&
     (finiteNumber(anchor.finalForegroundAlpha) ?? 0) >= MIN_VISUAL_GAP_ALPHA_FOR_SEALED
-  )).length;
+  ));
+  const postAlphaMismatchCount = postAlphaAnchors.length;
   if (postAlphaMismatchCount > 0) {
     const blockerCount = Math.max(0, anchors.length - postAlphaMismatchCount);
     return {
@@ -1462,6 +1556,9 @@ function classifyOperatorVisibleBadPixelsFromTrace(operatorVisibleBadPixelTrace 
       stage: "selected-anchor-color-transfer",
       classifiedAnchorCount: postAlphaMismatchCount,
       blockerCount,
+      rgbProvenanceCategoryCounts: countBy(
+        postAlphaAnchors.map((anchor) => anchor.rgbProvenance?.category || "missing-rgb-provenance")
+      ),
     };
   }
   return {

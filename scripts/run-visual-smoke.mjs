@@ -2048,7 +2048,7 @@ ${metrics.visualGapTrace.anchors.length === 0 ? "- None" : metrics.visualGapTrac
 - Trace/canvas parity mismatches: ${metrics.operatorVisibleBadPixelTrace.traceCanvasParity?.mismatchCount ?? "not reported"}; missing anchors: ${(metrics.operatorVisibleBadPixelTrace.traceCanvasParity?.missingAnchorIds || []).join(", ") || "none"}; max delta: ${metrics.operatorVisibleBadPixelTrace.traceCanvasParity?.maxDelta ?? "not reported"}
 - Trace model/live parity: ${metrics.operatorVisibleBadPixelTrace.traceCanvasParity?.traceModelVsLive?.status || "not reported"}; mismatches: ${(metrics.operatorVisibleBadPixelTrace.traceCanvasParity?.traceModelVsLive?.mismatchAnchors || []).join(", ") || "none"}; max delta: ${metrics.operatorVisibleBadPixelTrace.traceCanvasParity?.traceModelVsLive?.maxDelta ?? "not reported"}
 
-${metrics.operatorVisibleBadPixelTrace.anchors.length === 0 ? "- None" : metrics.operatorVisibleBadPixelTrace.anchors.map((anchor) => `- ${anchor.id}@${anchor.x},${anchor.y} (${anchor.kind || "unknown-kind"}): ${anchor.traceStatus}; score ${anchor.score}; plate luma ${anchor.plateLuma}; final luma ${anchor.finalLuma}; output luma ${anchor.outputLuma}; ${anchor.category}/${anchor.mechanism}; steps ${anchor.finalStepCount}; alpha ${anchor.outputAlpha}; remaining T ${anchor.remainingTransmittance}; foreground ${anchor.orderedForegroundCount}; foreground alpha ${anchor.finalForegroundAlpha}; parity ${anchor.traceCanvasParityStatus || "missing"} delta ${anchor.traceCanvasParityMaxDelta ?? "not reported"}; predicted ${formatRgba8(anchor.predictedRgba8)}; sampled ${formatRgba8(anchor.sampledRgba8)}; cpu-trace ${formatRgba8(anchor.cpuFinalTraceRgba8)}; live ${formatRgba8(anchor.liveCompositorRgba8)}; model/live ${anchor.traceModelLiveStatus || "missing"} delta ${anchor.traceModelVsLiveMaxDelta ?? "not reported"}`).join("\n")}
+${metrics.operatorVisibleBadPixelTrace.anchors.length === 0 ? "- None" : metrics.operatorVisibleBadPixelTrace.anchors.map((anchor) => `- ${anchor.id}@${anchor.x},${anchor.y} (${anchor.kind || "unknown-kind"}): ${anchor.traceStatus}; score ${anchor.score}; plate luma ${anchor.plateLuma}; final luma ${anchor.finalLuma}; output luma ${anchor.outputLuma}; ${anchor.category}/${anchor.mechanism}; steps ${anchor.finalStepCount}; alpha ${anchor.outputAlpha}; remaining T ${anchor.remainingTransmittance}; foreground ${anchor.orderedForegroundCount}; foreground alpha ${anchor.finalForegroundAlpha}; rgb provenance ${anchor.rgbProvenance?.category || "missing"} (source luma ${anchor.rgbProvenance?.maxSourceLuma ?? "n/a"}, contribution luma ${anchor.rgbProvenance?.maxContributionLuma ?? "n/a"}, color/alpha transfer ${anchor.rgbProvenance?.colorTransferRatio ?? "n/a"}); parity ${anchor.traceCanvasParityStatus || "missing"} delta ${anchor.traceCanvasParityMaxDelta ?? "not reported"}; predicted ${formatRgba8(anchor.predictedRgba8)}; sampled ${formatRgba8(anchor.sampledRgba8)}; cpu-trace ${formatRgba8(anchor.cpuFinalTraceRgba8)}; live ${formatRgba8(anchor.liveCompositorRgba8)}; model/live ${anchor.traceModelLiveStatus || "missing"} delta ${anchor.traceModelVsLiveMaxDelta ?? "not reported"}`).join("\n")}
 
 ## Operator-Visible Bad Pixel Classification
 
@@ -2058,6 +2058,7 @@ ${metrics.operatorVisibleBadPixelTrace.anchors.length === 0 ? "- None" : metrics
 - Source route: ${metrics.operatorVisibleBadPixelClassification.sourceRoute}
 - Classified anchors: ${metrics.operatorVisibleBadPixelClassification.classifiedAnchorCount} / ${metrics.operatorVisibleBadPixelClassification.anchorCount}
 - Blockers: ${metrics.operatorVisibleBadPixelClassification.blockerCount}
+- RGB provenance categories: ${formatCounts(metrics.operatorVisibleBadPixelClassification.rgbProvenanceCategoryCounts)}
 
 ## Plate Seepage Classification
 
@@ -2931,6 +2932,11 @@ function defaultReportDir() {
 
 function formatPercent(value) {
   return `${(value * 100).toFixed(3)}%`;
+}
+
+function formatCounts(counts = {}) {
+  const entries = counts && typeof counts === "object" ? Object.entries(counts) : [];
+  return entries.length === 0 ? "none" : entries.map(([key, count]) => `${key}=${count}`).join(", ");
 }
 
 function formatRgba8(value) {

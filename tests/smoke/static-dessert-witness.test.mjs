@@ -1152,7 +1152,17 @@ test("static dessert witness classifier refuses no-seepage closure when selected
             status: "present",
             anchorPixel: { id: "operator-bad-pixel-1", x: 612, y: 355 },
             finalColorAccumulation: {
-              steps: [{ splatIndex: 11, sourceRole: "foreground", sourceFrontierSupportPixelWeight: 0.01 }],
+              steps: [{
+                splatIndex: 11,
+                sourceRole: "foreground",
+                sourceFrontierAlphaSupport: "foreground-spatial-support",
+                sourceFrontierSupportPixelWeight: 0.01,
+                alphaTransferWeight: 0.8,
+                colorTransferWeight: 0.04,
+                colorAlpha: 0.02,
+                sourceColor: [1, 0.9, 0.75],
+                contributionColor: [0.02, 0.018, 0.015],
+              }],
               outputColor: [0.93, 0.88, 0.79, 1],
               remainingTransmittance: 0,
             },
@@ -1174,8 +1184,14 @@ test("static dessert witness classifier refuses no-seepage closure when selected
   assert.equal(result.metrics.operatorVisibleBadPixelTrace.status, "present");
   assert.equal(result.metrics.operatorVisibleBadPixelTrace.traceCanvasParity.status, "trace-canvas-match");
   assert.equal(result.metrics.operatorVisibleBadPixelTrace.anchors[0].traceCanvasParityStatus, "match");
+  assert.equal(result.metrics.operatorVisibleBadPixelTrace.anchors[0].rgbProvenance.status, "classified");
+  assert.equal(result.metrics.operatorVisibleBadPixelTrace.anchors[0].rgbProvenance.category, "selected-source-color-underpowered");
+  assert.equal(result.metrics.operatorVisibleBadPixelTrace.anchors[0].rgbProvenance.brightSourceStepCount, 1);
+  assert.equal(result.metrics.operatorVisibleBadPixelTrace.anchors[0].rgbProvenance.maxSourceLuma, 232.16);
+  assert.equal(result.metrics.operatorVisibleBadPixelTrace.anchors[0].rgbProvenance.maxContributionLuma, 4.643);
   assert.equal(result.metrics.operatorVisibleBadPixelClassification.status, "classified");
   assert.equal(result.metrics.operatorVisibleBadPixelClassification.category, "selected-anchor-post-alpha-color-mismatch");
+  assert.equal(result.metrics.operatorVisibleBadPixelClassification.rgbProvenanceCategoryCounts["selected-source-color-underpowered"], 1);
   assert.equal(result.metrics.operatorVisibleBadPixelClassification.classifiedAnchorCount, 1);
   assert.equal(result.metrics.operatorVisibleBadPixelClassification.blockerCount, 0);
   assert.equal(
