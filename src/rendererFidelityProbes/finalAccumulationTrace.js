@@ -20,11 +20,14 @@ const DEFAULT_DEFERRED_FIELDS = Object.freeze({
   deferredSurface: null,
   missingReason: "production deferred G-buffer voting is outside the trace packet scope",
 });
-const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_MASK = 1 | 8;
+const SOURCE_FRONTIER_RETENTION_MASK = 1;
+const SOURCE_FRONTIER_SUPPORT_MASK = 8;
+const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_MASK = SOURCE_FRONTIER_RETENTION_MASK | SOURCE_FRONTIER_SUPPORT_MASK;
 const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE = 8;
 const SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE = 0.5;
 const SOURCE_FRONTIER_COLOR_TRANSFER_GAP_SCALE = 0.1;
 const SOURCE_FRONTIER_COLOR_OCCLUSION_GAP_SCALE = 0.5;
+const SOURCE_FRONTIER_COLOR_BEARING_SUPPORT_LUMA_RATIO_MIN = 0.2;
 
 export function buildFinalColorAccumulationTraceRecord({
   anchorPixel = BLACK_BAND_FINAL_ACCUMULATION_ANCHOR,
@@ -200,6 +203,9 @@ function composeFinalColorAccumulationSteps({
   for (let orderIndex = 0; orderIndex < contributors.length; orderIndex += 1) {
     const contributor = contributors[orderIndex];
     const sourceColor = resolveSourceColor(sourceColors, contributor.splatIndex, blockers);
+    const candidateSourceClassMask = Number.isInteger(contributor?.candidateSourceClassMask)
+      ? contributor.candidateSourceClassMask
+      : 0;
     const tileCoverageWeight = Math.max(finiteNumber(contributor.coverageWeight, "contributor.coverageWeight"), 0);
     const rawTileLocalSupportWeight = contributor.tileLocalSupportWeight ?? contributor.conicSupportWeight ?? 0;
     const tileLocalSupportWeight = Math.max(
@@ -225,11 +231,15 @@ function composeFinalColorAccumulationSteps({
     const coverageAlpha = hasTileSupport
       ? clamp01(1 - Math.pow(1 - opacity, alphaTransfer.weight))
       : 0;
-    const colorAlpha = hasTileSupport
+    const rawColorAlpha = hasTileSupport
       ? clamp01(1 - Math.pow(1 - opacity, alphaTransfer.colorWeight))
       : 0;
+    const colorAuthority = hasTileSupport
+      ? sourceFrontierSupportColorAuthority(sourceColor, runningColor, candidateSourceClassMask)
+      : 1;
+    const colorAlpha = rawColorAlpha * colorAuthority;
     const colorOcclusionAlpha = hasTileSupport
-      ? sourceFrontierColorOcclusionAlpha(colorAlpha, coverageAlpha)
+      ? sourceFrontierColorOcclusionAlpha(colorAlpha, coverageAlpha, colorAuthority)
       : 0;
     const contributionColor = sourceColor.map((channel) => round(channel * colorAlpha));
     const nextRunningColor = hasTileSupport
@@ -251,6 +261,7 @@ function composeFinalColorAccumulationSteps({
       alphaTransferWeight: round(alphaTransfer.weight),
       colorTransferWeight: round(alphaTransfer.colorWeight),
       sourceFrontierAlphaSupport: alphaTransfer.support,
+      sourceFrontierColorAuthority: round(colorAuthority),
       opacity: round(opacity),
       coverageAlpha: round(coverageAlpha),
       colorAlpha: round(colorAlpha),
@@ -281,11 +292,44 @@ function composeFinalColorAccumulationSteps({
   };
 }
 
-function sourceFrontierColorOcclusionAlpha(colorAlpha, coverageAlpha) {
+function sourceFrontierColorOcclusionAlpha(colorAlpha, coverageAlpha, colorAuthority = 1) {
   const normalizedColorAlpha = clamp01(colorAlpha);
   const normalizedCoverageAlpha = clamp01(coverageAlpha);
+  const normalizedColorAuthority = clamp01(colorAuthority);
   const alphaColorGap = Math.max(normalizedCoverageAlpha - normalizedColorAlpha, 0);
-  return clamp01(normalizedColorAlpha + alphaColorGap * SOURCE_FRONTIER_COLOR_OCCLUSION_GAP_SCALE);
+  return clamp01(
+    normalizedColorAlpha +
+    alphaColorGap * SOURCE_FRONTIER_COLOR_OCCLUSION_GAP_SCALE * normalizedColorAuthority,
+  );
+}
+
+function sourceFrontierSupportColorAuthority(sourceColor, runningColor, candidateSourceClassMask) {
+  if ((candidateSourceClassMask & SOURCE_FRONTIER_SUPPORT_MASK) === 0) {
+    return 1;
+  }
+  if (
+    (candidateSourceClassMask & SOURCE_FRONTIER_RETENTION_MASK) !== 0 &&
+    (candidateSourceClassMask & SOURCE_FRONTIER_SUPPORT_MASK) !== 0
+  ) {
+    return 1;
+  }
+  const runningLuma = colorLuma(runningColor);
+  if (runningLuma <= 0) {
+    return 1;
+  }
+  const sourceLuma = colorLuma(sourceColor);
+  if (sourceLuma >= runningLuma) {
+    return clamp01(runningLuma / sourceLuma);
+  }
+  const lumaRatio = sourceLuma / runningLuma;
+  if (lumaRatio < SOURCE_FRONTIER_COLOR_BEARING_SUPPORT_LUMA_RATIO_MIN) {
+    return 1;
+  }
+  return clamp01(lumaRatio);
+}
+
+function colorLuma(color) {
+  return color[0] * 0.2126 + color[1] * 0.7152 + color[2] * 0.0722;
 }
 
 function sourceFrontierAlphaTransferWeight({
@@ -313,6 +357,16 @@ function sourceFrontierAlphaTransferWeight({
     Math.max(Number.isFinite(sourceFrontierSupportPixelWeight) ? sourceFrontierSupportPixelWeight : 0, 0);
   if (supportWeight <= normalizedPixelWeight) {
     return { weight: normalizedPixelWeight, colorWeight: normalizedPixelWeight, support: "none" };
+  }
+  if (
+    (candidateSourceClassMask & SOURCE_FRONTIER_RETENTION_MASK) !== 0 &&
+    (candidateSourceClassMask & SOURCE_FRONTIER_SUPPORT_MASK) !== 0
+  ) {
+    return {
+      weight: supportWeight,
+      colorWeight: supportWeight,
+      support: "foreground-spatial-support",
+    };
   }
   const supportColorWeight = Math.max(
     normalizedPixelWeight,

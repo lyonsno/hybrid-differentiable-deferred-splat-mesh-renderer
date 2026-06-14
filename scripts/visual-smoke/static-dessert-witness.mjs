@@ -1129,6 +1129,9 @@ function summarizeSelectedAnchorRgbProvenance(steps = [], { outputLuma } = {}) {
       maxPostPeakRunningLumaDrop: 0,
       postPeakRunningLumaRatio: 0,
       maxPostPeakSupportColorOcclusionGap: 0,
+      peakRunningColorStep: null,
+      postPeakSuppressorStep: null,
+      lateLightContaminatorStep: null,
       finalOutputLuma: finalOutputLuma === undefined ? 0 : roundMetric(finalOutputLuma),
       finalToContributionLumaRatio: 0,
       totalAlphaTransferWeight: 0,
@@ -1203,8 +1206,18 @@ function summarizeSelectedAnchorRgbProvenance(steps = [], { outputLuma } = {}) {
     }
     stepSummaries.push({
       index,
+      splatIndex: finiteNumber(step?.splatIndex) ?? null,
+      viewRank: finiteNumber(step?.viewRank) ?? null,
+      candidateSourceClassMask: Number.isInteger(step?.candidateSourceClassMask)
+        ? step.candidateSourceClassMask
+        : null,
       isSupportStep,
+      sourceLuma,
+      contributionLuma,
+      colorAlpha,
+      colorOcclusionAlpha,
       colorOcclusionGap,
+      sourceFrontierColorAuthority: finiteNumber(step?.sourceFrontierColorAuthority) ?? null,
       runningLuma,
     });
   }
@@ -1216,6 +1229,11 @@ function summarizeSelectedAnchorRgbProvenance(steps = [], { outputLuma } = {}) {
   let maxPostPeakRunningLumaDrop = 0;
   let minPostPeakRunningLuma = maxRunningLuma > 0 ? maxRunningLuma : 0;
   let maxPostPeakSupportColorOcclusionGap = 0;
+  const peakRunningColorStep = maxRunningLumaIndex >= 0
+    ? stepProvenanceSummary(stepSummaries[maxRunningLumaIndex])
+    : null;
+  let postPeakSuppressorStep = null;
+  let lateLightContaminatorStep = null;
   if (maxRunningLumaIndex >= 0 && maxRunningLuma > 0) {
     for (const stepSummary of stepSummaries) {
       if (stepSummary.index <= maxRunningLumaIndex) {
@@ -1223,16 +1241,41 @@ function summarizeSelectedAnchorRgbProvenance(steps = [], { outputLuma } = {}) {
       }
       if (stepSummary.runningLuma !== undefined) {
         minPostPeakRunningLuma = Math.min(minPostPeakRunningLuma, stepSummary.runningLuma);
-        maxPostPeakRunningLumaDrop = Math.max(
-          maxPostPeakRunningLumaDrop,
-          maxRunningLuma - stepSummary.runningLuma,
-        );
+        const runningLumaDrop = maxRunningLuma - stepSummary.runningLuma;
+        if (runningLumaDrop > maxPostPeakRunningLumaDrop) {
+          maxPostPeakRunningLumaDrop = runningLumaDrop;
+          postPeakSuppressorStep = stepProvenanceSummary(stepSummary, { runningLumaDrop });
+        }
       }
       if (stepSummary.isSupportStep) {
         maxPostPeakSupportColorOcclusionGap = Math.max(
           maxPostPeakSupportColorOcclusionGap,
           stepSummary.colorOcclusionGap,
         );
+      }
+    }
+  }
+  for (const stepSummary of stepSummaries) {
+    if (stepSummary.index <= 0 || !stepSummary.isSupportStep || stepSummary.runningLuma === undefined) {
+      continue;
+    }
+    const previousStep = stepSummaries[stepSummary.index - 1];
+    const previousRunningLuma = finiteNumber(previousStep?.runningLuma);
+    if (previousRunningLuma === undefined) {
+      continue;
+    }
+    const runningLumaRise = stepSummary.runningLuma - previousRunningLuma;
+    if (
+      runningLumaRise >= 20 &&
+      stepSummary.sourceLuma >= 180 &&
+      stepSummary.contributionLuma >= 60 &&
+      stepSummary.colorOcclusionGap >= 0.1
+    ) {
+      if (
+        !lateLightContaminatorStep ||
+        runningLumaRise > lateLightContaminatorStep.runningLumaRise
+      ) {
+        lateLightContaminatorStep = stepProvenanceSummary(stepSummary, { runningLumaRise });
       }
     }
   }
@@ -1267,6 +1310,11 @@ function summarizeSelectedAnchorRgbProvenance(steps = [], { outputLuma } = {}) {
     category = "selected-source-color-transferred-overoccluded";
   } else if (
     hasTransferredSelectedColor &&
+    lateLightContaminatorStep
+  ) {
+    category = "selected-source-color-transferred-late-plate-contaminated";
+  } else if (
+    hasTransferredSelectedColor &&
     supportStepCount > 0 &&
     maxPostPeakRunningLumaDrop >= 20 &&
     postPeakRunningLumaRatio <= 0.8 &&
@@ -1298,12 +1346,44 @@ function summarizeSelectedAnchorRgbProvenance(steps = [], { outputLuma } = {}) {
     maxPostPeakRunningLumaDrop: roundMetric(maxPostPeakRunningLumaDrop),
     postPeakRunningLumaRatio: roundMetric(postPeakRunningLumaRatio),
     maxPostPeakSupportColorOcclusionGap: roundMetric(maxPostPeakSupportColorOcclusionGap),
+    peakRunningColorStep,
+    postPeakSuppressorStep,
+    lateLightContaminatorStep,
     finalOutputLuma: finalOutputLuma === undefined ? 0 : roundMetric(finalOutputLuma),
     finalToContributionLumaRatio: roundMetric(finalToContributionLumaRatio),
     totalAlphaTransferWeight: roundMetric(totalAlphaTransferWeight),
     totalColorTransferWeight: roundMetric(totalColorTransferWeight),
     colorTransferRatio: roundMetric(colorTransferRatio),
   };
+}
+
+function stepProvenanceSummary(stepSummary, { runningLumaDrop, runningLumaRise } = {}) {
+  if (!stepSummary) {
+    return null;
+  }
+  const summary = {
+    index: stepSummary.index,
+    splatIndex: stepSummary.splatIndex,
+    viewRank: stepSummary.viewRank,
+    candidateSourceClassMask: stepSummary.candidateSourceClassMask,
+    isSupportStep: stepSummary.isSupportStep,
+    sourceLuma: roundMetric(stepSummary.sourceLuma),
+    contributionLuma: roundMetric(stepSummary.contributionLuma),
+    runningLuma: stepSummary.runningLuma === undefined ? null : roundMetric(stepSummary.runningLuma),
+    colorAlpha: roundMetric(stepSummary.colorAlpha),
+    colorOcclusionAlpha: roundMetric(stepSummary.colorOcclusionAlpha),
+    colorOcclusionGap: roundMetric(stepSummary.colorOcclusionGap),
+    sourceFrontierColorAuthority: stepSummary.sourceFrontierColorAuthority === null
+      ? null
+      : roundMetric(stepSummary.sourceFrontierColorAuthority),
+  };
+  if (runningLumaDrop !== undefined) {
+    summary.runningLumaDrop = roundMetric(runningLumaDrop);
+  }
+  if (runningLumaRise !== undefined) {
+    summary.runningLumaRise = roundMetric(runningLumaRise);
+  }
+  return summary;
 }
 
 function visualGapTraceRouteStatus(capture, anchors, expectedRoute = {}) {

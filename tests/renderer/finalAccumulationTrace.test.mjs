@@ -355,7 +355,7 @@ test("source-frontier foreground support seals transmission without tile-amplify
       viewRank: index,
       sourceRole: "foreground-sealing",
       role: "foreground-sealing",
-      candidateSourceClassMask: 9,
+      candidateSourceClassMask: 8,
       coverageWeight: 0.8,
       centerPx: [anchor.x + 3, anchor.y + 0.5],
       inverseConic: [1, 0, 1],
@@ -401,7 +401,7 @@ test("source-frontier support color carries a bounded portion of the support alp
     viewRank: 0,
     sourceRole: "foreground-sealing",
     role: "foreground-sealing",
-    candidateSourceClassMask: 9,
+    candidateSourceClassMask: 8,
     coverageWeight: 0.9,
     centerPx: [anchor.x + 3, anchor.y + 0.5],
     inverseConic: [1, 0, 1],
@@ -432,6 +432,116 @@ test("source-frontier support color carries a bounded portion of the support alp
   );
 });
 
+test("source-frontier retained support transfers selected color without support-only throttle", () => {
+  const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
+  const retainedSupport = accumulationContributor({
+    anchor,
+    tileIndex: tileIndexForAnchor(anchor),
+    splatIndex: 906,
+    originalId: 906,
+    viewRank: 0,
+    sourceRole: "foreground-sealing",
+    role: "foreground-sealing",
+    candidateSourceClassMask: 9,
+    coverageWeight: 0.9,
+    centerPx: [anchor.x + 3, anchor.y + 0.5],
+    inverseConic: [1, 0, 1],
+    opacity: 0.8,
+  });
+  const supportOnly = {
+    ...retainedSupport,
+    splatIndex: 907,
+    originalId: 907,
+    candidateSourceClassMask: 8,
+  };
+  const retainedRecord = buildFinalColorAccumulationTraceRecord({
+    anchorPixel: anchor,
+    contributors: [retainedSupport],
+    sourceColors: new Map([[retainedSupport.splatIndex, [1, 0.5, 0.25]]]),
+    retainedContributors: [retainedSupport],
+    tileSizePx: 16,
+    tileColumns: 216,
+  });
+  const supportOnlyRecord = buildFinalColorAccumulationTraceRecord({
+    anchorPixel: anchor,
+    contributors: [supportOnly],
+    sourceColors: new Map([[supportOnly.splatIndex, [1, 0.5, 0.25]]]),
+    retainedContributors: [supportOnly],
+    tileSizePx: 16,
+    tileColumns: 216,
+  });
+  const retainedStep = retainedRecord.finalColorAccumulation.steps[0];
+  const supportOnlyStep = supportOnlyRecord.finalColorAccumulation.steps[0];
+
+  assert.equal(retainedStep.sourceFrontierAlphaSupport, "foreground-spatial-support");
+  assert.equal(supportOnlyStep.sourceFrontierAlphaSupport, "foreground-spatial-support");
+  assert.ok(
+    retainedStep.alphaTransferWeight > retainedStep.sourceFrontierSupportPixelWeight * 4,
+    `expected fixture to expose retained support alpha/color gap: support ${retainedStep.sourceFrontierSupportPixelWeight}, alpha ${retainedStep.alphaTransferWeight}`,
+  );
+  assert.ok(
+    retainedStep.colorTransferWeight >= retainedStep.alphaTransferWeight * 0.95,
+    `retained support should transfer selected color with alpha authority: color ${retainedStep.colorTransferWeight}, alpha ${retainedStep.alphaTransferWeight}`,
+  );
+  assert.ok(
+    supportOnlyStep.colorTransferWeight < supportOnlyStep.alphaTransferWeight * 0.25,
+    `support-only refs should keep bounded color transfer: color ${supportOnlyStep.colorTransferWeight}, alpha ${supportOnlyStep.alphaTransferWeight}`,
+  );
+});
+
+test("source-frontier retention-only support keeps bounded color transfer", () => {
+  const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
+  const retentionOnly = accumulationContributor({
+    anchor,
+    tileIndex: tileIndexForAnchor(anchor),
+    splatIndex: 908,
+    originalId: 908,
+    viewRank: 0,
+    sourceRole: "foreground-sealing",
+    role: "foreground-sealing",
+    candidateSourceClassMask: 1,
+    coverageWeight: 0.9,
+    centerPx: [anchor.x + 3, anchor.y + 0.5],
+    inverseConic: [1, 0, 1],
+    opacity: 0.8,
+  });
+  const retainedSupport = {
+    ...retentionOnly,
+    splatIndex: 909,
+    originalId: 909,
+    candidateSourceClassMask: 9,
+  };
+  const retentionOnlyRecord = buildFinalColorAccumulationTraceRecord({
+    anchorPixel: anchor,
+    contributors: [retentionOnly],
+    sourceColors: new Map([[retentionOnly.splatIndex, [1, 0.5, 0.25]]]),
+    retainedContributors: [retentionOnly],
+    tileSizePx: 16,
+    tileColumns: 216,
+  });
+  const retainedSupportRecord = buildFinalColorAccumulationTraceRecord({
+    anchorPixel: anchor,
+    contributors: [retainedSupport],
+    sourceColors: new Map([[retainedSupport.splatIndex, [1, 0.5, 0.25]]]),
+    retainedContributors: [retainedSupport],
+    tileSizePx: 16,
+    tileColumns: 216,
+  });
+  const retentionOnlyStep = retentionOnlyRecord.finalColorAccumulation.steps[0];
+  const retainedSupportStep = retainedSupportRecord.finalColorAccumulation.steps[0];
+
+  assert.equal(retentionOnlyStep.sourceFrontierAlphaSupport, "foreground-spatial-support");
+  assert.equal(retainedSupportStep.sourceFrontierAlphaSupport, "foreground-spatial-support");
+  assert.ok(
+    retentionOnlyStep.colorTransferWeight < retentionOnlyStep.alphaTransferWeight * 0.25,
+    `retention-only refs should not inherit retained-support color authority: color ${retentionOnlyStep.colorTransferWeight}, alpha ${retentionOnlyStep.alphaTransferWeight}`,
+  );
+  assert.ok(
+    retainedSupportStep.colorTransferWeight >= retainedSupportStep.alphaTransferWeight * 0.95,
+    `retained-support refs should keep selected color authority: color ${retainedSupportStep.colorTransferWeight}, alpha ${retainedSupportStep.alphaTransferWeight}`,
+  );
+});
+
 test("source-frontier support alpha does not erase retained foreground color faster than color transfer arrives", () => {
   const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
   const nearForeground = accumulationContributor({
@@ -456,7 +566,7 @@ test("source-frontier support alpha does not erase retained foreground color fas
     viewRank: 1,
     sourceRole: "foreground-sealing",
     role: "foreground-sealing",
-    candidateSourceClassMask: 9,
+    candidateSourceClassMask: 8,
     coverageWeight: 0.95,
     centerPx: [anchor.x + 3, anchor.y + 0.5],
     inverseConic: [1, 0, 1],
@@ -508,6 +618,132 @@ test("source-frontier support alpha does not erase retained foreground color fas
   );
 });
 
+test("source-frontier dull support preserves selected color authority while sealing alpha", () => {
+  const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
+  const selectedForeground = accumulationContributor({
+    anchor,
+    tileIndex: tileIndexForAnchor(anchor),
+    splatIndex: 930,
+    originalId: 930,
+    viewRank: 0,
+    sourceRole: "foreground-sealing",
+    role: "foreground-sealing",
+    candidateSourceClassMask: 9,
+    coverageWeight: 1,
+    centerPx: [anchor.x + 0.5, anchor.y + 0.5],
+    inverseConic: [1, 0, 1],
+    opacity: 0.55,
+  });
+  const lateDullSupport = accumulationContributor({
+    anchor,
+    tileIndex: tileIndexForAnchor(anchor),
+    splatIndex: 931,
+    originalId: 931,
+    viewRank: 1,
+    sourceRole: "foreground-sealing",
+    role: "foreground-sealing",
+    candidateSourceClassMask: 8,
+    coverageWeight: 0.95,
+    centerPx: [anchor.x + 1.5, anchor.y + 0.5],
+    inverseConic: [1, 0, 1],
+    opacity: 0.85,
+  });
+  const record = buildFinalColorAccumulationTraceRecord({
+    anchorPixel: anchor,
+    contributors: [selectedForeground, lateDullSupport],
+    sourceColors: new Map([
+      [selectedForeground.splatIndex, [0.95, 0.78, 0.52]],
+      [lateDullSupport.splatIndex, [0.25, 0.18, 0.12]],
+    ]),
+    retainedContributors: [selectedForeground, lateDullSupport],
+    preserveContributorOrder: true,
+    tileSizePx: 16,
+    tileColumns: 216,
+  });
+  const firstStep = record.finalColorAccumulation.steps[0];
+  const supportStep = record.finalColorAccumulation.steps[1];
+  const firstLuma = luma(firstStep.runningColor);
+  const supportLuma = luma(supportStep.sourceColor);
+  const outputLuma = luma(record.finalColorAccumulation.outputColor);
+
+  assert.equal(supportStep.sourceFrontierAlphaSupport, "foreground-spatial-support");
+  assert.ok(
+    record.finalColorAccumulation.remainingTransmittance < 0.001,
+    `late support should still seal alpha, saw remaining transmittance ${record.finalColorAccumulation.remainingTransmittance}`,
+  );
+  assert.ok(
+    supportLuma > firstLuma * 0.2 && supportLuma < firstLuma * 0.5,
+    `fixture must expose color-bearing dull support after selected color arrives: support luma ${supportLuma}, selected luma ${firstLuma}`,
+  );
+  assert.ok(
+    outputLuma > firstLuma * 0.65,
+    `dull support should not suppress selected color authority: first luma ${firstLuma}, output luma ${outputLuma}`,
+  );
+});
+
+test("source-frontier bright support cannot contaminate selected color authority while sealing alpha", () => {
+  const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
+  const selectedForeground = accumulationContributor({
+    anchor,
+    tileIndex: tileIndexForAnchor(anchor),
+    splatIndex: 932,
+    originalId: 932,
+    viewRank: 0,
+    sourceRole: "foreground-sealing",
+    role: "foreground-sealing",
+    candidateSourceClassMask: 9,
+    coverageWeight: 1,
+    centerPx: [anchor.x + 0.5, anchor.y + 0.5],
+    inverseConic: [1, 0, 1],
+    opacity: 0.62,
+  });
+  const latePlateColoredSupport = accumulationContributor({
+    anchor,
+    tileIndex: tileIndexForAnchor(anchor),
+    splatIndex: 933,
+    originalId: 933,
+    viewRank: 1,
+    sourceRole: "foreground-sealing",
+    role: "foreground-sealing",
+    candidateSourceClassMask: 8,
+    coverageWeight: 0.95,
+    centerPx: [anchor.x + 1.5, anchor.y + 0.5],
+    inverseConic: [1, 0, 1],
+    opacity: 0.85,
+  });
+  const record = buildFinalColorAccumulationTraceRecord({
+    anchorPixel: anchor,
+    contributors: [selectedForeground, latePlateColoredSupport],
+    sourceColors: new Map([
+      [selectedForeground.splatIndex, [0.58, 0.34, 0.18]],
+      [latePlateColoredSupport.splatIndex, [1, 0.96, 0.86]],
+    ]),
+    retainedContributors: [selectedForeground, latePlateColoredSupport],
+    preserveContributorOrder: true,
+    tileSizePx: 16,
+    tileColumns: 216,
+  });
+  const firstStep = record.finalColorAccumulation.steps[0];
+  const supportStep = record.finalColorAccumulation.steps[1];
+  const firstLuma = luma(firstStep.runningColor);
+  const supportLuma = luma(supportStep.sourceColor);
+  const outputLuma = luma(record.finalColorAccumulation.outputColor);
+
+  assert.equal(supportStep.sourceFrontierAlphaSupport, "foreground-spatial-support");
+  assert.ok(
+    record.finalColorAccumulation.remainingTransmittance < 0.001,
+    `late bright support should still seal alpha, saw remaining transmittance ${record.finalColorAccumulation.remainingTransmittance}`,
+  );
+  assert.ok(
+    supportLuma > firstLuma * 1.8,
+    `fixture must expose plate-colored support after selected color arrives: support luma ${supportLuma}, selected luma ${firstLuma}`,
+  );
+  assert.ok(
+    outputLuma < firstLuma * 1.65,
+    `bright support should not contaminate selected color authority: first luma ${firstLuma}, output luma ${outputLuma}`,
+  );
+});
+
 test("source-frontier support alpha attenuates stale bright color through the alpha/color mass gap", () => {
   const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
   const staleBrightLayer = accumulationContributor({
@@ -518,7 +754,7 @@ test("source-frontier support alpha attenuates stale bright color through the al
     viewRank: 0,
     sourceRole: "foreground-sealing",
     role: "foreground-sealing",
-    candidateSourceClassMask: 9,
+    candidateSourceClassMask: 8,
     coverageWeight: 1,
     centerPx: [anchor.x + 0.5, anchor.y + 0.5],
     inverseConic: [1, 0, 1],
@@ -532,7 +768,7 @@ test("source-frontier support alpha attenuates stale bright color through the al
     viewRank: 1,
     sourceRole: "foreground-sealing",
     role: "foreground-sealing",
-    candidateSourceClassMask: 9,
+    candidateSourceClassMask: 8,
     coverageWeight: 0.95,
     centerPx: [anchor.x + 3, anchor.y + 0.5],
     inverseConic: [1, 0, 1],
@@ -604,4 +840,8 @@ function assertColorClose(actual, expected) {
       `channel ${index}: expected ${expected[index]}, got ${actual[index]}`,
     );
   }
+}
+
+function luma(color) {
+  return color[0] * 0.2126 + color[1] * 0.7152 + color[2] * 0.0722;
 }

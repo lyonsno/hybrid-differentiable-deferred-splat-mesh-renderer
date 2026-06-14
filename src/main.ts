@@ -196,13 +196,16 @@ const COMPACT_SOURCE_FULL_SCENE_MAX_TILES_PER_SPLAT = 81;
 const COMPACT_SOURCE_ANCHOR_PREFILTER_MIN_MARGIN_PX = 96;
 const COMPACT_SOURCE_ANCHOR_PREFILTER_MAX_MARGIN_PX = 384;
 const SOURCE_FRONTIER_ALPHA_CLASS_MASK_SENTINEL = -1024;
+const SOURCE_FRONTIER_RETENTION_MASK = GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.retention;
+const SOURCE_FRONTIER_SUPPORT_MASK = GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.support;
 const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_MASK =
-  GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.retention |
-  GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.support;
+  SOURCE_FRONTIER_RETENTION_MASK |
+  SOURCE_FRONTIER_SUPPORT_MASK;
 const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE = 8;
 const SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE = 0.5;
 const SOURCE_FRONTIER_COLOR_TRANSFER_GAP_SCALE = 0.1;
 const SOURCE_FRONTIER_COLOR_OCCLUSION_GAP_SCALE = 0.5;
+const SOURCE_FRONTIER_COLOR_BEARING_SUPPORT_LUMA_RATIO_MIN = 0.2;
 const COMPACT_SOURCE_RETENTION_SUPPORT_SAMPLES_PER_AXIS = 4;
 const COMPACT_SOURCE_EPSILON = 1e-9;
 const TILE_LOCAL_UNSAFE = selectedTileLocalUnsafeMode();
@@ -567,6 +570,7 @@ interface TileLocalCompositorInputReadback {
       readonly opacity?: number;
       readonly alphaTransferWeight: number;
       readonly colorTransferWeight: number;
+      readonly sourceFrontierColorAuthority?: number;
       readonly coverageAlpha: number;
       readonly colorAlpha: number;
       readonly colorOcclusionAlpha: number;
@@ -8000,9 +8004,14 @@ function readCompositorInputAnchor({
       alphaTransferWeight,
       candidateSourceClassMask,
     );
-    const colorAlpha = clamp01(1 - Math.pow(1 - sourceOpacity, colorTransferWeight));
-    const colorOcclusionAlpha = sourceFrontierColorOcclusionAlpha(colorAlpha, coverageAlpha);
     const sourceColor = readSourceColor(sourceColors, splatIndex);
+    const colorAuthority = sourceFrontierSupportColorAuthority(
+      sourceColor,
+      runningColor,
+      candidateSourceClassMask,
+    );
+    const colorAlpha = clamp01(1 - Math.pow(1 - sourceOpacity, colorTransferWeight)) * colorAuthority;
+    const colorOcclusionAlpha = sourceFrontierColorOcclusionAlpha(colorAlpha, coverageAlpha, colorAuthority);
     const transmittanceBefore = remainingTransmission;
     runningColor = sourceColor.map((channel, index) =>
       channel * colorAlpha + runningColor[index] * (1 - colorOcclusionAlpha)
@@ -8034,6 +8043,7 @@ function readCompositorInputAnchor({
       opacity: roundColorChannel(sourceOpacity),
       alphaTransferWeight: roundColorChannel(alphaTransferWeight),
       colorTransferWeight: roundColorChannel(colorTransferWeight),
+      sourceFrontierColorAuthority: roundColorChannel(colorAuthority),
       coverageAlpha: roundColorChannel(coverageAlpha),
       colorAlpha: roundColorChannel(colorAlpha),
       colorOcclusionAlpha: roundColorChannel(colorOcclusionAlpha),
@@ -8259,6 +8269,12 @@ function sourceFrontierColorTransferWeight(
     return Math.max(Number.isFinite(alphaTransferWeight) ? alphaTransferWeight : 0, 0);
   }
   const normalizedAlphaTransferWeight = Math.max(Number.isFinite(alphaTransferWeight) ? alphaTransferWeight : 0, 0);
+  if (
+    (candidateSourceClassMask & SOURCE_FRONTIER_RETENTION_MASK) !== 0 &&
+    (candidateSourceClassMask & SOURCE_FRONTIER_SUPPORT_MASK) !== 0
+  ) {
+    return normalizedAlphaTransferWeight;
+  }
   const supportColorWeight = Math.max(
     Math.max(Number.isFinite(pixelCoverageWeight) ? pixelCoverageWeight : 0, 0),
     Math.max(Number.isFinite(sourceFrontierSupportPixelWeight) ? sourceFrontierSupportPixelWeight : 0, 0),
@@ -8268,11 +8284,49 @@ function sourceFrontierColorTransferWeight(
   return Math.min(normalizedAlphaTransferWeight, colorWeight);
 }
 
-function sourceFrontierColorOcclusionAlpha(colorAlpha: number, coverageAlpha: number): number {
+function sourceFrontierColorOcclusionAlpha(
+  colorAlpha: number,
+  coverageAlpha: number,
+  colorAuthority = 1,
+): number {
   const normalizedColorAlpha = clamp01(colorAlpha);
   const normalizedCoverageAlpha = clamp01(coverageAlpha);
+  const normalizedColorAuthority = clamp01(colorAuthority);
   const alphaColorGap = Math.max(normalizedCoverageAlpha - normalizedColorAlpha, 0);
-  return clamp01(normalizedColorAlpha + alphaColorGap * SOURCE_FRONTIER_COLOR_OCCLUSION_GAP_SCALE);
+  return clamp01(
+    normalizedColorAlpha +
+    alphaColorGap * SOURCE_FRONTIER_COLOR_OCCLUSION_GAP_SCALE * normalizedColorAuthority,
+  );
+}
+
+function sourceFrontierSupportColorAuthority(
+  sourceColor: readonly [number, number, number],
+  runningColor: readonly [number, number, number],
+  candidateSourceClassMask: number,
+): number {
+  if ((candidateSourceClassMask & SOURCE_FRONTIER_SUPPORT_MASK) === 0) {
+    return 1;
+  }
+  if ((candidateSourceClassMask & SOURCE_FRONTIER_RETENTION_MASK) !== 0) {
+    return 1;
+  }
+  const runningLuma = rgbLuma(runningColor);
+  if (runningLuma <= 0) {
+    return 1;
+  }
+  const sourceLuma = rgbLuma(sourceColor);
+  if (sourceLuma >= runningLuma) {
+    return clamp01(runningLuma / sourceLuma);
+  }
+  const lumaRatio = sourceLuma / runningLuma;
+  if (lumaRatio < SOURCE_FRONTIER_COLOR_BEARING_SUPPORT_LUMA_RATIO_MIN) {
+    return 1;
+  }
+  return clamp01(lumaRatio);
+}
+
+function rgbLuma(color: readonly [number, number, number]): number {
+  return color[0] * 0.2126 + color[1] * 0.7152 + color[2] * 0.0722;
 }
 
 function clamp01(value: number): number {

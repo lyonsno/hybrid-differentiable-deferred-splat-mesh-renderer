@@ -54,6 +54,7 @@ const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE = 8.0;
 const SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE = 0.5;
 const SOURCE_FRONTIER_COLOR_TRANSFER_GAP_SCALE = 0.1;
 const SOURCE_FRONTIER_COLOR_OCCLUSION_GAP_SCALE = 0.5;
+const SOURCE_FRONTIER_COLOR_BEARING_SUPPORT_LUMA_RATIO_MIN = 0.2;
 const SOURCE_FRONTIER_FOREGROUND_RETENTION_SCORE_FLOOR = 224u;
 
 struct SplatShape {
@@ -641,17 +642,55 @@ fn source_frontier_color_transfer_weight(pixelCoverageWeight: f32, sourceFrontie
     return alphaTransferWeight;
   }
   let normalizedAlphaTransferWeight = max(alphaTransferWeight, 0.0);
+  if (
+    (sourceFrontierClassMask & CANDIDATE_SOURCE_CLASS_RETENTION_MASK) != 0u &&
+    (sourceFrontierClassMask & CANDIDATE_SOURCE_CLASS_SUPPORT_MASK) != 0u
+  ) {
+    return normalizedAlphaTransferWeight;
+  }
   let supportColorWeight = max(max(pixelCoverageWeight, 0.0), max(sourceFrontierSupportWeight, 0.0));
   let colorGap = max(normalizedAlphaTransferWeight - supportColorWeight, 0.0);
   let colorWeight = supportColorWeight + colorGap * SOURCE_FRONTIER_COLOR_TRANSFER_GAP_SCALE;
   return min(normalizedAlphaTransferWeight, colorWeight);
 }
 
-fn source_frontier_color_occlusion_alpha(colorAlpha: f32, coverageAlpha: f32) -> f32 {
+fn source_frontier_color_occlusion_alpha(colorAlpha: f32, coverageAlpha: f32, colorAuthority: f32) -> f32 {
   let normalizedColorAlpha = clamp(colorAlpha, 0.0, 1.0);
   let normalizedCoverageAlpha = clamp(coverageAlpha, 0.0, 1.0);
+  let normalizedColorAuthority = clamp(colorAuthority, 0.0, 1.0);
   let alphaColorGap = max(normalizedCoverageAlpha - normalizedColorAlpha, 0.0);
-  return clamp(normalizedColorAlpha + alphaColorGap * SOURCE_FRONTIER_COLOR_OCCLUSION_GAP_SCALE, 0.0, 1.0);
+  return clamp(
+    normalizedColorAlpha +
+    alphaColorGap * SOURCE_FRONTIER_COLOR_OCCLUSION_GAP_SCALE * normalizedColorAuthority,
+    0.0,
+    1.0
+  );
+}
+
+fn source_frontier_rgb_luma(color: vec3f) -> f32 {
+  return dot(color, vec3f(0.2126, 0.7152, 0.0722));
+}
+
+fn source_frontier_support_color_authority(sourceColor: vec3f, composedColor: vec3f, sourceFrontierClassMask: u32) -> f32 {
+  if ((sourceFrontierClassMask & CANDIDATE_SOURCE_CLASS_SUPPORT_MASK) == 0u) {
+    return 1.0;
+  }
+  if ((sourceFrontierClassMask & CANDIDATE_SOURCE_CLASS_RETENTION_MASK) != 0u) {
+    return 1.0;
+  }
+  let runningLuma = source_frontier_rgb_luma(composedColor);
+  if (runningLuma <= 0.0) {
+    return 1.0;
+  }
+  let sourceLuma = source_frontier_rgb_luma(sourceColor);
+  if (sourceLuma >= runningLuma) {
+    return clamp(runningLuma / sourceLuma, 0.0, 1.0);
+  }
+  let lumaRatio = sourceLuma / runningLuma;
+  if (lumaRatio < SOURCE_FRONTIER_COLOR_BEARING_SUPPORT_LUMA_RATIO_MIN) {
+    return 1.0;
+  }
+  return clamp(lumaRatio, 0.0, 1.0);
 }
 
 fn inverse_conic_radii(conicParam: vec4f) -> vec2f {
@@ -938,10 +977,11 @@ fn debug_heatmap_color(
     let alphaTransferWeight = source_frontier_alpha_transfer_weight(pixelCoverageWeight, tileCoverageWeight, tileLocalSupportWeight, sourceFrontierSupportWeight, sourceFrontierClassMask);
     let coverageAlpha = clamp(1.0 - pow(1.0 - sourceOpacity, alphaTransferWeight), 0.0, 1.0);
     let colorTransferWeight = source_frontier_color_transfer_weight(pixelCoverageWeight, sourceFrontierSupportWeight, alphaTransferWeight, sourceFrontierClassMask);
-    let colorAlpha = clamp(1.0 - pow(1.0 - sourceOpacity, colorTransferWeight), 0.0, 1.0);
-    let colorOcclusionAlpha = source_frontier_color_occlusion_alpha(colorAlpha, coverageAlpha);
     let colorBase = tileRef.x * 3u;
     let sourceColor = vec3f(colors[colorBase], colors[colorBase + 1u], colors[colorBase + 2u]);
+    let colorAuthority = source_frontier_support_color_authority(sourceColor, composedColor, sourceFrontierClassMask);
+    let colorAlpha = clamp(1.0 - pow(1.0 - sourceOpacity, colorTransferWeight), 0.0, 1.0) * colorAuthority;
+    let colorOcclusionAlpha = source_frontier_color_occlusion_alpha(colorAlpha, coverageAlpha, colorAuthority);
     composedColor = sourceColor * colorAlpha + composedColor * (1.0 - colorOcclusionAlpha);
     remainingTransmission = remainingTransmission * (1.0 - coverageAlpha);
   }

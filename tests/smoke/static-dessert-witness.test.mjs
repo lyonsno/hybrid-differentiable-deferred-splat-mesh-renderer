@@ -1537,6 +1537,8 @@ test("static dessert witness classifier separates late dull support suppression 
               steps: [
                 {
                   splatIndex: 11,
+                  viewRank: 11,
+                  candidateSourceClassMask: 9,
                   sourceRole: "foreground",
                   sourceFrontierAlphaSupport: "none",
                   sourceFrontierSupportPixelWeight: 0.95,
@@ -1551,6 +1553,8 @@ test("static dessert witness classifier separates late dull support suppression 
                 },
                 {
                   splatIndex: 12,
+                  viewRank: 12,
+                  candidateSourceClassMask: 8,
                   sourceRole: "foreground",
                   sourceFrontierAlphaSupport: "foreground-spatial-support",
                   sourceFrontierSupportPixelWeight: 0.45,
@@ -1559,6 +1563,7 @@ test("static dessert witness classifier separates late dull support suppression 
                   coverageAlpha: 0.79,
                   colorAlpha: 0.28,
                   colorOcclusionAlpha: 0.53,
+                  sourceFrontierColorAuthority: 0.65,
                   sourceColor: [0.39, 0.39, 0.39],
                   contributionColor: [0.11, 0.11, 0.11],
                   runningColor: [0.31, 0.31, 0.31],
@@ -1587,8 +1592,193 @@ test("static dessert witness classifier separates late dull support suppression 
   assert.equal(provenance.maxPostPeakRunningLumaDrop, 43.35);
   assert.equal(provenance.postPeakRunningLumaRatio, 0.646);
   assert.equal(provenance.maxPostPeakSupportColorOcclusionGap, 0.25);
+  assert.deepEqual(provenance.peakRunningColorStep, {
+    index: 0,
+    splatIndex: 11,
+    viewRank: 11,
+    candidateSourceClassMask: 9,
+    isSupportStep: false,
+    sourceLuma: 229.5,
+    contributionLuma: 96.9,
+    runningLuma: 122.4,
+    colorAlpha: 0.43,
+    colorOcclusionAlpha: 0.43,
+    colorOcclusionGap: 0,
+    sourceFrontierColorAuthority: null,
+  });
+  assert.deepEqual(provenance.postPeakSuppressorStep, {
+    index: 1,
+    splatIndex: 12,
+    viewRank: 12,
+    candidateSourceClassMask: 8,
+    isSupportStep: true,
+    sourceLuma: 99.45,
+    contributionLuma: 28.05,
+    runningLuma: 79.05,
+    colorAlpha: 0.28,
+    colorOcclusionAlpha: 0.53,
+    colorOcclusionGap: 0.25,
+    sourceFrontierColorAuthority: 0.65,
+    runningLumaDrop: 43.35,
+  });
   assert.equal(
     result.metrics.operatorVisibleBadPixelClassification.rgbProvenanceCategoryCounts["selected-source-color-transferred-late-support-suppressed"],
+    1,
+  );
+});
+
+test("static dessert witness classifier separates late bright plate contamination from generic transferred mismatch", () => {
+  const visualGapAnchors = [
+    { id: "visual-gap-1", kind: "plate-covered-tile-local-missing", x: 640, y: 342, score: 71, plateDelta: 88, tileLocalDelta: 9 },
+  ];
+  const badPixelAnchors = [
+    {
+      id: "operator-bad-pixel-1",
+      kind: "operator-visible-bright-outlier",
+      x: 612,
+      y: 355,
+      score: 182,
+      plateLuma: 218,
+      finalLuma: 190,
+      plateDelta: 18,
+      finalDelta: 155,
+    },
+  ];
+  const result = classifyStaticDessertWitness({
+    captures: [
+      witnessCapture("final-color", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        changedPixelRatio: 0.0556642795138889,
+        routeIdentity: {
+          ...visualGapTraceRoute([]),
+          traceAnchors: "",
+          wgslProjectedRefStream: "source-frontier",
+        },
+      }),
+      witnessCapture("plate-final-color", {
+        rendererLabel: "plate",
+        changedPixelRatio: 0.03407335069444444,
+      }),
+      witnessCapture("coverage-weight"),
+      witnessCapture("accumulated-alpha", {
+        diagnostics: {
+          alpha: { estimatedMaxAccumulatedAlpha: 1, estimatedMinTransmittance: 0 },
+        },
+      }),
+      witnessCapture("transmittance", {
+        diagnostics: {
+          alpha: { estimatedMaxAccumulatedAlpha: 1, estimatedMinTransmittance: 0 },
+        },
+      }),
+      witnessCapture("tile-ref-count"),
+      witnessCapture("conic-shape", {
+        diagnostics: {
+          conicShape: { maxMajorRadiusPx: 57.2, minMinorRadiusPx: 1.5, maxAnisotropy: 21.8 },
+        },
+      }),
+      witnessCapture("visual-gap-trace", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        routeIdentity: {
+          ...visualGapTraceRoute(visualGapAnchors),
+          wgslProjectedRefStream: "source-frontier",
+        },
+        visualGapAnchors,
+        perPixelFinalColorAccumulation: [
+          {
+            status: "present",
+            anchorPixel: { id: "visual-gap-1", x: 640, y: 342 },
+            finalColorAccumulation: { steps: [{ splatIndex: 1 }], outputColor: [0.1, 0.2, 0.3, 0.98], remainingTransmittance: 0.02 },
+          },
+        ],
+        perPixelRetainedToOrderedSurvivalLedger: survivalLedgerFor(visualGapAnchors, {
+          category: "ordered-present",
+          mechanism: "retained-foreground-identity-survives-to-final-accumulation",
+          counts: { projectedForeground: 4, retainedForeground: 4, orderedForeground: 4 },
+          metrics: { projectedForegroundOcclusionWeight: 1.25, finalForegroundAlpha: 0.98 },
+        }),
+      }),
+      witnessCapture("operator-visible-bad-pixel-trace", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        routeIdentity: {
+          ...visualGapTraceRoute(badPixelAnchors),
+          wgslProjectedRefStream: "source-frontier",
+        },
+        operatorVisibleBadPixelAnchors: badPixelAnchors,
+        perPixelFinalColorAccumulation: [
+          {
+            status: "present",
+            anchorPixel: { id: "operator-bad-pixel-1", x: 612, y: 355 },
+            finalColorAccumulation: {
+              steps: [
+                {
+                  splatIndex: 21,
+                  viewRank: 21,
+                  candidateSourceClassMask: 9,
+                  sourceRole: "foreground",
+                  sourceFrontierAlphaSupport: "none",
+                  sourceFrontierSupportPixelWeight: 0.95,
+                  alphaTransferWeight: 0.82,
+                  colorTransferWeight: 0.82,
+                  coverageAlpha: 0.43,
+                  colorAlpha: 0.43,
+                  colorOcclusionAlpha: 0.43,
+                  sourceColor: [0.58, 0.34, 0.18],
+                  contributionColor: [0.24, 0.14, 0.08],
+                  runningColor: [0.27, 0.16, 0.09],
+                },
+                {
+                  splatIndex: 22,
+                  viewRank: 22,
+                  candidateSourceClassMask: 8,
+                  sourceRole: "foreground",
+                  sourceFrontierAlphaSupport: "foreground-spatial-support",
+                  sourceFrontierSupportPixelWeight: 0.45,
+                  alphaTransferWeight: 3.57,
+                  colorTransferWeight: 0.76,
+                  coverageAlpha: 0.79,
+                  colorAlpha: 0.52,
+                  colorOcclusionAlpha: 0.67,
+                  sourceFrontierColorAuthority: 1,
+                  sourceColor: [1, 0.96, 0.86],
+                  contributionColor: [0.52, 0.5, 0.45],
+                  runningColor: [0.61, 0.56, 0.48],
+                },
+              ],
+              outputColor: [0.61, 0.56, 0.48, 1],
+              remainingTransmittance: 0,
+            },
+          },
+        ],
+        perPixelRetainedToOrderedSurvivalLedger: survivalLedgerFor(badPixelAnchors, {
+          category: "ordered-present",
+          mechanism: "retained-foreground-identity-survives-to-final-accumulation",
+          counts: { projectedForeground: 4, retainedForeground: 4, orderedForeground: 4 },
+          metrics: { projectedForegroundOcclusionWeight: 1.25, finalForegroundAlpha: 1 },
+        }),
+        traceCanvasParity: traceCanvasParityForTest(badPixelAnchors),
+      }),
+    ],
+  });
+
+  const provenance = result.metrics.operatorVisibleBadPixelTrace.anchors[0].rgbProvenance;
+  assert.equal(provenance.status, "classified");
+  assert.equal(provenance.category, "selected-source-color-transferred-late-plate-contaminated");
+  assert.deepEqual(provenance.peakRunningColorStep, {
+    index: 1,
+    splatIndex: 22,
+    viewRank: 22,
+    candidateSourceClassMask: 8,
+    isSupportStep: true,
+    sourceLuma: 245.127,
+    contributionLuma: 127.664,
+    runningLuma: 144.038,
+    colorAlpha: 0.52,
+    colorOcclusionAlpha: 0.67,
+    colorOcclusionGap: 0.15,
+    sourceFrontierColorAuthority: 1,
+  });
+  assert.equal(
+    result.metrics.operatorVisibleBadPixelClassification.rgbProvenanceCategoryCounts["selected-source-color-transferred-late-plate-contaminated"],
     1,
   );
 });
