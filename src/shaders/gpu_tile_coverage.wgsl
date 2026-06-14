@@ -637,10 +637,13 @@ fn source_frontier_alpha_transfer_weight(pixelCoverageWeight: f32, tileCoverageW
 }
 
 fn source_frontier_color_transfer_weight(pixelCoverageWeight: f32, sourceFrontierSupportWeight: f32, alphaTransferWeight: f32, sourceFrontierClassMask: u32) -> f32 {
-  if ((sourceFrontierClassMask & (CANDIDATE_SOURCE_CLASS_RETENTION_MASK | CANDIDATE_SOURCE_CLASS_SUPPORT_MASK)) == 0u) {
-    return alphaTransferWeight;
-  }
   let normalizedAlphaTransferWeight = max(alphaTransferWeight, 0.0);
+  if ((sourceFrontierClassMask & CANDIDATE_SOURCE_CLASS_COVERAGE_MASK) != 0u) {
+    return max(normalizedAlphaTransferWeight, max(sourceFrontierSupportWeight, 0.0));
+  }
+  if ((sourceFrontierClassMask & (CANDIDATE_SOURCE_CLASS_RETENTION_MASK | CANDIDATE_SOURCE_CLASS_SUPPORT_MASK)) == 0u) {
+    return normalizedAlphaTransferWeight;
+  }
   if (
     (sourceFrontierClassMask & CANDIDATE_SOURCE_CLASS_RETENTION_MASK) != 0u &&
     (sourceFrontierClassMask & CANDIDATE_SOURCE_CLASS_SUPPORT_MASK) != 0u

@@ -849,6 +849,73 @@ test("source-frontier coverage-class color establishes authority before dull sup
   );
 });
 
+test("source-frontier coverage-class source color uses its support footprint for RGB transfer", () => {
+  const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
+  const coverageSource = accumulationContributor({
+    anchor,
+    tileIndex: tileIndexForAnchor(anchor),
+    splatIndex: 972,
+    originalId: 972,
+    viewRank: 0,
+    sourceRole: "porous-surface",
+    role: "porous-surface",
+    candidateSourceClassMask: 4,
+    coverageWeight: 1,
+    centerPx: [anchor.x + 1.5, anchor.y + 0.5],
+    inverseConic: [1, 0, 1],
+    opacity: 0.62,
+  });
+  const lateAlphaSupport = accumulationContributor({
+    anchor,
+    tileIndex: tileIndexForAnchor(anchor),
+    splatIndex: 973,
+    originalId: 973,
+    viewRank: 1,
+    sourceRole: "foreground-sealing",
+    role: "foreground-sealing",
+    candidateSourceClassMask: 8,
+    coverageWeight: 0.95,
+    centerPx: [anchor.x + 1.5, anchor.y + 0.5],
+    inverseConic: [1, 0, 1],
+    opacity: 0.85,
+  });
+  const record = buildFinalColorAccumulationTraceRecord({
+    anchorPixel: anchor,
+    contributors: [coverageSource, lateAlphaSupport],
+    sourceColors: new Map([
+      [coverageSource.splatIndex, [1, 0.84, 0.45]],
+      [lateAlphaSupport.splatIndex, [0.08, 0.06, 0.04]],
+    ]),
+    retainedContributors: [coverageSource, lateAlphaSupport],
+    preserveContributorOrder: true,
+    tileSizePx: 16,
+    tileColumns: 216,
+  });
+  const coverageStep = record.finalColorAccumulation.steps[0];
+  const supportStep = record.finalColorAccumulation.steps[1];
+  const sourceLuma = luma(coverageStep.sourceColor);
+  const contributionLuma = luma(coverageStep.contributionColor);
+  const outputLuma = luma(record.finalColorAccumulation.outputColor);
+
+  assert.equal(supportStep.sourceFrontierAlphaSupport, "foreground-spatial-support");
+  assert.ok(
+    coverageStep.sourceFrontierSupportPixelWeight > coverageStep.coverageWeight * 3,
+    `fixture must expose broad coverage-source support footprint: support ${coverageStep.sourceFrontierSupportPixelWeight}, pixel ${coverageStep.coverageWeight}`,
+  );
+  assert.ok(
+    coverageStep.colorTransferWeight >= coverageStep.sourceFrontierSupportPixelWeight * 0.5,
+    `coverage-source RGB transfer should use support footprint, not only tiny pixel coverage: color transfer ${coverageStep.colorTransferWeight}, support ${coverageStep.sourceFrontierSupportPixelWeight}`,
+  );
+  assert.ok(
+    contributionLuma >= sourceLuma * 0.2,
+    `coverage-source contribution should not be underpowered before alpha support arrives: source ${sourceLuma}, contribution ${contributionLuma}`,
+  );
+  assert.ok(
+    outputLuma > contributionLuma * 0.85,
+    `late support should not erase coverage-source RGB transfer: contribution ${contributionLuma}, output ${outputLuma}`,
+  );
+});
+
 test("source-frontier near-black support cannot extinguish selected color authority while sealing alpha", () => {
   const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
   const selectedForeground = accumulationContributor({

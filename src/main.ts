@@ -8285,10 +8285,17 @@ function sourceFrontierColorTransferWeight(
   alphaTransferWeight: number,
   candidateSourceClassMask: number,
 ): number {
-  if ((candidateSourceClassMask & SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_MASK) === 0) {
-    return Math.max(Number.isFinite(alphaTransferWeight) ? alphaTransferWeight : 0, 0);
-  }
   const normalizedAlphaTransferWeight = Math.max(Number.isFinite(alphaTransferWeight) ? alphaTransferWeight : 0, 0);
+  const normalizedSourceFrontierSupportPixelWeight = Math.max(
+    Number.isFinite(sourceFrontierSupportPixelWeight) ? sourceFrontierSupportPixelWeight : 0,
+    0,
+  );
+  if ((candidateSourceClassMask & SOURCE_FRONTIER_COVERAGE_MASK) !== 0) {
+    return Math.max(normalizedAlphaTransferWeight, normalizedSourceFrontierSupportPixelWeight);
+  }
+  if ((candidateSourceClassMask & SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_MASK) === 0) {
+    return normalizedAlphaTransferWeight;
+  }
   if (
     (candidateSourceClassMask & SOURCE_FRONTIER_RETENTION_MASK) !== 0 &&
     (candidateSourceClassMask & SOURCE_FRONTIER_SUPPORT_MASK) !== 0
@@ -8297,7 +8304,7 @@ function sourceFrontierColorTransferWeight(
   }
   const supportColorWeight = Math.max(
     Math.max(Number.isFinite(pixelCoverageWeight) ? pixelCoverageWeight : 0, 0),
-    Math.max(Number.isFinite(sourceFrontierSupportPixelWeight) ? sourceFrontierSupportPixelWeight : 0, 0),
+    normalizedSourceFrontierSupportPixelWeight,
   );
   const colorGap = Math.max(normalizedAlphaTransferWeight - supportColorWeight, 0);
   const colorWeight = supportColorWeight + colorGap * SOURCE_FRONTIER_COLOR_TRANSFER_GAP_SCALE;

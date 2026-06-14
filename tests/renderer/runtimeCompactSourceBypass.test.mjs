@@ -660,6 +660,16 @@ test("WGSL projected source-frontier route skips CPU streaming retention and vis
   );
   assert.match(
     readCompositorInputAnchorSource,
+    /const colorTransferWeight = sourceFrontierColorTransferWeight\(\s*pixelCoverageWeight,\s*sourceFrontierSupportPixelWeight,\s*alphaTransferWeight,\s*candidateSourceClassMask,\s*\)/,
+    "source-frontier live compositor-input readback must use the same class-aware RGB-transfer weight as final composition",
+  );
+  assert.match(
+    mainSource,
+    /if \(\(candidateSourceClassMask & SOURCE_FRONTIER_COVERAGE_MASK\) !== 0\)\s*\{\s*return Math\.max\(normalizedAlphaTransferWeight,\s*normalizedSourceFrontierSupportPixelWeight\);\s*\}/,
+    "coverage-class readback color transfer should use source-frontier support footprint",
+  );
+  assert.match(
+    readCompositorInputAnchorSource,
     /Math\.pow\(1 - sourceOpacity,\s*alphaTransferWeight\)/,
     "source-frontier live compositor-input readback coverage alpha must be driven by the class-aware transfer weight",
   );

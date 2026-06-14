@@ -402,7 +402,18 @@ function sourceFrontierAlphaTransferWeight({
   const candidateSourceClassMask = Number.isInteger(contributor?.candidateSourceClassMask)
     ? contributor.candidateSourceClassMask
     : 0;
+  const normalizedSourceFrontierSupportPixelWeight = Math.max(
+    Number.isFinite(sourceFrontierSupportPixelWeight) ? sourceFrontierSupportPixelWeight : 0,
+    0,
+  );
   if ((candidateSourceClassMask & SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_MASK) === 0) {
+    if ((candidateSourceClassMask & SOURCE_FRONTIER_COVERAGE_MASK) !== 0) {
+      return {
+        weight: normalizedPixelWeight,
+        colorWeight: Math.max(normalizedPixelWeight, normalizedSourceFrontierSupportPixelWeight),
+        support: "none",
+      };
+    }
     return { weight: normalizedPixelWeight, colorWeight: normalizedPixelWeight, support: "none" };
   }
 
@@ -413,7 +424,7 @@ function sourceFrontierAlphaTransferWeight({
   const supportWeight =
     normalizedTileSupportWeight *
     SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE *
-    Math.max(Number.isFinite(sourceFrontierSupportPixelWeight) ? sourceFrontierSupportPixelWeight : 0, 0);
+    normalizedSourceFrontierSupportPixelWeight;
   if (supportWeight <= normalizedPixelWeight) {
     return { weight: normalizedPixelWeight, colorWeight: normalizedPixelWeight, support: "none" };
   }
@@ -429,7 +440,7 @@ function sourceFrontierAlphaTransferWeight({
   }
   const supportColorWeight = Math.max(
     normalizedPixelWeight,
-    Math.max(Number.isFinite(sourceFrontierSupportPixelWeight) ? sourceFrontierSupportPixelWeight : 0, 0),
+    normalizedSourceFrontierSupportPixelWeight,
   );
   const colorGap = Math.max(supportWeight - supportColorWeight, 0);
   const colorWeight = supportColorWeight + colorGap * SOURCE_FRONTIER_COLOR_TRANSFER_GAP_SCALE;

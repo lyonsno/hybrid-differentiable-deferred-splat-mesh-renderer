@@ -124,4 +124,9 @@ test("source-frontier alpha support carries tile-local conic support beyond the 
     /return min\(normalizedAlphaTransferWeight,\s*colorWeight\)/,
     "foreground support color should stay capped by alpha transfer after bounded gap transfer",
   );
+  assert.match(
+    shader,
+    /if \(\(sourceFrontierClassMask & CANDIDATE_SOURCE_CLASS_COVERAGE_MASK\) != 0u\)\s*\{\s*return max\(normalizedAlphaTransferWeight,\s*max\(sourceFrontierSupportWeight,\s*0\.0\)\);\s*\}/,
+    "coverage-class source color should use source-frontier support footprint for RGB transfer",
+  );
 });
