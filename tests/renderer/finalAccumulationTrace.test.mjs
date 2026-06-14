@@ -916,6 +916,45 @@ test("source-frontier coverage-class source color uses its support footprint for
   );
 });
 
+test("source-frontier composite coverage masks mirror live RGB transfer law", () => {
+  const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
+  const coverageRetentionSource = accumulationContributor({
+    anchor,
+    tileIndex: tileIndexForAnchor(anchor),
+    splatIndex: 974,
+    originalId: 974,
+    viewRank: 0,
+    sourceRole: "porous-surface",
+    role: "porous-surface",
+    candidateSourceClassMask: 5,
+    coverageWeight: 1,
+    centerPx: [anchor.x + 1.45, anchor.y + 0.45],
+    inverseConic: [1, 0, 1],
+    opacity: 0.58,
+  });
+  const record = buildFinalColorAccumulationTraceRecord({
+    anchorPixel: anchor,
+    contributors: [coverageRetentionSource],
+    sourceColors: new Map([[coverageRetentionSource.splatIndex, [1, 0.78, 0.38]]]),
+    retainedContributors: [coverageRetentionSource],
+    preserveContributorOrder: true,
+    tileSizePx: 16,
+    tileColumns: 216,
+  });
+  const step = record.finalColorAccumulation.steps[0];
+
+  assert.equal(step.candidateSourceClassMask, 5);
+  assert.equal(step.sourceFrontierAlphaSupport, "foreground-spatial-support");
+  assert.ok(
+    step.alphaTransferWeight > step.coverageWeight * 2,
+    `fixture must exercise foreground alpha support for a composite coverage mask: alpha ${step.alphaTransferWeight}, pixel ${step.coverageWeight}`,
+  );
+  assert.ok(
+    step.colorTransferWeight >= step.alphaTransferWeight * 0.99,
+    `coverage-bit RGB transfer should mirror live law and use alpha/support transfer, not bounded support color: color ${step.colorTransferWeight}, alpha ${step.alphaTransferWeight}`,
+  );
+});
+
 test("source-frontier near-black support cannot extinguish selected color authority while sealing alpha", () => {
   const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
   const selectedForeground = accumulationContributor({

@@ -426,7 +426,21 @@ function sourceFrontierAlphaTransferWeight({
     SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE *
     normalizedSourceFrontierSupportPixelWeight;
   if (supportWeight <= normalizedPixelWeight) {
+    if ((candidateSourceClassMask & SOURCE_FRONTIER_COVERAGE_MASK) !== 0) {
+      return {
+        weight: normalizedPixelWeight,
+        colorWeight: Math.max(normalizedPixelWeight, normalizedSourceFrontierSupportPixelWeight),
+        support: "none",
+      };
+    }
     return { weight: normalizedPixelWeight, colorWeight: normalizedPixelWeight, support: "none" };
+  }
+  if ((candidateSourceClassMask & SOURCE_FRONTIER_COVERAGE_MASK) !== 0) {
+    return {
+      weight: supportWeight,
+      colorWeight: Math.max(supportWeight, normalizedSourceFrontierSupportPixelWeight),
+      support: "foreground-spatial-support",
+    };
   }
   if (
     (candidateSourceClassMask & SOURCE_FRONTIER_RETENTION_MASK) !== 0 &&
