@@ -53,8 +53,18 @@ test("tile-local visible conic coverage feeds sample-local Gaussian weight to al
   );
   assert.match(
     shader,
-    /fn source_frontier_source_color_authority_seed\([\s\S]*CANDIDATE_SOURCE_CLASS_COVERAGE_MASK[\s\S]*CANDIDATE_SOURCE_CLASS_RETENTION_MASK/,
-    "coverage and retention source classes should seed source color authority for later support-only occlusion",
+    /if \(\(sourceFrontierClassMask & CANDIDATE_SOURCE_CLASS_COVERAGE_MASK\) != 0u\)[\s\S]*max\(colorAlpha,\s*coverageAlpha\)/,
+    "coverage source classes should seed selected color authority from their full coverage-source alpha",
+  );
+  assert.match(
+    shader,
+    /\(sourceFrontierClassMask & CANDIDATE_SOURCE_CLASS_RETENTION_MASK\) != 0u[\s\S]*\(sourceFrontierClassMask & CANDIDATE_SOURCE_CLASS_SUPPORT_MASK\) != 0u[\s\S]*max\(colorAlpha,\s*coverageAlpha\)/,
+    "combined retention+support source classes should seed selected color authority from their full support alpha",
+  );
+  assert.match(
+    shader,
+    /if \(\(sourceFrontierClassMask & CANDIDATE_SOURCE_CLASS_RETENTION_MASK\) != 0u\)[\s\S]*clamp\(colorAlpha,\s*0\.0,\s*1\.0\)/,
+    "retention-only source classes should seed color authority from delivered color alpha, not coverage alpha",
   );
   assert.match(shader, /var runningSourceColorAuthority = 0\.0/);
   assert.match(shader, /let colorOcclusionAlpha = source_frontier_color_occlusion_alpha\(colorAlpha,\s*coverageAlpha,\s*colorAuthority,\s*runningSourceColorAuthority\)/);

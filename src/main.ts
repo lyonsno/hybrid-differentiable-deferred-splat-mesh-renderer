@@ -574,6 +574,8 @@ interface TileLocalCompositorInputReadback {
       readonly alphaTransferWeight: number;
       readonly colorTransferWeight: number;
       readonly sourceFrontierColorAuthority?: number;
+      readonly sourceFrontierRunningColorAuthorityBefore?: number;
+      readonly sourceFrontierRunningColorAuthorityAfter?: number;
       readonly coverageAlpha: number;
       readonly colorAlpha: number;
       readonly colorOcclusionAlpha: number;
@@ -8352,8 +8354,19 @@ function sourceFrontierRunningSourceColorAuthority({
 }
 
 function sourceFrontierSourceColorAuthoritySeed(candidateSourceClassMask: number, colorAlpha: number, coverageAlpha: number): number {
-  if ((candidateSourceClassMask & SOURCE_FRONTIER_COLOR_AUTHORITY_SOURCE_MASK) !== 0) {
+  if ((candidateSourceClassMask & SOURCE_FRONTIER_COVERAGE_MASK) !== 0) {
     const sourceAlpha = clamp01(Math.max(colorAlpha, coverageAlpha));
+    return clamp01(1 - (1 - sourceAlpha) ** 2);
+  }
+  if (
+    (candidateSourceClassMask & SOURCE_FRONTIER_RETENTION_MASK) !== 0 &&
+    (candidateSourceClassMask & SOURCE_FRONTIER_SUPPORT_MASK) !== 0
+  ) {
+    const sourceAlpha = clamp01(Math.max(colorAlpha, coverageAlpha));
+    return clamp01(1 - (1 - sourceAlpha) ** 2);
+  }
+  if ((candidateSourceClassMask & SOURCE_FRONTIER_RETENTION_MASK) !== 0) {
+    const sourceAlpha = clamp01(colorAlpha);
     return clamp01(1 - (1 - sourceAlpha) ** 2);
   }
   return 0;

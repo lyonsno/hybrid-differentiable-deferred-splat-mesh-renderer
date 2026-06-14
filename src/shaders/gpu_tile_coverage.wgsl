@@ -674,8 +674,19 @@ fn source_frontier_color_occlusion_alpha(colorAlpha: f32, coverageAlpha: f32, co
 }
 
 fn source_frontier_source_color_authority_seed(sourceFrontierClassMask: u32, colorAlpha: f32, coverageAlpha: f32) -> f32 {
-  if ((sourceFrontierClassMask & (CANDIDATE_SOURCE_CLASS_COVERAGE_MASK | CANDIDATE_SOURCE_CLASS_RETENTION_MASK)) != 0u) {
+  if ((sourceFrontierClassMask & CANDIDATE_SOURCE_CLASS_COVERAGE_MASK) != 0u) {
     let sourceAlpha = clamp(max(colorAlpha, coverageAlpha), 0.0, 1.0);
+    return clamp(1.0 - pow(1.0 - sourceAlpha, 2.0), 0.0, 1.0);
+  }
+  if (
+    ((sourceFrontierClassMask & CANDIDATE_SOURCE_CLASS_RETENTION_MASK) != 0u) &&
+    ((sourceFrontierClassMask & CANDIDATE_SOURCE_CLASS_SUPPORT_MASK) != 0u)
+  ) {
+    let sourceAlpha = clamp(max(colorAlpha, coverageAlpha), 0.0, 1.0);
+    return clamp(1.0 - pow(1.0 - sourceAlpha, 2.0), 0.0, 1.0);
+  }
+  if ((sourceFrontierClassMask & CANDIDATE_SOURCE_CLASS_RETENTION_MASK) != 0u) {
+    let sourceAlpha = clamp(colorAlpha, 0.0, 1.0);
     return clamp(1.0 - pow(1.0 - sourceAlpha, 2.0), 0.0, 1.0);
   }
   return 0.0;

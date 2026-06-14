@@ -552,6 +552,53 @@ test("source-frontier retention-only support keeps bounded color transfer", () =
   );
 });
 
+test("source-frontier retention-only alpha support does not seed color authority from coverage alpha", () => {
+  const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
+  const retentionOnly = accumulationContributor({
+    anchor,
+    tileIndex: tileIndexForAnchor(anchor),
+    splatIndex: 907,
+    originalId: 907,
+    viewRank: 0,
+    sourceRole: "foreground-sealing",
+    role: "foreground-sealing",
+    candidateSourceClassMask: 1,
+    coverageWeight: 1,
+    centerPx: [anchor.x + 3.5, anchor.y + 0.5],
+    inverseConic: [1, 0, 1],
+    opacity: 0.86,
+  });
+  const record = buildFinalColorAccumulationTraceRecord({
+    anchorPixel: anchor,
+    contributors: [retentionOnly],
+    sourceColors: new Map([[retentionOnly.splatIndex, [1, 0.78, 0.44]]]),
+    retainedContributors: [retentionOnly],
+    tileSizePx: 16,
+    tileColumns: 216,
+  });
+  const step = record.finalColorAccumulation.steps[0];
+  const colorAlphaSeed = 1 - (1 - step.colorAlpha) ** 2;
+  const coverageAlphaSeed = 1 - (1 - step.coverageAlpha) ** 2;
+
+  assert.equal(step.sourceFrontierAlphaSupport, "foreground-spatial-support");
+  assert.ok(
+    step.coverageAlpha > step.colorAlpha * 2,
+    `fixture must expose retention-only alpha/color split: coverage ${step.coverageAlpha}, color ${step.colorAlpha}`,
+  );
+  assert.ok(
+    step.colorTransferWeight < step.alphaTransferWeight * 0.25,
+    `retention-only color transfer must remain bounded: color ${step.colorTransferWeight}, alpha ${step.alphaTransferWeight}`,
+  );
+  assert.ok(
+    coverageAlphaSeed > colorAlphaSeed * 1.8,
+    `fixture must expose false coverage-derived authority: coverage seed ${coverageAlphaSeed}, color seed ${colorAlphaSeed}`,
+  );
+  assert.ok(
+    step.sourceFrontierRunningColorAuthorityAfter <= colorAlphaSeed + EPSILON,
+    `retention-only alpha support must seed color authority from delivered color alpha, not coverage alpha: authority ${step.sourceFrontierRunningColorAuthorityAfter}, color seed ${colorAlphaSeed}, coverage seed ${coverageAlphaSeed}`,
+  );
+});
+
 test("source-frontier support alpha does not erase retained foreground color faster than color transfer arrives", () => {
   const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
   const nearForeground = accumulationContributor({
