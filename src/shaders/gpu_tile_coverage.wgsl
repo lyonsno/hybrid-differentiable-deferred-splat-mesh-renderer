@@ -54,7 +54,6 @@ const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE = 8.0;
 const SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE = 0.5;
 const SOURCE_FRONTIER_COLOR_TRANSFER_GAP_SCALE = 0.1;
 const SOURCE_FRONTIER_COLOR_OCCLUSION_GAP_SCALE = 0.5;
-const SOURCE_FRONTIER_COLOR_BEARING_SUPPORT_LUMA_RATIO_MIN = 0.2;
 const SOURCE_FRONTIER_FOREGROUND_RETENTION_SCORE_FLOOR = 224u;
 
 struct SplatShape {
@@ -686,11 +685,7 @@ fn source_frontier_support_color_authority(sourceColor: vec3f, composedColor: ve
   if (sourceLuma >= runningLuma) {
     return clamp(runningLuma / sourceLuma, 0.0, 1.0);
   }
-  let lumaRatio = sourceLuma / runningLuma;
-  if (lumaRatio < SOURCE_FRONTIER_COLOR_BEARING_SUPPORT_LUMA_RATIO_MIN) {
-    return 1.0;
-  }
-  return clamp(lumaRatio, 0.0, 1.0);
+  return clamp(sourceLuma / runningLuma, 0.0, 1.0);
 }
 
 fn inverse_conic_radii(conicParam: vec4f) -> vec2f {

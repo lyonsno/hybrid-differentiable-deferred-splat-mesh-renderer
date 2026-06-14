@@ -681,6 +681,69 @@ test("source-frontier dull support preserves selected color authority while seal
   );
 });
 
+test("source-frontier near-black support cannot extinguish selected color authority while sealing alpha", () => {
+  const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
+  const selectedForeground = accumulationContributor({
+    anchor,
+    tileIndex: tileIndexForAnchor(anchor),
+    splatIndex: 934,
+    originalId: 934,
+    viewRank: 0,
+    sourceRole: "foreground-sealing",
+    role: "foreground-sealing",
+    candidateSourceClassMask: 9,
+    coverageWeight: 1,
+    centerPx: [anchor.x + 0.5, anchor.y + 0.5],
+    inverseConic: [1, 0, 1],
+    opacity: 0.55,
+  });
+  const lateNearBlackSupport = accumulationContributor({
+    anchor,
+    tileIndex: tileIndexForAnchor(anchor),
+    splatIndex: 935,
+    originalId: 935,
+    viewRank: 1,
+    sourceRole: "foreground-sealing",
+    role: "foreground-sealing",
+    candidateSourceClassMask: 8,
+    coverageWeight: 0.95,
+    centerPx: [anchor.x + 1.5, anchor.y + 0.5],
+    inverseConic: [1, 0, 1],
+    opacity: 0.85,
+  });
+  const record = buildFinalColorAccumulationTraceRecord({
+    anchorPixel: anchor,
+    contributors: [selectedForeground, lateNearBlackSupport],
+    sourceColors: new Map([
+      [selectedForeground.splatIndex, [0.95, 0.78, 0.52]],
+      [lateNearBlackSupport.splatIndex, [0.01, 0.01, 0.01]],
+    ]),
+    retainedContributors: [selectedForeground, lateNearBlackSupport],
+    preserveContributorOrder: true,
+    tileSizePx: 16,
+    tileColumns: 216,
+  });
+  const firstStep = record.finalColorAccumulation.steps[0];
+  const supportStep = record.finalColorAccumulation.steps[1];
+  const firstLuma = luma(firstStep.runningColor);
+  const supportLuma = luma(supportStep.sourceColor);
+  const outputLuma = luma(record.finalColorAccumulation.outputColor);
+
+  assert.equal(supportStep.sourceFrontierAlphaSupport, "foreground-spatial-support");
+  assert.ok(
+    record.finalColorAccumulation.remainingTransmittance < 0.001,
+    `near-black support should still seal alpha, saw remaining transmittance ${record.finalColorAccumulation.remainingTransmittance}`,
+  );
+  assert.ok(
+    supportLuma < firstLuma * 0.05,
+    `fixture must expose near-black support after selected color arrives: support luma ${supportLuma}, selected luma ${firstLuma}`,
+  );
+  assert.ok(
+    outputLuma > firstLuma * 0.65,
+    `near-black support should not extinguish selected color authority: first luma ${firstLuma}, output luma ${outputLuma}`,
+  );
+});
+
 test("source-frontier bright support cannot contaminate selected color authority while sealing alpha", () => {
   const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
   const selectedForeground = accumulationContributor({

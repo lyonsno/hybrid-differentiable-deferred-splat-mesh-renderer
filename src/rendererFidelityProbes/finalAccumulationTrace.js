@@ -27,7 +27,6 @@ const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE = 8;
 const SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE = 0.5;
 const SOURCE_FRONTIER_COLOR_TRANSFER_GAP_SCALE = 0.1;
 const SOURCE_FRONTIER_COLOR_OCCLUSION_GAP_SCALE = 0.5;
-const SOURCE_FRONTIER_COLOR_BEARING_SUPPORT_LUMA_RATIO_MIN = 0.2;
 
 export function buildFinalColorAccumulationTraceRecord({
   anchorPixel = BLACK_BAND_FINAL_ACCUMULATION_ANCHOR,
@@ -321,11 +320,7 @@ function sourceFrontierSupportColorAuthority(sourceColor, runningColor, candidat
   if (sourceLuma >= runningLuma) {
     return clamp01(runningLuma / sourceLuma);
   }
-  const lumaRatio = sourceLuma / runningLuma;
-  if (lumaRatio < SOURCE_FRONTIER_COLOR_BEARING_SUPPORT_LUMA_RATIO_MIN) {
-    return 1;
-  }
-  return clamp01(lumaRatio);
+  return clamp01(sourceLuma / runningLuma);
 }
 
 function colorLuma(color) {
