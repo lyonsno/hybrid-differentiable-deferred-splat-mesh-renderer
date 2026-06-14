@@ -37,8 +37,28 @@ test("tile-local visible conic coverage feeds sample-local Gaussian weight to al
   assert.match(shader, /let colorTransferWeight = source_frontier_color_transfer_weight\(pixelCoverageWeight,\s*sourceFrontierSupportWeight,\s*alphaTransferWeight,\s*sourceFrontierClassMask\)/);
   assert.match(shader, /pow\(1\.0\s*-\s*sourceOpacity,\s*alphaTransferWeight\)/);
   assert.match(shader, /pow\(1\.0\s*-\s*sourceOpacity,\s*colorTransferWeight\)/);
-  assert.match(shader, /let colorAuthority = source_frontier_support_color_authority\(sourceColor,\s*composedColor,\s*sourceFrontierClassMask\)/);
-  assert.match(shader, /let colorOcclusionAlpha = source_frontier_color_occlusion_alpha\(colorAlpha,\s*coverageAlpha,\s*colorAuthority\)/);
+  assert.match(
+    shader,
+    /let colorAuthority = source_frontier_support_color_authority\(sourceColor,\s*composedColor,\s*sourceFrontierClassMask,\s*runningSourceColorAuthority\)/,
+  );
+  assert.match(
+    shader,
+    /if \(\(sourceFrontierClassMask & \(CANDIDATE_SOURCE_CLASS_RETENTION_MASK \| CANDIDATE_SOURCE_CLASS_COVERAGE_MASK \| CANDIDATE_SOURCE_CLASS_SUPPORT_MASK\)\) == 0u\)\s*\{\s*return 1\.0;\s*\}/,
+    "only non-source-frontier color classes should bypass source-frontier color authority",
+  );
+  assert.match(
+    shader,
+    /if \(\s*\(sourceFrontierClassMask & CANDIDATE_SOURCE_CLASS_RETENTION_MASK\) != 0u &&\s*\(sourceFrontierClassMask & CANDIDATE_SOURCE_CLASS_SUPPORT_MASK\) != 0u\s*\)\s*\{\s*return 1\.0;\s*\}/,
+    "only combined retention+support selected sources should receive full source-frontier color authority",
+  );
+  assert.match(
+    shader,
+    /fn source_frontier_source_color_authority_seed\([\s\S]*CANDIDATE_SOURCE_CLASS_COVERAGE_MASK[\s\S]*CANDIDATE_SOURCE_CLASS_RETENTION_MASK/,
+    "coverage and retention source classes should seed source color authority for later support-only occlusion",
+  );
+  assert.match(shader, /var runningSourceColorAuthority = 0\.0/);
+  assert.match(shader, /let colorOcclusionAlpha = source_frontier_color_occlusion_alpha\(colorAlpha,\s*coverageAlpha,\s*colorAuthority,\s*runningSourceColorAuthority\)/);
+  assert.match(shader, /runningSourceColorAuthority = clamp\(/);
   assert.match(shader, /composedColor = sourceColor \* colorAlpha \+ composedColor \* \(1\.0 - colorOcclusionAlpha\)/);
   assert.doesNotMatch(
     shader,

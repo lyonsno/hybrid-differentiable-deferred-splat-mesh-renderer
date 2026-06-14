@@ -197,10 +197,14 @@ const COMPACT_SOURCE_ANCHOR_PREFILTER_MIN_MARGIN_PX = 96;
 const COMPACT_SOURCE_ANCHOR_PREFILTER_MAX_MARGIN_PX = 384;
 const SOURCE_FRONTIER_ALPHA_CLASS_MASK_SENTINEL = -1024;
 const SOURCE_FRONTIER_RETENTION_MASK = GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.retention;
+const SOURCE_FRONTIER_COVERAGE_MASK = GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.coverage;
 const SOURCE_FRONTIER_SUPPORT_MASK = GPU_PROJECTION_RETENTION_CANDIDATE_SOURCE_CLASS_MASKS.support;
 const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_MASK =
   SOURCE_FRONTIER_RETENTION_MASK |
   SOURCE_FRONTIER_SUPPORT_MASK;
+const SOURCE_FRONTIER_COLOR_AUTHORITY_SOURCE_MASK =
+  SOURCE_FRONTIER_RETENTION_MASK |
+  SOURCE_FRONTIER_COVERAGE_MASK;
 const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE = 8;
 const SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE = 0.5;
 const SOURCE_FRONTIER_COLOR_TRANSFER_GAP_SCALE = 0.1;
@@ -7876,6 +7880,7 @@ function readCompositorInputAnchor({
   const refLimit = Math.min(liveRefCount, Math.max(0, plan.maxTileRefs - firstRefIndex));
   const pixelCenter = [Math.floor(anchor.x) + 0.5, Math.floor(anchor.y) + 0.5] as const;
   let runningColor = [0.02, 0.02, 0.04] as [number, number, number];
+  let runningSourceColorAuthority = 0;
   let remainingTransmission = 1;
   const contributors: Array<TileLocalCompositorInputReadback["anchors"][number]["contributors"][number]> = [];
 
@@ -8008,13 +8013,27 @@ function readCompositorInputAnchor({
       sourceColor,
       runningColor,
       candidateSourceClassMask,
+      runningSourceColorAuthority,
     );
     const colorAlpha = clamp01(1 - Math.pow(1 - sourceOpacity, colorTransferWeight)) * colorAuthority;
-    const colorOcclusionAlpha = sourceFrontierColorOcclusionAlpha(colorAlpha, coverageAlpha, colorAuthority);
+    const colorOcclusionAlpha = sourceFrontierColorOcclusionAlpha(
+      colorAlpha,
+      coverageAlpha,
+      colorAuthority,
+      runningSourceColorAuthority,
+    );
     const transmittanceBefore = remainingTransmission;
+    const sourceColorAuthorityBefore = runningSourceColorAuthority;
     runningColor = sourceColor.map((channel, index) =>
       channel * colorAlpha + runningColor[index] * (1 - colorOcclusionAlpha)
     ) as [number, number, number];
+    runningSourceColorAuthority = sourceFrontierRunningSourceColorAuthority({
+      previousAuthority: runningSourceColorAuthority,
+      colorOcclusionAlpha,
+      colorAlpha,
+      coverageAlpha,
+      candidateSourceClassMask,
+    });
     remainingTransmission *= 1 - coverageAlpha;
     contributors.push({
       layer,
@@ -8043,6 +8062,8 @@ function readCompositorInputAnchor({
       alphaTransferWeight: roundColorChannel(alphaTransferWeight),
       colorTransferWeight: roundColorChannel(colorTransferWeight),
       sourceFrontierColorAuthority: roundColorChannel(colorAuthority),
+      sourceFrontierRunningColorAuthorityBefore: roundColorChannel(sourceColorAuthorityBefore),
+      sourceFrontierRunningColorAuthorityAfter: roundColorChannel(runningSourceColorAuthority),
       coverageAlpha: roundColorChannel(coverageAlpha),
       colorAlpha: roundColorChannel(colorAlpha),
       colorOcclusionAlpha: roundColorChannel(colorOcclusionAlpha),
@@ -8287,26 +8308,70 @@ function sourceFrontierColorOcclusionAlpha(
   colorAlpha: number,
   coverageAlpha: number,
   colorAuthority = 1,
+  runningSourceColorAuthority = 0,
 ): number {
   const normalizedColorAlpha = clamp01(colorAlpha);
   const normalizedCoverageAlpha = clamp01(coverageAlpha);
   const normalizedColorAuthority = clamp01(colorAuthority);
+  const normalizedRunningSourceColorAuthority = clamp01(runningSourceColorAuthority);
   const alphaColorGap = Math.max(normalizedCoverageAlpha - normalizedColorAlpha, 0);
   return clamp01(
     normalizedColorAlpha +
-    alphaColorGap * SOURCE_FRONTIER_COLOR_OCCLUSION_GAP_SCALE * normalizedColorAuthority,
+      alphaColorGap *
+        SOURCE_FRONTIER_COLOR_OCCLUSION_GAP_SCALE *
+        normalizedColorAuthority *
+        (1 - normalizedRunningSourceColorAuthority),
   );
+}
+
+function sourceFrontierRunningSourceColorAuthority({
+  previousAuthority,
+  colorOcclusionAlpha,
+  colorAlpha,
+  coverageAlpha,
+  candidateSourceClassMask,
+}: {
+  readonly previousAuthority: number;
+  readonly colorOcclusionAlpha: number;
+  readonly colorAlpha: number;
+  readonly coverageAlpha: number;
+  readonly candidateSourceClassMask: number;
+}): number {
+  const authoritySeed = sourceFrontierSourceColorAuthoritySeed(candidateSourceClassMask, colorAlpha, coverageAlpha);
+  const preservedAuthority =
+    clamp01(previousAuthority) *
+    (authoritySeed > 0 ? 1 - clamp01(colorOcclusionAlpha) : 1);
+  return clamp01(preservedAuthority + authoritySeed * (1 - preservedAuthority));
+}
+
+function sourceFrontierSourceColorAuthoritySeed(candidateSourceClassMask: number, colorAlpha: number, coverageAlpha: number): number {
+  if ((candidateSourceClassMask & SOURCE_FRONTIER_COLOR_AUTHORITY_SOURCE_MASK) !== 0) {
+    const sourceAlpha = clamp01(Math.max(colorAlpha, coverageAlpha));
+    return clamp01(1 - (1 - sourceAlpha) ** 2);
+  }
+  return 0;
 }
 
 function sourceFrontierSupportColorAuthority(
   sourceColor: readonly [number, number, number],
   runningColor: readonly [number, number, number],
   candidateSourceClassMask: number,
+  runningSourceColorAuthority = 0,
 ): number {
-  if ((candidateSourceClassMask & SOURCE_FRONTIER_SUPPORT_MASK) === 0) {
+  if (
+    (candidateSourceClassMask &
+      (SOURCE_FRONTIER_RETENTION_MASK | SOURCE_FRONTIER_COVERAGE_MASK | SOURCE_FRONTIER_SUPPORT_MASK)) ===
+    0
+  ) {
     return 1;
   }
-  if ((candidateSourceClassMask & SOURCE_FRONTIER_RETENTION_MASK) !== 0) {
+  if ((candidateSourceClassMask & SOURCE_FRONTIER_COVERAGE_MASK) !== 0) {
+    return 1;
+  }
+  if (
+    (candidateSourceClassMask & SOURCE_FRONTIER_RETENTION_MASK) !== 0 &&
+    (candidateSourceClassMask & SOURCE_FRONTIER_SUPPORT_MASK) !== 0
+  ) {
     return 1;
   }
   const runningLuma = rgbLuma(runningColor);
@@ -8314,10 +8379,14 @@ function sourceFrontierSupportColorAuthority(
     return 1;
   }
   const sourceLuma = rgbLuma(sourceColor);
+  const nonSelectedAuthorityScale =
+    (candidateSourceClassMask & SOURCE_FRONTIER_SUPPORT_MASK) !== 0
+      ? 1 - clamp01(runningSourceColorAuthority)
+      : 1;
   if (sourceLuma >= runningLuma) {
-    return clamp01(runningLuma / sourceLuma);
+    return clamp01(runningLuma / sourceLuma) * nonSelectedAuthorityScale;
   }
-  return clamp01(sourceLuma / runningLuma);
+  return clamp01(sourceLuma / runningLuma) * nonSelectedAuthorityScale;
 }
 
 function rgbLuma(color: readonly [number, number, number]): number {

@@ -611,8 +611,12 @@ test("source-frontier support alpha does not erase retained foreground color fas
   const freePreservationRed =
     supportStep.sourceColor[0] * supportStep.colorAlpha + firstStep.runningColor[0] * (1 - supportStep.colorAlpha);
   assert.ok(
-    supportStep.colorOcclusionAlpha > supportStep.colorAlpha,
-    `expected support occlusion to bind the alpha/color mass gap: color ${supportStep.colorAlpha}, occlusion ${supportStep.colorOcclusionAlpha}`,
+    supportStep.sourceFrontierRunningColorAuthorityBefore > 0.75,
+    `selected foreground should establish source color authority before broad support, saw ${supportStep.sourceFrontierRunningColorAuthorityBefore}`,
+  );
+  assert.ok(
+    supportStep.colorOcclusionAlpha <= supportStep.colorAlpha + 0.001,
+    `selected source authority should prevent broad support from reclaiming extra color occlusion: color ${supportStep.colorAlpha}, occlusion ${supportStep.colorOcclusionAlpha}`,
   );
   assert.ok(
     supportStep.colorOcclusionAlpha < supportStep.coverageAlpha,
@@ -623,8 +627,8 @@ test("source-frontier support alpha does not erase retained foreground color fas
     `support alpha should not fall back to full coverage dark wipe: full wipe ${fullCoverageWipeRed}, final ${record.finalColorAccumulation.outputColor[0]}`,
   );
   assert.ok(
-    record.finalColorAccumulation.outputColor[0] < freePreservationRed,
-    `support alpha should not freely preserve stale color: free preservation ${freePreservationRed}, final ${record.finalColorAccumulation.outputColor[0]}`,
+    record.finalColorAccumulation.outputColor[0] <= freePreservationRed + EPSILON,
+    `support alpha should not exceed authorized selected-color preservation: free preservation ${freePreservationRed}, final ${record.finalColorAccumulation.outputColor[0]}`,
   );
 });
 
@@ -686,8 +690,162 @@ test("source-frontier dull support preserves selected color authority while seal
     `fixture must expose color-bearing dull support after selected color arrives: support luma ${supportLuma}, selected luma ${firstLuma}`,
   );
   assert.ok(
-    outputLuma > firstLuma * 0.65,
+    supportStep.colorOcclusionAlpha <= supportStep.colorAlpha + 0.001,
+    `once selected source color is established, support-only alpha must not keep extra color occlusion authority: color ${supportStep.colorAlpha}, occlusion ${supportStep.colorOcclusionAlpha}`,
+  );
+  assert.ok(
+    outputLuma > firstLuma * 0.83,
     `dull support should not suppress selected color authority: first luma ${firstLuma}, output luma ${outputLuma}`,
+  );
+});
+
+test("source-frontier support-only layers cannot erase selected color authority before late support occlusion", () => {
+  const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
+  const selectedForegrounds = Array.from({ length: 3 }, (_, index) =>
+    accumulationContributor({
+      anchor,
+      tileIndex: tileIndexForAnchor(anchor),
+      splatIndex: 940 + index,
+      originalId: 940 + index,
+      viewRank: index,
+      sourceRole: "foreground-sealing",
+      role: "foreground-sealing",
+      candidateSourceClassMask: 9,
+      coverageWeight: 0.82,
+      centerPx: [anchor.x + 0.5 + index * 0.1, anchor.y + 0.5],
+      inverseConic: [1, 0, 1],
+      opacity: 0.34,
+    }),
+  );
+  const interveningDullSupports = Array.from({ length: 8 }, (_, index) =>
+    accumulationContributor({
+      anchor,
+      tileIndex: tileIndexForAnchor(anchor),
+      splatIndex: 960 + index,
+      originalId: 960 + index,
+      viewRank: selectedForegrounds.length + index,
+      sourceRole: "foreground-sealing",
+      role: "foreground-sealing",
+      candidateSourceClassMask: 8,
+      coverageWeight: 0.9,
+      centerPx: [anchor.x + 1.1 + index * 0.05, anchor.y + 0.5],
+      inverseConic: [1, 0, 1],
+      opacity: 0.42,
+    }),
+  );
+  const lateDullSupport = accumulationContributor({
+    anchor,
+    tileIndex: tileIndexForAnchor(anchor),
+    splatIndex: 950,
+    originalId: 950,
+    viewRank: selectedForegrounds.length + interveningDullSupports.length,
+    sourceRole: "foreground-sealing",
+    role: "foreground-sealing",
+    candidateSourceClassMask: 8,
+    coverageWeight: 0.95,
+    centerPx: [anchor.x + 1.5, anchor.y + 0.5],
+    inverseConic: [1, 0, 1],
+    opacity: 0.85,
+  });
+  const contributors = [...selectedForegrounds, ...interveningDullSupports, lateDullSupport];
+  const record = buildFinalColorAccumulationTraceRecord({
+    anchorPixel: anchor,
+    contributors,
+    sourceColors: new Map([
+      ...selectedForegrounds.map((contributor) => [contributor.splatIndex, [0.95, 0.78, 0.52]]),
+      ...interveningDullSupports.map((contributor) => [contributor.splatIndex, [0.24, 0.17, 0.11]]),
+      [lateDullSupport.splatIndex, [0.25, 0.18, 0.12]],
+    ]),
+    retainedContributors: contributors,
+    preserveContributorOrder: true,
+    tileSizePx: 16,
+    tileColumns: 216,
+  });
+  const supportStep = record.finalColorAccumulation.steps.at(-1);
+
+  assert.equal(supportStep.sourceFrontierAlphaSupport, "foreground-spatial-support");
+  assert.ok(
+    supportStep.sourceFrontierRunningColorAuthorityBefore > 0.55,
+    `support-only layers must not erase selected color authority before late support, saw ${supportStep.sourceFrontierRunningColorAuthorityBefore}`,
+  );
+  assert.ok(
+    supportStep.colorOcclusionAlpha <= supportStep.colorAlpha + 0.02,
+    `late support should not regain extra color occlusion authority after cumulative selected source color: color ${supportStep.colorAlpha}, occlusion ${supportStep.colorOcclusionAlpha}`,
+  );
+});
+
+test("source-frontier coverage-class color establishes authority before dull support occlusion", () => {
+  const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
+  const coverageSource = accumulationContributor({
+    anchor,
+    tileIndex: tileIndexForAnchor(anchor),
+    splatIndex: 970,
+    originalId: 970,
+    viewRank: 0,
+    sourceRole: "porous-surface",
+    role: "porous-surface",
+    candidateSourceClassMask: 4,
+    coverageWeight: 1,
+    centerPx: [anchor.x + 0.5, anchor.y + 0.5],
+    inverseConic: [1, 0, 1],
+    opacity: 0.56,
+  });
+  const lateDullSupport = accumulationContributor({
+    anchor,
+    tileIndex: tileIndexForAnchor(anchor),
+    splatIndex: 971,
+    originalId: 971,
+    viewRank: 1,
+    sourceRole: "foreground-sealing",
+    role: "foreground-sealing",
+    candidateSourceClassMask: 8,
+    coverageWeight: 0.95,
+    centerPx: [anchor.x + 1.5, anchor.y + 0.5],
+    inverseConic: [1, 0, 1],
+    opacity: 0.85,
+  });
+  const record = buildFinalColorAccumulationTraceRecord({
+    anchorPixel: anchor,
+    contributors: [coverageSource, lateDullSupport],
+    sourceColors: new Map([
+      [coverageSource.splatIndex, [0.62, 0.36, 0.19]],
+      [lateDullSupport.splatIndex, [0.16, 0.11, 0.08]],
+    ]),
+    retainedContributors: [coverageSource, lateDullSupport],
+    preserveContributorOrder: true,
+    tileSizePx: 16,
+    tileColumns: 216,
+  });
+  const coverageStep = record.finalColorAccumulation.steps[0];
+  const supportStep = record.finalColorAccumulation.steps[1];
+  const coverageLuma = luma(coverageStep.runningColor);
+  const supportLuma = luma(supportStep.sourceColor);
+  const outputLuma = luma(record.finalColorAccumulation.outputColor);
+
+  assert.equal(supportStep.sourceFrontierAlphaSupport, "foreground-spatial-support");
+  assert.ok(
+    record.finalColorAccumulation.remainingTransmittance < 0.001,
+    `late support should still seal alpha after coverage color, saw remaining transmittance ${record.finalColorAccumulation.remainingTransmittance}`,
+  );
+  assert.ok(
+    supportLuma < coverageLuma * 0.55,
+    `fixture must expose dull support after coverage color arrives: support ${supportLuma}, coverage ${coverageLuma}`,
+  );
+  assert.ok(
+    coverageStep.sourceFrontierRunningColorAuthorityAfter > 0.35,
+    `coverage-class color must establish source color authority, saw ${coverageStep.sourceFrontierRunningColorAuthorityAfter}`,
+  );
+  assert.ok(
+    supportStep.sourceFrontierRunningColorAuthorityBefore > 0.35,
+    `support-only tail must see coverage-source color authority, saw ${supportStep.sourceFrontierRunningColorAuthorityBefore}`,
+  );
+  assert.ok(
+    supportStep.colorOcclusionAlpha <= supportStep.colorAlpha + 0.02,
+    `dull support should not regain extra color occlusion authority after coverage-source color: color ${supportStep.colorAlpha}, occlusion ${supportStep.colorOcclusionAlpha}`,
+  );
+  assert.ok(
+    outputLuma > coverageLuma * 0.75,
+    `dull support should not suppress coverage-source color authority: coverage ${coverageLuma}, output ${outputLuma}`,
   );
 });
 
@@ -812,8 +970,83 @@ test("source-frontier bright support cannot contaminate selected color authority
     `fixture must expose plate-colored support after selected color arrives: support luma ${supportLuma}, selected luma ${firstLuma}`,
   );
   assert.ok(
+    supportStep.sourceFrontierRunningColorAuthorityBefore > 0.35,
+    `fixture must enter late bright support with selected-source color authority, saw ${supportStep.sourceFrontierRunningColorAuthorityBefore}`,
+  );
+  assert.ok(
+    supportStep.sourceFrontierColorAuthority <= 0.25,
+    `plate-colored support-only color authority should stay strongly throttled after selected-source authority: ${supportStep.sourceFrontierColorAuthority}`,
+  );
+  assert.ok(
     outputLuma < firstLuma * 1.65,
     `bright support should not contaminate selected color authority: first luma ${firstLuma}, output luma ${outputLuma}`,
+  );
+});
+
+test("source-frontier retention-only late bright support cannot claim selected color authority", () => {
+  const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
+  const retainedForeground = accumulationContributor({
+    anchor,
+    tileIndex: tileIndexForAnchor(anchor),
+    splatIndex: 936,
+    originalId: 936,
+    viewRank: 0,
+    sourceRole: "foreground-sealing",
+    role: "foreground-sealing",
+    candidateSourceClassMask: 1,
+    coverageWeight: 0.9,
+    centerPx: [anchor.x + 0.5, anchor.y + 0.5],
+    inverseConic: [1, 0, 1],
+    opacity: 0.5,
+  });
+  const latePlateColoredRetention = accumulationContributor({
+    anchor,
+    tileIndex: tileIndexForAnchor(anchor),
+    splatIndex: 937,
+    originalId: 937,
+    viewRank: 1,
+    sourceRole: "foreground-sealing",
+    role: "foreground-sealing",
+    candidateSourceClassMask: 1,
+    coverageWeight: 0.95,
+    centerPx: [anchor.x + 1.4, anchor.y + 0.5],
+    inverseConic: [1, 0, 1],
+    opacity: 0.8,
+  });
+  const record = buildFinalColorAccumulationTraceRecord({
+    anchorPixel: anchor,
+    contributors: [retainedForeground, latePlateColoredRetention],
+    sourceColors: new Map([
+      [retainedForeground.splatIndex, [0.34, 0.23, 0.16]],
+      [latePlateColoredRetention.splatIndex, [1, 0.97, 0.88]],
+    ]),
+    retainedContributors: [retainedForeground, latePlateColoredRetention],
+    preserveContributorOrder: true,
+    tileSizePx: 16,
+    tileColumns: 216,
+  });
+  const firstStep = record.finalColorAccumulation.steps[0];
+  const retentionStep = record.finalColorAccumulation.steps[1];
+  const firstLuma = luma(firstStep.runningColor);
+  const retentionLuma = luma(retentionStep.sourceColor);
+  const outputLuma = luma(record.finalColorAccumulation.outputColor);
+
+  assert.equal(retentionStep.sourceFrontierAlphaSupport, "foreground-spatial-support");
+  assert.ok(
+    record.finalColorAccumulation.remainingTransmittance < 0.001,
+    `late retained support should still seal alpha, saw remaining transmittance ${record.finalColorAccumulation.remainingTransmittance}`,
+  );
+  assert.ok(
+    retentionLuma > firstLuma * 2.2,
+    `fixture must expose plate-colored retention-only support after retained color arrives: retention ${retentionLuma}, first ${firstLuma}`,
+  );
+  assert.ok(
+    retentionStep.sourceFrontierColorAuthority < 0.35,
+    `retention-only support must not inherit selected color authority: ${retentionStep.sourceFrontierColorAuthority}`,
+  );
+  assert.ok(
+    outputLuma < firstLuma * 2,
+    `retention-only support should not flood prior retained color: first ${firstLuma}, output ${outputLuma}`,
   );
 });
 

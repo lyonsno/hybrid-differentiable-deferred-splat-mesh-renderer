@@ -21,8 +21,10 @@ const DEFAULT_DEFERRED_FIELDS = Object.freeze({
   missingReason: "production deferred G-buffer voting is outside the trace packet scope",
 });
 const SOURCE_FRONTIER_RETENTION_MASK = 1;
+const SOURCE_FRONTIER_COVERAGE_MASK = 4;
 const SOURCE_FRONTIER_SUPPORT_MASK = 8;
 const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_MASK = SOURCE_FRONTIER_RETENTION_MASK | SOURCE_FRONTIER_SUPPORT_MASK;
+const SOURCE_FRONTIER_COLOR_AUTHORITY_SOURCE_MASK = SOURCE_FRONTIER_RETENTION_MASK | SOURCE_FRONTIER_COVERAGE_MASK;
 const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE = 8;
 const SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE = 0.5;
 const SOURCE_FRONTIER_COLOR_TRANSFER_GAP_SCALE = 0.1;
@@ -196,6 +198,7 @@ function composeFinalColorAccumulationSteps({
 }) {
   const pixelCenter = [anchorPixel.x + 0.5, anchorPixel.y + 0.5];
   let runningColor = normalizeColor(clearColor, "clearColor");
+  let runningSourceColorAuthority = 0;
   let remainingTransmission = 1;
   const steps = [];
 
@@ -234,21 +237,37 @@ function composeFinalColorAccumulationSteps({
       ? clamp01(1 - Math.pow(1 - opacity, alphaTransfer.colorWeight))
       : 0;
     const colorAuthority = hasTileSupport
-      ? sourceFrontierSupportColorAuthority(sourceColor, runningColor, candidateSourceClassMask)
+      ? sourceFrontierSupportColorAuthority(
+          sourceColor,
+          runningColor,
+          candidateSourceClassMask,
+          runningSourceColorAuthority,
+        )
       : 1;
     const colorAlpha = rawColorAlpha * colorAuthority;
     const colorOcclusionAlpha = hasTileSupport
-      ? sourceFrontierColorOcclusionAlpha(colorAlpha, coverageAlpha, colorAuthority)
+      ? sourceFrontierColorOcclusionAlpha(colorAlpha, coverageAlpha, colorAuthority, runningSourceColorAuthority)
       : 0;
+    const sourceColorAuthorityBefore = runningSourceColorAuthority;
     const contributionColor = sourceColor.map((channel) => round(channel * colorAlpha));
     const nextRunningColor = hasTileSupport
       ? sourceColor.map((channel, index) => channel * colorAlpha + runningColor[index] * (1 - colorOcclusionAlpha))
       : runningColor;
+    const nextSourceColorAuthority = hasTileSupport
+      ? sourceFrontierRunningSourceColorAuthority({
+        previousAuthority: runningSourceColorAuthority,
+        colorOcclusionAlpha,
+        colorAlpha,
+        coverageAlpha,
+        candidateSourceClassMask,
+      })
+      : runningSourceColorAuthority;
     const transmittanceAfter = hasTileSupport
       ? remainingTransmission * (1 - coverageAlpha)
       : remainingTransmission;
     remainingTransmission = transmittanceAfter;
     runningColor = nextRunningColor;
+    runningSourceColorAuthority = nextSourceColorAuthority;
 
     steps.push({
       splatIndex: nonNegativeInteger(contributor.splatIndex, "contributor.splatIndex"),
@@ -266,6 +285,8 @@ function composeFinalColorAccumulationSteps({
       coverageAlpha: round(coverageAlpha),
       colorAlpha: round(colorAlpha),
       colorOcclusionAlpha: round(colorOcclusionAlpha),
+      sourceFrontierRunningColorAuthorityBefore: round(sourceColorAuthorityBefore),
+      sourceFrontierRunningColorAuthorityAfter: round(runningSourceColorAuthority),
       transmittanceBefore: round(transmittanceBefore),
       transmittanceAfter: round(transmittanceAfter),
       sourceColor: sourceColor.map(round),
@@ -292,19 +313,57 @@ function composeFinalColorAccumulationSteps({
   };
 }
 
-function sourceFrontierColorOcclusionAlpha(colorAlpha, coverageAlpha, colorAuthority = 1) {
+function sourceFrontierColorOcclusionAlpha(colorAlpha, coverageAlpha, colorAuthority = 1, runningSourceColorAuthority = 0) {
   const normalizedColorAlpha = clamp01(colorAlpha);
   const normalizedCoverageAlpha = clamp01(coverageAlpha);
   const normalizedColorAuthority = clamp01(colorAuthority);
+  const normalizedRunningSourceColorAuthority = clamp01(runningSourceColorAuthority);
   const alphaColorGap = Math.max(normalizedCoverageAlpha - normalizedColorAlpha, 0);
   return clamp01(
     normalizedColorAlpha +
-    alphaColorGap * SOURCE_FRONTIER_COLOR_OCCLUSION_GAP_SCALE * normalizedColorAuthority,
+    alphaColorGap *
+      SOURCE_FRONTIER_COLOR_OCCLUSION_GAP_SCALE *
+      normalizedColorAuthority *
+      (1 - normalizedRunningSourceColorAuthority),
   );
 }
 
-function sourceFrontierSupportColorAuthority(sourceColor, runningColor, candidateSourceClassMask) {
-  if ((candidateSourceClassMask & SOURCE_FRONTIER_SUPPORT_MASK) === 0) {
+function sourceFrontierRunningSourceColorAuthority({
+  previousAuthority,
+  colorOcclusionAlpha,
+  colorAlpha,
+  coverageAlpha,
+  candidateSourceClassMask,
+}) {
+  const authoritySeed = sourceFrontierSourceColorAuthoritySeed(candidateSourceClassMask, colorAlpha, coverageAlpha);
+  const preservedAuthority =
+    clamp01(previousAuthority) *
+    (authoritySeed > 0 ? 1 - clamp01(colorOcclusionAlpha) : 1);
+  return clamp01(preservedAuthority + authoritySeed * (1 - preservedAuthority));
+}
+
+function sourceFrontierSourceColorAuthoritySeed(candidateSourceClassMask, colorAlpha, coverageAlpha) {
+  if ((candidateSourceClassMask & SOURCE_FRONTIER_COLOR_AUTHORITY_SOURCE_MASK) !== 0) {
+    const sourceAlpha = clamp01(Math.max(colorAlpha, coverageAlpha));
+    return clamp01(1 - (1 - sourceAlpha) ** 2);
+  }
+  return 0;
+}
+
+function sourceFrontierSupportColorAuthority(
+  sourceColor,
+  runningColor,
+  candidateSourceClassMask,
+  runningSourceColorAuthority = 0,
+) {
+  if (
+    (candidateSourceClassMask &
+      (SOURCE_FRONTIER_RETENTION_MASK | SOURCE_FRONTIER_COVERAGE_MASK | SOURCE_FRONTIER_SUPPORT_MASK)) ===
+    0
+  ) {
+    return 1;
+  }
+  if ((candidateSourceClassMask & SOURCE_FRONTIER_COVERAGE_MASK) !== 0) {
     return 1;
   }
   if (
@@ -318,10 +377,14 @@ function sourceFrontierSupportColorAuthority(sourceColor, runningColor, candidat
     return 1;
   }
   const sourceLuma = colorLuma(sourceColor);
+  const nonSelectedAuthorityScale =
+    (candidateSourceClassMask & SOURCE_FRONTIER_SUPPORT_MASK) !== 0
+      ? 1 - clamp01(runningSourceColorAuthority)
+      : 1;
   if (sourceLuma >= runningLuma) {
-    return clamp01(runningLuma / sourceLuma);
+    return clamp01(runningLuma / sourceLuma) * nonSelectedAuthorityScale;
   }
-  return clamp01(sourceLuma / runningLuma);
+  return clamp01(sourceLuma / runningLuma) * nonSelectedAuthorityScale;
 }
 
 function colorLuma(color) {
