@@ -475,6 +475,16 @@ test("source-frontier retained support transfers selected color without support-
 
   assert.equal(retainedStep.sourceFrontierAlphaSupport, "foreground-spatial-support");
   assert.equal(supportOnlyStep.sourceFrontierAlphaSupport, "foreground-spatial-support");
+  assert.equal(
+    retainedStep.candidateSourceClassMask,
+    9,
+    "final accumulation probe steps must expose retained+support source authority",
+  );
+  assert.equal(
+    supportOnlyStep.candidateSourceClassMask,
+    8,
+    "final accumulation probe steps must expose support-only source authority",
+  );
   assert.ok(
     retainedStep.alphaTransferWeight > retainedStep.sourceFrontierSupportPixelWeight * 4,
     `expected fixture to expose retained support alpha/color gap: support ${retainedStep.sourceFrontierSupportPixelWeight}, alpha ${retainedStep.alphaTransferWeight}`,

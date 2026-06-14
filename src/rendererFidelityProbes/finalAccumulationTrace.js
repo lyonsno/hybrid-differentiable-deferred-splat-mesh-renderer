@@ -261,6 +261,7 @@ function composeFinalColorAccumulationSteps({
       colorTransferWeight: round(alphaTransfer.colorWeight),
       sourceFrontierAlphaSupport: alphaTransfer.support,
       sourceFrontierColorAuthority: round(colorAuthority),
+      candidateSourceClassMask,
       opacity: round(opacity),
       coverageAlpha: round(coverageAlpha),
       colorAlpha: round(colorAlpha),

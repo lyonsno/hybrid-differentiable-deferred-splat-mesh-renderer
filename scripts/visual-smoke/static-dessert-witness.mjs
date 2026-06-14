@@ -1301,6 +1301,11 @@ function summarizeSelectedAnchorRgbProvenance(steps = [], { outputLuma } = {}) {
   ) {
     category = "selected-source-color-underpowered";
   } else if (
+    hasTransferredSelectedColor &&
+    lateLightContaminatorStep
+  ) {
+    category = "selected-source-color-transferred-late-plate-contaminated";
+  } else if (
     brightSourceStepCount > 0 &&
     (maxContributionLuma >= maxSourceLuma * 0.25 || colorTransferRatio >= 0.5) &&
     finalOutputLuma !== undefined &&
@@ -1308,11 +1313,6 @@ function summarizeSelectedAnchorRgbProvenance(steps = [], { outputLuma } = {}) {
     maxColorOcclusionGap >= 0.05
   ) {
     category = "selected-source-color-transferred-overoccluded";
-  } else if (
-    hasTransferredSelectedColor &&
-    lateLightContaminatorStep
-  ) {
-    category = "selected-source-color-transferred-late-plate-contaminated";
   } else if (
     hasTransferredSelectedColor &&
     supportStepCount > 0 &&
