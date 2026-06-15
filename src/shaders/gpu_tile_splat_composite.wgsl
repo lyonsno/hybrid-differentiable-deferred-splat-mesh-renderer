@@ -142,76 +142,139 @@ fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
 
 // Reorder pass is a separate shader (gpu_reorder_refs.wgsl) to reduce bind group count.
 
-// --- Pass 6: Composite (front-to-back with transmittance cutoff) ---
-// Reads from tileRefs which is bound to the sorted buffer at composite time.
-// tileOffsets and tileCounts define per-tile ranges.
-// The radix sort preserved tile grouping (tileId is the upper 16 bits of the sort key).
+// --- Pass 6: Composite (shared-memory batched rasterizer, 2x2 pixel quads) ---
+// One workgroup per tile. 8x8 threads = 64 threads, each owns a 2x2 pixel quad,
+// covering a 16x16 tile. Each batch loads 64 splats from sorted refs into shared
+// memory, then all 64 threads evaluate those splats against their quads.
 //
-// Iterates refs from nearest to farthest (end of sorted range = nearest because
-// sort key inverts depth). Accumulates color front-to-back and stops when
-// transmittance drops below threshold, skipping the majority of occluded back splats.
+// Iterates from end (nearest) to start (farthest) since sort key inverts depth.
+
+const BATCH_SIZE = 64u;
+const ALPHA_THRESHOLD = 1.0 / 255.0;
+const TILE_PX = 16u;
+
+var<workgroup> shCenter: array<vec2f, 64>;
+var<workgroup> shCoeffs: array<vec3f, 64>;  // (covXX*-0.5, covYY*-0.5, -covXY)
+var<workgroup> shColor: array<vec4f, 64>;   // (r, g, b, opacity)
 
 @compute @workgroup_size(8, 8, 1)
-fn composite(@builtin(global_invocation_id) globalId: vec3u) {
-  let outputSize = textureDimensions(outputColor);
-  if (globalId.x >= outputSize.x || globalId.y >= outputSize.y) { return; }
-
-  let tileSizePx = max(u32(frame.tileSizePx), 1u);
-  let tileX = min(globalId.x / tileSizePx, frame.tileGrid.x - 1u);
-  let tileY = min(globalId.y / tileSizePx, frame.tileGrid.y - 1u);
+fn composite(
+  @builtin(local_invocation_id) lid: vec3u,
+  @builtin(local_invocation_index) localIdx: u32,
+  @builtin(workgroup_id) wid: vec3u,
+  @builtin(num_workgroups) numWorkgroups: vec3u,
+) {
+  // One workgroup per tile. Tile index from workgroup ID.
+  let workgroupIdx = wid.y * numWorkgroups.x + wid.x;
+  let tileX = workgroupIdx % frame.tileGrid.x;
+  let tileY = workgroupIdx / frame.tileGrid.x;
+  if (tileY >= frame.tileGrid.y) { return; }
   let tileId = mortonEncode2D(tileX, tileY);
-  let pixelCenter = vec2f(f32(globalId.x) + 0.5, f32(globalId.y) + 0.5);
+
+  // Each thread owns a 2x2 pixel quad
+  let basePixel = vec2u(tileX * TILE_PX + lid.x * 2u, tileY * TILE_PX + lid.y * 2u);
+  let p00 = vec2f(f32(basePixel.x) + 0.5, f32(basePixel.y) + 0.5);
+
+  // Per-pixel transmittance and accumulated color (2x2 quad)
+  var T = vec4f(1.0); // x=00, y=10, z=01, w=11
+  var c00 = vec3f(0.0);
+  var c10 = vec3f(0.0);
+  var c01 = vec3f(0.0);
+  var c11 = vec3f(0.0);
 
   let refStart = tileOffsets[tileId];
   let refCount = atomicLoad(&tileCounts[tileId]);
+  let numBatches = (refCount + BATCH_SIZE - 1u) / BATCH_SIZE;
+  var threadDone = false;
 
-  // Front-to-back compositing: accumulate premultiplied color and transmittance.
-  // T starts at 1.0 (fully transparent), decreases as splats occlude.
-  var accColor = vec3f(0.0);
-  var T = 1.0;
+  // Iterate batches from end (nearest) to start (farthest).
+  // Sort key inverts depth: near splats have high keys → sort to end of tile range.
+  for (var batchIdx: u32 = 0u; batchIdx < numBatches; batchIdx++) {
+    // Load one splat per thread into shared memory (from the END of the range)
+    let refOffset = refCount - 1u - (batchIdx * BATCH_SIZE + localIdx);
+    if (batchIdx * BATCH_SIZE + localIdx < refCount) {
+      let refIdx = (refStart + refOffset) * TILE_REF_STRIDE;
 
-  // Iterate from end (nearest splats) to start (farthest).
-  // Sort key = (tileId << 16) | depthInverted, where depthInverted = 65535 - depthU16.
-  // Near splats have high depthInverted → sort to end of tile range.
-  for (var i = refCount; i > 0u; i--) {
-    let refIdx = (refStart + i - 1u) * TILE_REF_STRIDE;
-    if (refIdx + TILE_REF_STRIDE > frame.totalTileRefs * TILE_REF_STRIDE) { continue; }
+      let splatId = tileRefs[refIdx + 0u];
+      shCenter[localIdx] = vec2f(
+        bitcast<f32>(tileRefs[refIdx + 2u]),
+        bitcast<f32>(tileRefs[refIdx + 3u]),
+      );
+      // Store evaluation coefficients: cx*-0.5, cy*-0.5, -cxy
+      let covX = bitcast<f32>(tileRefs[refIdx + 4u]);
+      let covY = bitcast<f32>(tileRefs[refIdx + 5u]);
+      let covZ = bitcast<f32>(tileRefs[refIdx + 6u]);
+      shCoeffs[localIdx] = vec3f(covX * -0.5, covZ * -0.5, -covY);
 
-    let splatId = tileRefs[refIdx + 0u];
-    if (splatId >= frame.splatCount) { continue; }
+      let opacity = bitcast<f32>(tileRefs[refIdx + 7u]);
+      let colorBase = splatId * 3u;
+      shColor[localIdx] = vec4f(
+        colors[colorBase], colors[colorBase + 1u], colors[colorBase + 2u],
+        opacity,
+      );
+    } else {
+      // Sentinel: zero opacity → skipped by alpha threshold
+      shColor[localIdx] = vec4f(0.0);
+    }
 
-    let centerPx = vec2f(
-      bitcast<f32>(tileRefs[refIdx + 2u]),
-      bitcast<f32>(tileRefs[refIdx + 3u]),
-    );
-    let con = vec3f(
-      bitcast<f32>(tileRefs[refIdx + 4u]),
-      bitcast<f32>(tileRefs[refIdx + 5u]),
-      bitcast<f32>(tileRefs[refIdx + 6u]),
-    );
-    let opacity = bitcast<f32>(tileRefs[refIdx + 7u]);
+    workgroupBarrier();
 
-    let d = pixelCenter - centerPx;
-    let power = -0.5 * (con.x * d.x * d.x + con.z * d.y * d.y) - con.y * d.x * d.y;
-    if (power > 0.0) { continue; }
+    if (!threadDone) {
+      let batchCount = min(BATCH_SIZE, refCount - batchIdx * BATCH_SIZE);
 
-    let alpha = min(opacity * exp(power), 0.99);
-    if (alpha < 1.0 / 255.0) { continue; }
+      for (var i: u32 = 0u; i < batchCount; i++) {
+        let center = shCenter[i];
+        let coeffs = shCoeffs[i];
+        let splatColor = shColor[i];
 
-    let colorBase = splatId * 3u;
-    let sourceColor = vec3f(colors[colorBase], colors[colorBase + 1u], colors[colorBase + 2u]);
+        // Vectorized Gaussian evaluation for the 2x2 quad
+        let d = p00 - center;
+        let dxV = vec4f(d.x, d.x + 1.0, d.x, d.x + 1.0);
+        let dyV = vec4f(d.y, d.y, d.y + 1.0, d.y + 1.0);
+        let power4 = coeffs.x * dxV * dxV + coeffs.z * dxV * dyV + coeffs.y * dyV * dyV;
 
-    // Front-to-back: color += T * alpha * sourceColor; T *= (1 - alpha)
-    accColor += T * alpha * sourceColor;
-    T *= (1.0 - alpha);
+        // Skip splat entirely if it contributes nothing to any of the 4 pixels
+        if (all(power4 <= vec4f(-4.0))) {
+          continue;
+        }
 
-    // Early-out when transmittance is exhausted
-    if (T < TRANSMITTANCE_CUTOFF) { break; }
+        let gauss4 = exp(power4);
+        let alpha4 = min(vec4f(0.99), vec4f(splatColor.a) * gauss4);
+        let newT = T * (vec4f(1.0) - alpha4);
+
+        let valid = (power4 > vec4f(-4.0)) & (alpha4 > vec4f(ALPHA_THRESHOLD)) & (T >= vec4f(TRANSMITTANCE_CUTOFF));
+        let weight = alpha4 * T * select(vec4f(0.0), vec4f(1.0), valid);
+
+        c00 += splatColor.rgb * weight.x;
+        c10 += splatColor.rgb * weight.y;
+        c01 += splatColor.rgb * weight.z;
+        c11 += splatColor.rgb * weight.w;
+        T = select(T, newT, valid);
+
+        if (all(T < vec4f(TRANSMITTANCE_CUTOFF))) {
+          threadDone = true;
+          break;
+        }
+      }
+    }
+
+    workgroupBarrier();
   }
 
-  // Blend remaining transmittance with background
+  // Write results for the 2x2 pixel quad
   let bgColor = vec3f(0.02, 0.02, 0.04);
-  let finalColor = accColor + T * bgColor;
+  let outputSize = textureDimensions(outputColor);
 
-  textureStore(outputColor, vec2i(globalId.xy), vec4f(finalColor, 1.0));
+  if (basePixel.x < outputSize.x && basePixel.y < outputSize.y) {
+    textureStore(outputColor, vec2i(basePixel), vec4f(c00 + T.x * bgColor, 1.0));
+  }
+  if (basePixel.x + 1u < outputSize.x && basePixel.y < outputSize.y) {
+    textureStore(outputColor, vec2i(vec2u(basePixel.x + 1u, basePixel.y)), vec4f(c10 + T.y * bgColor, 1.0));
+  }
+  if (basePixel.x < outputSize.x && basePixel.y + 1u < outputSize.y) {
+    textureStore(outputColor, vec2i(vec2u(basePixel.x, basePixel.y + 1u)), vec4f(c01 + T.z * bgColor, 1.0));
+  }
+  if (basePixel.x + 1u < outputSize.x && basePixel.y + 1u < outputSize.y) {
+    textureStore(outputColor, vec2i(vec2u(basePixel.x + 1u, basePixel.y + 1u)), vec4f(c11 + T.w * bgColor, 1.0));
+  }
 }

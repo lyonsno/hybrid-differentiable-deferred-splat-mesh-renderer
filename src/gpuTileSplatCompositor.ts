@@ -479,16 +479,14 @@ export function encodeCompositeOnly(
   pass.setPipeline(resources.compositePipeline);
   pass.setBindGroup(0, bindGroups.splatBindGroup);
   pass.setBindGroup(1, bindGroups.sortedTileBindGroup);
-  pass.dispatchWorkgroups(
-    Math.ceil(plan.viewportWidth / 8),
-    Math.ceil(plan.viewportHeight / 8),
-  );
+  // One workgroup per tile (8x8 threads, each owns 2x2 pixels = 16x16 tile)
+  pass.dispatchWorkgroups(plan.tileColumns, plan.tileRows);
   pass.end();
 }
 
 /**
  * Encode the full compute compositor pipeline:
- * count → GPU prefix sum → init sort → scatter (with sort keys) → radix sort → reorder → composite
+ * project → count → GPU prefix sum → init sort → scatter (with sort keys) → radix sort → reorder → composite
  *
  * All passes encoded into one command encoder — no CPU readback stalls.
  */
@@ -573,16 +571,13 @@ export function encodeFullComputeCompositorPipeline(
     pass.end();
   }
 
-  // Pass 6: Composite (reads from sorted refs)
+  // Pass 6: Composite (shared-memory batched rasterizer, one workgroup per tile)
   {
     const pass = encoder.beginComputePass({ label: "tile_composite" });
     pass.setPipeline(resources.compositePipeline);
     pass.setBindGroup(0, bindGroups.splatBindGroup);
     pass.setBindGroup(1, bindGroups.sortedTileBindGroup);
-    pass.dispatchWorkgroups(
-      Math.ceil(plan.viewportWidth / 8),
-      Math.ceil(plan.viewportHeight / 8),
-    );
+    pass.dispatchWorkgroups(plan.tileColumns, plan.tileRows);
     pass.end();
   }
 }
