@@ -1,12 +1,5 @@
 // Per-tile bitonic sort with streaming merge.
-//
-// Each workgroup sorts one tile's refs by depth (nearest first).
-// 1. Load first 512 (depth, refIndex) pairs into shared memory
-// 2. Bitonic sort all 512
-// 3. For remaining refs in batches of 256:
-//    - Replace back 256 entries with incoming batch
-//    - Re-sort all 512 (front 256 guaranteed to be best 256 overall)
-// 4. Write sorted front refs to output
+// DEBUG: passthrough copy to verify pipeline, then real sort below.
 
 const WG_SIZE = 256u;
 const SORT_CAP = 512u;
@@ -41,10 +34,12 @@ fn tile_sort(
   let tileRefCount = tileCounts[tileId];
   if (tileRefCount == 0u) { return; }
 
-  // --- Load first batch (up to 512 elements, 2 per thread) ---
+  let outCount = min(tileRefCount, SORT_CAP);
+
+  // --- Load first batch ---
   for (var e = 0u; e < 2u; e++) {
     let si = lid * 2u + e;
-    if (si < tileRefCount && si < SORT_CAP) {
+    if (si < outCount) {
       let globalIdx = tileStart + si;
       sKeys[si] = unsortedRefs[globalIdx * REF_STRIDE + 1u];
       sIdx[si] = globalIdx;
@@ -55,7 +50,7 @@ fn tile_sort(
   }
   workgroupBarrier();
 
-  // --- Bitonic sort 512 elements (9 stages) ---
+  // --- Bitonic sort 512 elements (9 stages for 2^9=512) ---
   for (var stage = 0u; stage < 9u; stage++) {
     let blockSize = 1u << (stage + 1u);
     for (var sub = stage + 1u; sub > 0u; sub--) {
@@ -77,15 +72,12 @@ fn tile_sort(
   }
   workgroupBarrier();
 
-  // --- Stream remaining batches of 256 ---
-  // After sort, positions 0..255 = best (nearest), 256..511 = worst.
-  // Replace 256..511 with incoming batch, re-sort to push best to front.
+  // --- Stream remaining batches ---
   var batchStart = SORT_CAP;
   while (batchStart < tileRefCount) {
-    // Load incoming batch into back half (positions 256..511)
-    let inIdx = batchStart + lid;
-    if (inIdx < tileRefCount) {
-      let globalIdx = tileStart + inIdx;
+    // Replace back 256 with incoming batch
+    if (lid < min(WG_SIZE, tileRefCount - batchStart)) {
+      let globalIdx = tileStart + batchStart + lid;
       sKeys[WG_SIZE + lid] = unsortedRefs[globalIdx * REF_STRIDE + 1u];
       sIdx[WG_SIZE + lid] = globalIdx;
     } else {
@@ -120,7 +112,6 @@ fn tile_sort(
   }
 
   // --- Write sorted refs to output ---
-  let outCount = min(tileRefCount, SORT_CAP);
   for (var e = 0u; e < 2u; e++) {
     let si = lid * 2u + e;
     if (si >= outCount) { continue; }
