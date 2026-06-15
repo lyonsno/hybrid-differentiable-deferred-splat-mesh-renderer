@@ -705,7 +705,13 @@ fn source_frontier_rgb_luma(color: vec3f) -> f32 {
   return dot(color, vec3f(0.2126, 0.7152, 0.0722));
 }
 
-fn source_frontier_support_color_authority(sourceColor: vec3f, composedColor: vec3f, sourceFrontierClassMask: u32, runningSourceColorAuthority: f32) -> f32 {
+fn source_frontier_support_color_authority(
+  sourceColor: vec3f,
+  composedColor: vec3f,
+  sourceFrontierClassMask: u32,
+  runningSourceColorAuthority: f32,
+  runningSupportColorMaterial: f32,
+) -> f32 {
   if ((sourceFrontierClassMask & (CANDIDATE_SOURCE_CLASS_RETENTION_MASK | CANDIDATE_SOURCE_CLASS_COVERAGE_MASK | CANDIDATE_SOURCE_CLASS_SUPPORT_MASK)) == 0u) {
     return 1.0;
   }
@@ -732,7 +738,8 @@ fn source_frontier_support_color_authority(sourceColor: vec3f, composedColor: ve
     (sourceFrontierClassMask & CANDIDATE_SOURCE_CLASS_SUPPORT_MASK) != 0u &&
     sourceLuma >= runningLuma &&
     runningLuma > SOURCE_FRONTIER_UNCLAIMED_COLOR_LUMA_FLOOR &&
-    clamp(runningSourceColorAuthority, 0.0, 1.0) <= 0.0
+    clamp(runningSourceColorAuthority, 0.0, 1.0) <= 0.0 &&
+    clamp(runningSupportColorMaterial, 0.0, 1.0) > 0.0
   ) {
     return 1.0;
   }
@@ -740,6 +747,16 @@ fn source_frontier_support_color_authority(sourceColor: vec3f, composedColor: ve
     return clamp(runningLuma / sourceLuma, 0.0, 1.0) * nonSelectedAuthorityScale;
   }
   return clamp(sourceLuma / runningLuma, 0.0, 1.0) * nonSelectedAuthorityScale;
+}
+
+fn source_frontier_support_color_material_seed(sourceFrontierClassMask: u32, colorAlpha: f32) -> f32 {
+  if (
+    (sourceFrontierClassMask & CANDIDATE_SOURCE_CLASS_SUPPORT_MASK) != 0u &&
+    (sourceFrontierClassMask & (CANDIDATE_SOURCE_CLASS_RETENTION_MASK | CANDIDATE_SOURCE_CLASS_COVERAGE_MASK)) == 0u
+  ) {
+    return clamp(colorAlpha, 0.0, 1.0);
+  }
+  return 0.0;
 }
 
 fn inverse_conic_radii(conicParam: vec4f) -> vec2f {
@@ -995,6 +1012,7 @@ fn debug_heatmap_color(
   let refLimit = min(liveRefCount, flatRemainingRefs);
   var composedColor = vec3f(0.02, 0.02, 0.04);
   var runningSourceColorAuthority = 0.0;
+  var runningSupportColorMaterial = 0.0;
   var remainingTransmission = 1.0;
   var coverageWeightSum = 0.0;
   var maxMajorRadiusPx = 0.0;
@@ -1029,7 +1047,13 @@ fn debug_heatmap_color(
     let colorTransferWeight = source_frontier_color_transfer_weight(pixelCoverageWeight, sourceFrontierSupportWeight, alphaTransferWeight, sourceFrontierClassMask);
     let colorBase = tileRef.x * 3u;
     let sourceColor = vec3f(colors[colorBase], colors[colorBase + 1u], colors[colorBase + 2u]);
-    let colorAuthority = source_frontier_support_color_authority(sourceColor, composedColor, sourceFrontierClassMask, runningSourceColorAuthority);
+    let colorAuthority = source_frontier_support_color_authority(
+      sourceColor,
+      composedColor,
+      sourceFrontierClassMask,
+      runningSourceColorAuthority,
+      runningSupportColorMaterial
+    );
     let colorAlpha = clamp(1.0 - pow(1.0 - sourceOpacity, colorTransferWeight), 0.0, 1.0) * colorAuthority;
     let colorOcclusionAlpha = source_frontier_color_occlusion_alpha(colorAlpha, coverageAlpha, colorAuthority, runningSourceColorAuthority);
     composedColor = sourceColor * colorAlpha + composedColor * (1.0 - colorOcclusionAlpha);
@@ -1037,6 +1061,13 @@ fn debug_heatmap_color(
     let preservedSourceColorAuthority = source_frontier_preserved_color_authority(sourceColorAuthoritySeed, runningSourceColorAuthority, colorOcclusionAlpha);
     runningSourceColorAuthority = clamp(
       preservedSourceColorAuthority + sourceColorAuthoritySeed * (1.0 - preservedSourceColorAuthority),
+      0.0,
+      1.0
+    );
+    let supportColorMaterialSeed = source_frontier_support_color_material_seed(sourceFrontierClassMask, colorAlpha);
+    let preservedSupportColorMaterial = clamp(runningSupportColorMaterial, 0.0, 1.0) * (1.0 - clamp(colorOcclusionAlpha, 0.0, 1.0));
+    runningSupportColorMaterial = clamp(
+      preservedSupportColorMaterial + supportColorMaterialSeed * (1.0 - preservedSupportColorMaterial),
       0.0,
       1.0
     );

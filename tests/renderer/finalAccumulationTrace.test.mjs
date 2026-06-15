@@ -1213,6 +1213,46 @@ test("source-frontier bright support can lift unclaimed foreground color while s
   );
 });
 
+test("source-frontier bright support cannot bootstrap foreground color from clear alone", () => {
+  const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
+  const brightSupport = accumulationContributor({
+    anchor,
+    tileIndex: tileIndexForAnchor(anchor),
+    splatIndex: 940,
+    originalId: 940,
+    viewRank: 0,
+    sourceRole: "foreground-sealing",
+    role: "foreground-sealing",
+    candidateSourceClassMask: 8,
+    coverageWeight: 0.95,
+    centerPx: [anchor.x + 1.4, anchor.y + 0.5],
+    inverseConic: [1, 0, 1],
+    opacity: 0.85,
+  });
+  const record = buildFinalColorAccumulationTraceRecord({
+    anchorPixel: anchor,
+    contributors: [brightSupport],
+    sourceColors: new Map([[brightSupport.splatIndex, [1, 0.84, 0.45]]]),
+    retainedContributors: [brightSupport],
+    preserveContributorOrder: true,
+    clearColor: [0.03, 0.03, 0.03],
+    tileSizePx: 16,
+    tileColumns: 216,
+  });
+  const supportStep = record.finalColorAccumulation.steps[0];
+
+  assert.equal(supportStep.sourceFrontierAlphaSupport, "foreground-spatial-support");
+  assert.equal(
+    supportStep.sourceFrontierRunningColorAuthorityBefore,
+    0,
+    "fixture must begin without selected-source color authority",
+  );
+  assert.ok(
+    supportStep.sourceFrontierColorAuthority <= 0.25,
+    `support color must not receive full authority from clear/empty running color: ${supportStep.sourceFrontierColorAuthority}`,
+  );
+});
+
 test("source-frontier retention-only late bright support cannot claim selected color authority", () => {
   const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
   const retainedForeground = accumulationContributor({

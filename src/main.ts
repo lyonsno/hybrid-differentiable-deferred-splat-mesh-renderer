@@ -7884,6 +7884,7 @@ function readCompositorInputAnchor({
   const pixelCenter = [Math.floor(anchor.x) + 0.5, Math.floor(anchor.y) + 0.5] as const;
   let runningColor = [0.02, 0.02, 0.04] as [number, number, number];
   let runningSourceColorAuthority = 0;
+  let runningSupportColorMaterial = 0;
   let remainingTransmission = 1;
   const contributors: Array<TileLocalCompositorInputReadback["anchors"][number]["contributors"][number]> = [];
 
@@ -8017,6 +8018,7 @@ function readCompositorInputAnchor({
       runningColor,
       candidateSourceClassMask,
       runningSourceColorAuthority,
+      runningSupportColorMaterial,
     );
     const colorAlpha = clamp01(1 - Math.pow(1 - sourceOpacity, colorTransferWeight)) * colorAuthority;
     const colorOcclusionAlpha = sourceFrontierColorOcclusionAlpha(
@@ -8027,6 +8029,7 @@ function readCompositorInputAnchor({
     );
     const transmittanceBefore = remainingTransmission;
     const sourceColorAuthorityBefore = runningSourceColorAuthority;
+    const supportColorMaterialBefore = runningSupportColorMaterial;
     runningColor = sourceColor.map((channel, index) =>
       channel * colorAlpha + runningColor[index] * (1 - colorOcclusionAlpha)
     ) as [number, number, number];
@@ -8037,6 +8040,11 @@ function readCompositorInputAnchor({
       coverageAlpha,
       candidateSourceClassMask,
     });
+    const supportColorMaterialSeed = sourceFrontierSupportColorMaterialSeed(candidateSourceClassMask, colorAlpha);
+    const preservedSupportColorMaterial = clamp01(runningSupportColorMaterial) * (1 - clamp01(colorOcclusionAlpha));
+    runningSupportColorMaterial = clamp01(
+      preservedSupportColorMaterial + supportColorMaterialSeed * (1 - preservedSupportColorMaterial),
+    );
     remainingTransmission *= 1 - coverageAlpha;
     contributors.push({
       layer,
@@ -8067,6 +8075,8 @@ function readCompositorInputAnchor({
       sourceFrontierColorAuthority: roundColorChannel(colorAuthority),
       sourceFrontierRunningColorAuthorityBefore: roundColorChannel(sourceColorAuthorityBefore),
       sourceFrontierRunningColorAuthorityAfter: roundColorChannel(runningSourceColorAuthority),
+      sourceFrontierSupportColorMaterialBefore: roundColorChannel(supportColorMaterialBefore),
+      sourceFrontierSupportColorMaterialAfter: roundColorChannel(runningSupportColorMaterial),
       coverageAlpha: roundColorChannel(coverageAlpha),
       colorAlpha: roundColorChannel(colorAlpha),
       colorOcclusionAlpha: roundColorChannel(colorOcclusionAlpha),
@@ -8378,6 +8388,7 @@ function sourceFrontierSupportColorAuthority(
   runningColor: readonly [number, number, number],
   candidateSourceClassMask: number,
   runningSourceColorAuthority = 0,
+  runningSupportColorMaterial = 0,
 ): number {
   if (
     (candidateSourceClassMask &
@@ -8408,7 +8419,8 @@ function sourceFrontierSupportColorAuthority(
     (candidateSourceClassMask & SOURCE_FRONTIER_SUPPORT_MASK) !== 0 &&
     sourceLuma >= runningLuma &&
     runningLuma > SOURCE_FRONTIER_UNCLAIMED_COLOR_LUMA_FLOOR &&
-    clamp01(runningSourceColorAuthority) <= 0
+    clamp01(runningSourceColorAuthority) <= 0 &&
+    clamp01(runningSupportColorMaterial) > 0
   ) {
     return 1;
   }
@@ -8416,6 +8428,16 @@ function sourceFrontierSupportColorAuthority(
     return clamp01(runningLuma / sourceLuma) * nonSelectedAuthorityScale;
   }
   return clamp01(sourceLuma / runningLuma) * nonSelectedAuthorityScale;
+}
+
+function sourceFrontierSupportColorMaterialSeed(candidateSourceClassMask: number, colorAlpha: number): number {
+  if (
+    (candidateSourceClassMask & SOURCE_FRONTIER_SUPPORT_MASK) !== 0 &&
+    (candidateSourceClassMask & (SOURCE_FRONTIER_RETENTION_MASK | SOURCE_FRONTIER_COVERAGE_MASK)) === 0
+  ) {
+    return clamp01(colorAlpha);
+  }
+  return 0;
 }
 
 function rgbLuma(color: readonly [number, number, number]): number {

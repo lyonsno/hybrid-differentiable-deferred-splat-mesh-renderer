@@ -39,7 +39,7 @@ test("tile-local visible conic coverage feeds sample-local Gaussian weight to al
   assert.match(shader, /pow\(1\.0\s*-\s*sourceOpacity,\s*colorTransferWeight\)/);
   assert.match(
     shader,
-    /let colorAuthority = source_frontier_support_color_authority\(sourceColor,\s*composedColor,\s*sourceFrontierClassMask,\s*runningSourceColorAuthority\)/,
+    /let colorAuthority = source_frontier_support_color_authority\(\s*sourceColor,\s*composedColor,\s*sourceFrontierClassMask,\s*runningSourceColorAuthority,\s*runningSupportColorMaterial\s*\)/,
   );
   assert.match(
     shader,

@@ -200,6 +200,7 @@ function composeFinalColorAccumulationSteps({
   const pixelCenter = [anchorPixel.x + 0.5, anchorPixel.y + 0.5];
   let runningColor = normalizeColor(clearColor, "clearColor");
   let runningSourceColorAuthority = 0;
+  let runningSupportColorMaterial = 0;
   let remainingTransmission = 1;
   const steps = [];
 
@@ -243,6 +244,7 @@ function composeFinalColorAccumulationSteps({
           runningColor,
           candidateSourceClassMask,
           runningSourceColorAuthority,
+          runningSupportColorMaterial,
         )
       : 1;
     const colorAlpha = rawColorAlpha * colorAuthority;
@@ -250,6 +252,7 @@ function composeFinalColorAccumulationSteps({
       ? sourceFrontierColorOcclusionAlpha(colorAlpha, coverageAlpha, colorAuthority, runningSourceColorAuthority)
       : 0;
     const sourceColorAuthorityBefore = runningSourceColorAuthority;
+    const supportColorMaterialBefore = runningSupportColorMaterial;
     const contributionColor = sourceColor.map((channel) => round(channel * colorAlpha));
     const nextRunningColor = hasTileSupport
       ? sourceColor.map((channel, index) => channel * colorAlpha + runningColor[index] * (1 - colorOcclusionAlpha))
@@ -263,12 +266,20 @@ function composeFinalColorAccumulationSteps({
         candidateSourceClassMask,
       })
       : runningSourceColorAuthority;
+    const supportColorMaterialSeed = hasTileSupport
+      ? sourceFrontierSupportColorMaterialSeed(candidateSourceClassMask, colorAlpha)
+      : 0;
+    const preservedSupportColorMaterial = clamp01(runningSupportColorMaterial) * (1 - clamp01(colorOcclusionAlpha));
+    const nextSupportColorMaterial = hasTileSupport
+      ? clamp01(preservedSupportColorMaterial + supportColorMaterialSeed * (1 - preservedSupportColorMaterial))
+      : runningSupportColorMaterial;
     const transmittanceAfter = hasTileSupport
       ? remainingTransmission * (1 - coverageAlpha)
       : remainingTransmission;
     remainingTransmission = transmittanceAfter;
     runningColor = nextRunningColor;
     runningSourceColorAuthority = nextSourceColorAuthority;
+    runningSupportColorMaterial = nextSupportColorMaterial;
 
     steps.push({
       splatIndex: nonNegativeInteger(contributor.splatIndex, "contributor.splatIndex"),
@@ -288,6 +299,8 @@ function composeFinalColorAccumulationSteps({
       colorOcclusionAlpha: round(colorOcclusionAlpha),
       sourceFrontierRunningColorAuthorityBefore: round(sourceColorAuthorityBefore),
       sourceFrontierRunningColorAuthorityAfter: round(runningSourceColorAuthority),
+      sourceFrontierSupportColorMaterialBefore: round(supportColorMaterialBefore),
+      sourceFrontierSupportColorMaterialAfter: round(runningSupportColorMaterial),
       transmittanceBefore: round(transmittanceBefore),
       transmittanceAfter: round(transmittanceAfter),
       sourceColor: sourceColor.map(round),
@@ -367,6 +380,7 @@ function sourceFrontierSupportColorAuthority(
   runningColor,
   candidateSourceClassMask,
   runningSourceColorAuthority = 0,
+  runningSupportColorMaterial = 0,
 ) {
   if (
     (candidateSourceClassMask &
@@ -397,7 +411,8 @@ function sourceFrontierSupportColorAuthority(
     (candidateSourceClassMask & SOURCE_FRONTIER_SUPPORT_MASK) !== 0 &&
     sourceLuma >= runningLuma &&
     runningLuma > SOURCE_FRONTIER_UNCLAIMED_COLOR_LUMA_FLOOR &&
-    clamp01(runningSourceColorAuthority) <= 0
+    clamp01(runningSourceColorAuthority) <= 0 &&
+    clamp01(runningSupportColorMaterial) > 0
   ) {
     return 1;
   }
@@ -405,6 +420,16 @@ function sourceFrontierSupportColorAuthority(
     return clamp01(runningLuma / sourceLuma) * nonSelectedAuthorityScale;
   }
   return clamp01(sourceLuma / runningLuma) * nonSelectedAuthorityScale;
+}
+
+function sourceFrontierSupportColorMaterialSeed(candidateSourceClassMask, colorAlpha) {
+  if (
+    (candidateSourceClassMask & SOURCE_FRONTIER_SUPPORT_MASK) !== 0 &&
+    (candidateSourceClassMask & (SOURCE_FRONTIER_RETENTION_MASK | SOURCE_FRONTIER_COVERAGE_MASK)) === 0
+  ) {
+    return clamp01(colorAlpha);
+  }
+  return 0;
 }
 
 function colorLuma(color) {
