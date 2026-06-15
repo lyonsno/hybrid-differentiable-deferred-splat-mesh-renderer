@@ -143,6 +143,18 @@ import {
 } from "./splatPlateRenderer.js";
 import { captureViewDepthKey, viewDepthKeyChanged } from "./splatSort.js";
 import {
+  planTileSplatCompositor,
+  createTileSplatCompositor,
+  createTileSplatBindGroups,
+  writeTileSplatFrameUniforms,
+  encodeTileSplatCountPass,
+  encodeTileSplatScatterPass,
+  encodeTileSplatCompositePass,
+  TILE_SPLAT_FRAME_UNIFORM_BYTES,
+  type TileSplatCompositorResources,
+  type TileSplatCompositorBindGroups,
+} from "./gpuTileSplatCompositor.js";
+import {
   fetchFirstSmokeSplatPayload,
   uploadSplatAttributeBuffers,
   type SplatAttributes,
@@ -239,6 +251,15 @@ interface ActiveSplatScene {
   rendererMode: RendererMode;
   count: number;
   assetPath: string;
+  computeCompositor: {
+    resources: TileSplatCompositorResources;
+    bindGroups: TileSplatCompositorBindGroups;
+    outputTexture: GPUTexture;
+    outputView: GPUTextureView;
+    frameUniformData: Float32Array;
+    prefixSumStagingBuffer: GPUBuffer;
+    prefixSumReadbackBuffer: GPUBuffer;
+  } | null;
 }
 
 interface AlphaDensityRouteEvidence {
@@ -391,7 +412,7 @@ function createSourceFrontierAlphaDensityRouteEvidence(input: { readonly tileSiz
   };
 }
 
-type RendererMode = "plate" | "tile-local" | "tile-local-visible";
+type RendererMode = "plate" | "tile-local" | "tile-local-visible" | "compute";
 type WgslProjectedRefStreamMode = "disabled" | "sidecar" | "source-frontier";
 
 interface RuntimeFootprintParams {
@@ -1262,6 +1283,54 @@ async function main() {
         tileLocalDisabledReason = errorMessage(err);
       }
     }
+    let computeCompositorState: ActiveSplatScene["computeCompositor"] = null;
+    if (RENDERER_MODE === "compute") {
+      const computePlan = planTileSplatCompositor({
+        viewportWidth: initialViewportWidth,
+        viewportHeight: initialViewportHeight,
+        tileSizePx: 16,
+        splatCount: attributes.count,
+      });
+      const computeResources = createTileSplatCompositor(gpu.device, computePlan);
+      const computeOutputTexture = gpu.device.createTexture({
+        label: "compute_compositor_output",
+        size: [initialViewportWidth, initialViewportHeight],
+        format: "rgba16float",
+        usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+      });
+      const computeBindGroups = createTileSplatBindGroups(
+        gpu.device,
+        computeResources,
+        {
+          positionBuffer: buffers.positionBuffer,
+          colorBuffer: buffers.colorBuffer,
+          scaleBuffer: buffers.scaleBuffer,
+          rotationBuffer: buffers.rotationBuffer,
+          opacityBuffer: buffers.opacityBuffer,
+          sortedIndexBuffer,
+        },
+        computeOutputTexture,
+      );
+      const prefixSumStagingBuffer = gpu.device.createBuffer({
+        label: "compute_prefix_sum_staging",
+        size: Math.max(16, computePlan.tileCount * 4),
+        usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+      });
+      const prefixSumReadbackBuffer = gpu.device.createBuffer({
+        label: "compute_prefix_sum_readback",
+        size: Math.max(16, computePlan.tileCount * 4),
+        usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+      });
+      computeCompositorState = {
+        resources: computeResources,
+        bindGroups: computeBindGroups,
+        outputTexture: computeOutputTexture,
+        outputView: computeOutputTexture.createView(),
+        frameUniformData: new Float32Array(TILE_SPLAT_FRAME_UNIFORM_BYTES / 4),
+        prefixSumStagingBuffer,
+        prefixSumReadbackBuffer,
+      };
+    }
     activeScene = {
       attributes,
       buffers,
@@ -1287,6 +1356,7 @@ async function main() {
       rendererMode: RENDERER_MODE,
       count: attributes.count,
       assetPath: sceneAssetPath,
+      computeCompositor: computeCompositorState,
     };
     exposeMeshSplatSmokeEvidence(
       createMeshSplatSmokeEvidence(attributes, attributes.count, sceneAssetPath, SORT_BACKEND),
@@ -1635,10 +1705,65 @@ async function main() {
       );
     }
 
+    // --- Compute compositor: count → prefix-sum → scatter → composite ---
+    let activeEncoder: GPUCommandEncoder = encoder;
+    if (scene.rendererMode === "compute" && scene.computeCompositor) {
+      const cc = scene.computeCompositor;
+      const { resources, bindGroups } = cc;
+
+      // Update frame uniforms
+      writeTileSplatFrameUniforms(
+        cc.frameUniformData,
+        viewProj,
+        resources.plan,
+      );
+      gpu.device.queue.writeBuffer(resources.frameUniformBuffer, 0, cc.frameUniformData);
+
+      // Pass 1: Count tile refs
+      encodeTileSplatCountPass(encoder, resources, bindGroups);
+
+      // Copy tile counts to staging buffer for CPU readback
+      encoder.copyBufferToBuffer(
+        resources.tileCountBuffer, 0,
+        cc.prefixSumStagingBuffer, 0,
+        resources.plan.tileCount * 4,
+      );
+      gpu.device.queue.submit([encoder.finish()]);
+
+      // CPU prefix sum (fast for ~26K tiles)
+      try { await cc.prefixSumStagingBuffer.mapAsync(GPUMapMode.READ); } catch (e) { console.error("mapAsync failed:", e); return; }
+      const countData = new Uint32Array(cc.prefixSumStagingBuffer.getMappedRange());
+      const offsets = new Uint32Array(resources.plan.tileCount);
+      let totalRefs = 0;
+      for (let i = 0; i < resources.plan.tileCount; i++) {
+        offsets[i] = totalRefs;
+        totalRefs += countData[i];
+      }
+      cc.prefixSumStagingBuffer.unmap();
+
+      // Upload offsets and clear counts for scatter pass cursor
+      gpu.device.queue.writeBuffer(resources.tileOffsetBuffer, 0, offsets);
+
+      // New encoder for scatter + composite + render
+      const encoder2 = gpu.device.createCommandEncoder();
+
+      // Clear tile counts (reused as atomic scatter cursor)
+      encoder2.clearBuffer(resources.tileCountBuffer);
+
+      // Pass 3: Scatter tile refs
+      encodeTileSplatScatterPass(encoder2, resources, bindGroups);
+
+      // Pass 4: Composite
+      encodeTileSplatCompositePass(encoder2, resources, bindGroups);
+
+      // Continue with render pass using encoder2
+      activeEncoder = encoder2;
+    }
+
     const textureView = gpu.context.getCurrentTexture().createView();
 
     const writeTimestamps = ts && !ts.mapping;
-    const renderPass = encoder.beginRenderPass({
+    const renderPass = activeEncoder.beginRenderPass({
       colorAttachments: [
         {
           view: textureView,
@@ -1668,7 +1793,9 @@ async function main() {
       ts.labels.push("render", "render_end");
     }
 
-    if (scene.rendererMode === "tile-local-visible" && scene.tileLocalState) {
+    if (scene.rendererMode === "compute" && scene.computeCompositor) {
+      tileLocalPresenter.draw(renderPass, scene.computeCompositor.outputView);
+    } else if (scene.rendererMode === "tile-local-visible" && scene.tileLocalState) {
       tileLocalPresenter.draw(renderPass, scene.tileLocalState.outputView);
     } else {
       renderPass.setBindGroup(0, bindGroup);
@@ -1677,11 +1804,11 @@ async function main() {
     renderPass.end();
 
     if (writeTimestamps) {
-      resolveTimestamps(encoder, ts);
+      resolveTimestamps(activeEncoder, ts);
     }
 
     timeFrameStage(frameTiming, "queue-submit", () => {
-      gpu.device.queue.submit([encoder.finish()]);
+      gpu.device.queue.submit([activeEncoder.finish()]);
     });
     if (scene.tileLocalState) {
       timeFrameStage(frameTiming, "tile-local-readback-resolve", () => {
@@ -9182,6 +9309,9 @@ function selectedRendererMode(): RendererMode {
   const params = new URLSearchParams(window.location.search);
   if (params.get("renderer") === "tile-local-visible") {
     return "tile-local-visible";
+  }
+  if (params.get("renderer") === "compute") {
+    return "compute";
   }
   return params.get("renderer") === "tile-local" ? "tile-local" : "plate";
 }
