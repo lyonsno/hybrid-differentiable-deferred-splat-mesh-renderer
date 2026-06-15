@@ -85,6 +85,7 @@ export interface TileSplatCompositorResources {
   readonly largeTileOverflowBasesBuffer: GPUBuffer;
   readonly chunkRangesBuffer: GPUBuffer;
   readonly totalChunksBuffer: GPUBuffer;
+  readonly indirectDispatchBuffer: GPUBuffer;
   readonly prefixParamsBuffer: GPUBuffer;
   readonly radixSort: RadixSortResources;
   destroy(): void;
@@ -233,6 +234,7 @@ export function createTileSplatCompositor(
       { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // largeTileList
       { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // tileListCounts
       { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // largeTileOverflowBases
+      { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // indirectDispatchArgs
     ],
   });
 
@@ -506,6 +508,13 @@ export function createTileSplatCompositor(
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
   });
 
+  // Indirect dispatch args: 3 u32 per dispatch × 2 dispatches (small sort + bucket sort)
+  const indirectDispatchBuffer = device.createBuffer({
+    label: "indirect_dispatch_args",
+    size: 6 * 4, // 2 × (x, y, z)
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST,
+  });
+
   // Bucket sort params
   const bucketSortParamsBuffer = device.createBuffer({
     label: "bucket_sort_params",
@@ -548,7 +557,7 @@ export function createTileSplatCompositor(
     frameUniformBuffer, prefixBlockSumsBuffer, reorderParamsBuffer, tileDepthSortParamsBuffer,
     classifyParamsBuffer, bucketSortParamsBuffer, chunkSortParamsBuffer,
     smallTileListBuffer, largeTileListBuffer, tileListCountsBuffer,
-    largeTileOverflowBasesBuffer, chunkRangesBuffer, totalChunksBuffer,
+    largeTileOverflowBasesBuffer, chunkRangesBuffer, totalChunksBuffer, indirectDispatchBuffer,
     prefixParamsBuffer,
     radixSort,
     destroy() {
@@ -684,6 +693,7 @@ export function createTileSplatBindGroups(
       { binding: 3, resource: { buffer: resources.largeTileListBuffer } },
       { binding: 4, resource: { buffer: resources.tileListCountsBuffer } },
       { binding: 5, resource: { buffer: resources.largeTileOverflowBasesBuffer } },
+      { binding: 6, resource: { buffer: resources.indirectDispatchBuffer } },
     ],
   });
 
@@ -866,11 +876,11 @@ export function encodeFullComputeCompositorPipeline(
     pass.end();
   }
 
-  // Pass 5.5: Per-tile depth sort (full f32 precision, one workgroup per tile)
-  {
   // Pass 5.5a: Classify tiles into small/large lists
+  {
     encoder.clearBuffer(resources.tileListCountsBuffer);
     encoder.clearBuffer(resources.totalChunksBuffer);
+    encoder.clearBuffer(resources.indirectDispatchBuffer);
     const classifyPass = encoder.beginComputePass({ label: "classify_tiles" });
     classifyPass.setPipeline(resources.classifyPipeline);
     classifyPass.setBindGroup(0, bindGroups.classifyBindGroup);
@@ -883,29 +893,27 @@ export function encodeFullComputeCompositorPipeline(
     const pass = encoder.beginComputePass({ label: "small_tile_sort" });
     pass.setPipeline(resources.tileDepthSortPipeline);
     pass.setBindGroup(0, bindGroups.tileDepthSortBindGroup);
-    // Dispatch enough workgroups to cover all small tiles.
-    // Workgroups beyond tileListCounts[0] early-out in the shader.
     pass.dispatchWorkgroups(plan.tileCount);
     pass.end();
   }
 
-  // Pass 5.5c: Bucket pre-sort for large tiles (one workgroup per large tile)
+  // Pass 5.5c: Bucket pre-sort for large tiles
+  // Most scenes have zero large tiles; shader early-outs for non-large tiles.
+  // Cap dispatch to avoid wasting GPU on empty workgroups.
   {
     const pass = encoder.beginComputePass({ label: "bucket_sort" });
     pass.setPipeline(resources.bucketSortPipeline);
     pass.setBindGroup(0, bindGroups.bucketSortBindGroup);
-    // Dispatch enough for all possible large tiles; shader early-outs.
-    pass.dispatchWorkgroups(plan.tileCount);
+    pass.dispatchWorkgroups(Math.min(plan.tileCount, 256));
     pass.end();
   }
 
-  // Pass 5.5d: Chunk sort for bucket-sorted chunks (one workgroup per chunk)
+  // Pass 5.5d: Chunk sort for bucket-sorted chunks
   {
     const pass = encoder.beginComputePass({ label: "chunk_sort" });
     pass.setPipeline(resources.chunkSortPipeline);
     pass.setBindGroup(0, bindGroups.chunkSortBindGroup);
-    // Dispatch maxChunks; shader early-outs beyond totalChunks[0].
-    pass.dispatchWorkgroups(1024);
+    pass.dispatchWorkgroups(256);
     pass.end();
   }
 

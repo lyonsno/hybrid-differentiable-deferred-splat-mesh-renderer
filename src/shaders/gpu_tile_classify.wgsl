@@ -24,6 +24,8 @@ struct ClassifyParams {
 @group(0) @binding(4) var<storage, read_write> tileListCounts: array<atomic<u32>>;
 // tileListCounts[0] = small count, [1] = large count, [2] = total overflow entries
 @group(0) @binding(5) var<storage, read_write> largeTileOverflowBases: array<u32>;
+// Indirect dispatch args: [0..2] = small sort, [3..5] = bucket sort
+@group(0) @binding(6) var<storage, read_write> indirectDispatchArgs: array<u32>;
 
 fn mortonEncode2D(x: u32, y: u32) -> u32 {
   var mx = x & 0xFFFFu;
@@ -62,5 +64,23 @@ fn classify_tiles(@builtin(local_invocation_index) localIdx: u32) {
       largeTileList[lIdx] = mortonId;
       largeTileOverflowBases[lIdx] = params.maxTotalEntries + overflowOffset;
     }
+  }
+
+  workgroupBarrier();
+
+  // Thread 0 writes indirect dispatch args
+  if (localIdx == 0u) {
+    let smallCount = atomicLoad(&tileListCounts[0]);
+    let largeCount = atomicLoad(&tileListCounts[1]);
+
+    // Small tile sort: (smallCount, 1, 1)
+    indirectDispatchArgs[0] = smallCount;
+    indirectDispatchArgs[1] = 1u;
+    indirectDispatchArgs[2] = 1u;
+
+    // Bucket sort: (largeCount, 1, 1)
+    indirectDispatchArgs[3] = largeCount;
+    indirectDispatchArgs[4] = 1u;
+    indirectDispatchArgs[5] = 1u;
   }
 }
