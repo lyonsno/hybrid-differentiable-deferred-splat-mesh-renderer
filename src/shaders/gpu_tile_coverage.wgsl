@@ -54,6 +54,7 @@ const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE = 8.0;
 const SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE = 0.5;
 const SOURCE_FRONTIER_COLOR_TRANSFER_GAP_SCALE = 0.1;
 const SOURCE_FRONTIER_COLOR_OCCLUSION_GAP_SCALE = 0.5;
+const SOURCE_FRONTIER_UNCLAIMED_COLOR_LUMA_FLOOR = 0.025;
 const SOURCE_FRONTIER_FOREGROUND_RETENTION_SCORE_FLOOR = 224u;
 
 struct SplatShape {
@@ -727,6 +728,14 @@ fn source_frontier_support_color_authority(sourceColor: vec3f, composedColor: ve
     1.0 - clamp(runningSourceColorAuthority, 0.0, 1.0),
     (sourceFrontierClassMask & CANDIDATE_SOURCE_CLASS_SUPPORT_MASK) != 0u
   );
+  if (
+    (sourceFrontierClassMask & CANDIDATE_SOURCE_CLASS_SUPPORT_MASK) != 0u &&
+    sourceLuma >= runningLuma &&
+    runningLuma > SOURCE_FRONTIER_UNCLAIMED_COLOR_LUMA_FLOOR &&
+    clamp(runningSourceColorAuthority, 0.0, 1.0) <= 0.0
+  ) {
+    return 1.0;
+  }
   if (sourceLuma >= runningLuma) {
     return clamp(runningLuma / sourceLuma, 0.0, 1.0) * nonSelectedAuthorityScale;
   }

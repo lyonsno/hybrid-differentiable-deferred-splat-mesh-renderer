@@ -1136,6 +1136,83 @@ test("source-frontier bright support cannot contaminate selected color authority
   );
 });
 
+test("source-frontier bright support can lift unclaimed foreground color while sealing alpha", () => {
+  const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
+  const dullSupport = accumulationContributor({
+    anchor,
+    tileIndex: tileIndexForAnchor(anchor),
+    splatIndex: 938,
+    originalId: 938,
+    viewRank: 0,
+    sourceRole: "foreground-sealing",
+    role: "foreground-sealing",
+    candidateSourceClassMask: 8,
+    coverageWeight: 0.95,
+    centerPx: [anchor.x + 1.4, anchor.y + 0.5],
+    inverseConic: [1, 0, 1],
+    opacity: 0.55,
+  });
+  const brightSupport = accumulationContributor({
+    anchor,
+    tileIndex: tileIndexForAnchor(anchor),
+    splatIndex: 939,
+    originalId: 939,
+    viewRank: 1,
+    sourceRole: "foreground-sealing",
+    role: "foreground-sealing",
+    candidateSourceClassMask: 8,
+    coverageWeight: 0.95,
+    centerPx: [anchor.x + 1.4, anchor.y + 0.5],
+    inverseConic: [1, 0, 1],
+    opacity: 0.85,
+  });
+  const record = buildFinalColorAccumulationTraceRecord({
+    anchorPixel: anchor,
+    contributors: [dullSupport, brightSupport],
+    sourceColors: new Map([
+      [dullSupport.splatIndex, [0.25, 0.18, 0.12]],
+      [brightSupport.splatIndex, [1, 0.84, 0.45]],
+    ]),
+    retainedContributors: [dullSupport, brightSupport],
+    preserveContributorOrder: true,
+    tileSizePx: 16,
+    tileColumns: 216,
+  });
+  const firstStep = record.finalColorAccumulation.steps[0];
+  const brightStep = record.finalColorAccumulation.steps[1];
+  const firstLuma = luma(firstStep.runningColor);
+  const brightSourceLuma = luma(brightStep.sourceColor);
+  const brightContributionLuma = luma(brightStep.contributionColor);
+  const outputLuma = luma(record.finalColorAccumulation.outputColor);
+
+  assert.equal(brightStep.sourceFrontierAlphaSupport, "foreground-spatial-support");
+  assert.equal(
+    brightStep.sourceFrontierRunningColorAuthorityBefore,
+    0,
+    "fixture must exercise unclaimed support color before selected source authority exists",
+  );
+  assert.ok(
+    record.finalColorAccumulation.remainingTransmittance < 0.001,
+    `bright support should still preserve the alpha seal, saw remaining transmittance ${record.finalColorAccumulation.remainingTransmittance}`,
+  );
+  assert.ok(
+    brightSourceLuma > firstLuma * 8,
+    `fixture must expose bright foreground support after dull unclaimed color: bright ${brightSourceLuma}, first ${firstLuma}`,
+  );
+  assert.ok(
+    brightStep.sourceFrontierColorAuthority >= 0.9,
+    `unclaimed bright foreground support should not be luma-throttled by stale dull support: authority ${brightStep.sourceFrontierColorAuthority}`,
+  );
+  assert.ok(
+    brightContributionLuma >= brightSourceLuma * 0.2,
+    `bright support contribution should not remain underpowered: source ${brightSourceLuma}, contribution ${brightContributionLuma}`,
+  );
+  assert.ok(
+    outputLuma > firstLuma * 2.5,
+    `bright support should lift unclaimed foreground color: first ${firstLuma}, output ${outputLuma}`,
+  );
+});
+
 test("source-frontier retention-only late bright support cannot claim selected color authority", () => {
   const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
   const retainedForeground = accumulationContributor({

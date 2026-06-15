@@ -29,6 +29,7 @@ const SOURCE_FRONTIER_FOREGROUND_ALPHA_SUPPORT_SCALE = 8;
 const SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE = 0.5;
 const SOURCE_FRONTIER_COLOR_TRANSFER_GAP_SCALE = 0.1;
 const SOURCE_FRONTIER_COLOR_OCCLUSION_GAP_SCALE = 0.5;
+const SOURCE_FRONTIER_UNCLAIMED_COLOR_LUMA_FLOOR = 0.025;
 
 export function buildFinalColorAccumulationTraceRecord({
   anchorPixel = BLACK_BAND_FINAL_ACCUMULATION_ANCHOR,
@@ -392,6 +393,14 @@ function sourceFrontierSupportColorAuthority(
     (candidateSourceClassMask & SOURCE_FRONTIER_SUPPORT_MASK) !== 0
       ? 1 - clamp01(runningSourceColorAuthority)
       : 1;
+  if (
+    (candidateSourceClassMask & SOURCE_FRONTIER_SUPPORT_MASK) !== 0 &&
+    sourceLuma >= runningLuma &&
+    runningLuma > SOURCE_FRONTIER_UNCLAIMED_COLOR_LUMA_FLOOR &&
+    clamp01(runningSourceColorAuthority) <= 0
+  ) {
+    return 1;
+  }
   if (sourceLuma >= runningLuma) {
     return clamp01(runningLuma / sourceLuma) * nonSelectedAuthorityScale;
   }
