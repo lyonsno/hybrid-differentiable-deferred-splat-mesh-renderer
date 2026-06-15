@@ -3,7 +3,7 @@
 // Pipeline: count → GPU prefix-sum → scatter (with sort keys) → global radix sort → reorder → composite
 // Projection: viewProj Jacobian, viewport/2, +0.3 low-pass, exp(-0.5 * mahalanobis^2)
 // Compositing: back-to-front source-over (matching hardware alpha blend order)
-// Sorting: global radix sort on (tileId << 16 | depth_u16) — no per-tile size limit
+// Sorting: 6-pass radix sort on (tileId:13 | depth:11) — 24-bit key, no per-tile size limit
 
 struct FrameUniforms {
   viewProj: mat4x4f,
@@ -185,11 +185,11 @@ fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
   if (splat.radius <= 0.0) { return; }
   let bounds = footprintBounds(splat.centerPx, splat.radius);
 
-  // Quantize depth to 16 bits for sort key.
-  // NDC depth is [0,1]. We invert so larger value = farther = sorted first (back-to-front).
+  // Sort key: (tileId:13 | depthInverted:11) = 24 bits, sorted in 6 radix passes.
+  // 11-bit depth = 2048 levels. Full float depth is stored in the ref for the compositor.
   let depthClamped = clamp(splat.depthNdc, 0.0, 1.0);
-  let depthU16 = u32(depthClamped * 65535.0);
-  let depthInverted = 65535u - depthU16;
+  let depthU11 = u32(depthClamped * 2047.0);
+  let depthInverted = 2047u - depthU11;
 
   for (var tileY = bounds.y; tileY <= bounds.w; tileY++) {
     for (var tileX = bounds.x; tileX <= bounds.z; tileX++) {
@@ -210,7 +210,7 @@ fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
         tileRefs[refIdx + 7u] = bitcast<u32>(splat.opacity);
 
         // Write radix sort key (values pre-initialized with identity by init pass)
-        radixKeys[linearIdx] = (tileId << 16u) | depthInverted;
+        radixKeys[linearIdx] = (tileId << 11u) | depthInverted;
       }
     }
   }
