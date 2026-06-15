@@ -1,6 +1,9 @@
 import tileSplatCompositeShader from "./shaders/gpu_tile_splat_composite.wgsl?raw";
 import projectSplatsShader from "./shaders/gpu_project_splats.wgsl?raw";
+import tileClassifyShader from "./shaders/gpu_tile_classify.wgsl?raw";
 import tileDepthSortShader from "./shaders/gpu_tile_depth_sort.wgsl?raw";
+import tileBucketSortShader from "./shaders/gpu_tile_bucket_sort.wgsl?raw";
+import tileChunkSortShader from "./shaders/gpu_tile_chunk_sort.wgsl?raw";
 import reorderRefsShader from "./shaders/gpu_reorder_refs.wgsl?raw";
 import { createRadixSort, encodeRadixSortInit, encodeRadixSort, type RadixSortResources } from "./gpuRadixSort.js";
 import prefixSumShader from "./shaders/gpu_prefix_sum.wgsl?raw";
@@ -45,7 +48,10 @@ export interface TileSplatCompositorResources {
   readonly countPipeline: GPUComputePipeline;
   readonly scatterPipeline: GPUComputePipeline;
   readonly reorderPipeline: GPUComputePipeline;
+  readonly classifyPipeline: GPUComputePipeline;
   readonly tileDepthSortPipeline: GPUComputePipeline;
+  readonly bucketSortPipeline: GPUComputePipeline;
+  readonly chunkSortPipeline: GPUComputePipeline;
   readonly compositePipeline: GPUComputePipeline;
   readonly prefixScanPipeline: GPUComputePipeline;
   readonly prefixScanBlockSumsPipeline: GPUComputePipeline;
@@ -55,7 +61,10 @@ export interface TileSplatCompositorResources {
   readonly tileBindGroupLayout: GPUBindGroupLayout;
   readonly sortKeyBindGroupLayout: GPUBindGroupLayout;
   readonly reorderBindGroupLayout: GPUBindGroupLayout;
+  readonly classifyBindGroupLayout: GPUBindGroupLayout;
   readonly tileDepthSortBindGroupLayout: GPUBindGroupLayout;
+  readonly bucketSortBindGroupLayout: GPUBindGroupLayout;
+  readonly chunkSortBindGroupLayout: GPUBindGroupLayout;
   readonly prefixBindGroupLayout: GPUBindGroupLayout;
   readonly projCacheBuffer: GPUBuffer;
   readonly depthBuffer: GPUBuffer;
@@ -67,6 +76,15 @@ export interface TileSplatCompositorResources {
   readonly prefixBlockSumsBuffer: GPUBuffer;
   readonly reorderParamsBuffer: GPUBuffer;
   readonly tileDepthSortParamsBuffer: GPUBuffer;
+  readonly classifyParamsBuffer: GPUBuffer;
+  readonly bucketSortParamsBuffer: GPUBuffer;
+  readonly chunkSortParamsBuffer: GPUBuffer;
+  readonly smallTileListBuffer: GPUBuffer;
+  readonly largeTileListBuffer: GPUBuffer;
+  readonly tileListCountsBuffer: GPUBuffer;
+  readonly largeTileOverflowBasesBuffer: GPUBuffer;
+  readonly chunkRangesBuffer: GPUBuffer;
+  readonly totalChunksBuffer: GPUBuffer;
   readonly prefixParamsBuffer: GPUBuffer;
   readonly radixSort: RadixSortResources;
   destroy(): void;
@@ -104,9 +122,24 @@ export function createTileSplatCompositor(
     code: projectSplatsShader,
   });
 
+  const classifyModule = device.createShaderModule({
+    label: "tile_classify_shader",
+    code: tileClassifyShader,
+  });
+
   const tileDepthSortModule = device.createShaderModule({
     label: "tile_depth_sort_shader",
     code: tileDepthSortShader,
+  });
+
+  const bucketSortModule = device.createShaderModule({
+    label: "tile_bucket_sort_shader",
+    code: tileBucketSortShader,
+  });
+
+  const chunkSortModule = device.createShaderModule({
+    label: "tile_chunk_sort_shader",
+    code: tileChunkSortShader,
   });
 
   const reorderModule = device.createShaderModule({
@@ -177,15 +210,58 @@ export function createTileSplatCompositor(
     ],
   });
 
-  // Per-tile depth sort: 1 uniform + 2 read-only + 1 storage + 1 read-only depth
+  // Small tile depth sort: matches gpu_tile_depth_sort.wgsl bindings
   const tileDepthSortBindGroupLayout = device.createBindGroupLayout({
     label: "tile_depth_sort_bgl",
     entries: [
+      { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },            // tileEntries (rw)
+      { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },  // tileCounts
+      { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },  // depthBuffer
+      { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },  // smallTileList
+      { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },  // tileListCounts
+      { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },  // tileOffsets
+    ],
+  });
+
+  // Classify: 1 uniform + tileCounts + 2 lists + atomic counts + overflow bases
+  const classifyBindGroupLayout = device.createBindGroupLayout({
+    label: "classify_bgl",
+    entries: [
       { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
-      { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
-      { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
-      { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+      { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // tileCounts
+      { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // smallTileList
+      { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // largeTileList
+      { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // tileListCounts
+      { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // largeTileOverflowBases
+    ],
+  });
+
+  // Bucket sort: 1 uniform + entries + overflow + counts + depth + list + chunks + totalChunks + listCounts + offsets
+  const bucketSortBindGroupLayout = device.createBindGroupLayout({
+    label: "bucket_sort_bgl",
+    entries: [
+      { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+      { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // tileEntries
+      { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // overflowBases
+      { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // tileCounts
       { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // depthBuffer
+      { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // largeTileList
+      { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // chunkRanges
+      { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // totalChunks
+      { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // tileListCounts
+      { binding: 9, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // tileOffsets
+    ],
+  });
+
+  // Chunk sort: 1 uniform + entries + depth + chunkRanges + totalChunks
+  const chunkSortBindGroupLayout = device.createBindGroupLayout({
+    label: "chunk_sort_bgl",
+    entries: [
+      { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+      { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // tileEntries
+      { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // depthBuffer
+      { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // chunkRanges
+      { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // totalChunks
     ],
   });
 
@@ -221,9 +297,24 @@ export function createTileSplatCompositor(
     bindGroupLayouts: [reorderBindGroupLayout],
   });
 
+  const classifyLayout = device.createPipelineLayout({
+    label: "classify_pl",
+    bindGroupLayouts: [classifyBindGroupLayout],
+  });
+
   const tileDepthSortLayout = device.createPipelineLayout({
     label: "tile_depth_sort_pl",
     bindGroupLayouts: [tileDepthSortBindGroupLayout],
+  });
+
+  const bucketSortLayout = device.createPipelineLayout({
+    label: "bucket_sort_pl",
+    bindGroupLayouts: [bucketSortBindGroupLayout],
+  });
+
+  const chunkSortLayout = device.createPipelineLayout({
+    label: "chunk_sort_pl",
+    bindGroupLayouts: [chunkSortBindGroupLayout],
   });
 
   const prefixLayout = device.createPipelineLayout({
@@ -256,10 +347,28 @@ export function createTileSplatCompositor(
     compute: { module: reorderModule, entryPoint: "reorder_refs" },
   });
 
+  const classifyPipeline = device.createComputePipeline({
+    label: "classify_tiles",
+    layout: classifyLayout,
+    compute: { module: classifyModule, entryPoint: "classify_tiles" },
+  });
+
   const tileDepthSortPipeline = device.createComputePipeline({
     label: "tile_depth_sort",
     layout: tileDepthSortLayout,
     compute: { module: tileDepthSortModule, entryPoint: "tile_depth_sort" },
+  });
+
+  const bucketSortPipeline = device.createComputePipeline({
+    label: "bucket_sort",
+    layout: bucketSortLayout,
+    compute: { module: bucketSortModule, entryPoint: "bucket_sort" },
+  });
+
+  const chunkSortPipeline = device.createComputePipeline({
+    label: "chunk_sort",
+    layout: chunkSortLayout,
+    compute: { module: chunkSortModule, entryPoint: "chunk_sort" },
   });
 
   const compositePipeline = device.createComputePipeline({
@@ -352,6 +461,69 @@ export function createTileSplatCompositor(
   device.queue.writeBuffer(tileDepthSortParamsBuffer, 0,
     new Uint32Array([plan.mortonTileCount, plan.maxTotalTileRefs, 0, 0]));
 
+  // Classify params
+  const classifyParamsBuffer = device.createBuffer({
+    label: "classify_params",
+    size: 16,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  });
+  device.queue.writeBuffer(classifyParamsBuffer, 0,
+    new Uint32Array([plan.tileColumns, plan.tileRows, plan.mortonTileCount, plan.maxTotalTileRefs]));
+
+  // Tile lists and coordination buffers
+  const maxTiles = plan.tileCount;
+  const smallTileListBuffer = device.createBuffer({
+    label: "small_tile_list",
+    size: Math.max(16, maxTiles * 4),
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+  const largeTileListBuffer = device.createBuffer({
+    label: "large_tile_list",
+    size: Math.max(16, maxTiles * 4),
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+  const tileListCountsBuffer = device.createBuffer({
+    label: "tile_list_counts",
+    size: 16, // [0]=small, [1]=large, [2]=overflow entries
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+  const largeTileOverflowBasesBuffer = device.createBuffer({
+    label: "large_tile_overflow_bases",
+    size: Math.max(16, maxTiles * 4),
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+
+  // Chunk coordination
+  const MAX_CHUNKS = 1024;
+  const chunkRangesBuffer = device.createBuffer({
+    label: "chunk_ranges",
+    size: Math.max(16, MAX_CHUNKS * 8), // 2 u32 per chunk (start, count)
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+  const totalChunksBuffer = device.createBuffer({
+    label: "total_chunks",
+    size: 16,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+
+  // Bucket sort params
+  const bucketSortParamsBuffer = device.createBuffer({
+    label: "bucket_sort_params",
+    size: 16,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  });
+  device.queue.writeBuffer(bucketSortParamsBuffer, 0,
+    new Uint32Array([plan.maxTotalTileRefs * 2, MAX_CHUNKS, 0, 0])); // bufferCapacity = 2× for overflow
+
+  // Chunk sort params
+  const chunkSortParamsBuffer = device.createBuffer({
+    label: "chunk_sort_params",
+    size: 16,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  });
+  device.queue.writeBuffer(chunkSortParamsBuffer, 0,
+    new Uint32Array([MAX_CHUNKS, 0, 0, 0]));
+
   // Reorder params — pre-written, static
   const reorderParamsBuffer = device.createBuffer({
     label: "reorder_params",
@@ -366,12 +538,18 @@ export function createTileSplatCompositor(
 
   return {
     plan,
-    projectPipeline, countPipeline, scatterPipeline, reorderPipeline, tileDepthSortPipeline, compositePipeline,
+    projectPipeline, countPipeline, scatterPipeline, reorderPipeline,
+    classifyPipeline, tileDepthSortPipeline, bucketSortPipeline, chunkSortPipeline, compositePipeline,
     prefixScanPipeline, prefixScanBlockSumsPipeline, prefixPropagatePipeline,
     projectBindGroupLayout, splatBindGroupLayout, tileBindGroupLayout, sortKeyBindGroupLayout,
-    reorderBindGroupLayout, tileDepthSortBindGroupLayout, prefixBindGroupLayout,
+    reorderBindGroupLayout, classifyBindGroupLayout, tileDepthSortBindGroupLayout,
+    bucketSortBindGroupLayout, chunkSortBindGroupLayout, prefixBindGroupLayout,
     projCacheBuffer, depthBuffer, tileCountBuffer, tileOffsetBuffer, tileRefBuffer, tileRefSortedBuffer,
-    frameUniformBuffer, prefixBlockSumsBuffer, reorderParamsBuffer, tileDepthSortParamsBuffer, prefixParamsBuffer,
+    frameUniformBuffer, prefixBlockSumsBuffer, reorderParamsBuffer, tileDepthSortParamsBuffer,
+    classifyParamsBuffer, bucketSortParamsBuffer, chunkSortParamsBuffer,
+    smallTileListBuffer, largeTileListBuffer, tileListCountsBuffer,
+    largeTileOverflowBasesBuffer, chunkRangesBuffer, totalChunksBuffer,
+    prefixParamsBuffer,
     radixSort,
     destroy() {
       projCacheBuffer.destroy();
@@ -413,7 +591,10 @@ export interface TileSplatCompositorBindGroups {
   readonly tileBindGroup: GPUBindGroup;
   readonly sortKeyBindGroup: GPUBindGroup;
   readonly reorderBindGroup: GPUBindGroup;
+  readonly classifyBindGroup: GPUBindGroup;
   readonly tileDepthSortBindGroup: GPUBindGroup;
+  readonly bucketSortBindGroup: GPUBindGroup;
+  readonly chunkSortBindGroup: GPUBindGroup;
   readonly sortedTileBindGroup: GPUBindGroup;
   readonly prefixBindGroup: GPUBindGroup;
 }
@@ -492,16 +673,62 @@ export function createTileSplatBindGroups(
     ],
   });
 
-  // Per-tile depth sort: sorts entries within each tile by full f32 depth
+  // Classify tiles into small/large lists
+  const classifyBindGroup = device.createBindGroup({
+    label: "classify_bg",
+    layout: resources.classifyBindGroupLayout,
+    entries: [
+      { binding: 0, resource: { buffer: resources.classifyParamsBuffer } },
+      { binding: 1, resource: { buffer: resources.tileCountBuffer } },
+      { binding: 2, resource: { buffer: resources.smallTileListBuffer } },
+      { binding: 3, resource: { buffer: resources.largeTileListBuffer } },
+      { binding: 4, resource: { buffer: resources.tileListCountsBuffer } },
+      { binding: 5, resource: { buffer: resources.largeTileOverflowBasesBuffer } },
+    ],
+  });
+
+  // Small tile depth sort (dispatched from smallTileList)
   const tileDepthSortBindGroup = device.createBindGroup({
     label: "tile_depth_sort_bg",
     layout: resources.tileDepthSortBindGroupLayout,
     entries: [
-      { binding: 0, resource: { buffer: resources.tileDepthSortParamsBuffer } },
-      { binding: 1, resource: { buffer: resources.tileOffsetBuffer } },
-      { binding: 2, resource: { buffer: resources.tileCountBuffer } },
-      { binding: 3, resource: { buffer: resources.tileRefSortedBuffer } },
+      { binding: 0, resource: { buffer: resources.tileRefSortedBuffer } }, // tileEntries
+      { binding: 1, resource: { buffer: resources.tileCountBuffer } },
+      { binding: 2, resource: { buffer: resources.depthBuffer } },
+      { binding: 3, resource: { buffer: resources.smallTileListBuffer } },
+      { binding: 4, resource: { buffer: resources.tileListCountsBuffer } },
+      { binding: 5, resource: { buffer: resources.tileOffsetBuffer } },
+    ],
+  });
+
+  // Bucket sort for large tiles
+  const bucketSortBindGroup = device.createBindGroup({
+    label: "bucket_sort_bg",
+    layout: resources.bucketSortBindGroupLayout,
+    entries: [
+      { binding: 0, resource: { buffer: resources.bucketSortParamsBuffer } },
+      { binding: 1, resource: { buffer: resources.tileRefSortedBuffer } }, // tileEntries
+      { binding: 2, resource: { buffer: resources.largeTileOverflowBasesBuffer } },
+      { binding: 3, resource: { buffer: resources.tileCountBuffer } },
       { binding: 4, resource: { buffer: resources.depthBuffer } },
+      { binding: 5, resource: { buffer: resources.largeTileListBuffer } },
+      { binding: 6, resource: { buffer: resources.chunkRangesBuffer } },
+      { binding: 7, resource: { buffer: resources.totalChunksBuffer } },
+      { binding: 8, resource: { buffer: resources.tileListCountsBuffer } },
+      { binding: 9, resource: { buffer: resources.tileOffsetBuffer } },
+    ],
+  });
+
+  // Chunk sort for bucket-sorted chunks
+  const chunkSortBindGroup = device.createBindGroup({
+    label: "chunk_sort_bg",
+    layout: resources.chunkSortBindGroupLayout,
+    entries: [
+      { binding: 0, resource: { buffer: resources.chunkSortParamsBuffer } },
+      { binding: 1, resource: { buffer: resources.tileRefSortedBuffer } }, // tileEntries
+      { binding: 2, resource: { buffer: resources.depthBuffer } },
+      { binding: 3, resource: { buffer: resources.chunkRangesBuffer } },
+      { binding: 4, resource: { buffer: resources.totalChunksBuffer } },
     ],
   });
 
@@ -530,7 +757,7 @@ export function createTileSplatBindGroups(
     ],
   });
 
-  return { projectBindGroup, splatBindGroup, tileBindGroup, sortKeyBindGroup, reorderBindGroup, tileDepthSortBindGroup, sortedTileBindGroup, prefixBindGroup };
+  return { projectBindGroup, splatBindGroup, tileBindGroup, sortKeyBindGroup, reorderBindGroup, classifyBindGroup, tileDepthSortBindGroup, bucketSortBindGroup, chunkSortBindGroup, sortedTileBindGroup, prefixBindGroup };
 }
 
 /**
@@ -641,10 +868,44 @@ export function encodeFullComputeCompositorPipeline(
 
   // Pass 5.5: Per-tile depth sort (full f32 precision, one workgroup per tile)
   {
-    const pass = encoder.beginComputePass({ label: "tile_depth_sort" });
+  // Pass 5.5a: Classify tiles into small/large lists
+    encoder.clearBuffer(resources.tileListCountsBuffer);
+    encoder.clearBuffer(resources.totalChunksBuffer);
+    const classifyPass = encoder.beginComputePass({ label: "classify_tiles" });
+    classifyPass.setPipeline(resources.classifyPipeline);
+    classifyPass.setBindGroup(0, bindGroups.classifyBindGroup);
+    classifyPass.dispatchWorkgroups(1);
+    classifyPass.end();
+  }
+
+  // Pass 5.5b: Small tile bitonic sort (one workgroup per small tile)
+  {
+    const pass = encoder.beginComputePass({ label: "small_tile_sort" });
     pass.setPipeline(resources.tileDepthSortPipeline);
     pass.setBindGroup(0, bindGroups.tileDepthSortBindGroup);
-    pass.dispatchWorkgroups(plan.tileColumns, plan.tileRows);
+    // Dispatch enough workgroups to cover all small tiles.
+    // Workgroups beyond tileListCounts[0] early-out in the shader.
+    pass.dispatchWorkgroups(plan.tileCount);
+    pass.end();
+  }
+
+  // Pass 5.5c: Bucket pre-sort for large tiles (one workgroup per large tile)
+  {
+    const pass = encoder.beginComputePass({ label: "bucket_sort" });
+    pass.setPipeline(resources.bucketSortPipeline);
+    pass.setBindGroup(0, bindGroups.bucketSortBindGroup);
+    // Dispatch enough for all possible large tiles; shader early-outs.
+    pass.dispatchWorkgroups(plan.tileCount);
+    pass.end();
+  }
+
+  // Pass 5.5d: Chunk sort for bucket-sorted chunks (one workgroup per chunk)
+  {
+    const pass = encoder.beginComputePass({ label: "chunk_sort" });
+    pass.setPipeline(resources.chunkSortPipeline);
+    pass.setBindGroup(0, bindGroups.chunkSortBindGroup);
+    // Dispatch maxChunks; shader early-outs beyond totalChunks[0].
+    pass.dispatchWorkgroups(1024);
     pass.end();
   }
 

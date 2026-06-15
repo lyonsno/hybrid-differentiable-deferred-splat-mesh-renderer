@@ -163,7 +163,7 @@ fn composite(
   if (localIdx == 0u) {
     atomicStore(&shTileRefCount, atomicLoad(&tileCounts[tileId]));
   }
-  let refCount = min(workgroupUniformLoad(&shTileRefCount), 4096u);
+  let refCount = workgroupUniformLoad(&shTileRefCount);
   let numBatches = (refCount + BATCH_SIZE - 1u) / BATCH_SIZE;
   var threadDone = false;
 
