@@ -137,6 +137,7 @@ test("compute renderer exposes auxiliary depth-confidence guided DOF", () => {
   assert.match(html, /id="postprocess-dof-focus"/);
   assert.match(html, /id="postprocess-dof-strength"/);
   assert.match(html, /id="postprocess-dof-radius"/);
+  assert.match(html, /<option value="64">64 px<\/option>/);
   assert.match(html, /value="depth"/);
   assert.match(html, /value="confidence"/);
   assert.match(html, /value="dof-mask"/);
@@ -156,7 +157,7 @@ test("compute renderer exposes auxiliary depth-confidence guided DOF", () => {
   assert.match(mainSource, /dofEnabled:\s*controls\.dofEnabled/);
   assert.match(mainSource, /dofFocusDepth:\s*postProcessDofFocusFromPercent/);
   assert.match(mainSource, /dofStrength:\s*postProcessDofStrengthFromPercent/);
-  assert.match(mainSource, /dofRadius:\s*clampInteger/);
+  assert.match(mainSource, /dofRadius:\s*clampInteger\(Number\(controls\.dofRadius\?\.value \?\? 8\),\s*1,\s*64\)/);
   assert.match(mainSource, /postProcessSettings\.dofEnabled \? 1 : 0/);
   assert.match(mainSource, /postProcessSettings\.dofFocusDepth\.toFixed\(5\)/);
   assert.match(mainSource, /postProcessAux:\s*postProcessAux/);
@@ -174,6 +175,7 @@ test("compute renderer exposes auxiliary depth-confidence guided DOF", () => {
   assert.match(postProcessSource, /dofFocusDepth:\s*number/);
   assert.match(postProcessSource, /dofStrength:\s*number/);
   assert.match(postProcessSource, /dofRadius:\s*number/);
+  assert.match(postProcessSource, /clampInteger\(settings\.dofRadius,\s*1,\s*64\)/);
   assert.match(postProcessSource, /inputAuxView:\s*GPUTextureView/);
   assert.match(postProcessSource, /binding:\s*3[\s\S]*texture:\s*\{\s*sampleType:\s*"unfilterable-float"\s*\}/);
   assert.match(postProcessSource, /size:\s*48/);
@@ -190,6 +192,7 @@ test("compute renderer exposes auxiliary depth-confidence guided DOF", () => {
   assert.match(postProcessShader, /POST_PROCESS_DOF_FOCUS_DEAD_ZONE\s*=\s*0\.005/);
   assert.match(postProcessShader, /POST_PROCESS_DOF_COC_SCALE\s*=\s*4\.0/);
   assert.match(postProcessShader, /POST_PROCESS_DOF_DEBUG_MASK_GAMMA\s*=\s*0\.5/);
+  assert.match(postProcessShader, /clamp\(settings\.dofRadius,\s*1u,\s*64u\)/);
   assert.match(postProcessShader, /focusDistance \* POST_PROCESS_DOF_COC_SCALE \* settings\.dofStrength/);
   assert.match(postProcessShader, /fn dof_debug_mask/);
   assert.match(postProcessShader, /vec4f\(vec3f\(dof_debug_mask\(dofMask\)\),\s*1\.0\)/);

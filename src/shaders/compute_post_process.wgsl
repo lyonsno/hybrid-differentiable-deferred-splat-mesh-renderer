@@ -256,7 +256,7 @@ fn dof_circle_of_confusion(coord: vec2i, size: vec2u) -> f32 {
   let depth = clamp(aux.r, 0.0, 1.0);
   let coverageConfidence = clamp(aux.g, 0.0, 1.0);
   let focusDepth = clamp(settings.dofFocusDepth, 0.0, 1.0);
-  let maxRadius = f32(clamp(settings.dofRadius, 1u, 8u));
+  let maxRadius = f32(clamp(settings.dofRadius, 1u, 64u));
   let focusDistance = max(abs(depth - focusDepth) - POST_PROCESS_DOF_FOCUS_DEAD_ZONE, 0.0);
   return clamp(
     focusDistance * POST_PROCESS_DOF_COC_SCALE * settings.dofStrength * coverageConfidence * maxRadius,
@@ -277,7 +277,7 @@ fn dof_sample(coord: vec2i, size: vec2u, originDepth: f32, originCoc: f32, offse
   let sampleCoc = dof_circle_of_confusion(sampleCoord, size);
   let depthDiff = abs(sampleDepth - originDepth);
   let depthWeight = 1.0 - ramp(0.025, 0.16, depthDiff);
-  let blurWeight = clamp(max(originCoc, sampleCoc) / max(f32(clamp(settings.dofRadius, 1u, 8u)), 1.0), 0.05, 1.0);
+  let blurWeight = clamp(max(originCoc, sampleCoc) / max(f32(clamp(settings.dofRadius, 1u, 64u)), 1.0), 0.05, 1.0);
   let weight = max(0.0, depthWeight * blurWeight * max(sampleConfidence, 0.2));
   return vec4f(load_rgb(sampleCoord, size) * weight, weight);
 }
@@ -323,7 +323,7 @@ fn depth_confidence_guided_dof(coord: vec2i, size: vec2u, color: vec3f) -> vec3f
   }
 
   let blurred = sum / max(weightSum, 0.0001);
-  let dofBlend = clamp(originCoc / max(f32(clamp(settings.dofRadius, 1u, 8u)), 1.0), 0.0, 1.0);
+  let dofBlend = clamp(originCoc / max(f32(clamp(settings.dofRadius, 1u, 64u)), 1.0), 0.0, 1.0);
   return mix(color, blurred, dofBlend);
 }
 
@@ -347,7 +347,7 @@ fn fxaa_cas_post_process(@builtin(global_invocation_id) globalId: vec3u) {
   let dofColor = select(casColor, depth_confidence_guided_dof(coord, outputSize, casColor), settings.dofEnabled != 0u);
   let finalColor = max(dofColor, vec3f(0.0));
   let aux = load_aux(coord, outputSize);
-  let dofMask = clamp(dof_circle_of_confusion(coord, outputSize) / max(f32(clamp(settings.dofRadius, 1u, 8u)), 1.0), 0.0, 1.0);
+  let dofMask = clamp(dof_circle_of_confusion(coord, outputSize) / max(f32(clamp(settings.dofRadius, 1u, 64u)), 1.0), 0.0, 1.0);
 
   if (settings.debugView == DEBUG_VIEW_FXAA_MASK) {
     textureStore(postProcessOutput, coord, vec4f(vec3f(fxaaMask), source.a));

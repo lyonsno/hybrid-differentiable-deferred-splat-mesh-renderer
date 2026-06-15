@@ -1190,7 +1190,7 @@ function readPostProcessSettings(controls: PostProcessControls): FxaaCasPostProc
     dofEnabled: controls.dofEnabled?.checked ?? false,
     dofFocusDepth: postProcessDofFocusFromPercent(Number(controls.dofFocus?.value ?? POST_PROCESS_DOF_DEFAULT_FOCUS_PERCENT)),
     dofStrength: postProcessDofStrengthFromPercent(Number(controls.dofStrength?.value ?? 35)),
-    dofRadius: clampInteger(Number(controls.dofRadius?.value ?? 4), 1, 8),
+    dofRadius: clampInteger(Number(controls.dofRadius?.value ?? 8), 1, 64),
   };
 }
 

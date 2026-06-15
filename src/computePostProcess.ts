@@ -109,7 +109,7 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
       u32[7] = settings.dofEnabled ? 1 : 0;
       f32[8] = clampNumber(settings.dofFocusDepth, 0, 1);
       f32[9] = clampNumber(settings.dofStrength, 0, POST_PROCESS_MAX_DOF_STRENGTH);
-      u32[10] = clampInteger(settings.dofRadius, 1, 8);
+      u32[10] = clampInteger(settings.dofRadius, 1, 64);
       u32[11] = 0;
       queue.writeBuffer(settingsBuffer, 0, buffer);
     },
