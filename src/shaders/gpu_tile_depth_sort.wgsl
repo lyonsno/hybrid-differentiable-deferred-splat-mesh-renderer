@@ -1,15 +1,20 @@
-// Per-tile depth sort using odd-even transposition on global memory.
-// After the global radix sort groups refs by Morton tile ID, this pass
-// sorts each tile's refs by depth (slot 1) with full f32 precision.
+// Per-tile depth sort using bitonic sort with logarithmic depth quantization.
+// Adapted from PlayCanvas engine gsplat-local-bitonic.js (MIT license).
+//
+// Each tile entry is 1 u32 (sortRank = projection cache index). Depths are
+// read from a separate depthBuffer indexed by sortRank. The sort reorders
+// tile entries in-place so they're ascending by depth (near first).
+//
+// Supports up to 4096 entries per tile (16KB shared memory).
+// Logarithmic depth quantization adapts precision to each tile's range.
 //
 // Dispatch: (tileColumns, tileRows). One workgroup per tile.
-// 256 threads, each handles one compare-swap pair per round.
-// Sorts up to 512 refs per tile (512 rounds). Tiles with >512 refs
-// get their first 512 sorted; transmittance cutoff handles the rest.
 
-const WG_SIZE = 256u;
-const SORT_CAP = 512u;
-const REF_STRIDE = 8u;
+const BITONIC_WG_SIZE = 256u;
+const MAX_TILE_ENTRIES = 4096u;
+const INDEX_BITS = 12u;
+const INDEX_MASK = 0xFFFu;
+const DEPTH_LEVELS: f32 = 1048575.0; // 2^20 - 1
 
 struct TileSortParams {
   mortonTileCount: u32,
@@ -21,7 +26,8 @@ struct TileSortParams {
 @group(0) @binding(0) var<uniform> params: TileSortParams;
 @group(0) @binding(1) var<storage, read> tileOffsets: array<u32>;
 @group(0) @binding(2) var<storage, read> tileCounts: array<u32>;
-@group(0) @binding(3) var<storage, read_write> sortedRefs: array<u32>;
+@group(0) @binding(3) var<storage, read_write> tileEntries: array<u32>;
+@group(0) @binding(4) var<storage, read> depthBuffer: array<u32>;
 
 fn mortonEncode2D(x: u32, y: u32) -> u32 {
   var mx = x & 0xFFFFu;
@@ -37,14 +43,19 @@ fn mortonEncode2D(x: u32, y: u32) -> u32 {
   return mx | (my << 1u);
 }
 
-// Shared memory for depth keys — sort in shared, swap in global.
-var<workgroup> sDepth: array<u32, 512>;
+fn insertZeroBit(v: u32, bitPos: u32) -> u32 {
+  let mask = (1u << bitPos) - 1u;
+  return ((v >> bitPos) << (bitPos + 1u)) | (v & mask);
+}
+
+var<workgroup> sData: array<u32, 4096>;
+var<workgroup> sDepthMin: atomic<u32>;
+var<workgroup> sDepthMax: atomic<u32>;
 var<workgroup> shTileCount: atomic<u32>;
 
 @compute @workgroup_size(256)
 fn tile_depth_sort(
   @builtin(workgroup_id) groupId: vec3u,
-  @builtin(local_invocation_id) localId: vec3u,
   @builtin(local_invocation_index) localIdx: u32,
 ) {
   let tileX = groupId.x;
@@ -55,46 +66,94 @@ fn tile_depth_sort(
 
   let tileStart = tileOffsets[mortonId];
 
-  // Load tile count uniformly via workgroupUniformLoad
   if (localIdx == 0u) {
     atomicStore(&shTileCount, tileCounts[mortonId]);
   }
   let tileRefCount = workgroupUniformLoad(&shTileCount);
   if (tileRefCount <= 1u) { return; }
 
-  let sortCount = min(tileRefCount, SORT_CAP);
-  let lid = localId.x;
+  let count = min(tileRefCount, MAX_TILE_ENTRIES);
 
-  // Load depth keys into shared memory
-  for (var e = 0u; e < 2u; e++) {
-    let si = lid * 2u + e;
-    if (si < sortCount) {
-      sDepth[si] = sortedRefs[(tileStart + si) * REF_STRIDE + 1u];
+  // --- Phase 1: Load depths into shared memory ---
+  if (localIdx == 0u) {
+    atomicStore(&sDepthMin, 0xFFFFFFFFu);
+    atomicStore(&sDepthMax, 0u);
+  }
+
+  var sortN: u32 = 1u;
+  while (sortN < count) {
+    sortN = sortN << 1u;
+  }
+
+  for (var i: u32 = localIdx; i < sortN; i += BITONIC_WG_SIZE) {
+    if (i < count) {
+      let sortRank = tileEntries[tileStart + i];
+      sData[i] = depthBuffer[sortRank];
     } else {
-      sDepth[si] = 0xFFFFFFFFu;
+      sData[i] = 0xFFFFFFFFu;
     }
   }
+
   workgroupBarrier();
 
-  // Odd-even transposition sort on depth keys in shared memory
-  for (var round = 0u; round < sortCount; round++) {
-    let phase = round & 1u;
-    let i = lid * 2u + phase;
-    let j = i + 1u;
+  // --- Phase 2: Per-tile min/max depth reduction ---
+  for (var i: u32 = localIdx; i < count; i += BITONIC_WG_SIZE) {
+    atomicMin(&sDepthMin, sData[i]);
+    atomicMax(&sDepthMax, sData[i]);
+  }
 
-    if (j < sortCount && sDepth[i] > sDepth[j]) {
-      // Swap depth keys in shared memory
-      let tk = sDepth[i]; sDepth[i] = sDepth[j]; sDepth[j] = tk;
+  workgroupBarrier();
 
-      // Swap full 8-u32 ref records in global memory
-      let baseI = (tileStart + i) * REF_STRIDE;
-      let baseJ = (tileStart + j) * REF_STRIDE;
-      for (var w = 0u; w < REF_STRIDE; w++) {
-        let tmp = sortedRefs[baseI + w];
-        sortedRefs[baseI + w] = sortedRefs[baseJ + w];
-        sortedRefs[baseJ + w] = tmp;
-      }
+  let depthMin = bitcast<f32>(atomicLoad(&sDepthMin));
+  let depthMax = bitcast<f32>(atomicLoad(&sDepthMax));
+
+  let logMin = log(max(depthMin, 1e-6));
+  let logRange = log(max(depthMax, 1e-6)) - logMin;
+  let invLogRange = select(DEPTH_LEVELS / logRange, 0.0, logRange < 1e-10);
+
+  // --- Phase 3: Repack to (depth20 << 12 | localIndex12) ---
+  for (var i: u32 = localIdx; i < sortN; i += BITONIC_WG_SIZE) {
+    if (i < count) {
+      let depth = bitcast<f32>(sData[i]);
+      let logDepth = log(max(depth, 1e-6));
+      let depth20 = min(u32((logDepth - logMin) * invLogRange + 0.5), u32(DEPTH_LEVELS));
+      sData[i] = (depth20 << INDEX_BITS) | i;
+    } else {
+      sData[i] = 0xFFFFFFFFu;
     }
-    workgroupBarrier();
+  }
+
+  workgroupBarrier();
+
+  // --- Phase 4: Bitonic sort on packed values ---
+  for (var k: u32 = 2u; k <= sortN; k = k << 1u) {
+    for (var j: u32 = k >> 1u; j > 0u; j = j >> 1u) {
+      let bitPos = countTrailingZeros(j);
+      let halfN = sortN >> 1u;
+      for (var c: u32 = localIdx; c < halfN; c += BITONIC_WG_SIZE) {
+        let l = insertZeroBit(c, bitPos);
+        let r = l | j;
+
+        let ascending = (l & k) == 0u;
+        let shouldSwap = select(sData[l] < sData[r], sData[l] > sData[r], ascending);
+        if (shouldSwap) {
+          let tmp = sData[l]; sData[l] = sData[r]; sData[r] = tmp;
+        }
+      }
+      workgroupBarrier();
+    }
+  }
+
+  // --- Phase 5: Extract sorted local indices → gather original entries → write back ---
+  // Two-pass: first read original entries by sorted index, then write.
+  for (var i: u32 = localIdx; i < count; i += BITONIC_WG_SIZE) {
+    let localIndex = sData[i] & INDEX_MASK;
+    sData[i] = tileEntries[tileStart + localIndex];
+  }
+
+  workgroupBarrier();
+
+  for (var i: u32 = localIdx; i < count; i += BITONIC_WG_SIZE) {
+    tileEntries[tileStart + i] = sData[i];
   }
 }

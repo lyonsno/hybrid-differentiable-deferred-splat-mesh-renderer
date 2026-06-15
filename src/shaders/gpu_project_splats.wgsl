@@ -35,6 +35,7 @@ struct FrameUniforms {
 @group(0) @binding(4) var<storage, read> opacities: array<f32>;
 @group(0) @binding(5) var<storage, read> sortedIndices: array<u32>;
 @group(0) @binding(6) var<storage, read_write> projCache: array<u32>;
+@group(0) @binding(7) var<storage, read_write> depthBuffer: array<u32>;
 
 // --- Projection math (same as composite shader) ---
 
@@ -76,6 +77,7 @@ fn project_splats(@builtin(global_invocation_id) globalId: vec3u) {
   // Behind camera → write sentinel
   if (centerClip.w <= 0.0) {
     projCache[base + 7u] = 0xFFFFFFFFu; // sentinel: invisible
+    depthBuffer[sortRank] = 0xFFFFFFFFu;
     return;
   }
 
@@ -114,6 +116,7 @@ fn project_splats(@builtin(global_invocation_id) globalId: vec3u) {
   // Invisible splat (degenerate projection)
   if (radius <= 0.0) {
     projCache[base + 7u] = 0xFFFFFFFFu;
+    depthBuffer[sortRank] = 0xFFFFFFFFu;
     return;
   }
 
@@ -140,6 +143,7 @@ fn project_splats(@builtin(global_invocation_id) globalId: vec3u) {
   projCache[base + 4u] = bitcast<u32>(inverseCov2d.z);
   projCache[base + 5u] = bitcast<u32>(depthNdc); // full f32 precision
   projCache[base + 6u] = pack2x16float(vec2f(radius, sourceOpacity));
+  depthBuffer[sortRank] = bitcast<u32>(depthNdc); // separate depth buffer for per-tile sort
   // Pack tile bounds as 4 bytes (supports up to 255 tiles per axis)
   projCache[base + 7u] = (minTileX & 0xFFu) | ((minTileY & 0xFFu) << 8u)
                         | ((maxTileX & 0xFFu) << 16u) | ((maxTileY & 0xFFu) << 24u);
