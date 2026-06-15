@@ -218,10 +218,14 @@ fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
 
 // Reorder pass is a separate shader (gpu_reorder_refs.wgsl) to reduce bind group count.
 
-// --- Pass 6: Composite (back-to-front source-over) ---
+// --- Pass 6: Composite (front-to-back with transmittance cutoff) ---
 // Reads from tileRefs which is bound to the sorted buffer at composite time.
 // tileOffsets and tileCounts define per-tile ranges.
 // The radix sort preserved tile grouping (tileId is the upper 16 bits of the sort key).
+//
+// Iterates refs from nearest to farthest (end of sorted range = nearest because
+// sort key inverts depth). Accumulates color front-to-back and stops when
+// transmittance drops below threshold, skipping the majority of occluded back splats.
 
 @compute @workgroup_size(8, 8, 1)
 fn composite(@builtin(global_invocation_id) globalId: vec3u) {
@@ -237,11 +241,17 @@ fn composite(@builtin(global_invocation_id) globalId: vec3u) {
   let refStart = tileOffsets[tileId];
   let refCount = atomicLoad(&tileCounts[tileId]);
 
-  var composedColor = vec3f(0.02, 0.02, 0.04);
+  // Front-to-back compositing: accumulate premultiplied color and transmittance.
+  // T starts at 1.0 (fully transparent), decreases as splats occlude.
+  var accColor = vec3f(0.0);
+  var T = 1.0;
 
-  for (var i = 0u; i < refCount; i++) {
-    let refIdx = (refStart + i) * TILE_REF_STRIDE;
-    if (refIdx + TILE_REF_STRIDE > frame.totalTileRefs * TILE_REF_STRIDE) { break; }
+  // Iterate from end (nearest splats) to start (farthest).
+  // Sort key = (tileId << 16) | depthInverted, where depthInverted = 65535 - depthU16.
+  // Near splats have high depthInverted → sort to end of tile range.
+  for (var i = refCount; i > 0u; i--) {
+    let refIdx = (refStart + i - 1u) * TILE_REF_STRIDE;
+    if (refIdx + TILE_REF_STRIDE > frame.totalTileRefs * TILE_REF_STRIDE) { continue; }
 
     let splatId = tileRefs[refIdx + 0u];
     if (splatId >= frame.splatCount) { continue; }
@@ -267,8 +277,17 @@ fn composite(@builtin(global_invocation_id) globalId: vec3u) {
     let colorBase = splatId * 3u;
     let sourceColor = vec3f(colors[colorBase], colors[colorBase + 1u], colors[colorBase + 2u]);
 
-    composedColor = sourceColor * alpha + composedColor * (1.0 - alpha);
+    // Front-to-back: color += T * alpha * sourceColor; T *= (1 - alpha)
+    accColor += T * alpha * sourceColor;
+    T *= (1.0 - alpha);
+
+    // Early-out when transmittance is exhausted
+    if (T < TRANSMITTANCE_CUTOFF) { break; }
   }
 
-  textureStore(outputColor, vec2i(globalId.xy), vec4f(composedColor, 1.0));
+  // Blend remaining transmittance with background
+  let bgColor = vec3f(0.02, 0.02, 0.04);
+  let finalColor = accColor + T * bgColor;
+
+  textureStore(outputColor, vec2i(globalId.xy), vec4f(finalColor, 1.0));
 }
