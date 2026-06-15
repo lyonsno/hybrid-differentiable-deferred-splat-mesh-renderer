@@ -194,9 +194,9 @@ import {
 } from "./rendererFidelityProbes/syntheticShapeLoader.js";
 import { getShapeFixture } from "./syntheticShapeFixtures.js";
 
-const POST_PROCESS_DOF_FOCUS_DEPTH_MIN = 0.9;
+const POST_PROCESS_DOF_FOCUS_DEPTH_MIN = 0.95;
 const POST_PROCESS_DOF_FOCUS_DEPTH_MAX = 1;
-const POST_PROCESS_DOF_DEFAULT_FOCUS_PERCENT = 80;
+const POST_PROCESS_DOF_DEFAULT_FOCUS_PERCENT = 50;
 const statsEl = document.getElementById("stats")!;
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 const SORT_BACKEND = "gpu-bitonic-cpu-depth-keys";

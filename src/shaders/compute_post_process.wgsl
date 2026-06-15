@@ -30,6 +30,7 @@ const DEBUG_VIEW_CONFIDENCE = 5u;
 const DEBUG_VIEW_DOF_MASK = 6u;
 const POST_PROCESS_DOF_FOCUS_DEAD_ZONE = 0.005;
 const POST_PROCESS_DOF_COC_SCALE = 4.0;
+const POST_PROCESS_DOF_DEBUG_MASK_GAMMA = 0.5;
 
 fn luma(color: vec3f) -> f32 {
   return dot(color, vec3f(0.299, 0.587, 0.114));
@@ -264,6 +265,10 @@ fn dof_circle_of_confusion(coord: vec2i, size: vec2u) -> f32 {
   );
 }
 
+fn dof_debug_mask(mask: f32) -> f32 {
+  return pow(clamp(mask, 0.0, 1.0), POST_PROCESS_DOF_DEBUG_MASK_GAMMA);
+}
+
 fn dof_sample(coord: vec2i, size: vec2u, originDepth: f32, originCoc: f32, offset: vec2i) -> vec4f {
   let sampleCoord = coord + offset;
   let sampleAux = load_aux(sampleCoord, size);
@@ -355,7 +360,7 @@ fn fxaa_cas_post_process(@builtin(global_invocation_id) globalId: vec3u) {
   } else if (settings.debugView == DEBUG_VIEW_CONFIDENCE) {
     textureStore(postProcessOutput, coord, vec4f(vec3f(clamp(aux.g, 0.0, 1.0)), source.a));
   } else if (settings.debugView == DEBUG_VIEW_DOF_MASK) {
-    textureStore(postProcessOutput, coord, vec4f(vec3f(dofMask), source.a));
+    textureStore(postProcessOutput, coord, vec4f(vec3f(dof_debug_mask(dofMask)), 1.0));
   } else {
     textureStore(postProcessOutput, coord, vec4f(finalColor, source.a));
   }

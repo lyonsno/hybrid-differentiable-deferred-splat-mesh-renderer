@@ -148,7 +148,7 @@ test("compute renderer exposes auxiliary depth-confidence guided DOF", () => {
   assert.match(mainSource, /createTileSplatBindGroups\([\s\S]*computeOutputTexture,\s*computeAuxTexture/);
   assert.match(mainSource, /cc\.postProcess\.encode\(\s*activeEncoder,\s*cc\.outputView,\s*cc\.auxView,\s*cc\.postProcessedView/);
   assert.match(mainSource, /postProcessDofFocusFromPercent/);
-  assert.match(mainSource, /POST_PROCESS_DOF_FOCUS_DEPTH_MIN\s*=\s*0\.\d+/);
+  assert.match(mainSource, /POST_PROCESS_DOF_FOCUS_DEPTH_MIN\s*=\s*0\.95/);
   assert.match(mainSource, /POST_PROCESS_DOF_FOCUS_DEPTH_MAX\s*=\s*1/);
   assert.match(mainSource, /POST_PROCESS_DOF_FOCUS_DEPTH_MIN \+ focusT \* \(POST_PROCESS_DOF_FOCUS_DEPTH_MAX - POST_PROCESS_DOF_FOCUS_DEPTH_MIN\)/);
   assert.doesNotMatch(mainSource, /function postProcessDofFocusFromPercent\([\s\S]*?return clampNumber\(percent,\s*0,\s*100\) \/ 100;\s*\}/);
@@ -189,7 +189,10 @@ test("compute renderer exposes auxiliary depth-confidence guided DOF", () => {
   assert.match(postProcessShader, /fn dof_circle_of_confusion/);
   assert.match(postProcessShader, /POST_PROCESS_DOF_FOCUS_DEAD_ZONE\s*=\s*0\.005/);
   assert.match(postProcessShader, /POST_PROCESS_DOF_COC_SCALE\s*=\s*4\.0/);
+  assert.match(postProcessShader, /POST_PROCESS_DOF_DEBUG_MASK_GAMMA\s*=\s*0\.5/);
   assert.match(postProcessShader, /focusDistance \* POST_PROCESS_DOF_COC_SCALE \* settings\.dofStrength/);
+  assert.match(postProcessShader, /fn dof_debug_mask/);
+  assert.match(postProcessShader, /vec4f\(vec3f\(dof_debug_mask\(dofMask\)\),\s*1\.0\)/);
   assert.doesNotMatch(postProcessShader, /abs\(depth - focusDepth\) - 0\.025/);
   assert.match(postProcessShader, /fn depth_confidence_guided_dof/);
 });
