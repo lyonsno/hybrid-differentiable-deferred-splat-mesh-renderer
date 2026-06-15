@@ -1,5 +1,6 @@
-// Per-tile bitonic sort with streaming merge.
-// DEBUG: passthrough copy to verify pipeline, then real sort below.
+// Per-tile sort: load refs into shared memory, sort by depth, write back.
+// Uses odd-even transposition sort — simple, parallel-friendly, and correct.
+// O(n) parallel steps with 256 threads for up to 512 elements.
 
 const WG_SIZE = 256u;
 const SORT_CAP = 512u;
@@ -36,12 +37,12 @@ fn tile_sort(
 
   let outCount = min(tileRefCount, SORT_CAP);
 
-  // --- Load first batch ---
+  // --- Load first batch (up to 512 elements, 2 per thread) ---
   for (var e = 0u; e < 2u; e++) {
     let si = lid * 2u + e;
     if (si < outCount) {
       let globalIdx = tileStart + si;
-      sKeys[si] = unsortedRefs[globalIdx * REF_STRIDE + 1u];
+      sKeys[si] = unsortedRefs[globalIdx * REF_STRIDE + 1u]; // depth key
       sIdx[si] = globalIdx;
     } else {
       sKeys[si] = 0xFFFFFFFFu;
@@ -50,29 +51,33 @@ fn tile_sort(
   }
   workgroupBarrier();
 
-  // --- Bitonic sort 512 elements (9 stages for 2^9=512) ---
-  for (var stage = 0u; stage < 9u; stage++) {
-    let blockSize = 1u << (stage + 1u);
-    for (var sub = stage + 1u; sub > 0u; sub--) {
-      let stride = 1u << (sub - 1u);
-      workgroupBarrier();
-      for (var e = 0u; e < 2u; e++) {
-        let i = lid * 2u + e;
-        let j = i ^ stride;
-        if (j > i && j < SORT_CAP) {
-          let asc = ((i & blockSize) == 0u);
-          let swap = select(sKeys[i] < sKeys[j], sKeys[i] > sKeys[j], asc);
-          if (swap) {
-            let tk = sKeys[i]; sKeys[i] = sKeys[j]; sKeys[j] = tk;
-            let ti = sIdx[i]; sIdx[i] = sIdx[j]; sIdx[j] = ti;
-          }
-        }
+  // --- Odd-even transposition sort ---
+  // 512 rounds of alternating odd/even compare-swap passes.
+  // Each thread handles two adjacent pairs per round.
+  // Guaranteed to sort N elements in N rounds.
+  for (var round = 0u; round < SORT_CAP; round++) {
+    let phase = round & 1u; // 0 = even pairs (0,1),(2,3),... ; 1 = odd pairs (1,2),(3,4),...
+
+    // Each thread handles one pair
+    let pairBase = lid * 2u + phase;
+    let i = pairBase;
+    let j = pairBase + 1u;
+
+    if (j < SORT_CAP) {
+      if (sKeys[i] > sKeys[j]) {
+        let tk = sKeys[i]; sKeys[i] = sKeys[j]; sKeys[j] = tk;
+        let ti = sIdx[i]; sIdx[i] = sIdx[j]; sIdx[j] = ti;
       }
     }
+    workgroupBarrier();
   }
-  workgroupBarrier();
 
   // --- Stream remaining batches ---
+  // For tiles with >512 refs, merge additional batches of 256.
+  // After the initial sort, [0..511] is sorted ascending.
+  // For each batch: load into back 256, then run 512 rounds of odd-even sort
+  // to merge. Since front 256 is already sorted and back 256 is unsorted,
+  // 256 rounds suffice (new elements bubble at most 256 positions).
   var batchStart = SORT_CAP;
   while (batchStart < tileRefCount) {
     // Replace back 256 with incoming batch
@@ -86,27 +91,21 @@ fn tile_sort(
     }
     workgroupBarrier();
 
-    // Re-sort all 512
-    for (var stage = 0u; stage < 9u; stage++) {
-      let blockSize = 1u << (stage + 1u);
-      for (var sub = stage + 1u; sub > 0u; sub--) {
-        let stride = 1u << (sub - 1u);
-        workgroupBarrier();
-        for (var e = 0u; e < 2u; e++) {
-          let i = lid * 2u + e;
-          let j = i ^ stride;
-          if (j > i && j < SORT_CAP) {
-            let asc = ((i & blockSize) == 0u);
-            let swap = select(sKeys[i] < sKeys[j], sKeys[i] > sKeys[j], asc);
-            if (swap) {
-              let tk = sKeys[i]; sKeys[i] = sKeys[j]; sKeys[j] = tk;
-              let ti = sIdx[i]; sIdx[i] = sIdx[j]; sIdx[j] = ti;
-            }
-          }
+    // 512 rounds to fully sort (overkill but correct)
+    for (var round = 0u; round < SORT_CAP; round++) {
+      let phase = round & 1u;
+      let pairBase = lid * 2u + phase;
+      let i = pairBase;
+      let j = pairBase + 1u;
+
+      if (j < SORT_CAP) {
+        if (sKeys[i] > sKeys[j]) {
+          let tk = sKeys[i]; sKeys[i] = sKeys[j]; sKeys[j] = tk;
+          let ti = sIdx[i]; sIdx[i] = sIdx[j]; sIdx[j] = ti;
         }
       }
+      workgroupBarrier();
     }
-    workgroupBarrier();
 
     batchStart += WG_SIZE;
   }
@@ -122,6 +121,22 @@ fn tile_sort(
     let dstBase = (tileStart + si) * REF_STRIDE;
     for (var w = 0u; w < REF_STRIDE; w++) {
       sortedRefs[dstBase + w] = unsortedRefs[srcBase + w];
+    }
+  }
+
+  // --- Passthrough copy for refs beyond sort cap ---
+  // The sort only handles the nearest 512 refs. Any remaining refs are copied
+  // unsorted so the compositor can still read them (it relies on transmittance
+  // cutoff, not the cap, for early-out).
+  if (tileRefCount > SORT_CAP) {
+    var copyIdx = SORT_CAP + lid;
+    while (copyIdx < tileRefCount) {
+      let globalIdx = tileStart + copyIdx;
+      let base = globalIdx * REF_STRIDE;
+      for (var w = 0u; w < REF_STRIDE; w++) {
+        sortedRefs[base + w] = unsortedRefs[base + w];
+      }
+      copyIdx += WG_SIZE;
     }
   }
 }

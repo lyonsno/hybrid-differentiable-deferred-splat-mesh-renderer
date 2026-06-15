@@ -19,7 +19,6 @@ export async function initGPU(canvas: HTMLCanvasElement): Promise<GPU> {
   }
 
   const timestampsSupported = adapter.features.has("timestamp-query");
-
   const requiredFeatures: GPUFeatureName[] = [];
   if (timestampsSupported) {
     requiredFeatures.push("timestamp-query");

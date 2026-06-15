@@ -39,31 +39,37 @@ You can load another exported first-smoke manifest with the `asset` query parame
 http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json
 ```
 
-The smoke viewer also has a tile-local prepass diagnostic mode:
+### Compute compositor (GPU-sorted tile pipeline)
+
+The compute compositor renders Gaussian splats entirely on the GPU via a tiled
+compute pipeline with per-tile depth sorting:
+
+```
+http://127.0.0.1:5173/?renderer=compute
+```
+
+Pipeline: project all splats → count tile refs → GPU prefix sum → scatter refs
+with radix sort keys → global radix sort (8-pass, 4-bit, stable) → reorder →
+front-to-back composite with transmittance cutoff.
+
+Key features:
+- **Morton-coded tile IDs** — Z-order curve encoding for cache-coherent compositing
+- **Global radix sort** — stable sort on `(mortonTileId << 16 | depthInverted)`, all refs sorted per tile
+- **Hierarchical prefix scan** — proper 3-pass scan (scan → scan_block_sums → propagate)
+- **Front-to-back compositing** — transmittance cutoff at T < 0.001 for early-out
+- **Static camera skip** — sub-1ms frames when viewProj unchanged (composite-only, skip sort)
+- **Bitmask parallel scatter ranking** — countOneBits-based stable ranking in scatter
+
+### Legacy tile-local modes
+
+The older tile-local prepass and visible modes are still available:
 
 ```
 http://127.0.0.1:5173/?renderer=tile-local
-```
-
-This mode still presents the known-good splat plate renderer, but it also builds and dispatches the provisional tile-local coverage/compositor prepass. The overlay reports this honestly as `plate+tile-local-prepass` and includes live tile/ref counts; those counts should change with camera framing as splats enter and leave the viewport.
-
-To show the tile-local path directly, use the visible Gaussian compositor:
-
-```
 http://127.0.0.1:5173/?renderer=tile-local-visible
 ```
 
-This presents the tile-local output texture instead of the plate renderer. It consumes CPU-bridge-populated tile refs, coverage weights, opacity, source colors, and ordered contributions to produce a first real tile-local Gaussian compositor output. It is still deliberately scoped: this does not claim the final GPU ref-builder, SH shading, PBR relighting, mesh integration, or deferred G-buffer path.
-
-The visible tile-local compositor uses plate-rate conic falloff for sample-local coverage. The fixed static dessert witness keeps the plate/tile-local footprint ratio guarded so rim expansion regressions do not get mistaken for alpha or global opacity problems.
-
-The visual smoke harness can compare all three tile-local surfaces in one run:
-
-```
-npm run smoke:visual:real -- --tile-local-comparison --out-dir /tmp/tile-local-visual-perf-comparison
-```
-
-That comparison captures the plate baseline, `plate+tile-local-prepass`, and `renderer=tile-local-visible`; it fails if the visible mode falls back to plate, still presents the bridge-block diagnostic, loses tile-local refs, lacks real Scaniverse evidence, or suffers a catastrophic FPS collapse. See `docs/smoke/tile-local-visual-perf-comparison.md`.
+These use CPU-bridge-populated tile refs and are not the production path.
 
 Smoke handoffs in this renderer repo must distinguish visual smoke from telemetry smoke. Visual smoke asks for image-quality or visual-regression judgment; telemetry smoke asks whether runtime evidence surfaces such as backend labels, trace arrays, timing counters, and observation manifests are alive and correctly populated. See `docs/smoke/smoke-handoff-contract.md`.
 
@@ -86,14 +92,17 @@ Requires Apple Silicon (MLX) for SAM3 segmentation. Outputs `oracle_output.npz` 
 
 ## First-smoke pipeline
 
-The current browser path is a real-splat smoke viewer with the renderer-fidelity baseline landed at `05ceef6`, not the full deferred renderer yet. It:
+The browser path loads real Scaniverse PLY-derived splat assets. With `?renderer=compute`,
+the full GPU compute pipeline handles projection, tiling, sorting, and compositing.
 
-- loads the committed Scaniverse PLY-derived smoke asset
-- decodes packed position/color/opacity/radius rows plus original-ID, scale, and quaternion sidecars
-- uploads separate WebGPU storage buffers for positions, colors, opacities, scales, rotations, and sorted IDs
-- computes view-depth keys on the CPU, then refreshes back-to-front splat IDs through the integrated WebGPU bitonic sort path at a bounded cadence while navigating
-- renders baked-color WebGPU splat plates as projected anisotropic ellipses
-- exposes `window.__MESH_SPLAT_SMOKE__` so visual smoke tests can distinguish real splat evidence from a synthetic harness
+The default (no query param) renders via the legacy splat plate path with CPU depth-key
+sorting and WebGPU bitonic sort. The compute path is the production direction.
+
+Both paths:
+- load the committed Scaniverse PLY-derived smoke asset
+- decode packed position/color/opacity/radius rows plus original-ID, scale, and quaternion sidecars
+- upload separate WebGPU storage buffers for positions, colors, opacities, scales, rotations, and sorted IDs
+- expose `window.__MESH_SPLAT_SMOKE__` so visual smoke tests can distinguish real splat evidence from a synthetic harness
 
 To export a local Scaniverse/3DGS PLY into the first-smoke manifest shape:
 
@@ -111,21 +120,23 @@ src/                           — WebGPU deferred renderer (TypeScript)
   main.ts                        frame loop, scene replacement, stats overlay
   gpu.ts                         WebGPU device, canvas, resize
   camera.ts                      orbit, cursor zoom, view-relative keyboard camera
-  buffers.ts                     buffer/texture creation helpers
-  splats.ts                      first-smoke manifest decode and GPU upload
-  localPly.ts                    browser-side dropped PLY decoder
+  gpuTileSplatCompositor.ts      compute compositor: tiling, sort, composite pipeline
+  gpuRadixSort.ts                8-pass GPU radix sort (4-bit, stable, bitmask scatter)
+  splatPlateRenderer.ts          WebGPU baked-color splat plate pipeline (legacy)
   splatSort.ts                   CPU depth-key generation and settle cadence
   gpuSortPrototype.ts            WebGPU bitonic index sort for smoke-viewer draw order
-  gpuTileCoverage.ts             tile grid, dispatch, and uniform contracts
-  gpuTileCoverageBridge.js        CPU coverage bridge packing for GPU tile buffers
-  gpuTileCoverageRenderer.js      provisional WebGPU tile-local prepass skeleton
-  tileLocalTexturePresenter.ts    fullscreen presenter for tile-local diagnostic output
-  tileLocalPrepassBridge.js       browser smoke bridge from projected splats to tile lists
-  splatPlateRenderer.ts          WebGPU baked-color splat plate pipeline
   realSmokeScene.ts              first-smoke framing and evidence surface
   timestamps.ts                  GPU timestamp query profiling
-  math.ts                        minimal vec3/mat4 types
-  shaders/                       WGSL shader sources
+  shaders/
+    gpu_tile_splat_composite.wgsl  count, scatter, composite (Morton tile IDs)
+    gpu_radix_sort.wgsl            histogram + stable bitmask scatter
+    gpu_prefix_sum.wgsl            hierarchical exclusive prefix sum
+    gpu_reorder_refs.wgsl          ref record reorder by sorted permutation
+    splat_plate.wgsl               legacy plate vertex/fragment shader
+
+docs/
+  attractors/                    architectural direction documents
+    playcanvas-tiled-compute-rasterizer.md  next-gen pipeline plan
 
 preprocessing/                 — Python oracle pipeline
   splat_oracle/
@@ -165,7 +176,28 @@ npm run smoke:visual:real -- --smoke-kind telemetry --decision-requested "confir
 
 ## Status
 
-The preprocessing oracle (Packet L) is feature-complete. Validated on real Scaniverse phone scans with SAM3 MLX running at 90ms/concept on M4 Max. First real-splat visual smoke is passing in the WebGPU viewer against the committed Scaniverse asset. Renderer main at `05ceef6` has the production-spine smoke baseline plus the first tile-local compositor plumbing: Jacobian covariance projection, bounded near-plane LOD policy, fidelity witness diagnostics, fly-camera framing, deferred CPU depth-key refresh, WebGPU bitonic sort, coverage-aware alpha, GPU tile coverage contracts, CPU tile-list bridge packing, a smoke-toggleable `plate+tile-local-prepass` mode, and a visible `tile-local-visible-gaussian-compositor` mode over CPU-bridge tile buffers. The visible tile-local path now uses plate-rate conic falloff and the static dessert witness guards the fixed-view tile-local/plate footprint ratio. This is still a first-smoke renderer-fidelity baseline, not the finished production renderer; the visible tile-local path produces a coarse tile-local Gaussian compositor image, but it does not claim final GPU ref-builder, SH shading, PBR relighting, mesh integration, or deferred G-buffer quality. Remaining triage includes tile-ref/cap retention for the remaining porous dessert body, final GPU tile-list construction, clipping and culling policy, SH evaluation, and deferred G-buffer integration. See [FANOUT.md](FANOUT.md) for the original coordination plan.
+The compute compositor (`?renderer=compute`) is the current production path.
+Fully GPU-driven: projection, tiling, sorting, and compositing run entirely in
+WebGPU compute shaders with no CPU readback stalls. Tested against 94k-splat
+Scaniverse dessert scene and 760k-splat garden scene.
+
+Performance (94k splats, 1280x720):
+- Static camera: sub-1ms frames (composite-only, sort skipped)
+- Moving camera: ~3ms frames
+- 760k splats: 15-25ms median moving
+
+Optimizations landed on this branch:
+- Morton Z-order tile IDs for cache-coherent compositing
+- Hierarchical 3-pass prefix scan (scales to 4K tile counts)
+- Global radix sort with bitmask parallel scatter ranking
+- Front-to-back compositing with transmittance cutoff (skips 80%+ occluded splats)
+- Static camera detection (skip sort when viewProj unchanged)
+
+Next: projection cache + shared-memory tiled rasterizer (PlayCanvas-inspired).
+See `docs/attractors/playcanvas-tiled-compute-rasterizer.md` for the plan.
+
+The preprocessing oracle (Packet L) is feature-complete. Validated on real
+Scaniverse phone scans with SAM3 MLX running at 90ms/concept on M4 Max.
 
 ## License
 

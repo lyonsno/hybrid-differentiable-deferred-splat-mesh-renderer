@@ -1,5 +1,4 @@
 import radixSortShader from "./shaders/gpu_radix_sort.wgsl?raw";
-
 const WG_SIZE = 256;
 const ITEMS_PER_THREAD = 4;
 const ELEMENTS_PER_WG = WG_SIZE * ITEMS_PER_THREAD; // 1024

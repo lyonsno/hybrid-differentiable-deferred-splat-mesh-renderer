@@ -1,5 +1,6 @@
 import tileSplatCompositeShader from "./shaders/gpu_tile_splat_composite.wgsl?raw";
-import tileSortShader from "./shaders/gpu_tile_sort.wgsl?raw";
+import reorderRefsShader from "./shaders/gpu_reorder_refs.wgsl?raw";
+import { createRadixSort, encodeRadixSortInit, encodeRadixSort, type RadixSortResources } from "./gpuRadixSort.js";
 import prefixSumShader from "./shaders/gpu_prefix_sum.wgsl?raw";
 
 // Frame uniforms: viewProj(64) + viewport(8) + tileSizePx(4) + debugMode(4) +
@@ -8,6 +9,23 @@ export const TILE_SPLAT_FRAME_UNIFORM_BYTES = 96;
 const TILE_REF_U32_STRIDE = 8;
 const TILE_REF_BYTES = TILE_REF_U32_STRIDE * 4;
 
+// Morton (Z-order) encoding for 2D coordinates — matches WGSL mortonEncode2D.
+function mortonEncode2D(x: number, y: number): number {
+  let mx = x & 0xFFFF;
+  mx = (mx | (mx << 8)) & 0x00FF00FF;
+  mx = (mx | (mx << 4)) & 0x0F0F0F0F;
+  mx = (mx | (mx << 2)) & 0x33333333;
+  mx = (mx | (mx << 1)) & 0x55555555;
+
+  let my = y & 0xFFFF;
+  my = (my | (my << 8)) & 0x00FF00FF;
+  my = (my | (my << 4)) & 0x0F0F0F0F;
+  my = (my | (my << 2)) & 0x33333333;
+  my = (my | (my << 1)) & 0x55555555;
+
+  return (mx | (my << 1)) >>> 0;
+}
+
 export interface TileSplatCompositorPlan {
   readonly viewportWidth: number;
   readonly viewportHeight: number;
@@ -15,6 +33,7 @@ export interface TileSplatCompositorPlan {
   readonly tileColumns: number;
   readonly tileRows: number;
   readonly tileCount: number;
+  readonly mortonTileCount: number; // Morton-indexed array size (>= tileCount)
   readonly splatCount: number;
   readonly maxTotalTileRefs: number;
 }
@@ -23,13 +42,15 @@ export interface TileSplatCompositorResources {
   readonly plan: TileSplatCompositorPlan;
   readonly countPipeline: GPUComputePipeline;
   readonly scatterPipeline: GPUComputePipeline;
-  readonly tileSortPipeline: GPUComputePipeline;
+  readonly reorderPipeline: GPUComputePipeline;
   readonly compositePipeline: GPUComputePipeline;
   readonly prefixScanPipeline: GPUComputePipeline;
+  readonly prefixScanBlockSumsPipeline: GPUComputePipeline;
   readonly prefixPropagatePipeline: GPUComputePipeline;
   readonly splatBindGroupLayout: GPUBindGroupLayout;
   readonly tileBindGroupLayout: GPUBindGroupLayout;
-  readonly tileSortBindGroupLayout: GPUBindGroupLayout;
+  readonly sortKeyBindGroupLayout: GPUBindGroupLayout;
+  readonly reorderBindGroupLayout: GPUBindGroupLayout;
   readonly prefixBindGroupLayout: GPUBindGroupLayout;
   readonly tileCountBuffer: GPUBuffer;
   readonly tileOffsetBuffer: GPUBuffer;
@@ -37,8 +58,9 @@ export interface TileSplatCompositorResources {
   readonly tileRefSortedBuffer: GPUBuffer;
   readonly frameUniformBuffer: GPUBuffer;
   readonly prefixBlockSumsBuffer: GPUBuffer;
-  readonly tileSortParamsBuffer: GPUBuffer;
+  readonly reorderParamsBuffer: GPUBuffer;
   readonly prefixParamsBuffer: GPUBuffer;
+  readonly radixSort: RadixSortResources;
   destroy(): void;
 }
 
@@ -53,10 +75,11 @@ export function planTileSplatCompositor(input: {
   const tileColumns = Math.ceil(viewportWidth / tileSizePx);
   const tileRows = Math.ceil(viewportHeight / tileSizePx);
   const tileCount = tileColumns * tileRows;
-  // Generous allocation: each splat covers ~4 tiles on average at 32px,
-  // but close-up views can push to ~12. Use splatCount * 16 as safe upper bound.
-  const maxTotalTileRefs = Math.max(tileCount * 512, splatCount * 16);
-  return { viewportWidth, viewportHeight, tileSizePx, tileColumns, tileRows, tileCount, splatCount, maxTotalTileRefs };
+  // Morton-indexed arrays must span the full Morton range
+  const mortonTileCount = mortonEncode2D(tileColumns - 1, tileRows - 1) + 1;
+  const avgRefsPerTile = input.averageRefsPerTile ?? 256;
+  const maxTotalTileRefs = Math.max(tileCount * avgRefsPerTile, splatCount * 8);
+  return { viewportWidth, viewportHeight, tileSizePx, tileColumns, tileRows, tileCount, mortonTileCount, splatCount, maxTotalTileRefs };
 }
 
 export function createTileSplatCompositor(
@@ -68,9 +91,9 @@ export function createTileSplatCompositor(
     code: tileSplatCompositeShader,
   });
 
-  const tileSortModule = device.createShaderModule({
-    label: "tile_sort_shader",
-    code: tileSortShader,
+  const reorderModule = device.createShaderModule({
+    label: "reorder_refs_shader",
+    code: reorderRefsShader,
   });
 
   const prefixSumModule = device.createShaderModule({
@@ -103,15 +126,24 @@ export function createTileSplatCompositor(
     ],
   });
 
-  // Tile sort: 1 uniform + 2 read-only + 1 read-only + 1 storage
-  const tileSortBindGroupLayout = device.createBindGroupLayout({
-    label: "tile_sort_bgl",
+  // @group(2) for scatter: just the radix sort key buffer (1 storage)
+  // Total: 6 + 3 + 1 = 10 storage buffers — at the limit
+  const sortKeyBindGroupLayout = device.createBindGroupLayout({
+    label: "tile_splat_sort_key_bgl",
+    entries: [
+      { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+    ],
+  });
+
+  // Reorder has its own layout (standalone, no splat data needed)
+  // 1 uniform + 1 read-only + 1 read-only + 1 storage = 2 read-only-storage + 1 storage
+  const reorderBindGroupLayout = device.createBindGroupLayout({
+    label: "reorder_refs_bgl",
     entries: [
       { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
       { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
       { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
-      { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
-      { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+      { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
     ],
   });
 
@@ -132,9 +164,14 @@ export function createTileSplatCompositor(
     bindGroupLayouts: [splatBindGroupLayout, tileBindGroupLayout],
   });
 
-  const tileSortLayout = device.createPipelineLayout({
-    label: "tile_sort_pl",
-    bindGroupLayouts: [tileSortBindGroupLayout],
+  const threeGroupLayout = device.createPipelineLayout({
+    label: "tile_splat_3group_pl",
+    bindGroupLayouts: [splatBindGroupLayout, tileBindGroupLayout, sortKeyBindGroupLayout],
+  });
+
+  const reorderLayout = device.createPipelineLayout({
+    label: "reorder_refs_pl",
+    bindGroupLayouts: [reorderBindGroupLayout],
   });
 
   const prefixLayout = device.createPipelineLayout({
@@ -149,17 +186,16 @@ export function createTileSplatCompositor(
     compute: { module: shaderModule, entryPoint: "count_tile_refs" },
   });
 
-  // Scatter no longer needs sort key bind group — just splat + tile groups
   const scatterPipeline = device.createComputePipeline({
     label: "tile_splat_scatter",
-    layout: twoGroupLayout,
+    layout: threeGroupLayout,
     compute: { module: shaderModule, entryPoint: "scatter_tile_refs" },
   });
 
-  const tileSortPipeline = device.createComputePipeline({
-    label: "tile_sort",
-    layout: tileSortLayout,
-    compute: { module: tileSortModule, entryPoint: "tile_sort" },
+  const reorderPipeline = device.createComputePipeline({
+    label: "reorder_refs",
+    layout: reorderLayout,
+    compute: { module: reorderModule, entryPoint: "reorder_refs" },
   });
 
   const compositePipeline = device.createComputePipeline({
@@ -172,6 +208,12 @@ export function createTileSplatCompositor(
     label: "tile_prefix_scan",
     layout: prefixLayout,
     compute: { module: prefixSumModule, entryPoint: "scan" },
+  });
+
+  const prefixScanBlockSumsPipeline = device.createComputePipeline({
+    label: "tile_prefix_scan_block_sums",
+    layout: prefixLayout,
+    compute: { module: prefixSumModule, entryPoint: "scan_block_sums" },
   });
 
   const prefixPropagatePipeline = device.createComputePipeline({
@@ -188,12 +230,12 @@ export function createTileSplatCompositor(
   });
   const tileCountBuffer = device.createBuffer({
     label: "tile_splat_tile_counts",
-    size: Math.max(16, plan.tileCount * 4),
+    size: Math.max(16, plan.mortonTileCount * 4),
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
   });
   const tileOffsetBuffer = device.createBuffer({
     label: "tile_splat_tile_offsets",
-    size: Math.max(16, plan.tileCount * 4),
+    size: Math.max(16, plan.mortonTileCount * 4),
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
   });
   const refBufSize = Math.max(16, plan.maxTotalTileRefs * TILE_REF_BYTES);
@@ -210,34 +252,40 @@ export function createTileSplatCompositor(
 
   const prefixBlockSumsBuffer = device.createBuffer({
     label: "tile_prefix_block_sums",
-    size: Math.max(16, Math.ceil(plan.tileCount / 256) * 4),
+    size: Math.max(16, Math.ceil(plan.mortonTileCount / 256) * 4),
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
   });
 
+  // Prefix sum params — pre-written, static for this plan
   const prefixParamsBuffer = device.createBuffer({
     label: "tile_prefix_params",
     size: 16,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
   device.queue.writeBuffer(prefixParamsBuffer, 0,
-    new Uint32Array([plan.tileCount, 0, 0, 0]));
+    new Uint32Array([plan.mortonTileCount, 0, 0, 0]));
 
-  const tileSortParamsBuffer = device.createBuffer({
-    label: "tile_sort_params",
+  // Reorder params — pre-written, static
+  const reorderParamsBuffer = device.createBuffer({
+    label: "reorder_params",
     size: 16,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
-  device.queue.writeBuffer(tileSortParamsBuffer, 0,
-    new Uint32Array([plan.tileCount, plan.maxTotalTileRefs, TILE_REF_U32_STRIDE, 0]));
+  device.queue.writeBuffer(reorderParamsBuffer, 0,
+    new Uint32Array([plan.maxTotalTileRefs, TILE_REF_U32_STRIDE, 0, 0]));
+
+  // Radix sort resources
+  const radixSort = createRadixSort(device, plan.maxTotalTileRefs);
 
   return {
     plan,
-    countPipeline, scatterPipeline, tileSortPipeline, compositePipeline,
-    prefixScanPipeline, prefixPropagatePipeline,
-    splatBindGroupLayout, tileBindGroupLayout, tileSortBindGroupLayout,
-    prefixBindGroupLayout,
+    countPipeline, scatterPipeline, reorderPipeline, compositePipeline,
+    prefixScanPipeline, prefixScanBlockSumsPipeline, prefixPropagatePipeline,
+    splatBindGroupLayout, tileBindGroupLayout, sortKeyBindGroupLayout,
+    reorderBindGroupLayout, prefixBindGroupLayout,
     tileCountBuffer, tileOffsetBuffer, tileRefBuffer, tileRefSortedBuffer,
-    frameUniformBuffer, prefixBlockSumsBuffer, tileSortParamsBuffer, prefixParamsBuffer,
+    frameUniformBuffer, prefixBlockSumsBuffer, reorderParamsBuffer, prefixParamsBuffer,
+    radixSort,
     destroy() {
       frameUniformBuffer.destroy();
       tileCountBuffer.destroy();
@@ -246,7 +294,8 @@ export function createTileSplatCompositor(
       tileRefSortedBuffer.destroy();
       prefixBlockSumsBuffer.destroy();
       prefixParamsBuffer.destroy();
-      tileSortParamsBuffer.destroy();
+      reorderParamsBuffer.destroy();
+      radixSort.destroy();
     },
   };
 }
@@ -271,7 +320,8 @@ export function writeTileSplatFrameUniforms(
 export interface TileSplatCompositorBindGroups {
   readonly splatBindGroup: GPUBindGroup;
   readonly tileBindGroup: GPUBindGroup;
-  readonly tileSortBindGroup: GPUBindGroup;
+  readonly sortKeyBindGroup: GPUBindGroup;
+  readonly reorderBindGroup: GPUBindGroup;
   readonly sortedTileBindGroup: GPUBindGroup;
   readonly prefixBindGroup: GPUBindGroup;
 }
@@ -314,16 +364,24 @@ export function createTileSplatBindGroups(
     ],
   });
 
-  // Tile sort bind group
-  const tileSortBindGroup = device.createBindGroup({
-    label: "tile_sort_bg",
-    layout: resources.tileSortBindGroupLayout,
+  // Scatter only writes radix sort keys
+  const sortKeyBindGroup = device.createBindGroup({
+    label: "tile_splat_sort_key_bg",
+    layout: resources.sortKeyBindGroupLayout,
     entries: [
-      { binding: 0, resource: { buffer: resources.tileSortParamsBuffer } },
-      { binding: 1, resource: { buffer: resources.tileOffsetBuffer } },
-      { binding: 2, resource: { buffer: resources.tileCountBuffer } },
-      { binding: 3, resource: { buffer: resources.tileRefBuffer } },
-      { binding: 4, resource: { buffer: resources.tileRefSortedBuffer } },
+      { binding: 0, resource: { buffer: resources.radixSort.keyBuffers[0] } },
+    ],
+  });
+
+  // Reorder: standalone bind group
+  const reorderBindGroup = device.createBindGroup({
+    label: "reorder_refs_bg",
+    layout: resources.reorderBindGroupLayout,
+    entries: [
+      { binding: 0, resource: { buffer: resources.reorderParamsBuffer } },
+      { binding: 1, resource: { buffer: resources.radixSort.valueBuffers[0] } },
+      { binding: 2, resource: { buffer: resources.tileRefBuffer } },
+      { binding: 3, resource: { buffer: resources.tileRefSortedBuffer } },
     ],
   });
 
@@ -351,7 +409,7 @@ export function createTileSplatBindGroups(
     ],
   });
 
-  return { splatBindGroup, tileBindGroup, tileSortBindGroup, sortedTileBindGroup, prefixBindGroup };
+  return { splatBindGroup, tileBindGroup, sortKeyBindGroup, reorderBindGroup, sortedTileBindGroup, prefixBindGroup };
 }
 
 /**
@@ -377,7 +435,7 @@ export function encodeCompositeOnly(
 
 /**
  * Encode the full compute compositor pipeline:
- * count → GPU prefix sum → scatter → per-tile sort → composite
+ * count → GPU prefix sum → init sort → scatter (with sort keys) → radix sort → reorder → composite
  *
  * All passes encoded into one command encoder — no CPU readback stalls.
  */
@@ -401,7 +459,7 @@ export function encodeFullComputeCompositorPipeline(
 
   // Pass 2: GPU prefix sum (tile counts → tile offsets)
   {
-    const numWorkgroups = Math.ceil(plan.tileCount / 256);
+    const numWorkgroups = Math.ceil(plan.mortonTileCount / 256);
 
     const scanPass = encoder.beginComputePass({ label: "prefix_scan" });
     scanPass.setPipeline(resources.prefixScanPipeline);
@@ -410,6 +468,14 @@ export function encodeFullComputeCompositorPipeline(
     scanPass.end();
 
     if (numWorkgroups > 1) {
+      // Scan block sums (single workgroup — handles up to 256 blocks = 65536 tiles)
+      const scanBlockPass = encoder.beginComputePass({ label: "prefix_scan_block_sums" });
+      scanBlockPass.setPipeline(resources.prefixScanBlockSumsPipeline);
+      scanBlockPass.setBindGroup(0, bindGroups.prefixBindGroup);
+      scanBlockPass.dispatchWorkgroups(1);
+      scanBlockPass.end();
+
+      // Propagate scanned block prefixes to all elements
       const propagatePass = encoder.beginComputePass({ label: "prefix_propagate" });
       propagatePass.setPipeline(resources.prefixPropagatePipeline);
       propagatePass.setBindGroup(0, bindGroups.prefixBindGroup);
@@ -418,27 +484,34 @@ export function encodeFullComputeCompositorPipeline(
     }
   }
 
-  // Pass 3: Scatter tile refs (no sort keys — tile sort handles ordering)
+  // Pass 2.5: Init radix sort keys (0xFFFFFFFF sentinel) and values (identity)
+  encodeRadixSortInit(encoder, resources.radixSort);
+
+  // Pass 3: Scatter tile refs + write radix sort keys
   encoder.clearBuffer(resources.tileCountBuffer);
   {
     const pass = encoder.beginComputePass({ label: "tile_scatter" });
     pass.setPipeline(resources.scatterPipeline);
     pass.setBindGroup(0, bindGroups.splatBindGroup);
     pass.setBindGroup(1, bindGroups.tileBindGroup);
+    pass.setBindGroup(2, bindGroups.sortKeyBindGroup);
     pass.dispatchWorkgroups(Math.ceil(plan.splatCount / 256));
     pass.end();
   }
 
-  // Pass 4: Per-tile streaming merge-sort (one workgroup per tile)
+  // Pass 4: Global radix sort
+  encodeRadixSort(encoder, resources.radixSort);
+
+  // Pass 5: Reorder ref records by sorted permutation
   {
-    const pass = encoder.beginComputePass({ label: "tile_sort" });
-    pass.setPipeline(resources.tileSortPipeline);
-    pass.setBindGroup(0, bindGroups.tileSortBindGroup);
-    pass.dispatchWorkgroups(plan.tileCount);
+    const pass = encoder.beginComputePass({ label: "tile_reorder" });
+    pass.setPipeline(resources.reorderPipeline);
+    pass.setBindGroup(0, bindGroups.reorderBindGroup);
+    pass.dispatchWorkgroups(Math.ceil(plan.maxTotalTileRefs / 256));
     pass.end();
   }
 
-  // Pass 5: Composite (reads from sorted refs)
+  // Pass 6: Composite (reads from sorted refs)
   {
     const pass = encoder.beginComputePass({ label: "tile_composite" });
     pass.setPipeline(resources.compositePipeline);
