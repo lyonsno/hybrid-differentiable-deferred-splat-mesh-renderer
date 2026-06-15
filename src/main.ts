@@ -168,6 +168,11 @@ import {
 } from "./tileLocalPrepassBridge.js";
 import { createTileLocalTexturePresenter } from "./tileLocalTexturePresenter.js";
 import {
+  createFxaaCasPostProcess,
+  createPostProcessOutputTexture,
+  type FxaaCasPostProcess,
+} from "./computePostProcess.js";
+import {
   splatAttributesFromFixture,
   configureCameraForFixture,
   SHAPE_WITNESS_SPLAT_SCALE,
@@ -255,9 +260,14 @@ interface ActiveSplatScene {
   computeCompositor: {
     resources: TileSplatCompositorResources;
     bindGroups: TileSplatCompositorBindGroups;
+    postProcess: FxaaCasPostProcess;
     outputTexture: GPUTexture;
     outputView: GPUTextureView;
+    postProcessedTexture: GPUTexture;
+    postProcessedView: GPUTextureView;
     frameUniformData: Float32Array;
+    lastSortedViewProj: Float32Array | null;
+    hasSortedRefs: boolean;
   } | null;
 }
 
@@ -1291,22 +1301,9 @@ async function main() {
     }
     let computeCompositorState: ActiveSplatScene["computeCompositor"] = null;
     if (RENDERER_MODE === "compute") {
-      const computePlan = planTileSplatCompositor({
-        viewportWidth: initialViewportWidth,
-        viewportHeight: initialViewportHeight,
-        tileSizePx: 32,
-        splatCount: attributes.count,
-      });
-      const computeResources = createTileSplatCompositor(gpu.device, computePlan);
-      const computeOutputTexture = gpu.device.createTexture({
-        label: "compute_compositor_output",
-        size: [initialViewportWidth, initialViewportHeight],
-        format: "rgba16float",
-        usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
-      });
-      const computeBindGroups = createTileSplatBindGroups(
+      computeCompositorState = createComputeCompositorState(
         gpu.device,
-        computeResources,
+        attributes.count,
         {
           positionBuffer: buffers.positionBuffer,
           colorBuffer: buffers.colorBuffer,
@@ -1315,17 +1312,9 @@ async function main() {
           opacityBuffer: buffers.opacityBuffer,
           sortedIndexBuffer,
         },
-        computeOutputTexture,
+        initialViewportWidth,
+        initialViewportHeight
       );
-      computeCompositorState = {
-        resources: computeResources,
-        bindGroups: computeBindGroups,
-        outputTexture: computeOutputTexture,
-        outputView: computeOutputTexture.createView(),
-        frameUniformData: new Float32Array(TILE_SPLAT_FRAME_UNIFORM_BYTES / 4),
-        lastSortedViewProj: null as Float32Array | null,
-        hasSortedRefs: false,
-      };
     }
     activeScene = {
       attributes,
@@ -1470,31 +1459,33 @@ async function main() {
     // Real Scaniverse uses splatScale=3000 for its own unit system.
     const activeSplatScale = shapeWitnessFixtureId !== null ? SHAPE_WITNESS_SPLAT_SCALE : REAL_SCANIVERSE_SPLAT_SCALE;
     const activeMinRadiusPx = shapeWitnessFixtureId !== null ? SHAPE_WITNESS_MIN_RADIUS_PX : REAL_SCANIVERSE_MIN_RADIUS_PX;
-    if (alphaRefreshed && scene.rendererMode !== "compute") {
-      // Alpha-density compensation is skipped for the compute compositor —
-      // its front-to-back transmittance cutoff already handles dense-tile
-      // overdraw without needing per-splat opacity adjustment.
-      timeFrameStage(frameTiming, "alpha-density", () => {
-        if (scene.tileLocalState?.gpuAlphaDensityCompensation) {
-          scene.tileLocalState.needsDispatch = true;
-          return;
-        }
-        scene.alphaDensityState.summary = writeAlphaDensityCompensatedOpacities(
-          scene.effectiveOpacities,
-          scene.attributes,
-          viewProj,
-          width,
-          height,
-          activeSplatScale,
-          activeMinRadiusPx,
-          ALPHA_DENSITY_MODE
-        );
-        gpu.device.queue.writeBuffer(scene.buffers.opacityBuffer, 0, scene.effectiveOpacities);
-        if (scene.tileLocalState) {
-          syncTileLocalAlphaParams(gpu.device.queue, scene.tileLocalState, scene.effectiveOpacities);
-          scene.tileLocalState.needsDispatch = true;
-        }
-      });
+    if (alphaRefreshed) {
+      if (scene.rendererMode !== "compute") {
+        // Alpha-density compensation is skipped for the compute compositor —
+        // its front-to-back transmittance cutoff already handles dense-tile
+        // overdraw without needing per-splat opacity adjustment.
+        timeFrameStage(frameTiming, "alpha-density", () => {
+          if (scene.tileLocalState?.gpuAlphaDensityCompensation) {
+            scene.tileLocalState.needsDispatch = true;
+            return;
+          }
+          scene.alphaDensityState.summary = writeAlphaDensityCompensatedOpacities(
+            scene.effectiveOpacities,
+            scene.attributes,
+            viewProj,
+            width,
+            height,
+            activeSplatScale,
+            activeMinRadiusPx,
+            ALPHA_DENSITY_MODE
+          );
+          gpu.device.queue.writeBuffer(scene.buffers.opacityBuffer, 0, scene.effectiveOpacities);
+          if (scene.tileLocalState) {
+            syncTileLocalAlphaParams(gpu.device.queue, scene.tileLocalState, scene.effectiveOpacities);
+            scene.tileLocalState.needsDispatch = true;
+          }
+        });
+      }
     }
     const activeNearFadeStart = shapeWitnessFixtureId !== null ? SHAPE_WITNESS_NEAR_FADE_START : REAL_SCANIVERSE_NEAR_FADE_START_NDC;
     const activeNearFadeEnd = shapeWitnessFixtureId !== null ? SHAPE_WITNESS_NEAR_FADE_END : REAL_SCANIVERSE_NEAR_FADE_END_NDC;
@@ -1707,7 +1698,14 @@ async function main() {
     // --- Compute compositor: count → GPU prefix-sum → scatter → radix sort → reorder → composite ---
     let activeEncoder: GPUCommandEncoder = encoder;
     if (scene.rendererMode === "compute" && scene.computeCompositor) {
-      const cc = scene.computeCompositor;
+      const cc = ensureComputeCompositorState(
+        gpu.device,
+        scene,
+        scene.computeCompositor,
+        width,
+        height
+      );
+      scene.computeCompositor = cc;
       const { resources, bindGroups } = cc;
 
       // Update frame uniforms
@@ -1727,6 +1725,14 @@ async function main() {
       } else {
         encodeCompositeOnly(encoder, resources, bindGroups);
       }
+
+      cc.postProcess.encode(
+        activeEncoder,
+        cc.outputView,
+        cc.postProcessedView,
+        width,
+        height
+      );
 
       // Continue with same encoder (no split needed anymore)
     }
@@ -1765,7 +1771,7 @@ async function main() {
     }
 
     if (scene.rendererMode === "compute" && scene.computeCompositor) {
-      tileLocalPresenter.draw(renderPass, scene.computeCompositor.outputView);
+      tileLocalPresenter.draw(renderPass, scene.computeCompositor.postProcessedView);
     } else if (scene.rendererMode === "tile-local-visible" && scene.tileLocalState) {
       tileLocalPresenter.draw(renderPass, scene.tileLocalState.outputView);
     } else {
@@ -9011,6 +9017,99 @@ function ensureTileLocalSceneState(
   return nextState;
 }
 
+function createComputeCompositorState(
+  device: GPUDevice,
+  splatCount: number,
+  splatBuffers: {
+    positionBuffer: GPUBuffer;
+    colorBuffer: GPUBuffer;
+    scaleBuffer: GPUBuffer;
+    rotationBuffer: GPUBuffer;
+    opacityBuffer: GPUBuffer;
+    sortedIndexBuffer: GPUBuffer;
+  },
+  viewportWidth: number,
+  viewportHeight: number
+): NonNullable<ActiveSplatScene["computeCompositor"]> {
+  const computePlan = planTileSplatCompositor({
+    viewportWidth,
+    viewportHeight,
+    tileSizePx: 32,
+    splatCount,
+  });
+  const computeResources = createTileSplatCompositor(device, computePlan);
+  const computeOutputTexture = device.createTexture({
+    label: "compute_compositor_output",
+    size: [viewportWidth, viewportHeight],
+    format: "rgba16float",
+    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+  });
+  const postProcessedTexture = createPostProcessOutputTexture(
+    device,
+    viewportWidth,
+    viewportHeight,
+    "compute_compositor_post_process_output"
+  );
+  const computeBindGroups = createTileSplatBindGroups(
+    device,
+    computeResources,
+    splatBuffers,
+    computeOutputTexture
+  );
+  return {
+    resources: computeResources,
+    bindGroups: computeBindGroups,
+    postProcess: createFxaaCasPostProcess(device),
+    outputTexture: computeOutputTexture,
+    outputView: computeOutputTexture.createView(),
+    postProcessedTexture,
+    postProcessedView: postProcessedTexture.createView(),
+    frameUniformData: new Float32Array(TILE_SPLAT_FRAME_UNIFORM_BYTES / 4),
+    lastSortedViewProj: null,
+    hasSortedRefs: false,
+  };
+}
+
+function ensureComputeCompositorState(
+  device: GPUDevice,
+  scene: ActiveSplatScene,
+  state: NonNullable<ActiveSplatScene["computeCompositor"]>,
+  viewportWidth: number,
+  viewportHeight: number
+): NonNullable<ActiveSplatScene["computeCompositor"]> {
+  if (
+    state.resources.plan.viewportWidth === viewportWidth &&
+    state.resources.plan.viewportHeight === viewportHeight
+  ) {
+    return state;
+  }
+  const nextState = createComputeCompositorState(
+    device,
+    scene.count,
+    {
+      positionBuffer: scene.buffers.positionBuffer,
+      colorBuffer: scene.buffers.colorBuffer,
+      scaleBuffer: scene.buffers.scaleBuffer,
+      rotationBuffer: scene.buffers.rotationBuffer,
+      opacityBuffer: scene.buffers.opacityBuffer,
+      sortedIndexBuffer: scene.sortedIndexBuffer,
+    },
+    viewportWidth,
+    viewportHeight
+  );
+  destroyComputeCompositorState(state);
+  return nextState;
+}
+
+function destroyComputeCompositorState(state: ActiveSplatScene["computeCompositor"]): void {
+  if (!state) {
+    return;
+  }
+  state.resources.destroy();
+  state.outputTexture.destroy();
+  state.postProcessedTexture.destroy();
+}
+
 function captureCurrentTileLocalSignature(
   viewMatrix: Float32Array,
   viewProj: Float32Array,
@@ -10091,6 +10190,7 @@ function destroySplatScene(scene: ActiveSplatScene | null): void {
   if (scene.tileLocalState) {
     destroyTileLocalSceneState(scene.tileLocalState);
   }
+  destroyComputeCompositorState(scene.computeCompositor);
   scene.buffers.positionBuffer.destroy();
   scene.buffers.colorBuffer.destroy();
   scene.buffers.opacityBuffer.destroy();
