@@ -1292,7 +1292,7 @@ async function main() {
       const computePlan = planTileSplatCompositor({
         viewportWidth: initialViewportWidth,
         viewportHeight: initialViewportHeight,
-        tileSizePx: 32,
+        tileSizePx: 16,
         splatCount: attributes.count,
       });
       const computeResources = createTileSplatCompositor(gpu.device, computePlan);
