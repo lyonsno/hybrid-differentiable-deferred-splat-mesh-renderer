@@ -163,9 +163,6 @@ fn composite(
   if (localIdx == 0u) {
     atomicStore(&shTileRefCount, atomicLoad(&tileCounts[tileId]));
   }
-  // Cap at sort capacity — entries beyond this are unsorted and compositing
-  // them in wrong order corrupts transmittance. 4096 sorted nearest-depth
-  // entries should saturate transmittance for any tile.
   let refCount = min(workgroupUniformLoad(&shTileRefCount), 4096u);
   let numBatches = (refCount + BATCH_SIZE - 1u) / BATCH_SIZE;
   var threadDone = false;
