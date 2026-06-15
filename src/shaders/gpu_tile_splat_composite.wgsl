@@ -97,10 +97,9 @@ fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
   let covX = projCache[cacheBase + 2u];
   let covY = projCache[cacheBase + 3u];
   let covZ = projCache[cacheBase + 4u];
-  let radiusDepth = unpack2x16float(projCache[cacheBase + 5u]);
-  let opacityPacked = unpack2x16float(projCache[cacheBase + 6u]);
-  let depthNdc = radiusDepth.y;
-  let opacity = opacityPacked.x;
+  let depthNdc = bitcast<f32>(projCache[cacheBase + 5u]); // full f32 precision
+  let radiusOpacity = unpack2x16float(projCache[cacheBase + 6u]);
+  let opacity = radiusOpacity.y;
 
   // Read tile bounds from cache
   let minTileX = packed & 0xFFu;
@@ -108,10 +107,14 @@ fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
   let maxTileX = (packed >> 16u) & 0xFFu;
   let maxTileY = (packed >> 24u) & 0xFFu;
 
-  // Quantize depth to 16 bits for sort key.
-  let depthClamped = clamp(depthNdc, 0.0, 1.0);
-  let depthU16 = u32(depthClamped * 65535.0);
-  let depthInverted = 65535u - depthU16;
+  // Use upper 16 bits of the float bitcast for sort key depth.
+  // IEEE 754 positive floats sort correctly as u32 (ascending = near to far).
+  // We invert so near splats sort to the end (high key → end of tile range).
+  // Upper 16 bits capture exponent + upper mantissa = logarithmic precision,
+  // much better than linear quantization for resolving nearby depths.
+  let depthU32 = bitcast<u32>(max(depthNdc, 0.0));
+  let depthUpper16 = depthU32 >> 16u;
+  let depthInverted = 0xFFFFu - depthUpper16;
 
   let splatId = sortedIndices[sortRank];
 
