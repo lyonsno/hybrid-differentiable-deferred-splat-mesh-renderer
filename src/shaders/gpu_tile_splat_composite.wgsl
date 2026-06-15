@@ -49,10 +49,9 @@ const PROJ_STRIDE = 8u;
 
 @group(1) @binding(0) var<storage, read_write> tileCounts: array<atomic<u32>>;
 @group(1) @binding(1) var<storage, read_write> tileOffsets: array<u32>;
-@group(1) @binding(2) var<storage, read_write> tileRefs: array<u32>;
+@group(1) @binding(2) var<storage, read_write> tileEntries: array<u32>; // 1 u32 per entry: sortRank
 @group(1) @binding(3) var outputColor: texture_storage_2d<rgba16float, write>;
-
-const TILE_REF_STRIDE = 8u;
+@group(1) @binding(4) var<storage, read> depthBuffer: array<u32>; // full f32 depth per visible splat
 
 // --- Pass 1: Count (reads tile bounds from projection cache) ---
 @compute @workgroup_size(256)
@@ -91,28 +90,11 @@ fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
   let packed = projCache[cacheBase + 7u];
   if (packed == 0xFFFFFFFFu) { return; } // invisible sentinel
 
-  // Read projected data from cache
-  let centerPxX = projCache[cacheBase + 0u];
-  let centerPxY = projCache[cacheBase + 1u];
-  let covX = projCache[cacheBase + 2u];
-  let covY = projCache[cacheBase + 3u];
-  let covZ = projCache[cacheBase + 4u];
-  let depthNdc = bitcast<f32>(projCache[cacheBase + 5u]); // full f32 precision
-  let radiusOpacity = unpack2x16float(projCache[cacheBase + 6u]);
-  let opacity = radiusOpacity.y;
-
   // Read tile bounds from cache
   let minTileX = packed & 0xFFu;
   let minTileY = (packed >> 8u) & 0xFFu;
   let maxTileX = (packed >> 16u) & 0xFFu;
   let maxTileY = (packed >> 24u) & 0xFFu;
-
-  // Sort key: just the Morton tile ID. The global radix sort groups refs by
-  // tile (4 passes × 4 bits = 16 bits). Depth ordering within each tile is
-  // handled by a separate per-tile sort pass using full f32 precision from
-  // the ref record's depth field.
-
-  let splatId = sortedIndices[sortRank];
 
   for (var tileY = minTileY; tileY <= maxTileY; tileY++) {
     for (var tileX = minTileX; tileX <= maxTileX; tileX++) {
@@ -120,19 +102,12 @@ fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
       let slot = atomicAdd(&tileCounts[tileId], 1u);
       let baseOffset = tileOffsets[tileId];
       let linearIdx = baseOffset + slot;
-      let refIdx = linearIdx * TILE_REF_STRIDE;
-      if (refIdx + TILE_REF_STRIDE <= frame.totalTileRefs * TILE_REF_STRIDE) {
-        // Write ref data (populated from projection cache)
-        tileRefs[refIdx + 0u] = splatId;
-        tileRefs[refIdx + 1u] = bitcast<u32>(depthNdc);
-        tileRefs[refIdx + 2u] = centerPxX;
-        tileRefs[refIdx + 3u] = centerPxY;
-        tileRefs[refIdx + 4u] = covX;
-        tileRefs[refIdx + 5u] = covY;
-        tileRefs[refIdx + 6u] = covZ;
-        tileRefs[refIdx + 7u] = bitcast<u32>(opacity);
+      if (linearIdx < frame.totalTileRefs) {
+        // Tile entry: just the sortRank (projection cache index).
+        // The per-tile sort and compositor read projected data from projCache.
+        tileEntries[linearIdx] = sortRank;
 
-        // Sort key: Morton tile ID only. Per-tile depth sort is a separate pass.
+        // Sort key: Morton tile ID only. Per-tile depth sort handles ordering.
         radixKeys[linearIdx] = tileId;
       }
     }
@@ -195,30 +170,33 @@ fn composite(
   // Iterate batches forward (nearest first).
   // Per-tile depth sort orders ascending: near splats at the start of tile range.
   for (var batchIdx: u32 = 0u; batchIdx < numBatches; batchIdx++) {
-    // Load one splat per thread into shared memory
-    let refOffset = batchIdx * BATCH_SIZE + localIdx;
-    if (refOffset < refCount) {
-      let refIdx = (refStart + refOffset) * TILE_REF_STRIDE;
+    // Load one splat per thread into shared memory from projection cache
+    let entryOffset = batchIdx * BATCH_SIZE + localIdx;
+    if (entryOffset < refCount) {
+      let sortRank = tileEntries[refStart + entryOffset];
+      let cacheBase = sortRank * PROJ_STRIDE;
 
-      let splatId = tileRefs[refIdx + 0u];
       shCenter[localIdx] = vec2f(
-        bitcast<f32>(tileRefs[refIdx + 2u]),
-        bitcast<f32>(tileRefs[refIdx + 3u]),
+        bitcast<f32>(projCache[cacheBase + 0u]),
+        bitcast<f32>(projCache[cacheBase + 1u]),
       );
       // Store evaluation coefficients: cx*-0.5, cy*-0.5, -cxy
-      let covX = bitcast<f32>(tileRefs[refIdx + 4u]);
-      let covY = bitcast<f32>(tileRefs[refIdx + 5u]);
-      let covZ = bitcast<f32>(tileRefs[refIdx + 6u]);
+      let covX = bitcast<f32>(projCache[cacheBase + 2u]);
+      let covY = bitcast<f32>(projCache[cacheBase + 3u]);
+      let covZ = bitcast<f32>(projCache[cacheBase + 4u]);
       shCoeffs[localIdx] = vec3f(covX * -0.5, covZ * -0.5, -covY);
 
-      let opacity = bitcast<f32>(tileRefs[refIdx + 7u]);
+      let radiusOpacity = unpack2x16float(projCache[cacheBase + 6u]);
+      let opacity = radiusOpacity.y;
+
+      // Resolve original splatId for color lookup
+      let splatId = sortedIndices[sortRank];
       let colorBase = splatId * 3u;
       shColor[localIdx] = vec4f(
         colors[colorBase], colors[colorBase + 1u], colors[colorBase + 2u],
         opacity,
       );
     } else {
-      // Sentinel: zero opacity → skipped by alpha threshold
       shColor[localIdx] = vec4f(0.0);
     }
 
