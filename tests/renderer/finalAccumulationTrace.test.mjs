@@ -1253,6 +1253,68 @@ test("source-frontier bright support cannot bootstrap foreground color from clea
   );
 });
 
+test("source-frontier bright support cannot bootstrap material support color from clear sequence", () => {
+  const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
+  const firstBrightSupport = accumulationContributor({
+    anchor,
+    tileIndex: tileIndexForAnchor(anchor),
+    splatIndex: 941,
+    originalId: 941,
+    viewRank: 0,
+    sourceRole: "foreground-sealing",
+    role: "foreground-sealing",
+    candidateSourceClassMask: 8,
+    coverageWeight: 0.95,
+    centerPx: [anchor.x + 1.4, anchor.y + 0.5],
+    inverseConic: [1, 0, 1],
+    opacity: 0.85,
+  });
+  const secondBrightSupport = accumulationContributor({
+    anchor,
+    tileIndex: tileIndexForAnchor(anchor),
+    splatIndex: 942,
+    originalId: 942,
+    viewRank: 1,
+    sourceRole: "foreground-sealing",
+    role: "foreground-sealing",
+    candidateSourceClassMask: 8,
+    coverageWeight: 0.95,
+    centerPx: [anchor.x + 1.4, anchor.y + 0.5],
+    inverseConic: [1, 0, 1],
+    opacity: 0.85,
+  });
+  const record = buildFinalColorAccumulationTraceRecord({
+    anchorPixel: anchor,
+    contributors: [firstBrightSupport, secondBrightSupport],
+    sourceColors: new Map([
+      [firstBrightSupport.splatIndex, [1, 0.84, 0.45]],
+      [secondBrightSupport.splatIndex, [1, 0.84, 0.45]],
+    ]),
+    retainedContributors: [firstBrightSupport, secondBrightSupport],
+    preserveContributorOrder: true,
+    clearColor: [0.03, 0.03, 0.03],
+    tileSizePx: 16,
+    tileColumns: 216,
+  });
+  const firstStep = record.finalColorAccumulation.steps[0];
+  const secondStep = record.finalColorAccumulation.steps[1];
+
+  assert.equal(secondStep.sourceFrontierAlphaSupport, "foreground-spatial-support");
+  assert.equal(
+    secondStep.sourceFrontierRunningColorAuthorityBefore,
+    0,
+    "fixture must stay free of selected-source color authority before the second support",
+  );
+  assert.ok(
+    firstStep.sourceFrontierColorAuthority <= 0.25,
+    `first support should remain clear-throttled: ${firstStep.sourceFrontierColorAuthority}`,
+  );
+  assert.ok(
+    secondStep.sourceFrontierColorAuthority <= 0.25,
+    `second support must not receive full authority from a clear-seeded prior support: ${secondStep.sourceFrontierColorAuthority}`,
+  );
+});
+
 test("source-frontier retention-only late bright support cannot claim selected color authority", () => {
   const anchor = PIXEL_CONTRIBUTOR_TRACE_SCHEMA.anchors[0];
   const retainedForeground = accumulationContributor({

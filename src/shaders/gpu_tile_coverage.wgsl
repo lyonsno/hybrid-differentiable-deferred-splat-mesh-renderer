@@ -55,6 +55,7 @@ const SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE = 0.5;
 const SOURCE_FRONTIER_COLOR_TRANSFER_GAP_SCALE = 0.1;
 const SOURCE_FRONTIER_COLOR_OCCLUSION_GAP_SCALE = 0.5;
 const SOURCE_FRONTIER_UNCLAIMED_COLOR_LUMA_FLOOR = 0.025;
+const SOURCE_FRONTIER_SUPPORT_COLOR_MATERIAL_ALPHA_FLOOR = 0.05;
 const SOURCE_FRONTIER_FOREGROUND_RETENTION_SCORE_FLOOR = 224u;
 
 struct SplatShape {
@@ -752,7 +753,8 @@ fn source_frontier_support_color_authority(
 fn source_frontier_support_color_material_seed(sourceFrontierClassMask: u32, colorAlpha: f32) -> f32 {
   if (
     (sourceFrontierClassMask & CANDIDATE_SOURCE_CLASS_SUPPORT_MASK) != 0u &&
-    (sourceFrontierClassMask & (CANDIDATE_SOURCE_CLASS_RETENTION_MASK | CANDIDATE_SOURCE_CLASS_COVERAGE_MASK)) == 0u
+    (sourceFrontierClassMask & (CANDIDATE_SOURCE_CLASS_RETENTION_MASK | CANDIDATE_SOURCE_CLASS_COVERAGE_MASK)) == 0u &&
+    clamp(colorAlpha, 0.0, 1.0) >= SOURCE_FRONTIER_SUPPORT_COLOR_MATERIAL_ALPHA_FLOOR
   ) {
     return clamp(colorAlpha, 0.0, 1.0);
   }

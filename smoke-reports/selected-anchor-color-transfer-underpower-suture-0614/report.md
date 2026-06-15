@@ -1,16 +1,16 @@
 # Static Dessert Witness Report
 
 - Status: FAIL
-- Generated: 2026-06-15T02:12:46.605Z
+- Generated: 2026-06-15T03:32:00.753Z
 - Base URL: http://127.0.0.1:64114/?renderer=tile-local-visible&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256
 - Operator smoke URL: http://127.0.0.1:64114/?renderer=tile-local-visible&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256
-- Analysis JSON: local-only `analysis.json` (not committed; this report carries the durable classification metrics)
+- Analysis JSON: `analysis.json`
 
 ## Smoke Handoff
 
 - Smoke kind: visual
-- Decision requested: review finding disposition for selected-anchor support color guard
-- Expected visual delta: no visual closure expected; clear-bootstrap guard should preserve existing diagnostic classification while avoiding support-only clear color authority
+- Decision requested: rereview finding disposition for selected-anchor support material clear-bootstrap guard
+- Expected visual delta: no visual closure expected; two-support clear-bootstrap guard should preserve selected-anchor diagnostic classification without support-only clear-sequence full authority
 - Evidence surface: static dessert witness report and committed PNG captures
 
 
@@ -19,11 +19,11 @@
 - Asset path: /smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json
 - Viewport: 1280x720
 - Tile grid: 80x45
-- Total tile refs: 14946
+- Total tile refs: 14970
 - Max tile refs per tile: 64
 - Projected tile refs before cap: 714772
-- Retained tile refs after cap: 14946
-- Evicted tile refs by cap: 699826
+- Retained tile refs after cap: 14970
+- Evicted tile refs by cap: 699802
 - Capped tiles: 0
 - Saturated retained tiles: 0
 - Max projected refs per tile: 64
@@ -36,8 +36,8 @@
 - Plate/tile-local same asset: true
 - Plate/tile-local same viewport: true
 - Plate changed pixels: 3.407%
-- Tile-local changed pixels: 5.517%
-- Tile-local/plate changed-pixel ratio: 1.61919622953952 (max 2)
+- Tile-local changed pixels: 5.518%
+- Tile-local/plate changed-pixel ratio: 1.6193554550665563 (max 2)
 - Rim crop source centers: 87499
 - Rim crop projected support splats: 88901
 - Rim crop near-floor minor splats: 47346
@@ -58,11 +58,11 @@
 - Capture: visual-gap-trace
 - Screenshot: `visual-gap-trace.png`
 - Derived anchor count: 3
-- Trace changed pixels: 5.458%
+- Trace changed pixels: 5.532%
 
-- visual-gap-1@588,368: present; score 229.5; plate delta 194.333; tile-local delta 41.333; ordered-present/retained-foreground-identity-survives-to-final-accumulation; steps 64; alpha 0.999586871532; remaining T 0.000413128468; foreground 48; foreground alpha 0.999587
-- visual-gap-2@784,384: present; score 168; plate delta 137.667; tile-local delta 25.667; ordered-present/retained-foreground-identity-survives-to-final-accumulation; steps 63; alpha 0.902621608982; remaining T 0.097378391018; foreground 48; foreground alpha 0.902622
-- visual-gap-3@656,308: present; score 118.5; plate delta 115.667; tile-local delta 36.667; ordered-present/retained-foreground-identity-survives-to-final-accumulation; steps 62; alpha 0.998930429469; remaining T 0.001069570531; foreground 48; foreground alpha 0.99893
+- visual-gap-1@564,376: present; score 194; plate delta 213.667; tile-local delta 84.333; ordered-present/retained-foreground-identity-survives-to-final-accumulation; steps 63; alpha 1; remaining T 0; foreground 48; foreground alpha 1
+- visual-gap-2@784,384: present; score 148; plate delta 137.667; tile-local delta 39; ordered-present/retained-foreground-identity-survives-to-final-accumulation; steps 63; alpha 0.938823461108; remaining T 0.061176538892; foreground 48; foreground alpha 0.938823
+- visual-gap-3@656,424: present; score 135; plate delta 127.333; tile-local delta 37.333; ordered-present/retained-foreground-identity-survives-to-final-accumulation; steps 62; alpha 0.999999963632; remaining T 3.6368e-8; foreground 48; foreground alpha 1
 
 ## Operator-Visible Bad Pixel Trace
 
@@ -70,15 +70,15 @@
 - Capture: operator-visible-bad-pixel-trace
 - Screenshot: `operator-visible-bad-pixel-trace.png`
 - Derived anchor count: 3
-- Trace changed pixels: 5.543%
+- Trace changed pixels: 5.487%
 - Trace/canvas parity: trace-canvas-match
 - Trace/canvas parity source: live-compositor-input-readback
 - Trace/canvas parity mismatches: 0; missing anchors: none; max delta: 0
-- Trace model/live parity: match; mismatches: none; max delta: 0
+- Trace model/live parity: match; mismatches: none; max delta: 1
 
-- operator-bad-pixel-1@569,407 (operator-visible-bright-outlier): present; score 361.302; plate luma 47.878; final luma 206.179; output luma 179.348; ordered-present/retained-foreground-identity-survives-to-final-accumulation; steps 63; alpha 1; remaining T 0; foreground 48; foreground alpha 1; rgb provenance selected-source-color-transferred-still-mismatched (source luma 255, contribution luma 93.71, color/alpha transfer 0.278); parity match delta 0; predicted [201,176,151,255]; sampled [201,176,151,255]; cpu-trace [201,176,151,255]; live [201,176,151,255]; model/live match delta 0
-- operator-bad-pixel-2@589,368 (operator-visible-dark-fallthrough): present; score 359.314; plate luma 210.636; final luma 46.321; output luma 96.212; ordered-present/retained-foreground-identity-survives-to-final-accumulation; steps 64; alpha 0.999999541473; remaining T 4.58527e-7; foreground 48; foreground alpha 1; rgb provenance selected-source-color-underpowered (source luma 254.79, contribution luma 37.529, color/alpha transfer 0.288); parity match delta 1; predicted [131,90,54,255]; sampled [130,90,54,255]; cpu-trace [131,90,54,255]; live [131,90,54,255]; model/live match delta 0
-- operator-bad-pixel-3@765,408 (operator-visible-bright-outlier): present; score 330.335; plate luma 46.031; final luma 189.617; output luma 163.935; ordered-present/retained-foreground-identity-survives-to-final-accumulation; steps 64; alpha 1; remaining T 0; foreground 48; foreground alpha 1; rgb provenance selected-source-color-underpowered (source luma 255, contribution luma 51.94, color/alpha transfer 0.291); parity match delta 0; predicted [177,161,151,255]; sampled [177,161,151,255]; cpu-trace [177,161,151,255]; live [177,161,151,255]; model/live match delta 0
+- operator-bad-pixel-1@756,389 (operator-visible-bright-outlier): present; score 345.507; plate luma 44.656; final luma 195.413; output luma 188.988; ordered-present/retained-foreground-identity-survives-to-final-accumulation; steps 62; alpha 0.999999999462; remaining T 5.38e-10; foreground 48; foreground alpha 1; rgb provenance selected-source-color-transferred-still-mismatched (source luma 255, contribution luma 102.797, color/alpha transfer 0.336); parity match delta 0; predicted [195,188,180,255]; sampled [195,188,180,255]; cpu-trace [195,188,180,255]; live [195,188,180,255]; model/live match delta 0
+- operator-bad-pixel-2@546,367 (operator-visible-dark-fallthrough): present; score 317.498; plate luma 215.899; final luma 67.568; output luma 97.623; ordered-present/retained-foreground-identity-survives-to-final-accumulation; steps 63; alpha 0.999944164014; remaining T 0.000055835986; foreground 48; foreground alpha 0.999944; rgb provenance selected-source-color-transferred-still-mismatched (source luma 240.459, contribution luma 60.941, color/alpha transfer 0.407); parity match delta 1; predicted [129,92,59,255]; sampled [128,92,59,255]; cpu-trace [129,92,59,255]; live [129,92,59,255]; model/live match delta 0
+- operator-bad-pixel-3@632,393 (operator-visible-bright-outlier): present; score 248.34; plate luma 46.652; final luma 154.909; output luma 117.695; ordered-present/retained-foreground-identity-survives-to-final-accumulation; steps 62; alpha 1; remaining T 0; foreground 48; foreground alpha 1; rgb provenance selected-source-color-transferred-still-mismatched (source luma 254.94, contribution luma 94.396, color/alpha transfer 0.266); parity match delta 0; predicted [157,111,77,255]; sampled [157,111,77,255]; cpu-trace [156,110,77,255]; live [157,111,77,255]; model/live match delta 1
 
 ## Operator-Visible Bad Pixel Classification
 
@@ -88,7 +88,7 @@
 - Source route: wgsl-projected-ref-stream-source-frontier
 - Classified anchors: 3 / 3
 - Blockers: 0
-- RGB provenance categories: selected-source-color-transferred-still-mismatched=1, selected-source-color-underpowered=2
+- RGB provenance categories: selected-source-color-transferred-still-mismatched=3
 
 ## Plate Seepage Classification
 
@@ -117,47 +117,47 @@
 - URL: http://127.0.0.1:64114/?renderer=tile-local-visible&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256
 - Screenshot: `final-color.png`
 - Renderer label: tile-local-visible-gaussian-compositor
-- Tile refs: 14945
+- Tile refs: 14942
 - Debug mode: final-color
 - Nonblank: true
-- Changed pixels: 50846 / 921600 (5.517%)
+- Changed pixels: 50851 / 921600 (5.518%)
 
 ### Coverage weight heatmap
 
 - URL: http://127.0.0.1:64114/?renderer=tile-local-visible&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256&tileDebug=coverage-weight
 - Screenshot: `coverage-weight.png`
 - Renderer label: tile-local-visible-debug-coverage-weight
-- Tile refs: 14960
+- Tile refs: 14969
 - Debug mode: coverage-weight
 - Nonblank: true
-- Changed pixels: 50457 / 921600 (5.475%)
+- Changed pixels: 50546 / 921600 (5.485%)
 
 ### Accumulated alpha heatmap
 
 - URL: http://127.0.0.1:64114/?renderer=tile-local-visible&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256&tileDebug=accumulated-alpha
 - Screenshot: `accumulated-alpha.png`
 - Renderer label: tile-local-visible-debug-accumulated-alpha
-- Tile refs: 14965
+- Tile refs: 14933
 - Debug mode: accumulated-alpha
 - Nonblank: true
-- Changed pixels: 68218 / 921600 (7.402%)
+- Changed pixels: 68145 / 921600 (7.394%)
 
 ### Transmittance heatmap
 
 - URL: http://127.0.0.1:64114/?renderer=tile-local-visible&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256&tileDebug=transmittance
 - Screenshot: `transmittance.png`
 - Renderer label: tile-local-visible-debug-transmittance
-- Tile refs: 14973
+- Tile refs: 14988
 - Debug mode: transmittance
 - Nonblank: true
-- Changed pixels: 61921 / 921600 (6.719%)
+- Changed pixels: 63140 / 921600 (6.851%)
 
 ### Tile-ref density heatmap
 
 - URL: http://127.0.0.1:64114/?renderer=tile-local-visible&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256&tileDebug=tile-ref-count
 - Screenshot: `tile-ref-count.png`
 - Renderer label: tile-local-visible-debug-tile-ref-count
-- Tile refs: 14946
+- Tile refs: 14970
 - Debug mode: tile-ref-count
 - Nonblank: true
 - Changed pixels: 608969 / 921600 (66.077%)
@@ -167,30 +167,30 @@
 - URL: http://127.0.0.1:64114/?renderer=tile-local-visible&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256&tileDebug=conic-shape
 - Screenshot: `conic-shape.png`
 - Renderer label: tile-local-visible-debug-conic-shape
-- Tile refs: 14960
+- Tile refs: 14956
 - Debug mode: conic-shape
 - Nonblank: true
-- Changed pixels: 74411 / 921600 (8.074%)
+- Changed pixels: 71913 / 921600 (7.803%)
 
 ### Visual gap final-color trace anchors
 
-- URL: http://127.0.0.1:64114/?renderer=tile-local-visible&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256&traceAnchors=visual-gap-1%40588%2C368%3Aplate-covered-tile-local-missing%3Bvisual-gap-2%40784%2C384%3Aplate-covered-tile-local-missing%3Bvisual-gap-3%40656%2C308%3Aplate-covered-tile-local-missing
+- URL: http://127.0.0.1:64114/?renderer=tile-local-visible&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256&traceAnchors=visual-gap-1%40564%2C376%3Aplate-covered-tile-local-missing%3Bvisual-gap-2%40784%2C384%3Aplate-covered-tile-local-missing%3Bvisual-gap-3%40656%2C424%3Aplate-covered-tile-local-missing
 - Screenshot: `visual-gap-trace.png`
 - Renderer label: tile-local-visible-gaussian-compositor
-- Tile refs: 14946
+- Tile refs: 14954
 - Debug mode: final-color
 - Nonblank: true
-- Changed pixels: 50297 / 921600 (5.458%)
+- Changed pixels: 50982 / 921600 (5.532%)
 
 ### Operator-visible bad-pixel final-color trace anchors
 
-- URL: http://127.0.0.1:64114/?renderer=tile-local-visible&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256&traceAnchors=operator-bad-pixel-1%40569%2C407%3Aoperator-visible-bright-outlier%3Boperator-bad-pixel-2%40589%2C368%3Aoperator-visible-dark-fallthrough%3Boperator-bad-pixel-3%40765%2C408%3Aoperator-visible-bright-outlier
+- URL: http://127.0.0.1:64114/?renderer=tile-local-visible&arenaBackend=gpu&tileSizePx=16&maxRefsPerTile=256&traceAnchors=operator-bad-pixel-1%40756%2C389%3Aoperator-visible-bright-outlier%3Boperator-bad-pixel-2%40546%2C367%3Aoperator-visible-dark-fallthrough%3Boperator-bad-pixel-3%40632%2C393%3Aoperator-visible-bright-outlier
 - Screenshot: `operator-visible-bad-pixel-trace.png`
 - Renderer label: tile-local-visible-gaussian-compositor
-- Tile refs: 14975
+- Tile refs: 14966
 - Debug mode: final-color
 - Nonblank: true
-- Changed pixels: 51082 / 921600 (5.543%)
+- Changed pixels: 50570 / 921600 (5.487%)
 
 
 ## Observation Boundaries

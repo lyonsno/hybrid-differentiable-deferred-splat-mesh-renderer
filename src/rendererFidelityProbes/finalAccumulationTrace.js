@@ -30,6 +30,7 @@ const SOURCE_FRONTIER_SUPPORT_FALLOFF_SCALE = 0.5;
 const SOURCE_FRONTIER_COLOR_TRANSFER_GAP_SCALE = 0.1;
 const SOURCE_FRONTIER_COLOR_OCCLUSION_GAP_SCALE = 0.5;
 const SOURCE_FRONTIER_UNCLAIMED_COLOR_LUMA_FLOOR = 0.025;
+const SOURCE_FRONTIER_SUPPORT_COLOR_MATERIAL_ALPHA_FLOOR = 0.05;
 
 export function buildFinalColorAccumulationTraceRecord({
   anchorPixel = BLACK_BAND_FINAL_ACCUMULATION_ANCHOR,
@@ -425,7 +426,8 @@ function sourceFrontierSupportColorAuthority(
 function sourceFrontierSupportColorMaterialSeed(candidateSourceClassMask, colorAlpha) {
   if (
     (candidateSourceClassMask & SOURCE_FRONTIER_SUPPORT_MASK) !== 0 &&
-    (candidateSourceClassMask & (SOURCE_FRONTIER_RETENTION_MASK | SOURCE_FRONTIER_COVERAGE_MASK)) === 0
+    (candidateSourceClassMask & (SOURCE_FRONTIER_RETENTION_MASK | SOURCE_FRONTIER_COVERAGE_MASK)) === 0 &&
+    clamp01(colorAlpha) >= SOURCE_FRONTIER_SUPPORT_COLOR_MATERIAL_ALPHA_FLOOR
   ) {
     return clamp01(colorAlpha);
   }
