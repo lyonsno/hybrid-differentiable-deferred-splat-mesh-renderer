@@ -194,6 +194,9 @@ import {
 } from "./rendererFidelityProbes/syntheticShapeLoader.js";
 import { getShapeFixture } from "./syntheticShapeFixtures.js";
 
+const POST_PROCESS_DOF_FOCUS_DEPTH_MIN = 0.9;
+const POST_PROCESS_DOF_FOCUS_DEPTH_MAX = 1;
+const POST_PROCESS_DOF_DEFAULT_FOCUS_PERCENT = 80;
 const statsEl = document.getElementById("stats")!;
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 const SORT_BACKEND = "gpu-bitonic-cpu-depth-keys";
@@ -1185,7 +1188,7 @@ function readPostProcessSettings(controls: PostProcessControls): FxaaCasPostProc
     casSharpness: postProcessSharpnessFromPercent(Number(controls.casSharpness?.value ?? 35)),
     debugView: postProcessDebugViewFromSelection(controls.debugView?.value),
     dofEnabled: controls.dofEnabled?.checked ?? false,
-    dofFocusDepth: postProcessDofFocusFromPercent(Number(controls.dofFocus?.value ?? 45)),
+    dofFocusDepth: postProcessDofFocusFromPercent(Number(controls.dofFocus?.value ?? POST_PROCESS_DOF_DEFAULT_FOCUS_PERCENT)),
     dofStrength: postProcessDofStrengthFromPercent(Number(controls.dofStrength?.value ?? 35)),
     dofRadius: clampInteger(Number(controls.dofRadius?.value ?? 4), 1, 8),
   };
@@ -1210,7 +1213,8 @@ function postProcessDebugViewFromSelection(value: string | undefined): FxaaCasDe
 }
 
 function postProcessDofFocusFromPercent(percent: number): number {
-  return clampNumber(percent, 0, 100) / 100;
+  const focusT = clampNumber(percent, 0, 100) / 100;
+  return POST_PROCESS_DOF_FOCUS_DEPTH_MIN + focusT * (POST_PROCESS_DOF_FOCUS_DEPTH_MAX - POST_PROCESS_DOF_FOCUS_DEPTH_MIN);
 }
 
 function postProcessDofStrengthFromPercent(percent: number): number {

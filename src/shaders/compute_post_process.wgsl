@@ -28,6 +28,8 @@ const DEBUG_VIEW_DIFFERENCE = 3u;
 const DEBUG_VIEW_DEPTH = 4u;
 const DEBUG_VIEW_CONFIDENCE = 5u;
 const DEBUG_VIEW_DOF_MASK = 6u;
+const POST_PROCESS_DOF_FOCUS_DEAD_ZONE = 0.005;
+const POST_PROCESS_DOF_COC_SCALE = 4.0;
 
 fn luma(color: vec3f) -> f32 {
   return dot(color, vec3f(0.299, 0.587, 0.114));
@@ -254,8 +256,12 @@ fn dof_circle_of_confusion(coord: vec2i, size: vec2u) -> f32 {
   let coverageConfidence = clamp(aux.g, 0.0, 1.0);
   let focusDepth = clamp(settings.dofFocusDepth, 0.0, 1.0);
   let maxRadius = f32(clamp(settings.dofRadius, 1u, 8u));
-  let focusDistance = max(abs(depth - focusDepth) - 0.025, 0.0);
-  return clamp(focusDistance * settings.dofStrength * coverageConfidence * maxRadius, 0.0, maxRadius);
+  let focusDistance = max(abs(depth - focusDepth) - POST_PROCESS_DOF_FOCUS_DEAD_ZONE, 0.0);
+  return clamp(
+    focusDistance * POST_PROCESS_DOF_COC_SCALE * settings.dofStrength * coverageConfidence * maxRadius,
+    0.0,
+    maxRadius
+  );
 }
 
 fn dof_sample(coord: vec2i, size: vec2u, originDepth: f32, originCoc: f32, offset: vec2i) -> vec4f {
