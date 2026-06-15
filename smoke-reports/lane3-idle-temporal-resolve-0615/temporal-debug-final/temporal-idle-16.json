@@ -1,0 +1,40 @@
+{
+  "id": "temporal-idle-16",
+  "requested": {
+    "fxaa": false,
+    "cas": true,
+    "temporalMode": "idle",
+    "temporalFrames": 16,
+    "temporalView": "final",
+    "sharpness": 50
+  },
+  "stats": "1280×720 | 24 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: cas/8s/r2/sharp 50% | temporal: idle/16/16 | app frame: 0.2ms | slowest app stage: frame-uniforms 0ms | render: 6.48ms",
+  "temporalResolve": {
+    "mode": "idle",
+    "maxHistoryFrames": 16,
+    "debugView": "final",
+    "historyFrameCount": 16,
+    "pendingTemporalResolve": false,
+    "jitterOffsetPx": [
+      0.3125,
+      -0.1875
+    ],
+    "resetReason": "view-or-settings-changed"
+  },
+  "postProcess": {
+    "enabled": true,
+    "fxaaEnabled": false,
+    "casEnabled": true,
+    "sampleRadius": 2,
+    "sampleCount": 8,
+    "casSharpness": 0.75,
+    "debugView": "final"
+  },
+  "rendererLabel": "compute",
+  "splatCount": 94406,
+  "metrics": {
+    "distinctColorCount": 17777,
+    "nonBlack": 27243,
+    "meanRgbSum": 26.984594184027777
+  }
+}

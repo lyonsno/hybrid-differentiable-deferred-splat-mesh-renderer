@@ -1,0 +1,37 @@
+{
+  "controls": {
+    "x": 1084,
+    "y": 8,
+    "width": 188,
+    "height": 345.1875
+  },
+  "stats": {
+    "x": 8,
+    "y": 8,
+    "width": 1062,
+    "height": 66.5625
+  },
+  "overlaps": false,
+  "smokeTemporalResolve": {
+    "mode": "idle",
+    "maxHistoryFrames": 8,
+    "debugView": "difference",
+    "historyFrameCount": 4,
+    "pendingTemporalResolve": false,
+    "jitterOffsetPx": [
+      -0.125,
+      0.125
+    ],
+    "resetReason": "initialized"
+  },
+  "smokePostProcess": {
+    "enabled": true,
+    "fxaaEnabled": true,
+    "casEnabled": true,
+    "sampleRadius": 2,
+    "sampleCount": 8,
+    "casSharpness": 0.5249999999999999,
+    "debugView": "final"
+  },
+  "statsText": "1280×720 | 0 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 35% | temporal: idle/4/8/difference | app frame: 0.4ms | slowest app stage: uniform-upload 0.1ms | render: 4.57ms"
+}

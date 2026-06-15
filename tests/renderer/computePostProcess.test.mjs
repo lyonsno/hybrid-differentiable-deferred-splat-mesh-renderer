@@ -13,7 +13,7 @@ test("compute renderer runs FXAA and CAS on an rgba16float texture before presen
   assert.match(mainSource, /label:\s*"compute_compositor_output"[\s\S]*format:\s*"rgba16float"[\s\S]*GPUTextureUsage\.STORAGE_BINDING \| GPUTextureUsage\.TEXTURE_BINDING/);
   assert.match(mainSource, /createPostProcessOutputTexture\([\s\S]*"compute_compositor_post_process_output"/);
   assert.match(mainSource, /postProcess\.encode\(\s*activeEncoder,\s*cc\.outputView,\s*cc\.postProcessedView,\s*width,\s*height\s*\)/);
-  assert.match(mainSource, /tileLocalPresenter\.draw\(renderPass,\s*scene\.computeCompositor\.postProcessedView\)/);
+  assert.match(mainSource, /tileLocalPresenter\.draw\(renderPass,\s*computePresentView \?\? scene\.computeCompositor\.postProcessedView\)/);
   assert.doesNotMatch(mainSource, /tileLocalPresenter\.draw\(renderPass,\s*scene\.computeCompositor\.outputView\)/);
 
   assert.match(postProcessSource, /createFxaaCasPostProcess/);
@@ -87,4 +87,40 @@ test("compute post-process exposes live upper-right controls for toggles and sam
   assert.match(shader, /localRange/);
   assert.match(shader, /haloWindow/);
   assert.doesNotMatch(shader, /return clamp\(sharpened,\s*localMin,\s*localMax\)/);
+});
+
+test("compute renderer exposes idle temporal resolve controls and evidence", () => {
+  const html = readFileSync(new URL("../../index.html", import.meta.url), "utf8");
+  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const temporalSource = readFileSync(new URL("../../src/temporalResolve.ts", import.meta.url), "utf8");
+  const shader = readFileSync(new URL("../../src/shaders/temporal_resolve.wgsl", import.meta.url), "utf8");
+
+  assert.match(html, /id="postprocess-temporal-mode"/);
+  assert.match(html, /value="idle" selected/);
+  assert.match(html, /id="postprocess-temporal-frames"/);
+  assert.match(html, /id="postprocess-temporal-view"/);
+
+  assert.match(mainSource, /interface TemporalResolveControls/);
+  assert.match(mainSource, /readTemporalResolveSettings/);
+  assert.match(mainSource, /applyTemporalJitterToViewProjection/);
+  assert.match(mainSource, /temporalJitterOffsetForFrame/);
+  assert.match(mainSource, /resetTemporalResolveHistory/);
+  assert.match(mainSource, /pendingTemporalResolve/);
+  assert.match(mainSource, /temporalResolve:\s*temporalResolveEvidence/);
+
+  assert.match(temporalSource, /export type TemporalResolveMode = "off" \| "idle" \| "always"/);
+  assert.match(temporalSource, /export type TemporalResolveDebugView = "final" \| "history-weight" \| "difference"/);
+  assert.match(temporalSource, /createTemporalResolve/);
+  assert.match(temporalSource, /createTemporalResolveTexture/);
+  assert.match(temporalSource, /writeSettings/);
+  assert.match(temporalSource, /historyFrameCount/);
+
+  assert.match(shader, /fn temporal_resolve/);
+  assert.match(shader, /texture_storage_2d<rgba16float,\s*write>/);
+  assert.match(shader, /historyFrameCount:\s*u32/);
+  assert.match(shader, /maxHistoryFrames:\s*u32/);
+  assert.match(shader, /DEBUG_VIEW_HISTORY_WEIGHT/);
+  assert.match(shader, /DEBUG_VIEW_DIFFERENCE/);
+  assert.match(shader, /textureLoad\(currentFrame/);
+  assert.match(shader, /textureLoad\(historyFrame/);
 });

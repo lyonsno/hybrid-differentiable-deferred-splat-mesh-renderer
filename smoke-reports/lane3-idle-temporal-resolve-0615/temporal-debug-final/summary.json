@@ -1,0 +1,254 @@
+{
+  "generatedAt": "2026-06-15T21:58:21.669Z",
+  "reportDir": "smoke-reports/lane3-idle-temporal-resolve-0615/temporal-debug-final",
+  "captures": [
+    {
+      "id": "temporal-off",
+      "requested": {
+        "fxaa": false,
+        "cas": true,
+        "temporalMode": "off",
+        "temporalFrames": 8,
+        "temporalView": "final",
+        "sharpness": 50
+      },
+      "stats": "1280×720 | 0 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: cas/8s/r2/sharp 50% | temporal: off | app frame: 0.3ms | slowest app stage: frame-uniforms 0ms | render: 12.60ms",
+      "temporalResolve": {
+        "mode": "off",
+        "maxHistoryFrames": 8,
+        "debugView": "final",
+        "historyFrameCount": 0,
+        "pendingTemporalResolve": false,
+        "jitterOffsetPx": [
+          0,
+          0
+        ],
+        "resetReason": "disabled"
+      },
+      "postProcess": {
+        "enabled": true,
+        "fxaaEnabled": false,
+        "casEnabled": true,
+        "sampleRadius": 2,
+        "sampleCount": 8,
+        "casSharpness": 0.75,
+        "debugView": "final"
+      },
+      "rendererLabel": "compute",
+      "splatCount": 94406,
+      "metrics": {
+        "distinctColorCount": 17960,
+        "nonBlack": 27218,
+        "meanRgbSum": 27.00246744791667
+      }
+    },
+    {
+      "id": "temporal-idle-8",
+      "requested": {
+        "fxaa": false,
+        "cas": true,
+        "temporalMode": "idle",
+        "temporalFrames": 8,
+        "temporalView": "final",
+        "sharpness": 50
+      },
+      "stats": "1280×720 | 11 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: cas/8s/r2/sharp 50% | temporal: idle/8/8 | app frame: 0.1ms | slowest app stage: frame-uniforms 0ms | render: 4.10ms",
+      "temporalResolve": {
+        "mode": "idle",
+        "maxHistoryFrames": 8,
+        "debugView": "final",
+        "historyFrameCount": 8,
+        "pendingTemporalResolve": false,
+        "jitterOffsetPx": [
+          0.375,
+          0.125
+        ],
+        "resetReason": "initialized"
+      },
+      "postProcess": {
+        "enabled": true,
+        "fxaaEnabled": false,
+        "casEnabled": true,
+        "sampleRadius": 2,
+        "sampleCount": 8,
+        "casSharpness": 0.75,
+        "debugView": "final"
+      },
+      "rendererLabel": "compute",
+      "splatCount": 94406,
+      "metrics": {
+        "distinctColorCount": 17832,
+        "nonBlack": 27242,
+        "meanRgbSum": 27.003997395833334
+      }
+    },
+    {
+      "id": "temporal-history-weight",
+      "requested": {
+        "fxaa": false,
+        "cas": true,
+        "temporalMode": "idle",
+        "temporalFrames": 8,
+        "temporalView": "history-weight",
+        "sharpness": 50
+      },
+      "stats": "1280×720 | 11 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: cas/8s/r2/sharp 50% | temporal: idle/8/8/history-weight | app frame: 0.2ms | slowest app stage: frame-uniforms 0ms | render: 4.65ms",
+      "temporalResolve": {
+        "mode": "idle",
+        "maxHistoryFrames": 8,
+        "debugView": "history-weight",
+        "historyFrameCount": 8,
+        "pendingTemporalResolve": false,
+        "jitterOffsetPx": [
+          -0.375,
+          0.375
+        ],
+        "resetReason": "initialized"
+      },
+      "postProcess": {
+        "enabled": true,
+        "fxaaEnabled": false,
+        "casEnabled": true,
+        "sampleRadius": 2,
+        "sampleCount": 8,
+        "casSharpness": 0.75,
+        "debugView": "final"
+      },
+      "rendererLabel": "compute",
+      "splatCount": 94406,
+      "metrics": {
+        "distinctColorCount": 1,
+        "nonBlack": 921600,
+        "meanRgbSum": 765
+      }
+    },
+    {
+      "id": "temporal-difference",
+      "requested": {
+        "fxaa": false,
+        "cas": true,
+        "temporalMode": "idle",
+        "temporalFrames": 8,
+        "temporalView": "difference",
+        "sharpness": 50
+      },
+      "stats": "1280×720 | 11 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: cas/8s/r2/sharp 50% | temporal: idle/8/8/difference | app frame: 0.1ms | slowest app stage: frame-uniforms 0ms | render: 3.77ms",
+      "temporalResolve": {
+        "mode": "idle",
+        "maxHistoryFrames": 8,
+        "debugView": "difference",
+        "historyFrameCount": 8,
+        "pendingTemporalResolve": false,
+        "jitterOffsetPx": [
+          -0.375,
+          0.375
+        ],
+        "resetReason": "initialized"
+      },
+      "postProcess": {
+        "enabled": true,
+        "fxaaEnabled": false,
+        "casEnabled": true,
+        "sampleRadius": 2,
+        "sampleCount": 8,
+        "casSharpness": 0.75,
+        "debugView": "final"
+      },
+      "rendererLabel": "compute",
+      "splatCount": 94406,
+      "metrics": {
+        "distinctColorCount": 12268,
+        "nonBlack": 16302,
+        "meanRgbSum": 1.9218543836805555
+      }
+    },
+    {
+      "id": "temporal-idle-16",
+      "requested": {
+        "fxaa": false,
+        "cas": true,
+        "temporalMode": "idle",
+        "temporalFrames": 16,
+        "temporalView": "final",
+        "sharpness": 50
+      },
+      "stats": "1280×720 | 24 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: cas/8s/r2/sharp 50% | temporal: idle/16/16 | app frame: 0.2ms | slowest app stage: frame-uniforms 0ms | render: 6.48ms",
+      "temporalResolve": {
+        "mode": "idle",
+        "maxHistoryFrames": 16,
+        "debugView": "final",
+        "historyFrameCount": 16,
+        "pendingTemporalResolve": false,
+        "jitterOffsetPx": [
+          0.3125,
+          -0.1875
+        ],
+        "resetReason": "view-or-settings-changed"
+      },
+      "postProcess": {
+        "enabled": true,
+        "fxaaEnabled": false,
+        "casEnabled": true,
+        "sampleRadius": 2,
+        "sampleCount": 8,
+        "casSharpness": 0.75,
+        "debugView": "final"
+      },
+      "rendererLabel": "compute",
+      "splatCount": 94406,
+      "metrics": {
+        "distinctColorCount": 17777,
+        "nonBlack": 27243,
+        "meanRgbSum": 26.984594184027777
+      }
+    }
+  ],
+  "diffs": [
+    {
+      "a": "temporal-idle-8",
+      "b": "temporal-off",
+      "changed": 2157,
+      "total": 921600,
+      "changedRatio": 0.0023404947916666665,
+      "meanSum": 0.08304253472222223,
+      "maxSum": 178
+    },
+    {
+      "a": "temporal-idle-16",
+      "b": "temporal-off",
+      "changed": 2083,
+      "total": 921600,
+      "changedRatio": 0.0022601996527777776,
+      "meanSum": 0.07940538194444445,
+      "maxSum": 86
+    },
+    {
+      "a": "temporal-idle-16",
+      "b": "temporal-idle-8",
+      "changed": 636,
+      "total": 921600,
+      "changedRatio": 0.0006901041666666667,
+      "meanSum": 0.03940755208333333,
+      "maxSum": 93
+    },
+    {
+      "a": "temporal-difference",
+      "b": "temporal-off",
+      "changed": 921514,
+      "total": 921600,
+      "changedRatio": 0.9999066840277778,
+      "meanSum": 25.480241970486112,
+      "maxSum": 673
+    }
+  ],
+  "consoleMessages": [
+    {
+      "type": "debug",
+      "text": "[vite] connecting..."
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connected."
+    }
+  ]
+}

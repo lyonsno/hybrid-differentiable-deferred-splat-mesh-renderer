@@ -139,6 +139,31 @@
             <option value="difference">Difference</option>
           </select>
         </label>
+        <label for="postprocess-temporal-mode">
+          <span>Temporal</span>
+          <select id="postprocess-temporal-mode">
+            <option value="off">Off</option>
+            <option value="idle" selected>Idle</option>
+            <option value="always">Always</option>
+          </select>
+        </label>
+        <label for="postprocess-temporal-frames">
+          <span>T Frames</span>
+          <select id="postprocess-temporal-frames">
+            <option value="2">2</option>
+            <option value="4">4</option>
+            <option value="8" selected>8</option>
+            <option value="16">16</option>
+          </select>
+        </label>
+        <label for="postprocess-temporal-view">
+          <span>T View</span>
+          <select id="postprocess-temporal-view">
+            <option value="final" selected>Final</option>
+            <option value="history-weight">History</option>
+            <option value="difference">Difference</option>
+          </select>
+        </label>
       </div>
     </details>
   </div>

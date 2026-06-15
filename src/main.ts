@@ -176,6 +176,14 @@ import {
   type FxaaCasPostProcessSettings,
 } from "./computePostProcess.js";
 import {
+  createTemporalResolve,
+  createTemporalResolveTexture,
+  type TemporalResolve,
+  type TemporalResolveDebugView,
+  type TemporalResolveMode,
+  type TemporalResolveSettings,
+} from "./temporalResolve.js";
+import {
   splatAttributesFromFixture,
   configureCameraForFixture,
   SHAPE_WITNESS_SPLAT_SCALE,
@@ -253,6 +261,22 @@ interface PostProcessControls {
   readonly debugView: HTMLSelectElement | null;
 }
 
+interface TemporalResolveControls {
+  readonly mode: HTMLSelectElement | null;
+  readonly maxHistoryFrames: HTMLSelectElement | null;
+  readonly debugView: HTMLSelectElement | null;
+}
+
+interface TemporalResolveEvidence {
+  readonly mode: TemporalResolveMode;
+  readonly maxHistoryFrames: number;
+  readonly debugView: TemporalResolveDebugView;
+  readonly historyFrameCount: number;
+  readonly pendingTemporalResolve: boolean;
+  readonly jitterOffsetPx: readonly [number, number];
+  readonly resetReason: string | null;
+}
+
 interface ActiveSplatScene {
   attributes: SplatAttributes;
   buffers: SplatGpuBuffers;
@@ -275,10 +299,19 @@ interface ActiveSplatScene {
     resources: TileSplatCompositorResources;
     bindGroups: TileSplatCompositorBindGroups;
     postProcess: FxaaCasPostProcess;
+    temporalResolve: TemporalResolve;
     outputTexture: GPUTexture;
     outputView: GPUTextureView;
     postProcessedTexture: GPUTexture;
     postProcessedView: GPUTextureView;
+    temporalHistoryTextures: [GPUTexture, GPUTexture];
+    temporalHistoryViews: [GPUTextureView, GPUTextureView];
+    temporalHistoryReadIndex: 0 | 1;
+    temporalHistoryFrameCount: number;
+    temporalLastResetKey: string | null;
+    temporalLastResetReason: string | null;
+    temporalLastJitterOffsetPx: readonly [number, number];
+    temporalLastPresentedView: "post-process" | "temporal";
     frameUniformData: Float32Array;
     lastSortedViewProj: Float32Array | null;
     hasSortedRefs: boolean;
@@ -1162,6 +1195,144 @@ function formatPostProcessSettings(settings: FxaaCasPostProcessSettings): string
   return `${stages}/${settings.sampleCount}s/r${settings.sampleRadius}/sharp ${sharpnessPercent}%${debugSuffix}`;
 }
 
+function createTemporalResolveControls(requestFrame: () => void): TemporalResolveControls {
+  const controls: TemporalResolveControls = {
+    mode: document.getElementById("postprocess-temporal-mode") as HTMLSelectElement | null,
+    maxHistoryFrames: document.getElementById("postprocess-temporal-frames") as HTMLSelectElement | null,
+    debugView: document.getElementById("postprocess-temporal-view") as HTMLSelectElement | null,
+  };
+  const update = () => requestFrame();
+  controls.mode?.addEventListener("change", update);
+  controls.maxHistoryFrames?.addEventListener("change", update);
+  controls.debugView?.addEventListener("change", update);
+  return controls;
+}
+
+function readTemporalResolveSettings(controls: TemporalResolveControls): TemporalResolveSettings {
+  return {
+    mode: temporalResolveModeFromSelection(controls.mode?.value),
+    maxHistoryFrames: clampInteger(Number(controls.maxHistoryFrames?.value ?? 8), 1, 16),
+    debugView: temporalResolveDebugViewFromSelection(controls.debugView?.value),
+  };
+}
+
+function temporalResolveModeFromSelection(value: string | undefined): TemporalResolveMode {
+  if (value === "idle" || value === "always") {
+    return value;
+  }
+  return "off";
+}
+
+function temporalResolveDebugViewFromSelection(value: string | undefined): TemporalResolveDebugView {
+  if (value === "history-weight" || value === "difference") {
+    return value;
+  }
+  return "final";
+}
+
+function formatTemporalResolveSettings(settings: TemporalResolveSettings, evidence: TemporalResolveEvidence | null): string {
+  if (settings.mode === "off") {
+    return "off";
+  }
+  const count = evidence?.historyFrameCount ?? 0;
+  const pending = evidence?.pendingTemporalResolve ? "+" : "";
+  const viewSuffix = settings.debugView === "final" ? "" : `/${settings.debugView}`;
+  return `${settings.mode}/${count}${pending}/${settings.maxHistoryFrames}${viewSuffix}`;
+}
+
+function readTemporalResolveEvidence(
+  state: NonNullable<ActiveSplatScene["computeCompositor"]>,
+  settings: TemporalResolveSettings,
+  pendingTemporalResolve: boolean
+): TemporalResolveEvidence {
+  return {
+    mode: settings.mode,
+    maxHistoryFrames: settings.maxHistoryFrames,
+    debugView: settings.debugView,
+    historyFrameCount: state.temporalHistoryFrameCount,
+    pendingTemporalResolve,
+    jitterOffsetPx: state.temporalLastJitterOffsetPx,
+    resetReason: state.temporalLastResetReason,
+  };
+}
+
+function temporalJitterOffsetForFrame(frameIndex: number): readonly [number, number] {
+  const sequence: readonly (readonly [number, number])[] = [
+    [0, 0],
+    [-0.375, -0.125],
+    [0.125, 0.375],
+    [0.375, -0.375],
+    [-0.125, 0.125],
+    [-0.25, 0.25],
+    [0.25, -0.25],
+    [0.375, 0.125],
+    [-0.375, 0.375],
+    [0.0625, -0.4375],
+    [-0.0625, 0.4375],
+    [0.4375, 0.0625],
+    [-0.4375, -0.0625],
+    [0.1875, 0.1875],
+    [-0.1875, -0.3125],
+    [0.3125, -0.1875],
+  ];
+  return sequence[((frameIndex % sequence.length) + sequence.length) % sequence.length];
+}
+
+function applyTemporalJitterToViewProjection(
+  viewProj: Float32Array,
+  viewportWidth: number,
+  viewportHeight: number,
+  jitterOffsetPx: readonly [number, number]
+): Float32Array {
+  const jittered = new Float32Array(viewProj);
+  if (jitterOffsetPx[0] === 0 && jitterOffsetPx[1] === 0) {
+    return jittered;
+  }
+  const ndcX = (jitterOffsetPx[0] * 2) / Math.max(1, viewportWidth);
+  const ndcY = (-jitterOffsetPx[1] * 2) / Math.max(1, viewportHeight);
+  for (let column = 0; column < 4; column++) {
+    const base = column * 4;
+    jittered[base] += ndcX * viewProj[base + 3];
+    jittered[base + 1] += ndcY * viewProj[base + 3];
+  }
+  return jittered;
+}
+
+function temporalResolveResetKey(
+  viewProj: Float32Array,
+  viewportWidth: number,
+  viewportHeight: number,
+  postProcessSettings: FxaaCasPostProcessSettings,
+  temporalSettings: TemporalResolveSettings
+): string {
+  const viewKey = Array.from(viewProj, (value) => value.toFixed(7)).join(",");
+  return [
+    viewportWidth,
+    viewportHeight,
+    viewKey,
+    postProcessSettings.enabled ? 1 : 0,
+    postProcessSettings.fxaaEnabled ? 1 : 0,
+    postProcessSettings.casEnabled ? 1 : 0,
+    postProcessSettings.sampleRadius,
+    postProcessSettings.sampleCount,
+    postProcessSettings.casSharpness.toFixed(5),
+    postProcessSettings.debugView,
+    temporalSettings.mode,
+    temporalSettings.maxHistoryFrames,
+  ].join("|");
+}
+
+function resetTemporalResolveHistory(
+  state: NonNullable<ActiveSplatScene["computeCompositor"]>,
+  reason: string
+): void {
+  state.temporalHistoryFrameCount = 0;
+  state.temporalLastResetKey = null;
+  state.temporalLastResetReason = reason;
+  state.temporalLastJitterOffsetPx = [0, 0];
+  state.temporalLastPresentedView = "post-process";
+}
+
 async function main() {
   const gpu = await initGPU(canvas);
   const cam = createCamera();
@@ -1172,6 +1343,7 @@ async function main() {
     }
   };
   const postProcessControls = createPostProcessControls(requestFrame);
+  const temporalResolveControls = createTemporalResolveControls(requestFrame);
   bindCameraControls(cam, canvas, {
     requestRender: requestFrame,
     onDoubleClick(clickX, clickY, viewportWidth, viewportHeight) {
@@ -1544,6 +1716,8 @@ async function main() {
     const activeSplatScale = shapeWitnessFixtureId !== null ? SHAPE_WITNESS_SPLAT_SCALE : REAL_SCANIVERSE_SPLAT_SCALE;
     const activeMinRadiusPx = shapeWitnessFixtureId !== null ? SHAPE_WITNESS_MIN_RADIUS_PX : REAL_SCANIVERSE_MIN_RADIUS_PX;
     const postProcessSettings = readPostProcessSettings(postProcessControls);
+    const temporalResolveSettings = readTemporalResolveSettings(temporalResolveControls);
+    let temporalResolveEvidence: TemporalResolveEvidence | null = null;
     if (alphaRefreshed) {
       if (scene.rendererMode !== "compute") {
         // Alpha-density compensation is skipped for the compute compositor —
@@ -1782,6 +1956,8 @@ async function main() {
 
     // --- Compute compositor: count → GPU prefix-sum → scatter → radix sort → reorder → composite ---
     let activeEncoder: GPUCommandEncoder = encoder;
+    let computePresentView: GPUTextureView | null = null;
+    let pendingTemporalResolve = false;
     if (scene.rendererMode === "compute" && scene.computeCompositor) {
       const cc = ensureComputeCompositorState(
         gpu.device,
@@ -1792,20 +1968,51 @@ async function main() {
       );
       scene.computeCompositor = cc;
       const { resources, bindGroups } = cc;
+      const temporalEnabled = temporalResolveSettings.mode !== "off";
+      const temporalCanAccumulate =
+        temporalResolveSettings.mode === "always" ||
+        (temporalResolveSettings.mode === "idle" && !activeInput);
+      const temporalResetKey = temporalResolveResetKey(
+        viewProj,
+        width,
+        height,
+        postProcessSettings,
+        temporalResolveSettings
+      );
+      let temporalResetReason: string | null = null;
+      if (!temporalEnabled) {
+        if (cc.temporalHistoryFrameCount > 0 || cc.temporalLastResetReason !== "disabled") {
+          resetTemporalResolveHistory(cc, "disabled");
+        }
+      } else if (temporalResolveSettings.mode === "idle" && activeInput) {
+        resetTemporalResolveHistory(cc, "active-input");
+      } else if (cc.temporalLastResetKey !== temporalResetKey) {
+        temporalResetReason = cc.temporalLastResetKey === null ? "initialized" : "view-or-settings-changed";
+        resetTemporalResolveHistory(cc, temporalResetReason);
+        cc.temporalLastResetKey = temporalResetKey;
+      }
+      const shouldAccumulateTemporal = temporalEnabled && temporalCanAccumulate;
+      const temporalJitterOffsetPx = shouldAccumulateTemporal
+        ? temporalJitterOffsetForFrame(cc.temporalHistoryFrameCount)
+        : [0, 0] as const;
+      const computeViewProj = shouldAccumulateTemporal
+        ? applyTemporalJitterToViewProjection(viewProj, width, height, temporalJitterOffsetPx)
+        : viewProj;
+      cc.temporalLastJitterOffsetPx = temporalJitterOffsetPx;
 
       // Update frame uniforms
       writeTileSplatFrameUniforms(
         cc.frameUniformData,
-        viewProj,
+        computeViewProj,
         resources.plan,
       );
       gpu.device.queue.writeBuffer(resources.frameUniformBuffer, 0, cc.frameUniformData);
 
       // Skip sort when camera is static — reuse previously sorted refs
-      const viewChanged = !cc.lastSortedViewProj || !viewProjEqual(viewProj, cc.lastSortedViewProj);
+      const viewChanged = !cc.lastSortedViewProj || !viewProjEqual(computeViewProj, cc.lastSortedViewProj);
       if (viewChanged || !cc.hasSortedRefs) {
         encodeFullComputeCompositorPipeline(encoder, resources, bindGroups);
-        cc.lastSortedViewProj = new Float32Array(viewProj);
+        cc.lastSortedViewProj = new Float32Array(computeViewProj);
         cc.hasSortedRefs = true;
       } else {
         encodeCompositeOnly(encoder, resources, bindGroups);
@@ -1818,6 +2025,47 @@ async function main() {
         cc.postProcessedView,
         width,
         height
+      );
+      computePresentView = cc.postProcessedView;
+
+      if (shouldAccumulateTemporal) {
+        const historyReadIndex = cc.temporalHistoryReadIndex;
+        const historyWriteIndex = historyReadIndex === 0 ? 1 : 0;
+        cc.temporalResolve.writeSettings(gpu.device.queue, {
+          historyFrameCount: cc.temporalHistoryFrameCount,
+          maxHistoryFrames: temporalResolveSettings.maxHistoryFrames,
+          debugView: temporalResolveSettings.debugView,
+        });
+        cc.temporalResolve.encode(
+          activeEncoder,
+          cc.postProcessedView,
+          cc.temporalHistoryViews[historyReadIndex],
+          cc.temporalHistoryViews[historyWriteIndex],
+          width,
+          height
+        );
+        if (temporalResolveSettings.debugView === "final") {
+          cc.temporalHistoryReadIndex = historyWriteIndex;
+          cc.temporalHistoryFrameCount = Math.min(
+            temporalResolveSettings.maxHistoryFrames,
+            cc.temporalHistoryFrameCount + 1
+          );
+        }
+        cc.temporalLastPresentedView = "temporal";
+        computePresentView = cc.temporalHistoryViews[historyWriteIndex];
+      } else {
+        cc.temporalLastPresentedView = "post-process";
+      }
+      pendingTemporalResolve = Boolean(
+        temporalEnabled &&
+        temporalCanAccumulate &&
+        temporalResolveSettings.debugView === "final" &&
+        cc.temporalHistoryFrameCount < temporalResolveSettings.maxHistoryFrames
+      );
+      temporalResolveEvidence = readTemporalResolveEvidence(
+        cc,
+        temporalResolveSettings,
+        pendingTemporalResolve
       );
 
       // Continue with same encoder (no split needed anymore)
@@ -1857,7 +2105,7 @@ async function main() {
     }
 
     if (scene.rendererMode === "compute" && scene.computeCompositor) {
-      tileLocalPresenter.draw(renderPass, scene.computeCompositor.postProcessedView);
+      tileLocalPresenter.draw(renderPass, computePresentView ?? scene.computeCompositor.postProcessedView);
     } else if (scene.rendererMode === "tile-local-visible" && scene.tileLocalState) {
       tileLocalPresenter.draw(renderPass, scene.tileLocalState.outputView);
     } else {
@@ -1981,6 +2229,7 @@ async function main() {
     }
     if (scene.rendererMode === "compute") {
       statsText += ` | post-fx: ${formatPostProcessSettings(postProcessSettings)}`;
+      statsText += ` | temporal: ${formatTemporalResolveSettings(temporalResolveSettings, temporalResolveEvidence)}`;
     }
     const frameTimingOverlay = formatFrameTimingOverlay(frameTiming);
     statsText += ` | ${frameTimingOverlay}`;
@@ -2013,6 +2262,7 @@ async function main() {
         scene.attributes.colors,
         tileLocalCurrentSignature,
         postProcessSettings,
+        temporalResolveEvidence,
         {
           witnessView: operatorWitnessViewMode,
           revision: operatorWitnessRevision,
@@ -2033,6 +2283,7 @@ async function main() {
         pendingGpuSort,
         pendingAlphaDensity,
       }),
+      pendingTemporalResolve,
     })) {
       requestFrame();
     }
@@ -9147,6 +9398,10 @@ function createComputeCompositorState(
     viewportHeight,
     "compute_compositor_post_process_output"
   );
+  const temporalHistoryTextures: [GPUTexture, GPUTexture] = [
+    createTemporalResolveTexture(device, viewportWidth, viewportHeight, "temporal_resolve_history_a"),
+    createTemporalResolveTexture(device, viewportWidth, viewportHeight, "temporal_resolve_history_b"),
+  ];
   const computeBindGroups = createTileSplatBindGroups(
     device,
     computeResources,
@@ -9157,10 +9412,22 @@ function createComputeCompositorState(
     resources: computeResources,
     bindGroups: computeBindGroups,
     postProcess: createFxaaCasPostProcess(device),
+    temporalResolve: createTemporalResolve(device),
     outputTexture: computeOutputTexture,
     outputView: computeOutputTexture.createView(),
     postProcessedTexture,
     postProcessedView: postProcessedTexture.createView(),
+    temporalHistoryTextures,
+    temporalHistoryViews: [
+      temporalHistoryTextures[0].createView(),
+      temporalHistoryTextures[1].createView(),
+    ],
+    temporalHistoryReadIndex: 0,
+    temporalHistoryFrameCount: 0,
+    temporalLastResetKey: null,
+    temporalLastResetReason: "created",
+    temporalLastJitterOffsetPx: [0, 0],
+    temporalLastPresentedView: "post-process",
     frameUniformData: new Float32Array(TILE_SPLAT_FRAME_UNIFORM_BYTES / 4),
     lastSortedViewProj: null,
     hasSortedRefs: false,
@@ -9204,8 +9471,11 @@ function destroyComputeCompositorState(state: ActiveSplatScene["computeComposito
   }
   state.resources.destroy();
   state.postProcess.settingsBuffer.destroy();
+  state.temporalResolve.settingsBuffer.destroy();
   state.outputTexture.destroy();
   state.postProcessedTexture.destroy();
+  state.temporalHistoryTextures[0].destroy();
+  state.temporalHistoryTextures[1].destroy();
 }
 
 function captureCurrentTileLocalSignature(
@@ -9820,6 +10090,7 @@ function exposeTileLocalRuntimeEvidence(
   sourceColors: Float32Array,
   tileLocalCurrentSignature: string | null,
   postProcessSettings: FxaaCasPostProcessSettings,
+  temporalResolveEvidence: TemporalResolveEvidence | null,
   operatorWitness?: {
     readonly witnessView: RealScaniverseWitnessViewMode;
     readonly revision: number;
@@ -9998,6 +10269,7 @@ function exposeTileLocalRuntimeEvidence(
     tileLocalDisabledReason,
     tileLocalLastSkipReason,
     postProcess: postProcessSettings,
+    temporalResolve: temporalResolveEvidence,
     arenaRuntime,
     operatorWitness,
     tileLocal: tileLocalState && diagnostics
