@@ -1,9 +1,9 @@
 // Per-pixel Gaussian splat compositor — reference 3DGS projection.
 //
-// Pipeline: count → prefix-sum → scatter → per-tile sort → composite
+// Pipeline: count → GPU prefix-sum → scatter (with sort keys) → global radix sort → reorder → composite
 // Projection: viewProj Jacobian, viewport/2, +0.3 low-pass, exp(-0.5 * mahalanobis^2)
 // Compositing: back-to-front source-over (matching hardware alpha blend order)
-// Per-tile sort: shared-memory bitonic sort (up to 1024 refs, requires device limit)
+// Sorting: global radix sort on (tileId << 16 | depth_u16) — no per-tile size limit
 
 struct FrameUniforms {
   viewProj: mat4x4f,
@@ -162,7 +162,12 @@ fn count_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
   }
 }
 
-// --- Pass 3: Scatter ---
+// --- Pass 3: Scatter with sort key generation ---
+// Writes ref data into tileRefs AND sort keys for global radix sort.
+// Values buffer is pre-initialized with identity by radix sort init pass.
+
+@group(2) @binding(0) var<storage, read_write> radixKeys: array<u32>;
+
 @compute @workgroup_size(256)
 fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
   let sortRank = globalId.x;
@@ -180,13 +185,21 @@ fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
   if (splat.radius <= 0.0) { return; }
   let bounds = footprintBounds(splat.centerPx, splat.radius);
 
+  // Quantize depth to 16 bits for sort key.
+  // NDC depth is [0,1]. We invert so larger value = farther = sorted first (back-to-front).
+  let depthClamped = clamp(splat.depthNdc, 0.0, 1.0);
+  let depthU16 = u32(depthClamped * 65535.0);
+  let depthInverted = 65535u - depthU16;
+
   for (var tileY = bounds.y; tileY <= bounds.w; tileY++) {
     for (var tileX = bounds.x; tileX <= bounds.z; tileX++) {
       let tileId = tileY * frame.tileGrid.x + tileX;
       let slot = atomicAdd(&tileCounts[tileId], 1u);
       let baseOffset = tileOffsets[tileId];
-      let refIdx = (baseOffset + slot) * TILE_REF_STRIDE;
+      let linearIdx = baseOffset + slot;
+      let refIdx = linearIdx * TILE_REF_STRIDE;
       if (refIdx + TILE_REF_STRIDE <= frame.totalTileRefs * TILE_REF_STRIDE) {
+        // Write ref data
         tileRefs[refIdx + 0u] = splatId;
         tileRefs[refIdx + 1u] = bitcast<u32>(splat.depthNdc);
         tileRefs[refIdx + 2u] = bitcast<u32>(splat.centerPx.x);
@@ -195,85 +208,21 @@ fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
         tileRefs[refIdx + 5u] = bitcast<u32>(splat.inverseCov2d.y);
         tileRefs[refIdx + 6u] = bitcast<u32>(splat.inverseCov2d.z);
         tileRefs[refIdx + 7u] = bitcast<u32>(splat.opacity);
+
+        // Write radix sort key (values pre-initialized with identity by init pass)
+        radixKeys[linearIdx] = (tileId << 16u) | depthInverted;
       }
     }
   }
 }
 
-// --- Pass 3.5: Per-tile sort (shared memory, 1024 max) ---
-// Tiles with >1024 refs: only first 1024 are sorted; remainder stays in scatter order.
-// TODO: Replace with global tileId|depth radix sort for unlimited correct ordering.
+// Reorder pass is a separate shader (gpu_reorder_refs.wgsl) to reduce bind group count.
 
-const SORT_WG_SIZE = 1024u;
+// --- Pass 6: Composite (back-to-front source-over) ---
+// Reads from tileRefs which is bound to the sorted buffer at composite time.
+// tileOffsets and tileCounts define per-tile ranges.
+// The radix sort preserved tile grouping (tileId is the upper 16 bits of the sort key).
 
-var<workgroup> sortKeys: array<f32, 1024>;
-var<workgroup> sortVals: array<u32, 1024>;
-
-@compute @workgroup_size(1024)
-fn sort_tile_refs(
-  @builtin(workgroup_id) groupId: vec3u,
-  @builtin(local_invocation_id) localId: vec3u,
-) {
-  let tileId = groupId.x;
-  let tileCount = frame.tileGrid.x * frame.tileGrid.y;
-  if (tileId >= tileCount) { return; }
-
-  let refStart = tileOffsets[tileId];
-  let rawRefCount = atomicLoad(&tileCounts[tileId]);
-  let refCount = min(rawRefCount, 1024u);
-  let tid = localId.x;
-
-  if (tid < refCount) {
-    let refIdx = (refStart + tid) * TILE_REF_STRIDE;
-    sortKeys[tid] = bitcast<f32>(tileRefs[refIdx + 1u]);
-    sortVals[tid] = tid;
-  } else {
-    sortKeys[tid] = -1000000.0;
-    sortVals[tid] = tid;
-  }
-  workgroupBarrier();
-
-  // Bitonic sort descending (farthest first for back-to-front compositing)
-  for (var k = 2u; k <= SORT_WG_SIZE; k *= 2u) {
-    for (var j = k / 2u; j > 0u; j /= 2u) {
-      let ixj = tid ^ j;
-      if (ixj > tid) {
-        let ascending = (tid & k) == 0u;
-        let leftKey = sortKeys[tid];
-        let rightKey = sortKeys[ixj];
-        let shouldSwap = select(leftKey > rightKey, leftKey < rightKey, ascending);
-        if (shouldSwap) {
-          sortKeys[tid] = rightKey;
-          sortKeys[ixj] = leftKey;
-          let tmpVal = sortVals[tid];
-          sortVals[tid] = sortVals[ixj];
-          sortVals[ixj] = tmpVal;
-        }
-      }
-      workgroupBarrier();
-    }
-  }
-
-  // Reorder ref records using the permutation
-  for (var word = 0u; word < TILE_REF_STRIDE; word++) {
-    var loadedWord = 0u;
-    if (tid < refCount) {
-      let srcLocalIdx = sortVals[tid];
-      let srcRefIdx = (refStart + srcLocalIdx) * TILE_REF_STRIDE + word;
-      loadedWord = tileRefs[srcRefIdx];
-    }
-    workgroupBarrier();
-    sortKeys[tid] = bitcast<f32>(loadedWord);
-    workgroupBarrier();
-    if (tid < refCount) {
-      let dstRefIdx = (refStart + tid) * TILE_REF_STRIDE + word;
-      tileRefs[dstRefIdx] = bitcast<u32>(sortKeys[tid]);
-    }
-    workgroupBarrier();
-  }
-}
-
-// --- Pass 4: Composite (back-to-front source-over) ---
 @compute @workgroup_size(8, 8, 1)
 fn composite(@builtin(global_invocation_id) globalId: vec3u) {
   let outputSize = textureDimensions(outputColor);
