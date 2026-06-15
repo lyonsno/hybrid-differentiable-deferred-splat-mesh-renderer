@@ -148,6 +148,7 @@ import {
   createTileSplatBindGroups,
   writeTileSplatFrameUniforms,
   encodeFullComputeCompositorPipeline,
+  encodeCompositeOnly,
   TILE_SPLAT_FRAME_UNIFORM_BYTES,
   type TileSplatCompositorResources,
   type TileSplatCompositorBindGroups,
@@ -363,6 +364,13 @@ interface ArenaRuntimeEvidence {
   unavailableReason?: string;
   skippedReason?: string;
   fallbackReason?: string;
+}
+
+function viewProjEqual(a: Float32Array, b: Float32Array): boolean {
+  for (let i = 0; i < 16; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
 }
 
 function createCpuAlphaDensityRouteEvidence(): AlphaDensityRouteEvidence {
@@ -1313,6 +1321,8 @@ async function main() {
         outputTexture: computeOutputTexture,
         outputView: computeOutputTexture.createView(),
         frameUniformData: new Float32Array(TILE_SPLAT_FRAME_UNIFORM_BYTES / 4),
+        lastSortedViewProj: null as Float32Array | null,
+        hasSortedRefs: false,
       };
     }
     activeScene = {
@@ -1703,9 +1713,15 @@ async function main() {
       );
       gpu.device.queue.writeBuffer(resources.frameUniformBuffer, 0, cc.frameUniformData);
 
-      // Full pipeline: count → prefix sum → scatter → radix sort → reorder → composite
-      // All GPU — no CPU readback stall
-      encodeFullComputeCompositorPipeline(encoder, resources, bindGroups);
+      // Skip sort when camera is static — reuse previously sorted refs
+      const viewChanged = !cc.lastSortedViewProj || !viewProjEqual(viewProj, cc.lastSortedViewProj);
+      if (viewChanged || !cc.hasSortedRefs) {
+        encodeFullComputeCompositorPipeline(encoder, resources, bindGroups);
+        cc.lastSortedViewProj = new Float32Array(viewProj);
+        cc.hasSortedRefs = true;
+      } else {
+        encodeCompositeOnly(encoder, resources, bindGroups);
+      }
 
       // Continue with same encoder (no split needed anymore)
     }

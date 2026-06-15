@@ -386,6 +386,27 @@ export function createTileSplatBindGroups(
 }
 
 /**
+ * Encode just the composite pass, reusing previously sorted refs.
+ * Use when the camera hasn't moved and the sorted ref buffer is still valid.
+ */
+export function encodeCompositeOnly(
+  encoder: GPUCommandEncoder,
+  resources: TileSplatCompositorResources,
+  bindGroups: TileSplatCompositorBindGroups,
+): void {
+  const { plan } = resources;
+  const pass = encoder.beginComputePass({ label: "tile_composite" });
+  pass.setPipeline(resources.compositePipeline);
+  pass.setBindGroup(0, bindGroups.splatBindGroup);
+  pass.setBindGroup(1, bindGroups.sortedTileBindGroup);
+  pass.dispatchWorkgroups(
+    Math.ceil(plan.viewportWidth / 8),
+    Math.ceil(plan.viewportHeight / 8),
+  );
+  pass.end();
+}
+
+/**
  * Encode the full compute compositor pipeline:
  * count → GPU prefix sum → init sort → scatter (with sort keys) → radix sort → reorder → composite
  *
