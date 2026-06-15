@@ -41,12 +41,11 @@ fn mortonEncode2D(x: u32, y: u32) -> u32 {
 }
 
 @group(0) @binding(0) var<uniform> frame: FrameUniforms;
-@group(0) @binding(1) var<storage, read> positions: array<f32>;
+@group(0) @binding(1) var<storage, read> projCache: array<u32>;
 @group(0) @binding(2) var<storage, read> colors: array<f32>;
-@group(0) @binding(3) var<storage, read> scales: array<f32>;
-@group(0) @binding(4) var<storage, read> rotations: array<f32>;
-@group(0) @binding(5) var<storage, read> opacities: array<f32>;
-@group(0) @binding(6) var<storage, read> sortedIndices: array<u32>;
+@group(0) @binding(3) var<storage, read> sortedIndices: array<u32>;
+
+const PROJ_STRIDE = 8u;
 
 @group(1) @binding(0) var<storage, read_write> tileCounts: array<atomic<u32>>;
 @group(1) @binding(1) var<storage, read_write> tileOffsets: array<u32>;
@@ -55,133 +54,29 @@ fn mortonEncode2D(x: u32, y: u32) -> u32 {
 
 const TILE_REF_STRIDE = 8u;
 
-// --- Projection ---
-
-struct SplatShape {
-  axis0: vec3f,
-  axis1: vec3f,
-  axis2: vec3f,
-};
-
-struct ProjectedSplat {
-  centerPx: vec2f,
-  inverseCov2d: vec3f,
-  radius: f32,
-  depthNdc: f32,
-  opacity: f32,
-};
-
-fn rotateAxis(rotation: vec4f, axis: vec3f) -> vec3f {
-  let q = rotation / max(length(rotation), 0.000001);
-  let u = vec3f(q.y, q.z, q.w);
-  return axis + 2.0 * cross(u, cross(u, axis) + q.x * axis);
-}
-
-fn makeSplatShape(scaleLog: vec3f, rotation: vec4f) -> SplatShape {
-  let scale = exp(scaleLog);
-  return SplatShape(
-    rotateAxis(rotation, vec3f(1.0, 0.0, 0.0)) * scale.x,
-    rotateAxis(rotation, vec3f(0.0, 1.0, 0.0)) * scale.y,
-    rotateAxis(rotation, vec3f(0.0, 0.0, 1.0)) * scale.z,
-  );
-}
-
-fn viewProjectionLinearRow(row: u32) -> vec3f {
-  return vec3f(frame.viewProj[0][row], frame.viewProj[1][row], frame.viewProj[2][row]);
-}
-
-fn projectAxisJacobian(axis: vec3f, centerClip: vec4f) -> vec2f {
-  let viewProjRow0 = viewProjectionLinearRow(0u);
-  let viewProjRow1 = viewProjectionLinearRow(1u);
-  let viewProjRow3 = viewProjectionLinearRow(3u);
-  let safeW = max(abs(centerClip.w), MIN_SPLAT_CLIP_W);
-  let clipW2 = safeW * safeW;
-  let viewJacobianX = (centerClip.w * viewProjRow0 - centerClip.x * viewProjRow3) / clipW2;
-  let viewJacobianY = (centerClip.w * viewProjRow1 - centerClip.y * viewProjRow3) / clipW2;
-  return vec2f(dot(viewJacobianX, axis), dot(viewJacobianY, axis));
-}
-
-fn projectSplat(splatId: u32) -> ProjectedSplat {
-  let posBase = splatId * 3u;
-  let center = vec3f(positions[posBase], positions[posBase + 1u], positions[posBase + 2u]);
-  let centerClip = frame.viewProj * vec4f(center, 1.0);
-  let safeW = max(centerClip.w, MIN_SPLAT_CLIP_W);
-  let centerNdc = centerClip.xy / safeW;
-  let centerPx = vec2f(
-    (centerNdc.x * 0.5 + 0.5) * frame.viewport.x,
-    (1.0 - (centerNdc.y * 0.5 + 0.5)) * frame.viewport.y,
-  );
-  let depthNdc = centerClip.z / safeW;
-
-  let vecBase = splatId * 3u;
-  let quatBase = splatId * 4u;
-  let shape = makeSplatShape(
-    vec3f(scales[vecBase], scales[vecBase + 1u], scales[vecBase + 2u]),
-    vec4f(rotations[quatBase], rotations[quatBase + 1u], rotations[quatBase + 2u], rotations[quatBase + 3u]),
-  );
-
-  let viewportScale = vec2f(frame.viewport.x, frame.viewport.y) * 0.5;
-  let axis0 = projectAxisJacobian(shape.axis0, centerClip) * viewportScale;
-  let axis1 = projectAxisJacobian(shape.axis1, centerClip) * viewportScale;
-  let axis2 = projectAxisJacobian(shape.axis2, centerClip) * viewportScale;
-
-  let covXX = axis0.x * axis0.x + axis1.x * axis1.x + axis2.x * axis2.x + COV_LOW_PASS;
-  let covXY = axis0.x * axis0.y + axis1.x * axis1.y + axis2.x * axis2.y;
-  let covYY = axis0.y * axis0.y + axis1.y * axis1.y + axis2.y * axis2.y + COV_LOW_PASS;
-
-  let mid = 0.5 * (covXX + covYY);
-  let det = max(covXX * covYY - covXY * covXY, 0.1);
-  let lambda = mid + sqrt(max(mid * mid - det, 0.1));
-  let radius = ceil(COMPACT_FOOTPRINT_SIGMA_RADIUS * sqrt(lambda));
-
-  let detFull = max(covXX * covYY - covXY * covXY, 0.000001);
-  let detInv = 1.0 / detFull;
-  let inverseCov2d = vec3f(covYY * detInv, -covXY * detInv, covXX * detInv);
-  let sourceOpacity = clamp(opacities[splatId], 0.0, 0.99);
-
-  return ProjectedSplat(centerPx, inverseCov2d, radius, depthNdc, sourceOpacity);
-}
-
-fn footprintBounds(centerPx: vec2f, radius: f32) -> vec4u {
-  let tileSize = max(frame.tileSizePx, 1.0);
-  let maxTile = max(frame.tileGrid, vec2u(1u)) - vec2u(1u);
-  let minPx = max(centerPx - vec2f(radius), vec2f(0.0));
-  let maxPx = min(centerPx + vec2f(radius), frame.viewport);
-  return vec4u(
-    min(u32(floor(minPx.x / tileSize)), maxTile.x),
-    min(u32(floor(minPx.y / tileSize)), maxTile.y),
-    min(u32(floor(max((maxPx.x - COMPACT_FOOTPRINT_EPSILON) / tileSize, 0.0))), maxTile.x),
-    min(u32(floor(max((maxPx.y - COMPACT_FOOTPRINT_EPSILON) / tileSize, 0.0))), maxTile.y),
-  );
-}
-
-// --- Pass 1: Count ---
+// --- Pass 1: Count (reads tile bounds from projection cache) ---
 @compute @workgroup_size(256)
 fn count_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
   let sortRank = globalId.x;
   if (sortRank >= frame.splatCount) { return; }
-  let splatId = sortedIndices[sortRank];
-  if (splatId >= frame.splatCount) { return; }
 
-  let posBase = splatId * 3u;
-  let centerClip = frame.viewProj * vec4f(
-    positions[posBase], positions[posBase + 1u], positions[posBase + 2u], 1.0
-  );
-  if (centerClip.w <= 0.0) { return; }
+  let packed = projCache[sortRank * PROJ_STRIDE + 7u];
+  if (packed == 0xFFFFFFFFu) { return; } // invisible sentinel
 
-  let splat = projectSplat(splatId);
-  if (splat.radius <= 0.0) { return; }
-  let bounds = footprintBounds(splat.centerPx, splat.radius);
+  let minTileX = packed & 0xFFu;
+  let minTileY = (packed >> 8u) & 0xFFu;
+  let maxTileX = (packed >> 16u) & 0xFFu;
+  let maxTileY = (packed >> 24u) & 0xFFu;
 
-  for (var tileY = bounds.y; tileY <= bounds.w; tileY++) {
-    for (var tileX = bounds.x; tileX <= bounds.z; tileX++) {
+  for (var tileY = minTileY; tileY <= maxTileY; tileY++) {
+    for (var tileX = minTileX; tileX <= maxTileX; tileX++) {
       let tileId = mortonEncode2D(tileX, tileY);
       atomicAdd(&tileCounts[tileId], 1u);
     }
   }
 }
 
-// --- Pass 3: Scatter with sort key generation ---
+// --- Pass 3: Scatter (reads from projection cache) ---
 // Writes ref data into tileRefs AND sort keys for global radix sort.
 // Values buffer is pre-initialized with identity by radix sort init pass.
 
@@ -191,42 +86,52 @@ fn count_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
 fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
   let sortRank = globalId.x;
   if (sortRank >= frame.splatCount) { return; }
-  let splatId = sortedIndices[sortRank];
-  if (splatId >= frame.splatCount) { return; }
 
-  let posBase = splatId * 3u;
-  let centerClip = frame.viewProj * vec4f(
-    positions[posBase], positions[posBase + 1u], positions[posBase + 2u], 1.0
-  );
-  if (centerClip.w <= 0.0) { return; }
+  let cacheBase = sortRank * PROJ_STRIDE;
+  let packed = projCache[cacheBase + 7u];
+  if (packed == 0xFFFFFFFFu) { return; } // invisible sentinel
 
-  let splat = projectSplat(splatId);
-  if (splat.radius <= 0.0) { return; }
-  let bounds = footprintBounds(splat.centerPx, splat.radius);
+  // Read projected data from cache
+  let centerPxX = projCache[cacheBase + 0u];
+  let centerPxY = projCache[cacheBase + 1u];
+  let covX = projCache[cacheBase + 2u];
+  let covY = projCache[cacheBase + 3u];
+  let covZ = projCache[cacheBase + 4u];
+  let radiusDepth = unpack2x16float(projCache[cacheBase + 5u]);
+  let opacityPacked = unpack2x16float(projCache[cacheBase + 6u]);
+  let depthNdc = radiusDepth.y;
+  let opacity = opacityPacked.x;
+
+  // Read tile bounds from cache
+  let minTileX = packed & 0xFFu;
+  let minTileY = (packed >> 8u) & 0xFFu;
+  let maxTileX = (packed >> 16u) & 0xFFu;
+  let maxTileY = (packed >> 24u) & 0xFFu;
 
   // Quantize depth to 16 bits for sort key.
-  // NDC depth is [0,1]. We invert so larger value = farther = sorted first (back-to-front).
-  let depthClamped = clamp(splat.depthNdc, 0.0, 1.0);
+  let depthClamped = clamp(depthNdc, 0.0, 1.0);
   let depthU16 = u32(depthClamped * 65535.0);
   let depthInverted = 65535u - depthU16;
 
-  for (var tileY = bounds.y; tileY <= bounds.w; tileY++) {
-    for (var tileX = bounds.x; tileX <= bounds.z; tileX++) {
+  let splatId = sortedIndices[sortRank];
+
+  for (var tileY = minTileY; tileY <= maxTileY; tileY++) {
+    for (var tileX = minTileX; tileX <= maxTileX; tileX++) {
       let tileId = mortonEncode2D(tileX, tileY);
       let slot = atomicAdd(&tileCounts[tileId], 1u);
       let baseOffset = tileOffsets[tileId];
       let linearIdx = baseOffset + slot;
       let refIdx = linearIdx * TILE_REF_STRIDE;
       if (refIdx + TILE_REF_STRIDE <= frame.totalTileRefs * TILE_REF_STRIDE) {
-        // Write ref data
+        // Write ref data (populated from projection cache)
         tileRefs[refIdx + 0u] = splatId;
-        tileRefs[refIdx + 1u] = bitcast<u32>(splat.depthNdc);
-        tileRefs[refIdx + 2u] = bitcast<u32>(splat.centerPx.x);
-        tileRefs[refIdx + 3u] = bitcast<u32>(splat.centerPx.y);
-        tileRefs[refIdx + 4u] = bitcast<u32>(splat.inverseCov2d.x);
-        tileRefs[refIdx + 5u] = bitcast<u32>(splat.inverseCov2d.y);
-        tileRefs[refIdx + 6u] = bitcast<u32>(splat.inverseCov2d.z);
-        tileRefs[refIdx + 7u] = bitcast<u32>(splat.opacity);
+        tileRefs[refIdx + 1u] = bitcast<u32>(depthNdc);
+        tileRefs[refIdx + 2u] = centerPxX;
+        tileRefs[refIdx + 3u] = centerPxY;
+        tileRefs[refIdx + 4u] = covX;
+        tileRefs[refIdx + 5u] = covY;
+        tileRefs[refIdx + 6u] = covZ;
+        tileRefs[refIdx + 7u] = bitcast<u32>(opacity);
 
         // Write radix sort key: Morton-coded tileId for spatial locality + inverted depth
         radixKeys[linearIdx] = (tileId << 16u) | depthInverted;

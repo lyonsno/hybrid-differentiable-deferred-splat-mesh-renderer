@@ -1,4 +1,5 @@
 import tileSplatCompositeShader from "./shaders/gpu_tile_splat_composite.wgsl?raw";
+import projectSplatsShader from "./shaders/gpu_project_splats.wgsl?raw";
 import reorderRefsShader from "./shaders/gpu_reorder_refs.wgsl?raw";
 import { createRadixSort, encodeRadixSortInit, encodeRadixSort, type RadixSortResources } from "./gpuRadixSort.js";
 import prefixSumShader from "./shaders/gpu_prefix_sum.wgsl?raw";
@@ -40,6 +41,7 @@ export interface TileSplatCompositorPlan {
 
 export interface TileSplatCompositorResources {
   readonly plan: TileSplatCompositorPlan;
+  readonly projectPipeline: GPUComputePipeline;
   readonly countPipeline: GPUComputePipeline;
   readonly scatterPipeline: GPUComputePipeline;
   readonly reorderPipeline: GPUComputePipeline;
@@ -47,11 +49,13 @@ export interface TileSplatCompositorResources {
   readonly prefixScanPipeline: GPUComputePipeline;
   readonly prefixScanBlockSumsPipeline: GPUComputePipeline;
   readonly prefixPropagatePipeline: GPUComputePipeline;
+  readonly projectBindGroupLayout: GPUBindGroupLayout;
   readonly splatBindGroupLayout: GPUBindGroupLayout;
   readonly tileBindGroupLayout: GPUBindGroupLayout;
   readonly sortKeyBindGroupLayout: GPUBindGroupLayout;
   readonly reorderBindGroupLayout: GPUBindGroupLayout;
   readonly prefixBindGroupLayout: GPUBindGroupLayout;
+  readonly projCacheBuffer: GPUBuffer;
   readonly tileCountBuffer: GPUBuffer;
   readonly tileOffsetBuffer: GPUBuffer;
   readonly tileRefBuffer: GPUBuffer;
@@ -91,6 +95,11 @@ export function createTileSplatCompositor(
     code: tileSplatCompositeShader,
   });
 
+  const projectModule = device.createShaderModule({
+    label: "project_splats_shader",
+    code: projectSplatsShader,
+  });
+
   const reorderModule = device.createShaderModule({
     label: "reorder_refs_shader",
     code: reorderRefsShader,
@@ -101,17 +110,28 @@ export function createTileSplatCompositor(
     code: prefixSumShader,
   });
 
-  // @group(0): splat data + frame uniforms (6 read-only-storage + 1 uniform)
+  // Project pass bind group: frame uniforms + raw splat data + projCache output
+  const projectBindGroupLayout = device.createBindGroupLayout({
+    label: "project_splats_bgl",
+    entries: [
+      { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+      { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // positions
+      { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // scales
+      { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // rotations
+      { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // opacities
+      { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // sortedIndices
+      { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },           // projCache (write)
+    ],
+  });
+
+  // @group(0) for count/scatter/composite: frame uniforms + projCache + colors + sortedIndices
   const splatBindGroupLayout = device.createBindGroupLayout({
     label: "tile_splat_splat_bgl",
     entries: [
       { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
-      { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
-      { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
-      { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
-      { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
-      { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
-      { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
+      { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // projCache
+      { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // colors
+      { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // sortedIndices
     ],
   });
 
@@ -159,6 +179,11 @@ export function createTileSplatCompositor(
   });
 
   // Pipeline layouts
+  const projectLayout = device.createPipelineLayout({
+    label: "project_splats_pl",
+    bindGroupLayouts: [projectBindGroupLayout],
+  });
+
   const twoGroupLayout = device.createPipelineLayout({
     label: "tile_splat_2group_pl",
     bindGroupLayouts: [splatBindGroupLayout, tileBindGroupLayout],
@@ -180,6 +205,12 @@ export function createTileSplatCompositor(
   });
 
   // Pipelines
+  const projectPipeline = device.createComputePipeline({
+    label: "project_splats",
+    layout: projectLayout,
+    compute: { module: projectModule, entryPoint: "project_splats" },
+  });
+
   const countPipeline = device.createComputePipeline({
     label: "tile_splat_count",
     layout: twoGroupLayout,
@@ -223,6 +254,13 @@ export function createTileSplatCompositor(
   });
 
   // Buffers
+  const PROJ_CACHE_U32_STRIDE = 8;
+  const projCacheBuffer = device.createBuffer({
+    label: "proj_cache",
+    size: Math.max(16, plan.splatCount * PROJ_CACHE_U32_STRIDE * 4),
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+
   const frameUniformBuffer = device.createBuffer({
     label: "tile_splat_frame_uniforms",
     size: TILE_SPLAT_FRAME_UNIFORM_BYTES,
@@ -279,14 +317,15 @@ export function createTileSplatCompositor(
 
   return {
     plan,
-    countPipeline, scatterPipeline, reorderPipeline, compositePipeline,
+    projectPipeline, countPipeline, scatterPipeline, reorderPipeline, compositePipeline,
     prefixScanPipeline, prefixScanBlockSumsPipeline, prefixPropagatePipeline,
-    splatBindGroupLayout, tileBindGroupLayout, sortKeyBindGroupLayout,
+    projectBindGroupLayout, splatBindGroupLayout, tileBindGroupLayout, sortKeyBindGroupLayout,
     reorderBindGroupLayout, prefixBindGroupLayout,
-    tileCountBuffer, tileOffsetBuffer, tileRefBuffer, tileRefSortedBuffer,
+    projCacheBuffer, tileCountBuffer, tileOffsetBuffer, tileRefBuffer, tileRefSortedBuffer,
     frameUniformBuffer, prefixBlockSumsBuffer, reorderParamsBuffer, prefixParamsBuffer,
     radixSort,
     destroy() {
+      projCacheBuffer.destroy();
       frameUniformBuffer.destroy();
       tileCountBuffer.destroy();
       tileOffsetBuffer.destroy();
@@ -318,6 +357,7 @@ export function writeTileSplatFrameUniforms(
 }
 
 export interface TileSplatCompositorBindGroups {
+  readonly projectBindGroup: GPUBindGroup;
   readonly splatBindGroup: GPUBindGroup;
   readonly tileBindGroup: GPUBindGroup;
   readonly sortKeyBindGroup: GPUBindGroup;
@@ -339,17 +379,30 @@ export function createTileSplatBindGroups(
   },
   outputTexture: GPUTexture,
 ): TileSplatCompositorBindGroups {
+  // Project pass: reads raw splat data, writes projection cache
+  const projectBindGroup = device.createBindGroup({
+    label: "project_splats_bg",
+    layout: resources.projectBindGroupLayout,
+    entries: [
+      { binding: 0, resource: { buffer: resources.frameUniformBuffer } },
+      { binding: 1, resource: { buffer: splatBuffers.positionBuffer } },
+      { binding: 2, resource: { buffer: splatBuffers.scaleBuffer } },
+      { binding: 3, resource: { buffer: splatBuffers.rotationBuffer } },
+      { binding: 4, resource: { buffer: splatBuffers.opacityBuffer } },
+      { binding: 5, resource: { buffer: splatBuffers.sortedIndexBuffer } },
+      { binding: 6, resource: { buffer: resources.projCacheBuffer } },
+    ],
+  });
+
+  // Count/scatter/composite: reads from projection cache + colors
   const splatBindGroup = device.createBindGroup({
     label: "tile_splat_splat_bg",
     layout: resources.splatBindGroupLayout,
     entries: [
       { binding: 0, resource: { buffer: resources.frameUniformBuffer } },
-      { binding: 1, resource: { buffer: splatBuffers.positionBuffer } },
+      { binding: 1, resource: { buffer: resources.projCacheBuffer } },
       { binding: 2, resource: { buffer: splatBuffers.colorBuffer } },
-      { binding: 3, resource: { buffer: splatBuffers.scaleBuffer } },
-      { binding: 4, resource: { buffer: splatBuffers.rotationBuffer } },
-      { binding: 5, resource: { buffer: splatBuffers.opacityBuffer } },
-      { binding: 6, resource: { buffer: splatBuffers.sortedIndexBuffer } },
+      { binding: 3, resource: { buffer: splatBuffers.sortedIndexBuffer } },
     ],
   });
 
@@ -409,7 +462,7 @@ export function createTileSplatBindGroups(
     ],
   });
 
-  return { splatBindGroup, tileBindGroup, sortKeyBindGroup, reorderBindGroup, sortedTileBindGroup, prefixBindGroup };
+  return { projectBindGroup, splatBindGroup, tileBindGroup, sortKeyBindGroup, reorderBindGroup, sortedTileBindGroup, prefixBindGroup };
 }
 
 /**
@@ -446,7 +499,16 @@ export function encodeFullComputeCompositorPipeline(
 ): void {
   const { plan } = resources;
 
-  // Pass 1: Count tile refs per splat
+  // Pass 0: Project all splats into projection cache
+  {
+    const pass = encoder.beginComputePass({ label: "project_splats" });
+    pass.setPipeline(resources.projectPipeline);
+    pass.setBindGroup(0, bindGroups.projectBindGroup);
+    pass.dispatchWorkgroups(Math.ceil(plan.splatCount / 256));
+    pass.end();
+  }
+
+  // Pass 1: Count tile refs per splat (reads from projection cache)
   encoder.clearBuffer(resources.tileCountBuffer);
   {
     const pass = encoder.beginComputePass({ label: "tile_count" });
