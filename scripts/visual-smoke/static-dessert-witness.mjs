@@ -1322,6 +1322,14 @@ function summarizeSelectedAnchorRgbProvenance(steps = [], { outputLuma } = {}) {
   ) {
     category = "selected-source-color-transferred-late-support-suppressed";
   } else if (
+    hasTransferredSelectedColor &&
+    brightSourceStepCount > 0 &&
+    totalAlphaTransferWeight > 0 &&
+    totalColorTransferWeight < totalAlphaTransferWeight * 0.5 &&
+    maxContributionLuma < maxSourceLuma * 0.5
+  ) {
+    category = "selected-source-color-transferred-weak-authority";
+  } else if (
     hasTransferredSelectedColor
   ) {
     category = "selected-source-color-transferred-still-mismatched";

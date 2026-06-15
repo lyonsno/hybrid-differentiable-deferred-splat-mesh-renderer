@@ -1452,6 +1452,130 @@ test("static dessert witness classifier keeps bright final transferred color out
   );
 });
 
+test("static dessert witness classifier separates weak transferred color authority from generic transferred mismatch", () => {
+  const visualGapAnchors = [
+    { id: "visual-gap-1", kind: "plate-covered-tile-local-missing", x: 640, y: 342, score: 71, plateDelta: 88, tileLocalDelta: 9 },
+  ];
+  const badPixelAnchors = [
+    {
+      id: "operator-bad-pixel-1",
+      kind: "operator-visible-bright-outlier",
+      x: 612,
+      y: 355,
+      score: 182,
+      plateLuma: 44,
+      finalLuma: 190,
+      plateDelta: 18,
+      finalDelta: 155,
+    },
+  ];
+  const result = classifyStaticDessertWitness({
+    captures: [
+      witnessCapture("final-color", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        changedPixelRatio: 0.0556642795138889,
+        routeIdentity: {
+          ...visualGapTraceRoute([]),
+          traceAnchors: "",
+          wgslProjectedRefStream: "source-frontier",
+        },
+      }),
+      witnessCapture("plate-final-color", {
+        rendererLabel: "plate",
+        changedPixelRatio: 0.03407335069444444,
+      }),
+      witnessCapture("coverage-weight"),
+      witnessCapture("accumulated-alpha", {
+        diagnostics: {
+          alpha: { estimatedMaxAccumulatedAlpha: 1, estimatedMinTransmittance: 0 },
+        },
+      }),
+      witnessCapture("transmittance", {
+        diagnostics: {
+          alpha: { estimatedMaxAccumulatedAlpha: 1, estimatedMinTransmittance: 0 },
+        },
+      }),
+      witnessCapture("tile-ref-count"),
+      witnessCapture("conic-shape", {
+        diagnostics: {
+          conicShape: { maxMajorRadiusPx: 57.2, minMinorRadiusPx: 1.5, maxAnisotropy: 21.8 },
+        },
+      }),
+      witnessCapture("visual-gap-trace", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        routeIdentity: {
+          ...visualGapTraceRoute(visualGapAnchors),
+          wgslProjectedRefStream: "source-frontier",
+        },
+        visualGapAnchors,
+        perPixelFinalColorAccumulation: [
+          {
+            status: "present",
+            anchorPixel: { id: "visual-gap-1", x: 640, y: 342 },
+            finalColorAccumulation: { steps: [{ splatIndex: 1 }], outputColor: [0.1, 0.2, 0.3, 0.98], remainingTransmittance: 0.02 },
+          },
+        ],
+        perPixelRetainedToOrderedSurvivalLedger: survivalLedgerFor(visualGapAnchors, {
+          category: "ordered-present",
+          mechanism: "retained-foreground-identity-survives-to-final-accumulation",
+          counts: { projectedForeground: 4, retainedForeground: 4, orderedForeground: 4 },
+          metrics: { projectedForegroundOcclusionWeight: 1.25, finalForegroundAlpha: 0.98 },
+        }),
+      }),
+      witnessCapture("operator-visible-bad-pixel-trace", {
+        rendererLabel: "tile-local-visible-gaussian-compositor",
+        routeIdentity: {
+          ...visualGapTraceRoute(badPixelAnchors),
+          wgslProjectedRefStream: "source-frontier",
+        },
+        operatorVisibleBadPixelAnchors: badPixelAnchors,
+        perPixelFinalColorAccumulation: [
+          {
+            status: "present",
+            anchorPixel: { id: "operator-bad-pixel-1", x: 612, y: 355 },
+            finalColorAccumulation: {
+              steps: [{
+                splatIndex: 11,
+                sourceRole: "foreground",
+                sourceFrontierAlphaSupport: "foreground-spatial-support",
+                sourceFrontierSupportPixelWeight: 0.28,
+                alphaTransferWeight: 1,
+                colorTransferWeight: 0.38,
+                coverageAlpha: 0.92,
+                colorAlpha: 0.38,
+                colorOcclusionAlpha: 0.44,
+                sourceColor: [1, 0.9, 0.75],
+                contributionColor: [0.38, 0.342, 0.285],
+              }],
+              outputColor: [0.62, 0.58, 0.5, 1],
+              remainingTransmittance: 0,
+            },
+          },
+        ],
+        perPixelRetainedToOrderedSurvivalLedger: survivalLedgerFor(badPixelAnchors, {
+          category: "ordered-present",
+          mechanism: "retained-foreground-identity-survives-to-final-accumulation",
+          counts: { projectedForeground: 4, retainedForeground: 4, orderedForeground: 4 },
+          metrics: { projectedForegroundOcclusionWeight: 1.25, finalForegroundAlpha: 1 },
+        }),
+        traceCanvasParity: traceCanvasParityForTest(badPixelAnchors),
+      }),
+    ],
+  });
+
+  const provenance = result.metrics.operatorVisibleBadPixelTrace.anchors[0].rgbProvenance;
+  assert.equal(provenance.status, "classified");
+  assert.equal(provenance.category, "selected-source-color-transferred-weak-authority");
+  assert.equal(provenance.maxSourceLuma, 232.16);
+  assert.equal(provenance.maxContributionLuma, 88.221);
+  assert.equal(provenance.colorTransferRatio, 0.38);
+  assert.equal(provenance.maxColorOcclusionGap, 0.06);
+  assert.equal(
+    result.metrics.operatorVisibleBadPixelClassification.rgbProvenanceCategoryCounts["selected-source-color-transferred-weak-authority"],
+    1,
+  );
+});
+
 test("static dessert witness classifier separates late dull support suppression from generic transferred mismatch", () => {
   const visualGapAnchors = [
     { id: "visual-gap-1", kind: "plate-covered-tile-local-missing", x: 640, y: 342, score: 71, plateDelta: 88, tileLocalDelta: 9 },
