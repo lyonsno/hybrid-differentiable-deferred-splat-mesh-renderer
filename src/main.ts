@@ -1719,7 +1719,7 @@ async function main() {
       gpu.device.queue.writeBuffer(resources.frameUniformBuffer, 0, cc.frameUniformData);
 
       // Skip sort when camera is static — reuse previously sorted refs
-      const viewChanged = !cc.lastSortedViewProj || !viewProjEqual(viewProj, cc.lastSortedViewProj);
+      const viewChanged = true; // TODO: re-enable static camera skip after debugging
       if (viewChanged || !cc.hasSortedRefs) {
         encodeFullComputeCompositorPipeline(encoder, resources, bindGroups);
         cc.lastSortedViewProj = new Float32Array(viewProj);
