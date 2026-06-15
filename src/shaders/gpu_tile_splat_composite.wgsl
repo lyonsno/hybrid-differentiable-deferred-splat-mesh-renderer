@@ -208,6 +208,97 @@ fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
   }
 }
 
+// --- Pass 3.5: Per-tile sort by depth (bitonic sort in shared memory) ---
+// One workgroup per tile. Sorts refs in-place by depth key (word 1) descending (back-to-front).
+const SORT_WG_SIZE = 256u;
+
+var<workgroup> sortKeys: array<f32, 256>;
+var<workgroup> sortVals: array<u32, 256>;
+
+@compute @workgroup_size(256)
+fn sort_tile_refs(
+  @builtin(workgroup_id) groupId: vec3u,
+  @builtin(local_invocation_id) localId: vec3u,
+) {
+  let tileId = groupId.x;
+  let tileCount = frame.tileGrid.x * frame.tileGrid.y;
+  if (tileId >= tileCount) { return; }
+
+  let refStart = tileOffsets[tileId];
+  let rawRefCount = atomicLoad(&tileCounts[tileId]);
+  let refCount = min(rawRefCount, SORT_WG_SIZE);
+  let tid = localId.x;
+
+  // Load depth keys into shared memory; use sentinel for out-of-range
+  if (tid < refCount) {
+    let refIdx = (refStart + tid) * TILE_REF_STRIDE;
+    sortKeys[tid] = bitcast<f32>(tileRefs[refIdx + 1u]);
+    sortVals[tid] = tid;
+  } else {
+    sortKeys[tid] = -1000000.0; // sentinel: sorts to end for descending
+    sortVals[tid] = tid;
+  }
+  workgroupBarrier();
+
+  // Bitonic sort (descending by depth — farthest first for back-to-front)
+  // Always sort the full workgroup size to keep control flow uniform.
+  let paddedN = SORT_WG_SIZE;
+
+  for (var k = 2u; k <= paddedN; k *= 2u) {
+    for (var j = k / 2u; j > 0u; j /= 2u) {
+      let ixj = tid ^ j;
+      if (ixj > tid && tid < paddedN && ixj < paddedN) {
+        let ascending = (tid & k) == 0u;
+        let leftKey = sortKeys[tid];
+        let rightKey = sortKeys[ixj];
+        // Descending: swap if left < right (we want larger depth first)
+        let shouldSwap = select(leftKey > rightKey, leftKey < rightKey, ascending);
+        if (shouldSwap) {
+          sortKeys[tid] = rightKey;
+          sortKeys[ixj] = leftKey;
+          let tmpVal = sortVals[tid];
+          sortVals[tid] = sortVals[ixj];
+          sortVals[ixj] = tmpVal;
+        }
+      }
+      workgroupBarrier();
+    }
+  }
+
+  // Now sortVals[i] tells us which original local index should be at position i.
+  // We need to reorder the actual tile ref data accordingly.
+  // Use shared memory to buffer one record at a time across all 8 words.
+  // Since we can't allocate 1024*8 shared words, do the permutation in-place
+  // by copying through tileRefs with a temp approach:
+  // Actually, simplest correct approach: read the permuted record and write it to a temp
+  // location, then copy back. But we don't have temp storage.
+  //
+  // Instead: since the sort only needs to reorder and we have the permutation in sortVals,
+  // we can do a gather: for each output position i, read from input position sortVals[i].
+  // We need to read before write, so use shared memory for one word at a time.
+
+  // Reorder each word of the tile ref records using the permutation
+  for (var word = 0u; word < TILE_REF_STRIDE; word++) {
+    // Load the word from the permuted source position into shared memory
+    var loadedWord = 0u;
+    if (tid < refCount) {
+      let srcLocalIdx = sortVals[tid];
+      let srcRefIdx = (refStart + srcLocalIdx) * TILE_REF_STRIDE + word;
+      loadedWord = tileRefs[srcRefIdx];
+    }
+    workgroupBarrier();
+    // Store sortKeys as temp buffer for this word (reuse since sort is done)
+    sortKeys[tid] = bitcast<f32>(loadedWord);
+    workgroupBarrier();
+    // Write back to the correct position
+    if (tid < refCount) {
+      let dstRefIdx = (refStart + tid) * TILE_REF_STRIDE + word;
+      tileRefs[dstRefIdx] = bitcast<u32>(sortKeys[tid]);
+    }
+    workgroupBarrier();
+  }
+}
+
 // --- Pass 4: Composite (back-to-front source-over) ---
 @compute @workgroup_size(8, 8, 1)
 fn composite(@builtin(global_invocation_id) globalId: vec3u) {

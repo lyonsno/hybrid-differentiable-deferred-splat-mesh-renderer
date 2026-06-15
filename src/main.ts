@@ -149,6 +149,7 @@ import {
   writeTileSplatFrameUniforms,
   encodeTileSplatCountPass,
   encodeTileSplatScatterPass,
+  encodeTileSplatSortPass,
   encodeTileSplatCompositePass,
   TILE_SPLAT_FRAME_UNIFORM_BYTES,
   type TileSplatCompositorResources,
@@ -1752,6 +1753,9 @@ async function main() {
 
       // Pass 3: Scatter tile refs
       encodeTileSplatScatterPass(encoder2, resources, bindGroups);
+
+      // Pass 3.5: Sort each tile's refs by depth (back-to-front)
+      encodeTileSplatSortPass(encoder2, resources, bindGroups);
 
       // Pass 4: Composite
       encodeTileSplatCompositePass(encoder2, resources, bindGroups);
