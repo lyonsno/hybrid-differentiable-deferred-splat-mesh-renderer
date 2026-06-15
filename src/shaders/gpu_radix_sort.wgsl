@@ -1,5 +1,5 @@
 // Global radix sort for tile-splat compositor.
-// Sorts (key, value) pairs where key = (tileId << 16) | depth_u16.
+// Sorts (key, value) pairs where key = (tileId << 16 | depth_u16).
 // 8-pass LSD radix sort, 4 bits per pass, 16 buckets.
 // Stable scatter via per-thread ranking with 16-bucket prefix scan.
 
@@ -64,15 +64,15 @@ fn histogram(
   }
 }
 
-// --- Scatter pass (stable via ranking) ---
-// With only 16 buckets, ranking is cheap:
-// For each thread's element, count how many prior threads (in this round)
-// have the same bucket. With 256 threads this is O(256) per thread worst case,
-// but we can use shared memory to broadcast bucket assignments.
+// --- Scatter pass (stable via bitmask ranking) ---
+// Stable parallel ranking using per-bucket bitmasks.
+// Each thread sets its bit in its bucket's mask, then popcount below gives rank.
+// 16 buckets × 8 u32s (256 bits each) = 128 u32 workgroup memory.
+// O(1) per thread ranking + O(WG_SIZE/32) parallel bucket count.
 
-var<workgroup> threadBuckets: array<u32, 256>; // bucket of each thread this round
-var<workgroup> bucketBase: array<u32, 16>;     // base output offset per bucket
-var<workgroup> bucketRunning: array<u32, 16>;  // running count per bucket
+var<workgroup> bucketBits: array<atomic<u32>, 128>; // 16 buckets × 8 words
+var<workgroup> bucketBase: array<u32, 16>;           // base output offset per bucket
+var<workgroup> bucketRunning: array<u32, 16>;        // running count per bucket
 
 @compute @workgroup_size(256)
 fn scatter(
@@ -89,6 +89,12 @@ fn scatter(
   let groupStart = groupId.x * ELEMENTS_PER_WG;
 
   for (var item = 0u; item < ITEMS_PER_THREAD; item++) {
+    // Clear bitmask (128 words, first 128 threads each clear one)
+    if (localId.x < 128u) {
+      atomicStore(&bucketBits[localId.x], 0u);
+    }
+    workgroupBarrier();
+
     let idx = groupStart + item * WG_SIZE + localId.x;
 
     var bucket = RADIX_BUCKETS; // sentinel: no valid element
@@ -101,18 +107,26 @@ fn scatter(
       bucket = (key >> params.bitOffset) & BUCKET_MASK;
     }
 
-    // Broadcast each thread's bucket
-    threadBuckets[localId.x] = bucket;
+    // Set this thread's bit in its bucket's bitmask
+    let wordIdx = localId.x >> 5u;  // localId.x / 32
+    let bitIdx = localId.x & 31u;   // localId.x % 32
+    if (bucket < RADIX_BUCKETS) {
+      atomicOr(&bucketBits[bucket * 8u + wordIdx], 1u << bitIdx);
+    }
     workgroupBarrier();
 
-    // Compute rank: count threads with lower ID that have the same bucket
+    // Compute stable rank: count set bits below this thread's position in its bucket
     var rank = 0u;
     if (bucket < RADIX_BUCKETS) {
-      for (var t = 0u; t < localId.x; t++) {
-        if (threadBuckets[t] == bucket) {
-          rank += 1u;
-        }
+      let bucketOffset = bucket * 8u;
+      // Count all bits in words before this thread's word
+      for (var w = 0u; w < wordIdx; w++) {
+        rank += countOneBits(atomicLoad(&bucketBits[bucketOffset + w]));
       }
+      // Count bits below this thread's position in its own word
+      let myWord = atomicLoad(&bucketBits[bucketOffset + wordIdx]);
+      let maskBelow = (1u << bitIdx) - 1u;
+      rank += countOneBits(myWord & maskBelow);
     }
 
     // Scatter to output
@@ -123,17 +137,14 @@ fn scatter(
     }
     workgroupBarrier();
 
-    // Advance running counts (thread 0 does this)
-    if (localId.x == 0u) {
-      for (var b = 0u; b < RADIX_BUCKETS; b++) {
-        var count = 0u;
-        for (var t = 0u; t < WG_SIZE; t++) {
-          if (threadBuckets[t] == b) {
-            count += 1u;
-          }
-        }
-        bucketRunning[b] += count;
+    // Advance running counts — first 16 threads each handle one bucket
+    if (localId.x < RADIX_BUCKETS) {
+      let bucketOffset = localId.x * 8u;
+      var count = 0u;
+      for (var w = 0u; w < 8u; w++) {
+        count += countOneBits(atomicLoad(&bucketBits[bucketOffset + w]));
       }
+      bucketRunning[localId.x] += count;
     }
     workgroupBarrier();
   }
