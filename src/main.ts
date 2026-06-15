@@ -1470,7 +1470,10 @@ async function main() {
     // Real Scaniverse uses splatScale=3000 for its own unit system.
     const activeSplatScale = shapeWitnessFixtureId !== null ? SHAPE_WITNESS_SPLAT_SCALE : REAL_SCANIVERSE_SPLAT_SCALE;
     const activeMinRadiusPx = shapeWitnessFixtureId !== null ? SHAPE_WITNESS_MIN_RADIUS_PX : REAL_SCANIVERSE_MIN_RADIUS_PX;
-    if (alphaRefreshed) {
+    if (alphaRefreshed && scene.rendererMode !== "compute") {
+      // Alpha-density compensation is skipped for the compute compositor —
+      // its front-to-back transmittance cutoff already handles dense-tile
+      // overdraw without needing per-splat opacity adjustment.
       timeFrameStage(frameTiming, "alpha-density", () => {
         if (scene.tileLocalState?.gpuAlphaDensityCompensation) {
           scene.tileLocalState.needsDispatch = true;
