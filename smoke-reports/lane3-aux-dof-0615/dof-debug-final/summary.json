@@ -1,0 +1,450 @@
+{
+  "url": "http://127.0.0.1:5177/?renderer=compute",
+  "browserChannel": "chrome",
+  "consoleMessages": [],
+  "pageErrors": [],
+  "clip": {
+    "x": 0,
+    "y": 0,
+    "width": 1280,
+    "height": 720
+  },
+  "captures": {
+    "off": {
+      "state": {
+        "rendererLabel": "compute",
+        "splatCount": 94406,
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": false,
+          "dofFocusDepth": 0.45,
+          "dofStrength": 1.4,
+          "dofRadius": 4
+        },
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        }
+      },
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 18135,
+        "changedPixels": 35618,
+        "changedPixelRatio": 0.03864800347222222,
+        "averageDelta": 3.3134968171297157,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "01010101010101000000000000000000000000000000000000000003030000000000000607000000000000000000000000000000000000000000000000000000",
+        "bridgeBlockRatio": 0.055248618784530384,
+        "nonblank": true
+      }
+    },
+    "defaultOn": {
+      "state": {
+        "rendererLabel": "compute",
+        "splatCount": 94406,
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.45,
+          "dofStrength": 1.4,
+          "dofRadius": 4
+        },
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        }
+      },
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 16321,
+        "changedPixels": 35981,
+        "changedPixelRatio": 0.039041883680555556,
+        "averageDelta": 3.334356192129705,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "01010101010101000000000000000000000000000000000000000003030000000000000607000000000000000000000000000000000000000000000000000000",
+        "bridgeBlockRatio": 0.06666666666666667,
+        "nonblank": true
+      }
+    },
+    "extremeOn": {
+      "state": {
+        "rendererLabel": "compute",
+        "splatCount": 94406,
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.45,
+          "dofStrength": 3.4,
+          "dofRadius": 8
+        },
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        }
+      },
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 13838,
+        "changedPixels": 36219,
+        "changedPixelRatio": 0.03930013020833333,
+        "averageDelta": 3.3315668402778567,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "01010101010101000000000000000000000000000000000000000003030000000000000607000000000000000000000000000000000000000000000000000000",
+        "bridgeBlockRatio": 0.08791208791208792,
+        "nonblank": true
+      }
+    },
+    "depth": {
+      "state": {
+        "rendererLabel": "compute",
+        "splatCount": 94406,
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "depth",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.45,
+          "dofStrength": 3.4,
+          "dofRadius": 8
+        },
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        }
+      },
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 255
+        },
+        "distinctColorCount": 571,
+        "changedPixels": 36921,
+        "changedPixelRatio": 0.04006184895833333,
+        "averageDelta": 7.33811921296292,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "01010101010101010000000000000000000000000000000000000008080000000000001114000000000000000000000000000000000000000000000000000000",
+        "bridgeBlockRatio": 0.3224043715846995,
+        "nonblank": true
+      }
+    },
+    "confidence": {
+      "state": {
+        "rendererLabel": "compute",
+        "splatCount": 94406,
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "confidence",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.45,
+          "dofStrength": 3.4,
+          "dofRadius": 8
+        },
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        }
+      },
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 255
+        },
+        "distinctColorCount": 571,
+        "changedPixels": 37096,
+        "changedPixelRatio": 0.04025173611111111,
+        "averageDelta": 7.3621665219907,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "01010101010101010000000000000000000000000000000000000008080000000000001114000000000000000000000000000000000000000000000000000000",
+        "bridgeBlockRatio": 0.31693989071038253,
+        "nonblank": true
+      }
+    },
+    "mask": {
+      "state": {
+        "rendererLabel": "compute",
+        "splatCount": 94406,
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "dof-mask",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.45,
+          "dofStrength": 3.4,
+          "dofRadius": 8
+        },
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        }
+      },
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 255
+        },
+        "distinctColorCount": 570,
+        "changedPixels": 37532,
+        "changedPixelRatio": 0.04072482638888889,
+        "averageDelta": 7.657546657986067,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "01010101010101010000000000000000000000000000000000000008080000000000001215000000000000000000000000000000000000000000000000000000",
+        "bridgeBlockRatio": 0.34946236559139787,
+        "nonblank": true
+      }
+    },
+    "controls": {
+      "state": {
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "dof-mask",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.45,
+          "dofStrength": 3.4,
+          "dofRadius": 8
+        },
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      }
+    }
+  },
+  "diffs": {
+    "defaultOnVsOff": {
+      "width": 1280,
+      "height": 720,
+      "pixels": 921600,
+      "changedPixels": 20594,
+      "changedPercent": 2.235,
+      "maxChannelSum": 259,
+      "meanChannelSum": 1.0796
+    },
+    "extremeOnVsOff": {
+      "width": 1280,
+      "height": 720,
+      "pixels": 921600,
+      "changedPixels": 27918,
+      "changedPercent": 3.029,
+      "maxChannelSum": 325,
+      "meanChannelSum": 2.0882
+    },
+    "extremeOnVsDefaultOn": {
+      "width": 1280,
+      "height": 720,
+      "pixels": 921600,
+      "changedPixels": 23914,
+      "changedPercent": 2.595,
+      "maxChannelSum": 259,
+      "meanChannelSum": 1.3119
+    },
+    "depthVsOff": {
+      "width": 1280,
+      "height": 720,
+      "pixels": 921600,
+      "changedPixels": 909123,
+      "changedPercent": 98.646,
+      "maxChannelSum": 675,
+      "meanChannelSum": 31.1694
+    },
+    "confidenceVsOff": {
+      "width": 1280,
+      "height": 720,
+      "pixels": 921600,
+      "changedPixels": 909127,
+      "changedPercent": 98.647,
+      "maxChannelSum": 678,
+      "meanChannelSum": 31.2661
+    },
+    "dofMaskVsOff": {
+      "width": 1280,
+      "height": 720,
+      "pixels": 921600,
+      "changedPixels": 909155,
+      "changedPercent": 98.65,
+      "maxChannelSum": 703,
+      "meanChannelSum": 32.06
+    }
+  }
+}

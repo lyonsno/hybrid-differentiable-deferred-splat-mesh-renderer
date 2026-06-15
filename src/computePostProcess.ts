@@ -1,14 +1,18 @@
 import computePostProcessShader from "./shaders/compute_post_process.wgsl?raw";
 
 export const FXAA_CAS_MAX_SHARPNESS = 1.5;
+export const POST_PROCESS_MAX_DOF_STRENGTH = 4;
 
-export type FxaaCasDebugView = "final" | "fxaa-mask" | "cas-mask" | "difference";
+export type FxaaCasDebugView = "final" | "fxaa-mask" | "cas-mask" | "difference" | "depth" | "confidence" | "dof-mask";
 
 const FXAA_CAS_DEBUG_VIEW_CODES: Record<FxaaCasDebugView, number> = {
   final: 0,
   "fxaa-mask": 1,
   "cas-mask": 2,
   difference: 3,
+  depth: 4,
+  confidence: 5,
+  "dof-mask": 6,
 };
 
 export interface FxaaCasPostProcessSettings {
@@ -19,6 +23,10 @@ export interface FxaaCasPostProcessSettings {
   readonly sampleCount: number;
   readonly casSharpness: number;
   readonly debugView: FxaaCasDebugView;
+  readonly dofEnabled: boolean;
+  readonly dofFocusDepth: number;
+  readonly dofStrength: number;
+  readonly dofRadius: number;
 }
 
 export interface FxaaCasPostProcess {
@@ -29,6 +37,7 @@ export interface FxaaCasPostProcess {
   encode(
     encoder: GPUCommandEncoder,
     inputView: GPUTextureView,
+    inputAuxView: GPUTextureView,
     outputView: GPUTextureView,
     width: number,
     height: number
@@ -58,11 +67,16 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
         visibility: GPUShaderStage.COMPUTE,
         buffer: { type: "uniform" },
       },
+      {
+        binding: 3,
+        visibility: GPUShaderStage.COMPUTE,
+        texture: { sampleType: "unfilterable-float" },
+      },
     ],
   });
   const settingsBuffer = device.createBuffer({
     label: "compute_fxaa_cas_post_process_settings",
-    size: 32,
+    size: 48,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
   const pipeline = device.createComputePipeline({
@@ -82,7 +96,7 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
     bindGroupLayout,
     settingsBuffer,
     writeSettings(queue: GPUQueue, settings: FxaaCasPostProcessSettings): void {
-      const buffer = new ArrayBuffer(32);
+      const buffer = new ArrayBuffer(48);
       const u32 = new Uint32Array(buffer);
       const f32 = new Float32Array(buffer);
       u32[0] = settings.enabled ? 1 : 0;
@@ -92,12 +106,17 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
       u32[4] = clampInteger(settings.sampleCount, 4, 12);
       u32[5] = FXAA_CAS_DEBUG_VIEW_CODES[settings.debugView] ?? FXAA_CAS_DEBUG_VIEW_CODES.final;
       f32[6] = clampNumber(settings.casSharpness, 0, FXAA_CAS_MAX_SHARPNESS);
-      u32[7] = 0;
+      u32[7] = settings.dofEnabled ? 1 : 0;
+      f32[8] = clampNumber(settings.dofFocusDepth, 0, 1);
+      f32[9] = clampNumber(settings.dofStrength, 0, POST_PROCESS_MAX_DOF_STRENGTH);
+      u32[10] = clampInteger(settings.dofRadius, 1, 8);
+      u32[11] = 0;
       queue.writeBuffer(settingsBuffer, 0, buffer);
     },
     encode(
       encoder: GPUCommandEncoder,
       inputView: GPUTextureView,
+      inputAuxView: GPUTextureView,
       outputView: GPUTextureView,
       width: number,
       height: number
@@ -109,6 +128,7 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
           { binding: 0, resource: inputView },
           { binding: 1, resource: outputView },
           { binding: 2, resource: { buffer: settingsBuffer } },
+          { binding: 3, resource: inputAuxView },
         ],
       });
       const pass = encoder.beginComputePass({ label: "compute_fxaa_cas_post_process" });

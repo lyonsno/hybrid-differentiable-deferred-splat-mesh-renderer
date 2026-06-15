@@ -115,7 +115,7 @@ export function createTileSplatCompositor(
     ],
   });
 
-  // @group(1): tile data (3 storage + 1 storage texture)
+  // @group(1): tile data (3 storage + color/aux storage textures)
   const tileBindGroupLayout = device.createBindGroupLayout({
     label: "tile_splat_tile_bgl",
     entries: [
@@ -123,6 +123,7 @@ export function createTileSplatCompositor(
       { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
       { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
       { binding: 3, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba16float" } },
+      { binding: 4, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba16float" } },
     ],
   });
 
@@ -338,6 +339,7 @@ export function createTileSplatBindGroups(
     sortedIndexBuffer: GPUBuffer;
   },
   outputTexture: GPUTexture,
+  outputAuxTexture: GPUTexture,
 ): TileSplatCompositorBindGroups {
   const splatBindGroup = device.createBindGroup({
     label: "tile_splat_splat_bg",
@@ -361,6 +363,7 @@ export function createTileSplatBindGroups(
       { binding: 1, resource: { buffer: resources.tileOffsetBuffer } },
       { binding: 2, resource: { buffer: resources.tileRefBuffer } },
       { binding: 3, resource: outputTexture.createView() },
+      { binding: 4, resource: outputAuxTexture.createView() },
     ],
   });
 
@@ -394,6 +397,7 @@ export function createTileSplatBindGroups(
       { binding: 1, resource: { buffer: resources.tileOffsetBuffer } },
       { binding: 2, resource: { buffer: resources.tileRefSortedBuffer } },
       { binding: 3, resource: outputTexture.createView() },
+      { binding: 4, resource: outputAuxTexture.createView() },
     ],
   });
 

@@ -52,6 +52,7 @@ fn mortonEncode2D(x: u32, y: u32) -> u32 {
 @group(1) @binding(1) var<storage, read_write> tileOffsets: array<u32>;
 @group(1) @binding(2) var<storage, read_write> tileRefs: array<u32>;
 @group(1) @binding(3) var outputColor: texture_storage_2d<rgba16float, write>;
+@group(1) @binding(4) var outputAux: texture_storage_2d<rgba16float, write>;
 
 const TILE_REF_STRIDE = 8u;
 
@@ -263,6 +264,8 @@ fn composite(@builtin(global_invocation_id) globalId: vec3u) {
   // Front-to-back compositing: accumulate premultiplied color and transmittance.
   // T starts at 1.0 (fully transparent), decreases as splats occlude.
   var accColor = vec3f(0.0);
+  var accumulatedDepth = 0.0;
+  var accumulatedWeight = 0.0;
   var T = 1.0;
 
   // Iterate from end (nearest splats) to start (farthest).
@@ -285,6 +288,7 @@ fn composite(@builtin(global_invocation_id) globalId: vec3u) {
       bitcast<f32>(tileRefs[refIdx + 6u]),
     );
     let opacity = bitcast<f32>(tileRefs[refIdx + 7u]);
+    let depthNdc = clamp(bitcast<f32>(tileRefs[refIdx + 1u]), 0.0, 1.0);
 
     let d = pixelCenter - centerPx;
     let power = -0.5 * (con.x * d.x * d.x + con.z * d.y * d.y) - con.y * d.x * d.y;
@@ -297,7 +301,10 @@ fn composite(@builtin(global_invocation_id) globalId: vec3u) {
     let sourceColor = vec3f(colors[colorBase], colors[colorBase + 1u], colors[colorBase + 2u]);
 
     // Front-to-back: color += T * alpha * sourceColor; T *= (1 - alpha)
-    accColor += T * alpha * sourceColor;
+    let contribution = T * alpha;
+    accColor += contribution * sourceColor;
+    accumulatedDepth += contribution * depthNdc;
+    accumulatedWeight += contribution;
     T *= (1.0 - alpha);
 
     // Early-out when transmittance is exhausted
@@ -307,6 +314,10 @@ fn composite(@builtin(global_invocation_id) globalId: vec3u) {
   // Blend remaining transmittance with background
   let bgColor = vec3f(0.02, 0.02, 0.04);
   let finalColor = accColor + T * bgColor;
+  let coverageConfidence = clamp(1.0 - T, 0.0, 1.0);
+  let resolvedDepth = select(1.0, accumulatedDepth / max(accumulatedWeight, 0.000001), accumulatedWeight > 0.0);
+  let normalizedTileSupport = clamp(f32(refCount) / 256.0, 0.0, 1.0);
 
   textureStore(outputColor, vec2i(globalId.xy), vec4f(finalColor, 1.0));
+  textureStore(outputAux, vec2i(globalId.xy), vec4f(resolvedDepth, coverageConfidence, normalizedTileSupport, 1.0));
 }

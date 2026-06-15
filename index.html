@@ -71,7 +71,9 @@
     #postprocess-controls input[type="range"] {
       width: 92px;
     }
-    #postprocess-sharpness-value {
+    #postprocess-sharpness-value,
+    #postprocess-dof-focus-value,
+    #postprocess-dof-strength-value {
       min-width: 3.5ch;
       text-align: right;
       font-variant-numeric: tabular-nums;
@@ -130,6 +132,33 @@
             <output id="postprocess-sharpness-value" for="postprocess-sharpness">35%</output>
           </span>
         </label>
+        <label for="postprocess-dof-enabled">
+          <span>DOF</span>
+          <input id="postprocess-dof-enabled" type="checkbox" />
+        </label>
+        <label for="postprocess-dof-focus">
+          <span>Focus</span>
+          <span>
+            <input id="postprocess-dof-focus" type="range" min="0" max="100" step="1" value="45" />
+            <output id="postprocess-dof-focus-value" for="postprocess-dof-focus">45%</output>
+          </span>
+        </label>
+        <label for="postprocess-dof-strength">
+          <span>Aperture</span>
+          <span>
+            <input id="postprocess-dof-strength" type="range" min="0" max="100" step="1" value="35" />
+            <output id="postprocess-dof-strength-value" for="postprocess-dof-strength">35%</output>
+          </span>
+        </label>
+        <label for="postprocess-dof-radius">
+          <span>Blur R</span>
+          <select id="postprocess-dof-radius">
+            <option value="2">2 px</option>
+            <option value="4" selected>4 px</option>
+            <option value="6">6 px</option>
+            <option value="8">8 px</option>
+          </select>
+        </label>
         <label for="postprocess-debug-view">
           <span>View</span>
           <select id="postprocess-debug-view">
@@ -137,6 +166,9 @@
             <option value="fxaa-mask">FXAA mask</option>
             <option value="cas-mask">CAS mask</option>
             <option value="difference">Difference</option>
+            <option value="depth">Depth</option>
+            <option value="confidence">Confidence</option>
+            <option value="dof-mask">DOF mask</option>
           </select>
         </label>
         <label for="postprocess-temporal-mode">

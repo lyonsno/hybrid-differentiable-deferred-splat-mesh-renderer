@@ -1,5 +1,6 @@
 @group(0) @binding(0) var postProcessInput: texture_2d<f32>;
 @group(0) @binding(1) var postProcessOutput: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(3) var postProcessAux: texture_2d<f32>;
 
 struct PostProcessSettings {
   enabled: u32,
@@ -9,6 +10,10 @@ struct PostProcessSettings {
   sampleCount: u32,
   debugView: u32,
   casSharpness: f32,
+  dofEnabled: u32,
+  dofFocusDepth: f32,
+  dofStrength: f32,
+  dofRadius: u32,
   _pad0: u32,
 };
 
@@ -20,6 +25,9 @@ const DEBUG_VIEW_FINAL = 0u;
 const DEBUG_VIEW_FXAA_MASK = 1u;
 const DEBUG_VIEW_CAS_MASK = 2u;
 const DEBUG_VIEW_DIFFERENCE = 3u;
+const DEBUG_VIEW_DEPTH = 4u;
+const DEBUG_VIEW_CONFIDENCE = 5u;
+const DEBUG_VIEW_DOF_MASK = 6u;
 
 fn luma(color: vec3f) -> f32 {
   return dot(color, vec3f(0.299, 0.587, 0.114));
@@ -32,6 +40,10 @@ fn clamp_coord(coord: vec2i, size: vec2u) -> vec2i {
 
 fn load_rgb(coord: vec2i, size: vec2u) -> vec3f {
   return textureLoad(postProcessInput, clamp_coord(coord, size), 0).rgb;
+}
+
+fn load_aux(coord: vec2i, size: vec2u) -> vec4f {
+  return textureLoad(postProcessAux, clamp_coord(coord, size), 0);
 }
 
 fn configured_radius() -> i32 {
@@ -236,6 +248,74 @@ fn cas_sharpen(coord: vec2i, size: vec2u, color: vec3f) -> vec3f {
   return clamp(sharpened, max(vec3f(0.0), localMin - haloWindow), localMax + haloWindow);
 }
 
+fn dof_circle_of_confusion(coord: vec2i, size: vec2u) -> f32 {
+  let aux = load_aux(coord, size);
+  let depth = clamp(aux.r, 0.0, 1.0);
+  let coverageConfidence = clamp(aux.g, 0.0, 1.0);
+  let focusDepth = clamp(settings.dofFocusDepth, 0.0, 1.0);
+  let maxRadius = f32(clamp(settings.dofRadius, 1u, 8u));
+  let focusDistance = max(abs(depth - focusDepth) - 0.025, 0.0);
+  return clamp(focusDistance * settings.dofStrength * coverageConfidence * maxRadius, 0.0, maxRadius);
+}
+
+fn dof_sample(coord: vec2i, size: vec2u, originDepth: f32, originCoc: f32, offset: vec2i) -> vec4f {
+  let sampleCoord = coord + offset;
+  let sampleAux = load_aux(sampleCoord, size);
+  let sampleDepth = clamp(sampleAux.r, 0.0, 1.0);
+  let sampleConfidence = clamp(sampleAux.g, 0.0, 1.0);
+  let sampleCoc = dof_circle_of_confusion(sampleCoord, size);
+  let depthDiff = abs(sampleDepth - originDepth);
+  let depthWeight = 1.0 - ramp(0.025, 0.16, depthDiff);
+  let blurWeight = clamp(max(originCoc, sampleCoc) / max(f32(clamp(settings.dofRadius, 1u, 8u)), 1.0), 0.05, 1.0);
+  let weight = max(0.0, depthWeight * blurWeight * max(sampleConfidence, 0.2));
+  return vec4f(load_rgb(sampleCoord, size) * weight, weight);
+}
+
+fn depth_confidence_guided_dof(coord: vec2i, size: vec2u, color: vec3f) -> vec3f {
+  let originAux = load_aux(coord, size);
+  let originDepth = clamp(originAux.r, 0.0, 1.0);
+  let originCoc = dof_circle_of_confusion(coord, size);
+  if (originCoc < 0.35) {
+    return color;
+  }
+
+  let radius = i32(max(1.0, ceil(originCoc)));
+  let nearRadius = max(1, radius / 2);
+  var sum = vec3f(0.0);
+  var weightSum = 0.0;
+
+  let centerWeight = 1.0;
+  sum += color * centerWeight;
+  weightSum += centerWeight;
+
+  let north = dof_sample(coord, size, originDepth, originCoc, vec2i(0, -radius));
+  let south = dof_sample(coord, size, originDepth, originCoc, vec2i(0, radius));
+  let west = dof_sample(coord, size, originDepth, originCoc, vec2i(-radius, 0));
+  let east = dof_sample(coord, size, originDepth, originCoc, vec2i(radius, 0));
+  sum += north.rgb + south.rgb + west.rgb + east.rgb;
+  weightSum += north.a + south.a + west.a + east.a;
+
+  let nw = dof_sample(coord, size, originDepth, originCoc, vec2i(-radius, -radius));
+  let ne = dof_sample(coord, size, originDepth, originCoc, vec2i(radius, -radius));
+  let sw = dof_sample(coord, size, originDepth, originCoc, vec2i(-radius, radius));
+  let se = dof_sample(coord, size, originDepth, originCoc, vec2i(radius, radius));
+  sum += nw.rgb + ne.rgb + sw.rgb + se.rgb;
+  weightSum += nw.a + ne.a + sw.a + se.a;
+
+  if (configured_sample_count() >= 12u) {
+    let n = dof_sample(coord, size, originDepth, originCoc, vec2i(0, -nearRadius));
+    let s = dof_sample(coord, size, originDepth, originCoc, vec2i(0, nearRadius));
+    let w = dof_sample(coord, size, originDepth, originCoc, vec2i(-nearRadius, 0));
+    let e = dof_sample(coord, size, originDepth, originCoc, vec2i(nearRadius, 0));
+    sum += n.rgb + s.rgb + w.rgb + e.rgb;
+    weightSum += n.a + s.a + w.a + e.a;
+  }
+
+  let blurred = sum / max(weightSum, 0.0001);
+  let dofBlend = clamp(originCoc / max(f32(clamp(settings.dofRadius, 1u, 8u)), 1.0), 0.0, 1.0);
+  return mix(color, blurred, dofBlend);
+}
+
 @compute @workgroup_size(8, 8, 1)
 fn fxaa_cas_post_process(@builtin(global_invocation_id) globalId: vec3u) {
   let outputSize = textureDimensions(postProcessOutput);
@@ -253,7 +333,10 @@ fn fxaa_cas_post_process(@builtin(global_invocation_id) globalId: vec3u) {
   let fxaaColor = select(source.rgb, fxaa_filter(coord, outputSize), settings.fxaaEnabled != 0u);
   let casMask = select(0.0, cas_strength_mask(coord, outputSize, fxaaColor), settings.casEnabled != 0u);
   let casColor = select(fxaaColor, cas_sharpen(coord, outputSize, fxaaColor), settings.casEnabled != 0u);
-  let finalColor = max(casColor, vec3f(0.0));
+  let dofColor = select(casColor, depth_confidence_guided_dof(coord, outputSize, casColor), settings.dofEnabled != 0u);
+  let finalColor = max(dofColor, vec3f(0.0));
+  let aux = load_aux(coord, outputSize);
+  let dofMask = clamp(dof_circle_of_confusion(coord, outputSize) / max(f32(clamp(settings.dofRadius, 1u, 8u)), 1.0), 0.0, 1.0);
 
   if (settings.debugView == DEBUG_VIEW_FXAA_MASK) {
     textureStore(postProcessOutput, coord, vec4f(vec3f(fxaaMask), source.a));
@@ -261,6 +344,12 @@ fn fxaa_cas_post_process(@builtin(global_invocation_id) globalId: vec3u) {
     textureStore(postProcessOutput, coord, vec4f(vec3f(casMask), source.a));
   } else if (settings.debugView == DEBUG_VIEW_DIFFERENCE) {
     textureStore(postProcessOutput, coord, vec4f(clamp(abs(finalColor - source.rgb) * 6.0, vec3f(0.0), vec3f(1.0)), source.a));
+  } else if (settings.debugView == DEBUG_VIEW_DEPTH) {
+    textureStore(postProcessOutput, coord, vec4f(vec3f(clamp(aux.r * aux.g, 0.0, 1.0)), source.a));
+  } else if (settings.debugView == DEBUG_VIEW_CONFIDENCE) {
+    textureStore(postProcessOutput, coord, vec4f(vec3f(clamp(aux.g, 0.0, 1.0)), source.a));
+  } else if (settings.debugView == DEBUG_VIEW_DOF_MASK) {
+    textureStore(postProcessOutput, coord, vec4f(vec3f(dofMask), source.a));
   } else {
     textureStore(postProcessOutput, coord, vec4f(finalColor, source.a));
   }

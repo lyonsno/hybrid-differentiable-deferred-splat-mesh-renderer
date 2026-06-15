@@ -1,0 +1,59 @@
+{
+  "state": {
+    "rendererLabel": "compute",
+    "splatCount": 94406,
+    "postProcess": {
+      "enabled": true,
+      "fxaaEnabled": true,
+      "casEnabled": true,
+      "sampleRadius": 2,
+      "sampleCount": 8,
+      "casSharpness": 0.5249999999999999,
+      "debugView": "depth",
+      "dofEnabled": true,
+      "dofFocusDepth": 0.45,
+      "dofStrength": 3.4,
+      "dofRadius": 8
+    },
+    "postProcessAux": {
+      "depthConfidence": "rgba16float",
+      "channels": {
+        "r": "alpha-weighted-depth-ndc",
+        "g": "coverage-confidence",
+        "b": "normalized-tile-support",
+        "a": "valid"
+      }
+    },
+    "temporalResolve": {
+      "mode": "off",
+      "maxHistoryFrames": 8,
+      "debugView": "final",
+      "historyFrameCount": 0,
+      "pendingTemporalResolve": false,
+      "jitterOffsetPx": [
+        0,
+        0
+      ],
+      "resetReason": "disabled"
+    }
+  },
+  "analysis": {
+    "width": 1280,
+    "height": 720,
+    "totalPixels": 921600,
+    "backgroundColor": {
+      "r": 0,
+      "g": 0,
+      "b": 0,
+      "a": 255
+    },
+    "distinctColorCount": 571,
+    "changedPixels": 36921,
+    "changedPixelRatio": 0.04006184895833333,
+    "averageDelta": 7.33811921296292,
+    "pixelDeltaThreshold": 12,
+    "perceptualFingerprint": "01010101010101010000000000000000000000000000000000000008080000000000001114000000000000000000000000000000000000000000000000000000",
+    "bridgeBlockRatio": 0.3224043715846995,
+    "nonblank": true
+  }
+}

@@ -12,7 +12,7 @@ test("compute renderer runs FXAA and CAS on an rgba16float texture before presen
   assert.match(mainSource, /postProcessedView:\s*GPUTextureView/);
   assert.match(mainSource, /label:\s*"compute_compositor_output"[\s\S]*format:\s*"rgba16float"[\s\S]*GPUTextureUsage\.STORAGE_BINDING \| GPUTextureUsage\.TEXTURE_BINDING/);
   assert.match(mainSource, /createPostProcessOutputTexture\([\s\S]*"compute_compositor_post_process_output"/);
-  assert.match(mainSource, /postProcess\.encode\(\s*activeEncoder,\s*cc\.outputView,\s*cc\.postProcessedView,\s*width,\s*height\s*\)/);
+  assert.match(mainSource, /postProcess\.encode\(\s*activeEncoder,\s*cc\.outputView,\s*cc\.auxView,\s*cc\.postProcessedView,\s*width,\s*height\s*\)/);
   assert.match(mainSource, /tileLocalPresenter\.draw\(renderPass,\s*computePresentView \?\? scene\.computeCompositor\.postProcessedView\)/);
   assert.doesNotMatch(mainSource, /tileLocalPresenter\.draw\(renderPass,\s*scene\.computeCompositor\.outputView\)/);
 
@@ -123,4 +123,65 @@ test("compute renderer exposes idle temporal resolve controls and evidence", () 
   assert.match(shader, /DEBUG_VIEW_DIFFERENCE/);
   assert.match(shader, /textureLoad\(currentFrame/);
   assert.match(shader, /textureLoad\(historyFrame/);
+});
+
+test("compute renderer exposes auxiliary depth-confidence guided DOF", () => {
+  const html = readFileSync(new URL("../../index.html", import.meta.url), "utf8");
+  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const compositorSource = readFileSync(new URL("../../src/gpuTileSplatCompositor.ts", import.meta.url), "utf8");
+  const compositorShader = readFileSync(new URL("../../src/shaders/gpu_tile_splat_composite.wgsl", import.meta.url), "utf8");
+  const postProcessSource = readFileSync(new URL("../../src/computePostProcess.ts", import.meta.url), "utf8");
+  const postProcessShader = readFileSync(new URL("../../src/shaders/compute_post_process.wgsl", import.meta.url), "utf8");
+
+  assert.match(html, /id="postprocess-dof-enabled"/);
+  assert.match(html, /id="postprocess-dof-focus"/);
+  assert.match(html, /id="postprocess-dof-strength"/);
+  assert.match(html, /id="postprocess-dof-radius"/);
+  assert.match(html, /value="depth"/);
+  assert.match(html, /value="confidence"/);
+  assert.match(html, /value="dof-mask"/);
+
+  assert.match(mainSource, /auxTexture:\s*GPUTexture/);
+  assert.match(mainSource, /auxView:\s*GPUTextureView/);
+  assert.match(mainSource, /label:\s*"compute_compositor_aux_depth_confidence"/);
+  assert.match(mainSource, /computeAuxTexture/);
+  assert.match(mainSource, /createTileSplatBindGroups\([\s\S]*computeOutputTexture,\s*computeAuxTexture/);
+  assert.match(mainSource, /cc\.postProcess\.encode\(\s*activeEncoder,\s*cc\.outputView,\s*cc\.auxView,\s*cc\.postProcessedView/);
+  assert.match(mainSource, /postProcessDofFocusFromPercent/);
+  assert.match(mainSource, /postProcessDofStrengthFromPercent/);
+  assert.match(mainSource, /dofEnabled:\s*controls\.dofEnabled/);
+  assert.match(mainSource, /dofFocusDepth:\s*postProcessDofFocusFromPercent/);
+  assert.match(mainSource, /dofStrength:\s*postProcessDofStrengthFromPercent/);
+  assert.match(mainSource, /dofRadius:\s*clampInteger/);
+  assert.match(mainSource, /postProcessSettings\.dofEnabled \? 1 : 0/);
+  assert.match(mainSource, /postProcessSettings\.dofFocusDepth\.toFixed\(5\)/);
+  assert.match(mainSource, /postProcessAux:\s*postProcessAux/);
+  assert.match(mainSource, /depthConfidence:\s*"rgba16float"/);
+
+  assert.match(compositorSource, /outputAuxTexture:\s*GPUTexture/);
+  assert.match(compositorSource, /binding:\s*4[\s\S]*storageTexture:\s*\{\s*access:\s*"write-only",\s*format:\s*"rgba16float"\s*\}/);
+  assert.match(compositorSource, /outputAuxTexture\.createView\(\)/);
+  assert.match(compositorShader, /var outputAux:\s*texture_storage_2d<rgba16float,\s*write>/);
+  assert.match(compositorShader, /accumulatedDepth/);
+  assert.match(compositorShader, /coverageConfidence/);
+  assert.match(compositorShader, /textureStore\(outputAux/);
+
+  assert.match(postProcessSource, /dofEnabled:\s*boolean/);
+  assert.match(postProcessSource, /dofFocusDepth:\s*number/);
+  assert.match(postProcessSource, /dofStrength:\s*number/);
+  assert.match(postProcessSource, /dofRadius:\s*number/);
+  assert.match(postProcessSource, /inputAuxView:\s*GPUTextureView/);
+  assert.match(postProcessSource, /binding:\s*3[\s\S]*texture:\s*\{\s*sampleType:\s*"unfilterable-float"\s*\}/);
+  assert.match(postProcessSource, /size:\s*48/);
+
+  assert.match(postProcessShader, /@group\(0\) @binding\(3\) var postProcessAux/);
+  assert.match(postProcessShader, /dofEnabled:\s*u32/);
+  assert.match(postProcessShader, /dofFocusDepth:\s*f32/);
+  assert.match(postProcessShader, /dofStrength:\s*f32/);
+  assert.match(postProcessShader, /dofRadius:\s*u32/);
+  assert.match(postProcessShader, /DEBUG_VIEW_DEPTH/);
+  assert.match(postProcessShader, /DEBUG_VIEW_CONFIDENCE/);
+  assert.match(postProcessShader, /DEBUG_VIEW_DOF_MASK/);
+  assert.match(postProcessShader, /fn dof_circle_of_confusion/);
+  assert.match(postProcessShader, /fn depth_confidence_guided_dof/);
 });

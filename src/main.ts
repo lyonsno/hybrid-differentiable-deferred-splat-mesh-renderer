@@ -169,6 +169,7 @@ import {
 import { createTileLocalTexturePresenter } from "./tileLocalTexturePresenter.js";
 import {
   FXAA_CAS_MAX_SHARPNESS,
+  POST_PROCESS_MAX_DOF_STRENGTH,
   createFxaaCasPostProcess,
   createPostProcessOutputTexture,
   type FxaaCasPostProcess,
@@ -258,6 +259,12 @@ interface PostProcessControls {
   readonly sampleRadius: HTMLSelectElement | null;
   readonly casSharpness: HTMLInputElement | null;
   readonly casSharpnessValue: HTMLOutputElement | null;
+  readonly dofEnabled: HTMLInputElement | null;
+  readonly dofFocus: HTMLInputElement | null;
+  readonly dofFocusValue: HTMLOutputElement | null;
+  readonly dofStrength: HTMLInputElement | null;
+  readonly dofStrengthValue: HTMLOutputElement | null;
+  readonly dofRadius: HTMLSelectElement | null;
   readonly debugView: HTMLSelectElement | null;
 }
 
@@ -302,6 +309,8 @@ interface ActiveSplatScene {
     temporalResolve: TemporalResolve;
     outputTexture: GPUTexture;
     outputView: GPUTextureView;
+    auxTexture: GPUTexture;
+    auxView: GPUTextureView;
     postProcessedTexture: GPUTexture;
     postProcessedView: GPUTextureView;
     temporalHistoryTextures: [GPUTexture, GPUTexture];
@@ -660,6 +669,8 @@ interface TileLocalCompositorInputReadback {
       readonly sourceFrontierColorAuthority?: number;
       readonly sourceFrontierRunningColorAuthorityBefore?: number;
       readonly sourceFrontierRunningColorAuthorityAfter?: number;
+      readonly sourceFrontierSupportColorMaterialBefore?: number;
+      readonly sourceFrontierSupportColorMaterialAfter?: number;
       readonly coverageAlpha: number;
       readonly colorAlpha: number;
       readonly colorOcclusionAlpha: number;
@@ -1135,10 +1146,17 @@ function createPostProcessControls(requestFrame: () => void): PostProcessControl
     sampleRadius: document.getElementById("postprocess-radius") as HTMLSelectElement | null,
     casSharpness: document.getElementById("postprocess-sharpness") as HTMLInputElement | null,
     casSharpnessValue: document.getElementById("postprocess-sharpness-value") as HTMLOutputElement | null,
+    dofEnabled: document.getElementById("postprocess-dof-enabled") as HTMLInputElement | null,
+    dofFocus: document.getElementById("postprocess-dof-focus") as HTMLInputElement | null,
+    dofFocusValue: document.getElementById("postprocess-dof-focus-value") as HTMLOutputElement | null,
+    dofStrength: document.getElementById("postprocess-dof-strength") as HTMLInputElement | null,
+    dofStrengthValue: document.getElementById("postprocess-dof-strength-value") as HTMLOutputElement | null,
+    dofRadius: document.getElementById("postprocess-dof-radius") as HTMLSelectElement | null,
     debugView: document.getElementById("postprocess-debug-view") as HTMLSelectElement | null,
   };
   const update = () => {
     updatePostProcessSharpnessLabel(controls);
+    updatePostProcessDofLabels(controls);
     requestFrame();
   };
   controls.enabled?.addEventListener("change", update);
@@ -1147,8 +1165,13 @@ function createPostProcessControls(requestFrame: () => void): PostProcessControl
   controls.sampleCount?.addEventListener("change", update);
   controls.sampleRadius?.addEventListener("change", update);
   controls.casSharpness?.addEventListener("input", update);
+  controls.dofEnabled?.addEventListener("change", update);
+  controls.dofFocus?.addEventListener("input", update);
+  controls.dofStrength?.addEventListener("input", update);
+  controls.dofRadius?.addEventListener("change", update);
   controls.debugView?.addEventListener("change", update);
   updatePostProcessSharpnessLabel(controls);
+  updatePostProcessDofLabels(controls);
   return controls;
 }
 
@@ -1161,6 +1184,10 @@ function readPostProcessSettings(controls: PostProcessControls): FxaaCasPostProc
     sampleCount: clampInteger(Number(controls.sampleCount?.value ?? 8), 4, 12),
     casSharpness: postProcessSharpnessFromPercent(Number(controls.casSharpness?.value ?? 35)),
     debugView: postProcessDebugViewFromSelection(controls.debugView?.value),
+    dofEnabled: controls.dofEnabled?.checked ?? false,
+    dofFocusDepth: postProcessDofFocusFromPercent(Number(controls.dofFocus?.value ?? 45)),
+    dofStrength: postProcessDofStrengthFromPercent(Number(controls.dofStrength?.value ?? 35)),
+    dofRadius: clampInteger(Number(controls.dofRadius?.value ?? 4), 1, 8),
   };
 }
 
@@ -1169,10 +1196,25 @@ function postProcessSharpnessFromPercent(percent: number): number {
 }
 
 function postProcessDebugViewFromSelection(value: string | undefined): FxaaCasDebugView {
-  if (value === "fxaa-mask" || value === "cas-mask" || value === "difference") {
+  if (
+    value === "fxaa-mask" ||
+    value === "cas-mask" ||
+    value === "difference" ||
+    value === "depth" ||
+    value === "confidence" ||
+    value === "dof-mask"
+  ) {
     return value;
   }
   return "final";
+}
+
+function postProcessDofFocusFromPercent(percent: number): number {
+  return clampNumber(percent, 0, 100) / 100;
+}
+
+function postProcessDofStrengthFromPercent(percent: number): number {
+  return (clampNumber(percent, 0, 100) / 100) * POST_PROCESS_MAX_DOF_STRENGTH;
 }
 
 function updatePostProcessSharpnessLabel(controls: PostProcessControls): void {
@@ -1180,6 +1222,15 @@ function updatePostProcessSharpnessLabel(controls: PostProcessControls): void {
     return;
   }
   controls.casSharpnessValue.value = `${Math.round(clampNumber(Number(controls.casSharpness.value), 0, 100))}%`;
+}
+
+function updatePostProcessDofLabels(controls: PostProcessControls): void {
+  if (controls.dofFocus && controls.dofFocusValue) {
+    controls.dofFocusValue.value = `${Math.round(clampNumber(Number(controls.dofFocus.value), 0, 100))}%`;
+  }
+  if (controls.dofStrength && controls.dofStrengthValue) {
+    controls.dofStrengthValue.value = `${Math.round(clampNumber(Number(controls.dofStrength.value), 0, 100))}%`;
+  }
 }
 
 function formatPostProcessSettings(settings: FxaaCasPostProcessSettings): string {
@@ -1191,8 +1242,11 @@ function formatPostProcessSettings(settings: FxaaCasPostProcessSettings): string
     settings.casEnabled ? "cas" : null,
   ].filter(Boolean).join("+") || "passthrough";
   const sharpnessPercent = Math.round((clampNumber(settings.casSharpness, 0, FXAA_CAS_MAX_SHARPNESS) / FXAA_CAS_MAX_SHARPNESS) * 100);
+  const dofSuffix = settings.dofEnabled
+    ? `/dof f${Math.round(settings.dofFocusDepth * 100)} a${Math.round((settings.dofStrength / POST_PROCESS_MAX_DOF_STRENGTH) * 100)} r${settings.dofRadius}`
+    : "";
   const debugSuffix = settings.debugView === "final" ? "" : `/${settings.debugView}`;
-  return `${stages}/${settings.sampleCount}s/r${settings.sampleRadius}/sharp ${sharpnessPercent}%${debugSuffix}`;
+  return `${stages}/${settings.sampleCount}s/r${settings.sampleRadius}/sharp ${sharpnessPercent}%${dofSuffix}${debugSuffix}`;
 }
 
 function createTemporalResolveControls(requestFrame: () => void): TemporalResolveControls {
@@ -1317,6 +1371,10 @@ function temporalResolveResetKey(
     postProcessSettings.sampleCount,
     postProcessSettings.casSharpness.toFixed(5),
     postProcessSettings.debugView,
+    postProcessSettings.dofEnabled ? 1 : 0,
+    postProcessSettings.dofFocusDepth.toFixed(5),
+    postProcessSettings.dofStrength.toFixed(5),
+    postProcessSettings.dofRadius,
     temporalSettings.mode,
     temporalSettings.maxHistoryFrames,
   ].join("|");
@@ -2022,6 +2080,7 @@ async function main() {
       cc.postProcess.encode(
         activeEncoder,
         cc.outputView,
+        cc.auxView,
         cc.postProcessedView,
         width,
         height
@@ -2263,6 +2322,17 @@ async function main() {
         tileLocalCurrentSignature,
         postProcessSettings,
         temporalResolveEvidence,
+        scene.computeCompositor
+          ? {
+              depthConfidence: "rgba16float",
+              channels: {
+                r: "alpha-weighted-depth-ndc",
+                g: "coverage-confidence",
+                b: "normalized-tile-support",
+                a: "valid",
+              },
+            }
+          : undefined,
         {
           witnessView: operatorWitnessViewMode,
           revision: operatorWitnessRevision,
@@ -9392,6 +9462,12 @@ function createComputeCompositorState(
     format: "rgba16float",
     usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
   });
+  const computeAuxTexture = device.createTexture({
+    label: "compute_compositor_aux_depth_confidence",
+    size: [viewportWidth, viewportHeight],
+    format: "rgba16float",
+    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+  });
   const postProcessedTexture = createPostProcessOutputTexture(
     device,
     viewportWidth,
@@ -9406,7 +9482,8 @@ function createComputeCompositorState(
     device,
     computeResources,
     splatBuffers,
-    computeOutputTexture
+    computeOutputTexture,
+    computeAuxTexture
   );
   return {
     resources: computeResources,
@@ -9415,6 +9492,8 @@ function createComputeCompositorState(
     temporalResolve: createTemporalResolve(device),
     outputTexture: computeOutputTexture,
     outputView: computeOutputTexture.createView(),
+    auxTexture: computeAuxTexture,
+    auxView: computeAuxTexture.createView(),
     postProcessedTexture,
     postProcessedView: postProcessedTexture.createView(),
     temporalHistoryTextures,
@@ -9473,6 +9552,7 @@ function destroyComputeCompositorState(state: ActiveSplatScene["computeComposito
   state.postProcess.settingsBuffer.destroy();
   state.temporalResolve.settingsBuffer.destroy();
   state.outputTexture.destroy();
+  state.auxTexture.destroy();
   state.postProcessedTexture.destroy();
   state.temporalHistoryTextures[0].destroy();
   state.temporalHistoryTextures[1].destroy();
@@ -10091,6 +10171,15 @@ function exposeTileLocalRuntimeEvidence(
   tileLocalCurrentSignature: string | null,
   postProcessSettings: FxaaCasPostProcessSettings,
   temporalResolveEvidence: TemporalResolveEvidence | null,
+  postProcessAux?: {
+    readonly depthConfidence: "rgba16float";
+    readonly channels: {
+      readonly r: string;
+      readonly g: string;
+      readonly b: string;
+      readonly a: string;
+    };
+  },
   operatorWitness?: {
     readonly witnessView: RealScaniverseWitnessViewMode;
     readonly revision: number;
@@ -10270,6 +10359,12 @@ function exposeTileLocalRuntimeEvidence(
     tileLocalLastSkipReason,
     postProcess: postProcessSettings,
     temporalResolve: temporalResolveEvidence,
+    postProcessAux: postProcessAux
+      ? {
+          depthConfidence: postProcessAux.depthConfidence,
+          channels: postProcessAux.channels,
+        }
+      : undefined,
     arenaRuntime,
     operatorWitness,
     tileLocal: tileLocalState && diagnostics
