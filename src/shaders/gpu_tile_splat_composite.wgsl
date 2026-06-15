@@ -162,11 +162,8 @@ fn count_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
   }
 }
 
-// --- Pass 3: Scatter with sort key generation ---
-// Writes ref data into tileRefs AND sort keys for global radix sort.
-// Values buffer is pre-initialized with identity by radix sort init pass.
-
-@group(2) @binding(0) var<storage, read_write> radixKeys: array<u32>;
+// --- Pass 3: Scatter ---
+// Writes ref data into tileRefs. Per-tile sort handles depth ordering.
 
 @compute @workgroup_size(256)
 fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
@@ -185,12 +182,6 @@ fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
   if (splat.radius <= 0.0) { return; }
   let bounds = footprintBounds(splat.centerPx, splat.radius);
 
-  // Quantize depth to 16 bits for sort key.
-  // NDC depth is [0,1]. We invert so larger value = farther = sorted first (back-to-front).
-  let depthClamped = clamp(splat.depthNdc, 0.0, 1.0);
-  let depthU16 = u32(depthClamped * 65535.0);
-  let depthInverted = 65535u - depthU16;
-
   for (var tileY = bounds.y; tileY <= bounds.w; tileY++) {
     for (var tileX = bounds.x; tileX <= bounds.z; tileX++) {
       let tileId = tileY * frame.tileGrid.x + tileX;
@@ -199,7 +190,6 @@ fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
       let linearIdx = baseOffset + slot;
       let refIdx = linearIdx * TILE_REF_STRIDE;
       if (refIdx + TILE_REF_STRIDE <= frame.totalTileRefs * TILE_REF_STRIDE) {
-        // Write ref data
         tileRefs[refIdx + 0u] = splatId;
         tileRefs[refIdx + 1u] = bitcast<u32>(splat.depthNdc);
         tileRefs[refIdx + 2u] = bitcast<u32>(splat.centerPx.x);
@@ -208,9 +198,6 @@ fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
         tileRefs[refIdx + 5u] = bitcast<u32>(splat.inverseCov2d.y);
         tileRefs[refIdx + 6u] = bitcast<u32>(splat.inverseCov2d.z);
         tileRefs[refIdx + 7u] = bitcast<u32>(splat.opacity);
-
-        // Write radix sort key (values pre-initialized with identity by init pass)
-        radixKeys[linearIdx] = (tileId << 16u) | depthInverted;
       }
     }
   }
@@ -239,19 +226,17 @@ fn composite(@builtin(global_invocation_id) globalId: vec3u) {
   let pixelCenter = vec2f(f32(globalId.x) + 0.5, f32(globalId.y) + 0.5);
 
   let refStart = tileOffsets[tileId];
-  let refCount = atomicLoad(&tileCounts[tileId]);
+  let refCount = min(atomicLoad(&tileCounts[tileId]), 512u);
 
   // Front-to-back compositing: accumulate premultiplied color and transmittance.
   // T starts at 1.0 (fully transparent), decreases as splats occlude.
   var accColor = vec3f(0.0);
   var T = 1.0;
 
-  // Iterate from end (nearest splats) to start (farthest).
-  // Sort key = (tileId << 16) | depthInverted, where depthInverted = 65535 - depthU16.
-  // Near splats have high depthInverted → sort to end of tile range.
-  for (var i = refCount; i > 0u; i--) {
-    let refIdx = (refStart + i - 1u) * TILE_REF_STRIDE;
-    if (refIdx + TILE_REF_STRIDE > frame.totalTileRefs * TILE_REF_STRIDE) { continue; }
+  // Iterate forward (nearest first). Tile sort orders ascending by depth.
+  for (var i = 0u; i < refCount; i++) {
+    let refIdx = (refStart + i) * TILE_REF_STRIDE;
+    if (refIdx + TILE_REF_STRIDE > frame.totalTileRefs * TILE_REF_STRIDE) { break; }
 
     let splatId = tileRefs[refIdx + 0u];
     if (splatId >= frame.splatCount) { continue; }
