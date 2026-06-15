@@ -309,7 +309,8 @@ export function createTileSplatCompositor(
     size: Math.max(16, plan.mortonTileCount * 4),
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
   });
-  const entryBufSize = Math.max(16, plan.maxTotalTileRefs * TILE_ENTRY_BYTES);
+  // 2× capacity: first half = tile entries, second half = overflow scratch for bucket sort
+  const entryBufSize = Math.max(16, plan.maxTotalTileRefs * TILE_ENTRY_BYTES * 2);
   const tileRefBuffer = device.createBuffer({
     label: "tile_entries_unsorted",
     size: entryBufSize,
@@ -349,7 +350,7 @@ export function createTileSplatCompositor(
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
   device.queue.writeBuffer(tileDepthSortParamsBuffer, 0,
-    new Uint32Array([plan.mortonTileCount, 0, 0, 0]));
+    new Uint32Array([plan.mortonTileCount, plan.maxTotalTileRefs, 0, 0]));
 
   // Reorder params — pre-written, static
   const reorderParamsBuffer = device.createBuffer({
