@@ -156,6 +156,7 @@ const TILE_PX = 16u;
 var<workgroup> shCenter: array<vec2f, 64>;
 var<workgroup> shCoeffs: array<vec3f, 64>;  // (covXX*-0.5, covYY*-0.5, -covXY)
 var<workgroup> shColor: array<vec4f, 64>;   // (r, g, b, opacity)
+var<workgroup> shTileRefCount: atomic<u32>; // for workgroupUniformLoad
 
 @compute @workgroup_size(8, 8, 1)
 fn composite(
@@ -183,7 +184,12 @@ fn composite(
   var c11 = vec3f(0.0);
 
   let refStart = tileOffsets[tileId];
-  let refCount = atomicLoad(&tileCounts[tileId]);
+  // Copy tile count to workgroup atomic, then use workgroupUniformLoad to get a
+  // uniform value for the loop bound (required for workgroupBarrier in the loop).
+  if (localIdx == 0u) {
+    atomicStore(&shTileRefCount, atomicLoad(&tileCounts[tileId]));
+  }
+  let refCount = workgroupUniformLoad(&shTileRefCount);
   let numBatches = (refCount + BATCH_SIZE - 1u) / BATCH_SIZE;
   var threadDone = false;
 
