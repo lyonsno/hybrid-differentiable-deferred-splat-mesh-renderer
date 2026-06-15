@@ -30,3 +30,40 @@ test("compute renderer runs FXAA and CAS on an rgba16float texture before presen
   assert.match(shader, /fn cas_sharpen/);
   assert.match(shader, /textureLoad/);
 });
+
+test("compute post-process exposes live upper-right controls for toggles and sample settings", () => {
+  const html = readFileSync(new URL("../../index.html", import.meta.url), "utf8");
+  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const postProcessSource = readFileSync(new URL("../../src/computePostProcess.ts", import.meta.url), "utf8");
+  const shader = readFileSync(new URL("../../src/shaders/compute_post_process.wgsl", import.meta.url), "utf8");
+
+  assert.match(html, /id="postprocess-controls"/);
+  assert.match(html, /data-visual-smoke-ignore/);
+  assert.match(html, /id="postprocess-enabled"/);
+  assert.match(html, /id="postprocess-fxaa-enabled"/);
+  assert.match(html, /id="postprocess-cas-enabled"/);
+  assert.match(html, /id="postprocess-samples"/);
+  assert.match(html, /id="postprocess-sharpness"/);
+  assert.match(html, /#postprocess-controls[\s\S]*position:\s*fixed[\s\S]*right:\s*8px[\s\S]*top:\s*8px/);
+
+  assert.match(mainSource, /const postProcessControls = createPostProcessControls\(requestFrame\)/);
+  assert.match(mainSource, /readPostProcessSettings\(postProcessControls\)/);
+  assert.match(mainSource, /cc\.postProcess\.writeSettings\(gpu\.device\.queue,\s*postProcessSettings\)/);
+  assert.match(mainSource, /postProcess:\s*postProcessSettings/);
+
+  assert.match(postProcessSource, /export interface FxaaCasPostProcessSettings/);
+  assert.match(postProcessSource, /settingsBuffer:\s*GPUBuffer/);
+  assert.match(postProcessSource, /writeSettings\(/);
+  assert.match(postProcessSource, /binding:\s*2[\s\S]*buffer:\s*\{\s*type:\s*"uniform"\s*\}/);
+
+  assert.match(shader, /struct PostProcessSettings/);
+  assert.match(shader, /enabled:\s*u32/);
+  assert.match(shader, /fxaaEnabled:\s*u32/);
+  assert.match(shader, /casEnabled:\s*u32/);
+  assert.match(shader, /sampleRadius:\s*u32/);
+  assert.match(shader, /casSharpness:\s*f32/);
+  assert.match(shader, /settings\.enabled == 0u/);
+  assert.match(shader, /settings\.fxaaEnabled != 0u/);
+  assert.match(shader, /settings\.casEnabled != 0u/);
+  assert.match(shader, /settings\.sampleRadius/);
+});

@@ -13,6 +13,7 @@
       position: fixed;
       top: 8px;
       left: 8px;
+      right: 210px;
       color: #0f0;
       font: 13px/1.4 monospace;
       background: rgba(0,0,0,0.6);
@@ -20,12 +21,110 @@
       border-radius: 4px;
       pointer-events: none;
       z-index: 10;
+      overflow-wrap: anywhere;
+    }
+    #postprocess-controls {
+      position: fixed;
+      right: 8px;
+      top: 8px;
+      z-index: 20;
+      color: #e8eef6;
+      font: 12px/1.35 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: rgba(8, 10, 14, 0.78);
+      border: 1px solid rgba(255,255,255,0.16);
+      border-radius: 6px;
+      min-width: 188px;
+      max-width: min(260px, calc(100vw - 16px));
+      backdrop-filter: blur(6px);
+    }
+    #postprocess-controls summary {
+      cursor: pointer;
+      list-style: none;
+      padding: 7px 10px;
+      font-weight: 650;
+      user-select: none;
+    }
+    #postprocess-controls summary::-webkit-details-marker { display: none; }
+    #postprocess-controls summary::after {
+      content: "v";
+      float: right;
+      opacity: 0.72;
+    }
+    #postprocess-controls details:not([open]) summary::after { content: ">"; }
+    #postprocess-controls .postprocess-panel {
+      display: grid;
+      gap: 7px;
+      padding: 0 10px 10px;
+    }
+    #postprocess-controls label {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 10px;
+      min-height: 24px;
+    }
+    #postprocess-controls input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+    }
+    #postprocess-controls select,
+    #postprocess-controls input[type="range"] {
+      width: 92px;
+    }
+    #postprocess-sharpness-value {
+      min-width: 3.5ch;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    @media (max-width: 720px) {
+      #stats {
+        top: 48px;
+        right: 8px;
+      }
+      #postprocess-controls {
+        min-width: 174px;
+      }
     }
   </style>
 </head>
 <body>
   <canvas id="canvas"></canvas>
   <div id="stats"></div>
+  <div id="postprocess-controls" data-visual-smoke-ignore>
+    <details>
+      <summary>Post FX</summary>
+      <div class="postprocess-panel">
+        <label for="postprocess-enabled">
+          <span>Enabled</span>
+          <input id="postprocess-enabled" type="checkbox" checked />
+        </label>
+        <label for="postprocess-fxaa-enabled">
+          <span>FXAA</span>
+          <input id="postprocess-fxaa-enabled" type="checkbox" checked />
+        </label>
+        <label for="postprocess-cas-enabled">
+          <span>CAS</span>
+          <input id="postprocess-cas-enabled" type="checkbox" checked />
+        </label>
+        <label for="postprocess-samples">
+          <span>Samples</span>
+          <select id="postprocess-samples">
+            <option value="1">1x</option>
+            <option value="2" selected>2x</option>
+            <option value="3">3x</option>
+            <option value="4">4x</option>
+          </select>
+        </label>
+        <label for="postprocess-sharpness">
+          <span>Sharp</span>
+          <span>
+            <input id="postprocess-sharpness" type="range" min="0" max="0.4" step="0.02" value="0.18" />
+            <output id="postprocess-sharpness-value" for="postprocess-sharpness">0.18</output>
+          </span>
+        </label>
+      </div>
+    </details>
+  </div>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

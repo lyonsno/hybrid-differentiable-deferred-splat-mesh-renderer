@@ -171,6 +171,7 @@ import {
   createFxaaCasPostProcess,
   createPostProcessOutputTexture,
   type FxaaCasPostProcess,
+  type FxaaCasPostProcessSettings,
 } from "./computePostProcess.js";
 import {
   splatAttributesFromFixture,
@@ -237,6 +238,15 @@ interface CandidateSourceInputBuffers {
   readonly candidateSourceInputs: GpuProjectionRetentionCandidateSourceInputs;
   readonly candidateSourceRecordsBuffer: GPUBuffer;
   readonly candidateSourceGroupsBuffer: GPUBuffer;
+}
+
+interface PostProcessControls {
+  readonly enabled: HTMLInputElement | null;
+  readonly fxaaEnabled: HTMLInputElement | null;
+  readonly casEnabled: HTMLInputElement | null;
+  readonly sampleRadius: HTMLSelectElement | null;
+  readonly casSharpness: HTMLInputElement | null;
+  readonly casSharpnessValue: HTMLOutputElement | null;
 }
 
 interface ActiveSplatScene {
@@ -1079,6 +1089,56 @@ function exposeOperatorWitnessFrameTimings(frameTimings: FrameTimingSummary): vo
   operatorWitness.frameTimings = frameTimings;
 }
 
+function createPostProcessControls(requestFrame: () => void): PostProcessControls {
+  const controls: PostProcessControls = {
+    enabled: document.getElementById("postprocess-enabled") as HTMLInputElement | null,
+    fxaaEnabled: document.getElementById("postprocess-fxaa-enabled") as HTMLInputElement | null,
+    casEnabled: document.getElementById("postprocess-cas-enabled") as HTMLInputElement | null,
+    sampleRadius: document.getElementById("postprocess-samples") as HTMLSelectElement | null,
+    casSharpness: document.getElementById("postprocess-sharpness") as HTMLInputElement | null,
+    casSharpnessValue: document.getElementById("postprocess-sharpness-value") as HTMLOutputElement | null,
+  };
+  const update = () => {
+    updatePostProcessSharpnessLabel(controls);
+    requestFrame();
+  };
+  controls.enabled?.addEventListener("change", update);
+  controls.fxaaEnabled?.addEventListener("change", update);
+  controls.casEnabled?.addEventListener("change", update);
+  controls.sampleRadius?.addEventListener("change", update);
+  controls.casSharpness?.addEventListener("input", update);
+  updatePostProcessSharpnessLabel(controls);
+  return controls;
+}
+
+function readPostProcessSettings(controls: PostProcessControls): FxaaCasPostProcessSettings {
+  return {
+    enabled: controls.enabled?.checked ?? true,
+    fxaaEnabled: controls.fxaaEnabled?.checked ?? true,
+    casEnabled: controls.casEnabled?.checked ?? true,
+    sampleRadius: clampInteger(Number(controls.sampleRadius?.value ?? 2), 1, 4),
+    casSharpness: clampNumber(Number(controls.casSharpness?.value ?? 0.18), 0, 0.4),
+  };
+}
+
+function updatePostProcessSharpnessLabel(controls: PostProcessControls): void {
+  if (!controls.casSharpness || !controls.casSharpnessValue) {
+    return;
+  }
+  controls.casSharpnessValue.value = clampNumber(Number(controls.casSharpness.value), 0, 0.4).toFixed(2);
+}
+
+function formatPostProcessSettings(settings: FxaaCasPostProcessSettings): string {
+  if (!settings.enabled) {
+    return "off";
+  }
+  const stages = [
+    settings.fxaaEnabled ? "fxaa" : null,
+    settings.casEnabled ? "cas" : null,
+  ].filter(Boolean).join("+") || "passthrough";
+  return `${stages}/${settings.sampleRadius}x/sharp ${settings.casSharpness.toFixed(2)}`;
+}
+
 async function main() {
   const gpu = await initGPU(canvas);
   const cam = createCamera();
@@ -1088,6 +1148,7 @@ async function main() {
       requestAnimationFrame(frame);
     }
   };
+  const postProcessControls = createPostProcessControls(requestFrame);
   bindCameraControls(cam, canvas, {
     requestRender: requestFrame,
     onDoubleClick(clickX, clickY, viewportWidth, viewportHeight) {
@@ -1459,6 +1520,7 @@ async function main() {
     // Real Scaniverse uses splatScale=3000 for its own unit system.
     const activeSplatScale = shapeWitnessFixtureId !== null ? SHAPE_WITNESS_SPLAT_SCALE : REAL_SCANIVERSE_SPLAT_SCALE;
     const activeMinRadiusPx = shapeWitnessFixtureId !== null ? SHAPE_WITNESS_MIN_RADIUS_PX : REAL_SCANIVERSE_MIN_RADIUS_PX;
+    const postProcessSettings = readPostProcessSettings(postProcessControls);
     if (alphaRefreshed) {
       if (scene.rendererMode !== "compute") {
         // Alpha-density compensation is skipped for the compute compositor —
@@ -1726,6 +1788,7 @@ async function main() {
         encodeCompositeOnly(encoder, resources, bindGroups);
       }
 
+      cc.postProcess.writeSettings(gpu.device.queue, postProcessSettings);
       cc.postProcess.encode(
         activeEncoder,
         cc.outputView,
@@ -1893,6 +1956,9 @@ async function main() {
     if (scene.tileLocalLastSkipReason) {
       statsText += ` | tile-local skipped: ${scene.tileLocalLastSkipReason}`;
     }
+    if (scene.rendererMode === "compute") {
+      statsText += ` | post-fx: ${formatPostProcessSettings(postProcessSettings)}`;
+    }
     const frameTimingOverlay = formatFrameTimingOverlay(frameTiming);
     statsText += ` | ${frameTimingOverlay}`;
     if (shouldRetainFrameTimingOverlay(frameTiming)) {
@@ -1923,6 +1989,7 @@ async function main() {
         height,
         scene.attributes.colors,
         tileLocalCurrentSignature,
+        postProcessSettings,
         {
           witnessView: operatorWitnessViewMode,
           revision: operatorWitnessRevision,
@@ -8605,6 +8672,13 @@ function clampInteger(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+function clampNumber(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  return Math.max(min, Math.min(max, value));
+}
+
 function createEmptyStorageBuffer(device: GPUDevice, size: number, label: string): GPUBuffer {
   return device.createBuffer({
     label,
@@ -9106,6 +9180,7 @@ function destroyComputeCompositorState(state: ActiveSplatScene["computeComposito
     return;
   }
   state.resources.destroy();
+  state.postProcess.settingsBuffer.destroy();
   state.outputTexture.destroy();
   state.postProcessedTexture.destroy();
 }
@@ -9721,6 +9796,7 @@ function exposeTileLocalRuntimeEvidence(
   viewportHeight: number,
   sourceColors: Float32Array,
   tileLocalCurrentSignature: string | null,
+  postProcessSettings: FxaaCasPostProcessSettings,
   operatorWitness?: {
     readonly witnessView: RealScaniverseWitnessViewMode;
     readonly revision: number;
@@ -9898,6 +9974,7 @@ function exposeTileLocalRuntimeEvidence(
     tileLocalStatus,
     tileLocalDisabledReason,
     tileLocalLastSkipReason,
+    postProcess: postProcessSettings,
     arenaRuntime,
     operatorWitness,
     tileLocal: tileLocalState && diagnostics

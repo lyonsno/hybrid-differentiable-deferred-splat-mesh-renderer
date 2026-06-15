@@ -1,9 +1,16 @@
 @group(0) @binding(0) var postProcessInput: texture_2d<f32>;
 @group(0) @binding(1) var postProcessOutput: texture_storage_2d<rgba16float, write>;
+struct PostProcessSettings {
+  enabled: u32,
+  fxaaEnabled: u32,
+  casEnabled: u32,
+  sampleRadius: u32,
+  casSharpness: f32,
+};
+@group(0) @binding(2) var<uniform> settings: PostProcessSettings;
 
 const FXAA_EDGE_THRESHOLD = 0.0312;
 const FXAA_EDGE_THRESHOLD_MIN = 0.00625;
-const CAS_SHARPNESS = 0.18;
 
 fn luma(color: vec3f) -> f32 {
   return dot(color, vec3f(0.299, 0.587, 0.114));
@@ -20,10 +27,11 @@ fn load_rgb(coord: vec2i, size: vec2u) -> vec3f {
 
 fn fxaa_filter(coord: vec2i, size: vec2u) -> vec3f {
   let center = load_rgb(coord, size);
-  let north = load_rgb(coord + vec2i(0, -1), size);
-  let south = load_rgb(coord + vec2i(0, 1), size);
-  let west = load_rgb(coord + vec2i(-1, 0), size);
-  let east = load_rgb(coord + vec2i(1, 0), size);
+  let radius = i32(clamp(settings.sampleRadius, 1u, 4u));
+  let north = load_rgb(coord + vec2i(0, -radius), size);
+  let south = load_rgb(coord + vec2i(0, radius), size);
+  let west = load_rgb(coord + vec2i(-radius, 0), size);
+  let east = load_rgb(coord + vec2i(radius, 0), size);
 
   let centerLuma = luma(center);
   let northLuma = luma(north);
@@ -50,14 +58,15 @@ fn fxaa_filter(coord: vec2i, size: vec2u) -> vec3f {
 }
 
 fn cas_sharpen(coord: vec2i, size: vec2u, color: vec3f) -> vec3f {
-  let north = load_rgb(coord + vec2i(0, -1), size);
-  let south = load_rgb(coord + vec2i(0, 1), size);
-  let west = load_rgb(coord + vec2i(-1, 0), size);
-  let east = load_rgb(coord + vec2i(1, 0), size);
+  let radius = i32(clamp(settings.sampleRadius, 1u, 4u));
+  let north = load_rgb(coord + vec2i(0, -radius), size);
+  let south = load_rgb(coord + vec2i(0, radius), size);
+  let west = load_rgb(coord + vec2i(-radius, 0), size);
+  let east = load_rgb(coord + vec2i(radius, 0), size);
   let lowPass = (north + south + west + east) * 0.25;
   let localMin = min(color, min(min(north, south), min(west, east)));
   let localMax = max(color, max(max(north, south), max(west, east)));
-  let sharpened = color + (color - lowPass) * CAS_SHARPNESS;
+  let sharpened = color + (color - lowPass) * settings.casSharpness;
   return clamp(sharpened, localMin, localMax);
 }
 
@@ -68,8 +77,12 @@ fn fxaa_cas_post_process(@builtin(global_invocation_id) globalId: vec3u) {
     return;
   }
   let coord = vec2i(globalId.xy);
-  let fxaaColor = fxaa_filter(coord, outputSize);
-  let casColor = cas_sharpen(coord, outputSize, fxaaColor);
-  let alpha = textureLoad(postProcessInput, coord, 0).a;
-  textureStore(postProcessOutput, coord, vec4f(max(casColor, vec3f(0.0)), alpha));
+  let source = textureLoad(postProcessInput, coord, 0);
+  if (settings.enabled == 0u) {
+    textureStore(postProcessOutput, coord, source);
+    return;
+  }
+  let fxaaColor = select(source.rgb, fxaa_filter(coord, outputSize), settings.fxaaEnabled != 0u);
+  let casColor = select(fxaaColor, cas_sharpen(coord, outputSize, fxaaColor), settings.casEnabled != 0u);
+  textureStore(postProcessOutput, coord, vec4f(max(casColor, vec3f(0.0)), source.a));
 }
