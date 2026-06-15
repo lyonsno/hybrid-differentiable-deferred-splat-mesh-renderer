@@ -31,6 +31,8 @@ export async function initGPU(canvas: HTMLCanvasElement): Promise<GPU> {
       maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
       maxStorageBuffersPerShaderStage: adapter.limits.maxStorageBuffersPerShaderStage,
       maxBufferSize: adapter.limits.maxBufferSize,
+      maxComputeWorkgroupSizeX: adapter.limits.maxComputeWorkgroupSizeX,
+      maxComputeInvocationsPerWorkgroup: adapter.limits.maxComputeInvocationsPerWorkgroup,
     },
   });
 

@@ -1,8 +1,9 @@
-// Per-pixel Gaussian splat compositor matching reference 3DGS.
-// Uses the viewProj-based Jacobian (handles WebGPU Y-flip correctly).
-// No splatScale fudge factor — the Jacobian + viewport/2 gives pixel-space directly.
-// Low-pass filter +0.3 on 2D covariance diagonal (reference anti-aliasing).
-// Gaussian falloff: exp(-0.5 * mahalanobis^2) (standard normalized Gaussian).
+// Per-pixel Gaussian splat compositor — reference 3DGS projection.
+//
+// Pipeline: count → prefix-sum → scatter → per-tile sort → composite
+// Projection: viewProj Jacobian, viewport/2, +0.3 low-pass, exp(-0.5 * mahalanobis^2)
+// Compositing: back-to-front source-over (matching hardware alpha blend order)
+// Per-tile sort: shared-memory bitonic sort (up to 1024 refs, requires device limit)
 
 struct FrameUniforms {
   viewProj: mat4x4f,
@@ -45,8 +46,8 @@ struct SplatShape {
 
 struct ProjectedSplat {
   centerPx: vec2f,
-  inverseCov2d: vec3f,  // inverse of 2D covariance: [xx, xy, yy]
-  radius: f32,           // screen-space radius (3 sigma)
+  inverseCov2d: vec3f,
+  radius: f32,
   depthNdc: f32,
   opacity: f32,
 };
@@ -70,8 +71,6 @@ fn viewProjectionLinearRow(row: u32) -> vec3f {
   return vec3f(frame.viewProj[0][row], frame.viewProj[1][row], frame.viewProj[2][row]);
 }
 
-// Jacobian of (clip.xy / clip.w) with respect to world position, projected onto axis.
-// Returns NDC-space displacement. Multiply by viewport/2 to get pixels.
 fn projectAxisJacobian(axis: vec3f, centerClip: vec4f) -> vec2f {
   let viewProjRow0 = viewProjectionLinearRow(0u);
   let viewProjRow1 = viewProjectionLinearRow(1u);
@@ -87,7 +86,6 @@ fn projectSplat(splatId: u32) -> ProjectedSplat {
   let posBase = splatId * 3u;
   let center = vec3f(positions[posBase], positions[posBase + 1u], positions[posBase + 2u]);
   let centerClip = frame.viewProj * vec4f(center, 1.0);
-
   let safeW = max(centerClip.w, MIN_SPLAT_CLIP_W);
   let centerNdc = centerClip.xy / safeW;
   let centerPx = vec2f(
@@ -103,29 +101,23 @@ fn projectSplat(splatId: u32) -> ProjectedSplat {
     vec4f(rotations[quatBase], rotations[quatBase + 1u], rotations[quatBase + 2u], rotations[quatBase + 3u]),
   );
 
-  // Project 3D shape axes to 2D pixel space via Jacobian
-  // NDC -> pixels: multiply by viewport/2 (no splatScale factor)
   let viewportScale = vec2f(frame.viewport.x, frame.viewport.y) * 0.5;
   let axis0 = projectAxisJacobian(shape.axis0, centerClip) * viewportScale;
   let axis1 = projectAxisJacobian(shape.axis1, centerClip) * viewportScale;
   let axis2 = projectAxisJacobian(shape.axis2, centerClip) * viewportScale;
 
-  // 2D covariance in pixel space (no extra scale factor — matches CUDA reference)
   let covXX = axis0.x * axis0.x + axis1.x * axis1.x + axis2.x * axis2.x + COV_LOW_PASS;
   let covXY = axis0.x * axis0.y + axis1.x * axis1.y + axis2.x * axis2.y;
   let covYY = axis0.y * axis0.y + axis1.y * axis1.y + axis2.y * axis2.y + COV_LOW_PASS;
 
-  // Eigenvalues for screen radius
   let mid = 0.5 * (covXX + covYY);
   let det = max(covXX * covYY - covXY * covXY, 0.1);
   let lambda = mid + sqrt(max(mid * mid - det, 0.1));
   let radius = ceil(COMPACT_FOOTPRINT_SIGMA_RADIUS * sqrt(lambda));
 
-  // Invert 2x2 covariance for Gaussian evaluation
   let detFull = max(covXX * covYY - covXY * covXY, 0.000001);
   let detInv = 1.0 / detFull;
   let inverseCov2d = vec3f(covYY * detInv, -covXY * detInv, covXX * detInv);
-
   let sourceOpacity = clamp(opacities[splatId], 0.0, 0.99);
 
   return ProjectedSplat(centerPx, inverseCov2d, radius, depthNdc, sourceOpacity);
@@ -208,14 +200,16 @@ fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
   }
 }
 
-// --- Pass 3.5: Per-tile sort by depth (bitonic sort in shared memory) ---
-// One workgroup per tile. Sorts refs in-place by depth key (word 1) descending (back-to-front).
-const SORT_WG_SIZE = 256u;
+// --- Pass 3.5: Per-tile sort (shared memory, 1024 max) ---
+// Tiles with >1024 refs: only first 1024 are sorted; remainder stays in scatter order.
+// TODO: Replace with global tileId|depth radix sort for unlimited correct ordering.
 
-var<workgroup> sortKeys: array<f32, 256>;
-var<workgroup> sortVals: array<u32, 256>;
+const SORT_WG_SIZE = 1024u;
 
-@compute @workgroup_size(256)
+var<workgroup> sortKeys: array<f32, 1024>;
+var<workgroup> sortVals: array<u32, 1024>;
+
+@compute @workgroup_size(1024)
 fn sort_tile_refs(
   @builtin(workgroup_id) groupId: vec3u,
   @builtin(local_invocation_id) localId: vec3u,
@@ -226,32 +220,27 @@ fn sort_tile_refs(
 
   let refStart = tileOffsets[tileId];
   let rawRefCount = atomicLoad(&tileCounts[tileId]);
-  let refCount = min(rawRefCount, SORT_WG_SIZE);
+  let refCount = min(rawRefCount, 1024u);
   let tid = localId.x;
 
-  // Load depth keys into shared memory; use sentinel for out-of-range
   if (tid < refCount) {
     let refIdx = (refStart + tid) * TILE_REF_STRIDE;
     sortKeys[tid] = bitcast<f32>(tileRefs[refIdx + 1u]);
     sortVals[tid] = tid;
   } else {
-    sortKeys[tid] = -1000000.0; // sentinel: sorts to end for descending
+    sortKeys[tid] = -1000000.0;
     sortVals[tid] = tid;
   }
   workgroupBarrier();
 
-  // Bitonic sort (descending by depth — farthest first for back-to-front)
-  // Always sort the full workgroup size to keep control flow uniform.
-  let paddedN = SORT_WG_SIZE;
-
-  for (var k = 2u; k <= paddedN; k *= 2u) {
+  // Bitonic sort descending (farthest first for back-to-front compositing)
+  for (var k = 2u; k <= SORT_WG_SIZE; k *= 2u) {
     for (var j = k / 2u; j > 0u; j /= 2u) {
       let ixj = tid ^ j;
-      if (ixj > tid && tid < paddedN && ixj < paddedN) {
+      if (ixj > tid) {
         let ascending = (tid & k) == 0u;
         let leftKey = sortKeys[tid];
         let rightKey = sortKeys[ixj];
-        // Descending: swap if left < right (we want larger depth first)
         let shouldSwap = select(leftKey > rightKey, leftKey < rightKey, ascending);
         if (shouldSwap) {
           sortKeys[tid] = rightKey;
@@ -265,21 +254,8 @@ fn sort_tile_refs(
     }
   }
 
-  // Now sortVals[i] tells us which original local index should be at position i.
-  // We need to reorder the actual tile ref data accordingly.
-  // Use shared memory to buffer one record at a time across all 8 words.
-  // Since we can't allocate 1024*8 shared words, do the permutation in-place
-  // by copying through tileRefs with a temp approach:
-  // Actually, simplest correct approach: read the permuted record and write it to a temp
-  // location, then copy back. But we don't have temp storage.
-  //
-  // Instead: since the sort only needs to reorder and we have the permutation in sortVals,
-  // we can do a gather: for each output position i, read from input position sortVals[i].
-  // We need to read before write, so use shared memory for one word at a time.
-
-  // Reorder each word of the tile ref records using the permutation
+  // Reorder ref records using the permutation
   for (var word = 0u; word < TILE_REF_STRIDE; word++) {
-    // Load the word from the permuted source position into shared memory
     var loadedWord = 0u;
     if (tid < refCount) {
       let srcLocalIdx = sortVals[tid];
@@ -287,10 +263,8 @@ fn sort_tile_refs(
       loadedWord = tileRefs[srcRefIdx];
     }
     workgroupBarrier();
-    // Store sortKeys as temp buffer for this word (reuse since sort is done)
     sortKeys[tid] = bitcast<f32>(loadedWord);
     workgroupBarrier();
-    // Write back to the correct position
     if (tid < refCount) {
       let dstRefIdx = (refStart + tid) * TILE_REF_STRIDE + word;
       tileRefs[dstRefIdx] = bitcast<u32>(sortKeys[tid]);
@@ -314,7 +288,6 @@ fn composite(@builtin(global_invocation_id) globalId: vec3u) {
   let refStart = tileOffsets[tileId];
   let refCount = atomicLoad(&tileCounts[tileId]);
 
-  // Back-to-front compositing (refs scattered in back-to-front order from descending sort)
   var composedColor = vec3f(0.02, 0.02, 0.04);
 
   for (var i = 0u; i < refCount; i++) {
@@ -335,7 +308,6 @@ fn composite(@builtin(global_invocation_id) globalId: vec3u) {
     );
     let opacity = bitcast<f32>(tileRefs[refIdx + 7u]);
 
-    // Reference 3DGS Gaussian: power = -0.5 * (con.x*dx*dx + con.z*dy*dy) - con.y*dx*dy
     let d = pixelCenter - centerPx;
     let power = -0.5 * (con.x * d.x * d.x + con.z * d.y * d.y) - con.y * d.x * d.y;
     if (power > 0.0) { continue; }
