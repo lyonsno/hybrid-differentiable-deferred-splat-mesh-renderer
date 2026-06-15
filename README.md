@@ -48,17 +48,28 @@ compute pipeline with per-tile depth sorting:
 http://127.0.0.1:5173/?renderer=compute
 ```
 
-Pipeline: project all splats → count tile refs → GPU prefix sum → scatter refs
-with radix sort keys → global radix sort (8-pass, 4-bit, stable) → reorder →
-front-to-back composite with transmittance cutoff.
+Pipeline:
+```
+project → count → prefix sum → scatter → 4-pass radix sort → reorder →
+classify → small tile bitonic sort → large tile bucket pre-sort → chunk sort →
+shared-memory 2×2 quad rasterizer
+```
 
 Key features:
+- **Projection cache** — project once per splat, all downstream passes read from cache
+- **Separate depth buffer** — full f32 depth per splat for per-tile sort precision
+- **Two-level sort** — 4-pass radix sort groups by Morton tile ID, then per-tile
+  bitonic sort with logarithmic depth quantization (20-bit, adaptive per-tile range)
+- **Large-tile bucket cascade** — tiles >4096 entries get 128 log-depth buckets →
+  scatter to bucket order → greedy chunk packing → bitonic sort per chunk. Handles
+  760k+ splat scenes with zero tile-boundary artifacts.
+- **Shared-memory batched rasterizer** — 8×8 workgroup per 16×16 tile, each thread
+  owns a 2×2 pixel quad. Batches of 64 splats loaded into shared memory, vectorized
+  vec4f Gaussian evaluation across the quad.
 - **Morton-coded tile IDs** — Z-order curve encoding for cache-coherent compositing
-- **Global radix sort** — stable sort on `(mortonTileId << 16 | depthInverted)`, all refs sorted per tile
-- **Hierarchical prefix scan** — proper 3-pass scan (scan → scan_block_sums → propagate)
+- **Hierarchical prefix scan** — 3-pass scan (scan → scan_block_sums → propagate)
 - **Front-to-back compositing** — transmittance cutoff at T < 0.001 for early-out
-- **Static camera skip** — sub-1ms frames when viewProj unchanged (composite-only, skip sort)
-- **Bitmask parallel scatter ranking** — countOneBits-based stable ranking in scatter
+- **1-u32 tile entries** — 8× less memory per entry vs inline ref records
 
 ### Legacy tile-local modes
 
@@ -120,18 +131,22 @@ src/                           — WebGPU deferred renderer (TypeScript)
   main.ts                        frame loop, scene replacement, stats overlay
   gpu.ts                         WebGPU device, canvas, resize
   camera.ts                      orbit, cursor zoom, view-relative keyboard camera
-  gpuTileSplatCompositor.ts      compute compositor: tiling, sort, composite pipeline
-  gpuRadixSort.ts                8-pass GPU radix sort (4-bit, stable, bitmask scatter)
+  gpuTileSplatCompositor.ts      compute compositor: full pipeline orchestration
+  gpuRadixSort.ts                4-pass GPU radix sort (tile grouping)
   splatPlateRenderer.ts          WebGPU baked-color splat plate pipeline (legacy)
   splatSort.ts                   CPU depth-key generation and settle cadence
-  gpuSortPrototype.ts            WebGPU bitonic index sort for smoke-viewer draw order
   realSmokeScene.ts              first-smoke framing and evidence surface
   timestamps.ts                  GPU timestamp query profiling
   shaders/
-    gpu_tile_splat_composite.wgsl  count, scatter, composite (Morton tile IDs)
+    gpu_project_splats.wgsl        projection cache + depth buffer writer
+    gpu_tile_splat_composite.wgsl  count, scatter, shared-memory 2x2 quad rasterizer
+    gpu_tile_classify.wgsl         tile classification (small/large tile lists)
+    gpu_tile_depth_sort.wgsl       small tile bitonic sort (≤4096 entries)
+    gpu_tile_bucket_sort.wgsl      large tile bucket pre-sort (128 log-depth buckets)
+    gpu_tile_chunk_sort.wgsl       chunk bitonic sort for bucket-sorted chunks
     gpu_radix_sort.wgsl            histogram + stable bitmask scatter
     gpu_prefix_sum.wgsl            hierarchical exclusive prefix sum
-    gpu_reorder_refs.wgsl          ref record reorder by sorted permutation
+    gpu_reorder_refs.wgsl          tile entry reorder by sorted permutation
     splat_plate.wgsl               legacy plate vertex/fragment shader
 
 docs/
@@ -178,23 +193,33 @@ npm run smoke:visual:real -- --smoke-kind telemetry --decision-requested "confir
 
 The compute compositor (`?renderer=compute`) is the current production path.
 Fully GPU-driven: projection, tiling, sorting, and compositing run entirely in
-WebGPU compute shaders with no CPU readback stalls. Tested against 94k-splat
-Scaniverse dessert scene and 760k-splat garden scene.
+WebGPU compute shaders with no CPU readback stalls. Artifact-free on both
+94k-splat Scaniverse dessert and 760k-splat garden scenes.
 
-Performance (94k splats, 1280x720):
-- Static camera: sub-1ms frames (composite-only, sort skipped)
-- Moving camera: ~3ms frames
-- 760k splats: 15-25ms median moving
+Architecture inspired by PlayCanvas engine's gsplat compute local renderer
+(MIT license, architectural reference — no code copied).
 
-Optimizations landed on this branch:
-- Morton Z-order tile IDs for cache-coherent compositing
-- Hierarchical 3-pass prefix scan (scales to 4K tile counts)
-- Global radix sort with bitmask parallel scatter ranking
-- Front-to-back compositing with transmittance cutoff (skips 80%+ occluded splats)
-- Static camera detection (skip sort when viewProj unchanged)
+Performance (94k splats, 1280×720, moving camera):
+- ~3.6ms frame time
+- 760k splats: artifact-free, handles tiles with >4096 overlapping splats
+  via bucket cascade
 
-Next: projection cache + shared-memory tiled rasterizer (PlayCanvas-inspired).
-See `docs/attractors/playcanvas-tiled-compute-rasterizer.md` for the plan.
+Pipeline landed on this branch:
+- **Projection cache** — project once per splat, separate depth buffer
+- **Two-level sort** — 4-pass radix sort for tile grouping + per-tile bitonic
+  depth sort with 20-bit logarithmic quantization (adaptive per-tile range)
+- **Large-tile bucket cascade** — classify → bucket pre-sort (128 log-depth
+  buckets) → chunk bitonic sort. Eliminates tile-boundary artifacts on dense scenes.
+- **Shared-memory batched rasterizer** — 2×2 pixel quads, 64-splat batches
+  loaded into shared memory, vectorized vec4f Gaussian evaluation
+- **Morton Z-order tile IDs** — cache-coherent compositing and stable sort
+- **Hierarchical prefix scan** — 3-pass scan scaling to 4K tile counts
+- **1-u32 tile entries** — 8× less memory than inline ref records
+
+Known remaining work:
+- Static camera skip (disabled — buffer aliasing needs investigation)
+- Indirect dispatch for sort passes (Chromium feature gate)
+- FXAA + CAS post-process pass (Lane 3)
 
 The preprocessing oracle (Packet L) is feature-complete. Validated on real
 Scaniverse phone scans with SAM3 MLX running at 90ms/concept on M4 Max.
