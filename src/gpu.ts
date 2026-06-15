@@ -4,6 +4,7 @@ export interface GPU {
   format: GPUTextureFormat;
   canvas: HTMLCanvasElement;
   timestampsSupported: boolean;
+  f16Supported: boolean;
 }
 
 export async function initGPU(canvas: HTMLCanvasElement): Promise<GPU> {
@@ -19,9 +20,13 @@ export async function initGPU(canvas: HTMLCanvasElement): Promise<GPU> {
   }
 
   const timestampsSupported = adapter.features.has("timestamp-query");
+  const f16Supported = adapter.features.has("shader-f16");
   const requiredFeatures: GPUFeatureName[] = [];
   if (timestampsSupported) {
     requiredFeatures.push("timestamp-query");
+  }
+  if (f16Supported) {
+    requiredFeatures.push("shader-f16");
   }
 
   const device = await adapter.requestDevice({
@@ -51,7 +56,7 @@ export async function initGPU(canvas: HTMLCanvasElement): Promise<GPU> {
   const format = navigator.gpu.getPreferredCanvasFormat();
   context.configure({ device, format, alphaMode: "opaque" });
 
-  return { device, context, format, canvas, timestampsSupported };
+  return { device, context, format, canvas, timestampsSupported, f16Supported };
 }
 
 export function resizeCanvas(gpu: GPU): { width: number; height: number } {

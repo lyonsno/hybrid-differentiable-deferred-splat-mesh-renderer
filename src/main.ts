@@ -1297,7 +1297,7 @@ async function main() {
         tileSizePx: 16,
         splatCount: attributes.count,
       });
-      const computeResources = createTileSplatCompositor(gpu.device, computePlan);
+      const computeResources = createTileSplatCompositor(gpu.device, computePlan, { f16: gpu.f16Supported });
       const computeOutputTexture = gpu.device.createTexture({
         label: "compute_compositor_output",
         size: [initialViewportWidth, initialViewportHeight],

@@ -1,4 +1,5 @@
 import tileSplatCompositeShader from "./shaders/gpu_tile_splat_composite.wgsl?raw";
+import tileSplatCompositeF16Shader from "./shaders/gpu_tile_splat_composite_f16.wgsl?raw";
 import projectSplatsShader from "./shaders/gpu_project_splats.wgsl?raw";
 import tileClassifyShader from "./shaders/gpu_tile_classify.wgsl?raw";
 import tileDepthSortShader from "./shaders/gpu_tile_depth_sort.wgsl?raw";
@@ -114,7 +115,10 @@ export function planTileSplatCompositor(input: {
 export function createTileSplatCompositor(
   device: GPUDevice,
   plan: TileSplatCompositorPlan,
+  options?: { f16?: boolean },
 ): TileSplatCompositorResources {
+  const useF16 = options?.f16 ?? false;
+
   const shaderModule = device.createShaderModule({
     label: "tile_splat_composite_shader",
     code: tileSplatCompositeShader,
@@ -394,10 +398,17 @@ export function createTileSplatCompositor(
     compute: { module: chunkSortModule, entryPoint: "write_chunk_indirect" },
   });
 
+  const compositeModule = useF16
+    ? device.createShaderModule({
+        label: "tile_splat_composite_f16_shader",
+        code: tileSplatCompositeF16Shader,
+      })
+    : shaderModule;
+
   const compositePipeline = device.createComputePipeline({
-    label: "tile_splat_composite",
+    label: useF16 ? "tile_splat_composite_f16" : "tile_splat_composite",
     layout: twoGroupLayout,
-    compute: { module: shaderModule, entryPoint: "composite" },
+    compute: { module: compositeModule, entryPoint: "composite" },
   });
 
   const prefixScanPipeline = device.createComputePipeline({
