@@ -1,8 +1,10 @@
-// Per-tile bitonic depth sort for small tiles (≤4096 entries).
-// Dispatched from smallTileList built by the classify pass.
-// Adapted from PlayCanvas engine gsplat-local-bitonic.js (MIT license).
+// Chunk sort: bitonic sort for chunks produced by bucket pre-sort.
+// Adapted from PlayCanvas engine gsplat-local-chunk-sort.js (MIT license).
 //
-// Dispatch: (smallTileCount, 1, 1). One workgroup per small tile.
+// Each workgroup reads (start, count) from chunkRanges and sorts entries
+// in tileEntries by depth using the same bitonic sort as small tiles.
+//
+// Dispatch: (maxChunks, 1, 1). Workgroups beyond totalChunks[0] early-out.
 
 const BITONIC_WG_SIZE = 256u;
 const MAX_TILE_ENTRIES = 4096u;
@@ -10,12 +12,18 @@ const INDEX_BITS = 12u;
 const INDEX_MASK = 0xFFFu;
 const DEPTH_LEVELS: f32 = 1048575.0;
 
-@group(0) @binding(0) var<storage, read_write> tileEntries: array<u32>;
-@group(0) @binding(1) var<storage, read> tileCounts: array<u32>;
+struct ChunkSortParams {
+  maxChunks: u32,
+  _pad0: u32,
+  _pad1: u32,
+  _pad2: u32,
+};
+
+@group(0) @binding(0) var<uniform> params: ChunkSortParams;
+@group(0) @binding(1) var<storage, read_write> tileEntries: array<u32>;
 @group(0) @binding(2) var<storage, read> depthBuffer: array<u32>;
-@group(0) @binding(3) var<storage, read> smallTileList: array<u32>;
-@group(0) @binding(4) var<storage, read> tileListCounts: array<u32>;
-@group(0) @binding(5) var<storage, read> tileOffsets: array<u32>;
+@group(0) @binding(3) var<storage, read> chunkRanges: array<u32>;
+@group(0) @binding(4) var<storage, read> totalChunks: array<u32>;
 
 fn insertZeroBit(v: u32, bitPos: u32) -> u32 {
   let mask = (1u << bitPos) - 1u;
@@ -27,16 +35,15 @@ var<workgroup> sDepthMin: atomic<u32>;
 var<workgroup> sDepthMax: atomic<u32>;
 
 @compute @workgroup_size(256)
-fn tile_depth_sort(
+fn chunk_sort(
   @builtin(workgroup_id) groupId: vec3u,
   @builtin(local_invocation_index) localIdx: u32,
 ) {
-  let workgroupIdx = groupId.x;
-  if (workgroupIdx >= tileListCounts[0]) { return; }
+  let chunkIdx = groupId.x;
+  if (chunkIdx >= min(totalChunks[0], params.maxChunks)) { return; }
 
-  let mortonId = smallTileList[workgroupIdx];
-  let tileStart = tileOffsets[mortonId];
-  let count = min(tileCounts[mortonId], MAX_TILE_ENTRIES);
+  let tStart = chunkRanges[chunkIdx * 2u];
+  let count = min(chunkRanges[chunkIdx * 2u + 1u], MAX_TILE_ENTRIES);
   if (count <= 1u) { return; }
 
   // Phase 1: Load depths
@@ -47,7 +54,7 @@ fn tile_depth_sort(
 
   for (var i = localIdx; i < MAX_TILE_ENTRIES; i += BITONIC_WG_SIZE) {
     if (i < count) {
-      sData[i] = depthBuffer[tileEntries[tileStart + i]];
+      sData[i] = depthBuffer[tileEntries[tStart + i]];
     } else {
       sData[i] = 0xFFFFFFFFu;
     }
@@ -82,7 +89,7 @@ fn tile_depth_sort(
   }
   workgroupBarrier();
 
-  // Phase 4: Bitonic sort — constant 12 stages for 4096 elements
+  // Phase 4: Bitonic sort — constant 12 stages
   for (var k: u32 = 2u; k <= MAX_TILE_ENTRIES; k = k << 1u) {
     for (var j: u32 = k >> 1u; j > 0u; j = j >> 1u) {
       let bitPos = countTrailingZeros(j);
@@ -104,14 +111,14 @@ fn tile_depth_sort(
   for (var i = localIdx; i < MAX_TILE_ENTRIES; i += BITONIC_WG_SIZE) {
     if (i < count) {
       let localIndex = sData[i] & INDEX_MASK;
-      sData[i] = tileEntries[tileStart + localIndex];
+      sData[i] = tileEntries[tStart + localIndex];
     }
   }
   workgroupBarrier();
 
   for (var i = localIdx; i < MAX_TILE_ENTRIES; i += BITONIC_WG_SIZE) {
     if (i < count) {
-      tileEntries[tileStart + i] = sData[i];
+      tileEntries[tStart + i] = sData[i];
     }
   }
 }
