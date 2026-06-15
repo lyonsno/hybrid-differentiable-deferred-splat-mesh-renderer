@@ -25,6 +25,9 @@ struct ChunkSortParams {
 @group(0) @binding(3) var<storage, read> chunkRanges: array<u32>;
 @group(0) @binding(4) var<storage, read> totalChunks: array<u32>;
 
+// write_chunk_indirect bindings (separate bind group layout)
+@group(1) @binding(0) var<storage, read_write> indirectDispatchArgs: array<u32>;
+
 fn insertZeroBit(v: u32, bitPos: u32) -> u32 {
   let mask = (1u << bitPos) - 1u;
   return ((v >> bitPos) << (bitPos + 1u)) | (v & mask);
@@ -121,4 +124,15 @@ fn chunk_sort(
       tileEntries[tStart + i] = sData[i];
     }
   }
+}
+
+// Single-thread copy pass: write totalChunks into indirect dispatch args.
+// Chunk sort args live at offset 6 (indices [6..8]) in the shared indirect buffer.
+// Dispatch: (1, 1, 1). Runs between bucket sort and chunk sort.
+@compute @workgroup_size(1)
+fn write_chunk_indirect() {
+  let numChunks = min(totalChunks[0], params.maxChunks);
+  indirectDispatchArgs[6] = numChunks;
+  indirectDispatchArgs[7] = 1u;
+  indirectDispatchArgs[8] = 1u;
 }

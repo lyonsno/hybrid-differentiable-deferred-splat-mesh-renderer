@@ -52,6 +52,7 @@ export interface TileSplatCompositorResources {
   readonly tileDepthSortPipeline: GPUComputePipeline;
   readonly bucketSortPipeline: GPUComputePipeline;
   readonly chunkSortPipeline: GPUComputePipeline;
+  readonly writeChunkIndirectPipeline: GPUComputePipeline;
   readonly compositePipeline: GPUComputePipeline;
   readonly prefixScanPipeline: GPUComputePipeline;
   readonly prefixScanBlockSumsPipeline: GPUComputePipeline;
@@ -65,6 +66,7 @@ export interface TileSplatCompositorResources {
   readonly tileDepthSortBindGroupLayout: GPUBindGroupLayout;
   readonly bucketSortBindGroupLayout: GPUBindGroupLayout;
   readonly chunkSortBindGroupLayout: GPUBindGroupLayout;
+  readonly writeChunkIndirectBindGroupLayout: GPUBindGroupLayout;
   readonly prefixBindGroupLayout: GPUBindGroupLayout;
   readonly projCacheBuffer: GPUBuffer;
   readonly depthBuffer: GPUBuffer;
@@ -267,6 +269,14 @@ export function createTileSplatCompositor(
     ],
   });
 
+  // Write chunk indirect: just the indirect dispatch buffer
+  const writeChunkIndirectBindGroupLayout = device.createBindGroupLayout({
+    label: "write_chunk_indirect_bgl",
+    entries: [
+      { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // indirectDispatchArgs
+    ],
+  });
+
   // Prefix sum bind group (matches gpu_prefix_sum.wgsl)
   const prefixBindGroupLayout = device.createBindGroupLayout({
     label: "tile_prefix_bgl",
@@ -317,6 +327,11 @@ export function createTileSplatCompositor(
   const chunkSortLayout = device.createPipelineLayout({
     label: "chunk_sort_pl",
     bindGroupLayouts: [chunkSortBindGroupLayout],
+  });
+
+  const writeChunkIndirectLayout = device.createPipelineLayout({
+    label: "write_chunk_indirect_pl",
+    bindGroupLayouts: [chunkSortBindGroupLayout, writeChunkIndirectBindGroupLayout],
   });
 
   const prefixLayout = device.createPipelineLayout({
@@ -371,6 +386,12 @@ export function createTileSplatCompositor(
     label: "chunk_sort",
     layout: chunkSortLayout,
     compute: { module: chunkSortModule, entryPoint: "chunk_sort" },
+  });
+
+  const writeChunkIndirectPipeline = device.createComputePipeline({
+    label: "write_chunk_indirect",
+    layout: writeChunkIndirectLayout,
+    compute: { module: chunkSortModule, entryPoint: "write_chunk_indirect" },
   });
 
   const compositePipeline = device.createComputePipeline({
@@ -508,10 +529,10 @@ export function createTileSplatCompositor(
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
   });
 
-  // Indirect dispatch args: 3 u32 per dispatch × 2 dispatches (small sort + bucket sort)
+  // Indirect dispatch args: 3 u32 per dispatch × 3 dispatches (small sort + bucket sort + chunk sort)
   const indirectDispatchBuffer = device.createBuffer({
     label: "indirect_dispatch_args",
-    size: 6 * 4, // 2 × (x, y, z)
+    size: 9 * 4, // 3 × (x, y, z)
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST,
   });
 
@@ -548,11 +569,11 @@ export function createTileSplatCompositor(
   return {
     plan,
     projectPipeline, countPipeline, scatterPipeline, reorderPipeline,
-    classifyPipeline, tileDepthSortPipeline, bucketSortPipeline, chunkSortPipeline, compositePipeline,
+    classifyPipeline, tileDepthSortPipeline, bucketSortPipeline, chunkSortPipeline, writeChunkIndirectPipeline, compositePipeline,
     prefixScanPipeline, prefixScanBlockSumsPipeline, prefixPropagatePipeline,
     projectBindGroupLayout, splatBindGroupLayout, tileBindGroupLayout, sortKeyBindGroupLayout,
     reorderBindGroupLayout, classifyBindGroupLayout, tileDepthSortBindGroupLayout,
-    bucketSortBindGroupLayout, chunkSortBindGroupLayout, prefixBindGroupLayout,
+    bucketSortBindGroupLayout, chunkSortBindGroupLayout, writeChunkIndirectBindGroupLayout, prefixBindGroupLayout,
     projCacheBuffer, depthBuffer, tileCountBuffer, tileOffsetBuffer, tileRefBuffer, tileRefSortedBuffer,
     frameUniformBuffer, prefixBlockSumsBuffer, reorderParamsBuffer, tileDepthSortParamsBuffer,
     classifyParamsBuffer, bucketSortParamsBuffer, chunkSortParamsBuffer,
@@ -604,6 +625,7 @@ export interface TileSplatCompositorBindGroups {
   readonly tileDepthSortBindGroup: GPUBindGroup;
   readonly bucketSortBindGroup: GPUBindGroup;
   readonly chunkSortBindGroup: GPUBindGroup;
+  readonly writeChunkIndirectBindGroup: GPUBindGroup;
   readonly sortedTileBindGroup: GPUBindGroup;
   readonly prefixBindGroup: GPUBindGroup;
 }
@@ -742,6 +764,15 @@ export function createTileSplatBindGroups(
     ],
   });
 
+  // Write chunk indirect: copies totalChunks → indirect dispatch args
+  const writeChunkIndirectBindGroup = device.createBindGroup({
+    label: "write_chunk_indirect_bg",
+    layout: resources.writeChunkIndirectBindGroupLayout,
+    entries: [
+      { binding: 0, resource: { buffer: resources.indirectDispatchBuffer } },
+    ],
+  });
+
   // For composite: same tile layout but binding 2 points to sorted entries
   const sortedTileBindGroup = device.createBindGroup({
     label: "tile_splat_sorted_tile_bg",
@@ -767,7 +798,7 @@ export function createTileSplatBindGroups(
     ],
   });
 
-  return { projectBindGroup, splatBindGroup, tileBindGroup, sortKeyBindGroup, reorderBindGroup, classifyBindGroup, tileDepthSortBindGroup, bucketSortBindGroup, chunkSortBindGroup, sortedTileBindGroup, prefixBindGroup };
+  return { projectBindGroup, splatBindGroup, tileBindGroup, sortKeyBindGroup, reorderBindGroup, classifyBindGroup, tileDepthSortBindGroup, bucketSortBindGroup, chunkSortBindGroup, writeChunkIndirectBindGroup, sortedTileBindGroup, prefixBindGroup };
 }
 
 /**
@@ -906,12 +937,22 @@ export function encodeFullComputeCompositorPipeline(
     pass.end();
   }
 
-  // Pass 5.5d: Chunk sort — fixed dispatch, shader early-outs beyond totalChunks[0]
+  // Pass 5.5d: Write chunk indirect dispatch args (copies totalChunks → indirect buffer)
+  {
+    const pass = encoder.beginComputePass({ label: "write_chunk_indirect" });
+    pass.setPipeline(resources.writeChunkIndirectPipeline);
+    pass.setBindGroup(0, bindGroups.chunkSortBindGroup);
+    pass.setBindGroup(1, bindGroups.writeChunkIndirectBindGroup);
+    pass.dispatchWorkgroups(1);
+    pass.end();
+  }
+
+  // Pass 5.5e: Chunk sort — indirect dispatch from totalChunks
   {
     const pass = encoder.beginComputePass({ label: "chunk_sort" });
     pass.setPipeline(resources.chunkSortPipeline);
     pass.setBindGroup(0, bindGroups.chunkSortBindGroup);
-    pass.dispatchWorkgroups(256);
+    pass.dispatchWorkgroupsIndirect(resources.indirectDispatchBuffer, 24);
     pass.end();
   }
 
