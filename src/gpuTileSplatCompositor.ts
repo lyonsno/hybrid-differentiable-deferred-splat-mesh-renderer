@@ -888,27 +888,25 @@ export function encodeFullComputeCompositorPipeline(
     classifyPass.end();
   }
 
-  // Pass 5.5b: Small tile bitonic sort (one workgroup per small tile)
+  // Pass 5.5b: Small tile bitonic sort (indirect dispatch from classify output)
   {
     const pass = encoder.beginComputePass({ label: "small_tile_sort" });
     pass.setPipeline(resources.tileDepthSortPipeline);
     pass.setBindGroup(0, bindGroups.tileDepthSortBindGroup);
-    pass.dispatchWorkgroups(plan.tileCount);
+    pass.dispatchWorkgroupsIndirect(resources.indirectDispatchBuffer, 0);
     pass.end();
   }
 
-  // Pass 5.5c: Bucket pre-sort for large tiles
-  // Most scenes have zero large tiles; shader early-outs for non-large tiles.
-  // Cap dispatch to avoid wasting GPU on empty workgroups.
+  // Pass 5.5c: Bucket pre-sort for large tiles (indirect dispatch from classify output)
   {
     const pass = encoder.beginComputePass({ label: "bucket_sort" });
     pass.setPipeline(resources.bucketSortPipeline);
     pass.setBindGroup(0, bindGroups.bucketSortBindGroup);
-    pass.dispatchWorkgroups(Math.min(plan.tileCount, 256));
+    pass.dispatchWorkgroupsIndirect(resources.indirectDispatchBuffer, 12);
     pass.end();
   }
 
-  // Pass 5.5d: Chunk sort for bucket-sorted chunks
+  // Pass 5.5d: Chunk sort — fixed dispatch, shader early-outs beyond totalChunks[0]
   {
     const pass = encoder.beginComputePass({ label: "chunk_sort" });
     pass.setPipeline(resources.chunkSortPipeline);
