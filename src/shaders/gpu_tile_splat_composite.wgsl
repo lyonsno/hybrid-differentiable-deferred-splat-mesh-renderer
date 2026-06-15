@@ -107,14 +107,10 @@ fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
   let maxTileX = (packed >> 16u) & 0xFFu;
   let maxTileY = (packed >> 24u) & 0xFFu;
 
-  // Use upper 16 bits of the float bitcast for sort key depth.
-  // IEEE 754 positive floats sort correctly as u32 (ascending = near to far).
-  // We invert so near splats sort to the end (high key → end of tile range).
-  // Upper 16 bits capture exponent + upper mantissa = logarithmic precision,
-  // much better than linear quantization for resolving nearby depths.
-  let depthU32 = bitcast<u32>(max(depthNdc, 0.0));
-  let depthUpper16 = depthU32 >> 16u;
-  let depthInverted = 0xFFFFu - depthUpper16;
+  // Sort key: just the Morton tile ID. The global radix sort groups refs by
+  // tile (4 passes × 4 bits = 16 bits). Depth ordering within each tile is
+  // handled by a separate per-tile sort pass using full f32 precision from
+  // the ref record's depth field.
 
   let splatId = sortedIndices[sortRank];
 
@@ -136,8 +132,8 @@ fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
         tileRefs[refIdx + 6u] = covZ;
         tileRefs[refIdx + 7u] = bitcast<u32>(opacity);
 
-        // Write radix sort key: Morton-coded tileId for spatial locality + inverted depth
-        radixKeys[linearIdx] = (tileId << 16u) | depthInverted;
+        // Sort key: Morton tile ID only. Per-tile depth sort is a separate pass.
+        radixKeys[linearIdx] = tileId;
       }
     }
   }
@@ -196,12 +192,12 @@ fn composite(
   let numBatches = (refCount + BATCH_SIZE - 1u) / BATCH_SIZE;
   var threadDone = false;
 
-  // Iterate batches from end (nearest) to start (farthest).
-  // Sort key inverts depth: near splats have high keys → sort to end of tile range.
+  // Iterate batches forward (nearest first).
+  // Per-tile depth sort orders ascending: near splats at the start of tile range.
   for (var batchIdx: u32 = 0u; batchIdx < numBatches; batchIdx++) {
-    // Load one splat per thread into shared memory (from the END of the range)
-    let refOffset = refCount - 1u - (batchIdx * BATCH_SIZE + localIdx);
-    if (batchIdx * BATCH_SIZE + localIdx < refCount) {
+    // Load one splat per thread into shared memory
+    let refOffset = batchIdx * BATCH_SIZE + localIdx;
+    if (refOffset < refCount) {
       let refIdx = (refStart + refOffset) * TILE_REF_STRIDE;
 
       let splatId = tileRefs[refIdx + 0u];
