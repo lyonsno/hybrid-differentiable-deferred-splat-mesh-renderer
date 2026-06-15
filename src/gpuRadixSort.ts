@@ -4,7 +4,7 @@ const WG_SIZE = 256;
 const ITEMS_PER_THREAD = 4;
 const ELEMENTS_PER_WG = WG_SIZE * ITEMS_PER_THREAD; // 1024
 const RADIX_BUCKETS = 16; // 4 bits per pass
-const NUM_PASSES = 6; // 6 passes × 4 bits = 24 bits (tileId:13 | depth:11)
+const NUM_PASSES = 8; // 8 passes × 4 bits = 32 bits
 
 interface PerPassResources {
   readonly sortParamsBuffer: GPUBuffer;
