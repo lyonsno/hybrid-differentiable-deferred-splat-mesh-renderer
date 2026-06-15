@@ -53,8 +53,9 @@ export function planTileSplatCompositor(input: {
   const tileColumns = Math.ceil(viewportWidth / tileSizePx);
   const tileRows = Math.ceil(viewportHeight / tileSizePx);
   const tileCount = tileColumns * tileRows;
-  const avgRefsPerTile = input.averageRefsPerTile ?? 256;
-  const maxTotalTileRefs = Math.max(tileCount * avgRefsPerTile, splatCount * 8);
+  // Generous allocation: each splat covers ~4 tiles on average at 32px,
+  // but close-up views can push to ~12. Use splatCount * 16 as safe upper bound.
+  const maxTotalTileRefs = Math.max(tileCount * 512, splatCount * 16);
   return { viewportWidth, viewportHeight, tileSizePx, tileColumns, tileRows, tileCount, splatCount, maxTotalTileRefs };
 }
 
