@@ -1,5 +1,7 @@
 import computePostProcessShader from "./shaders/compute_post_process.wgsl?raw";
 
+export const FXAA_CAS_MAX_SHARPNESS = 1.5;
+
 export interface FxaaCasPostProcessSettings {
   readonly enabled: boolean;
   readonly fxaaEnabled: boolean;
@@ -76,7 +78,7 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
       u32[1] = settings.fxaaEnabled ? 1 : 0;
       u32[2] = settings.casEnabled ? 1 : 0;
       u32[3] = clampInteger(settings.sampleRadius, 1, 4);
-      f32[4] = clampNumber(settings.casSharpness, 0, 0.4);
+      f32[4] = clampNumber(settings.casSharpness, 0, FXAA_CAS_MAX_SHARPNESS);
       queue.writeBuffer(settingsBuffer, 0, buffer);
     },
     encode(

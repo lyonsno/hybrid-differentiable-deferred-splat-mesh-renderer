@@ -44,13 +44,16 @@ test("compute post-process exposes live upper-right controls for toggles and sam
   assert.match(html, /id="postprocess-cas-enabled"/);
   assert.match(html, /id="postprocess-samples"/);
   assert.match(html, /id="postprocess-sharpness"/);
+  assert.match(html, /id="postprocess-sharpness"[^>]*max="100"/);
   assert.match(html, /#postprocess-controls[\s\S]*position:\s*fixed[\s\S]*right:\s*8px[\s\S]*top:\s*8px/);
 
   assert.match(mainSource, /const postProcessControls = createPostProcessControls\(requestFrame\)/);
+  assert.match(mainSource, /postProcessSharpnessFromPercent/);
   assert.match(mainSource, /readPostProcessSettings\(postProcessControls\)/);
   assert.match(mainSource, /cc\.postProcess\.writeSettings\(gpu\.device\.queue,\s*postProcessSettings\)/);
   assert.match(mainSource, /postProcess:\s*postProcessSettings/);
 
+  assert.match(postProcessSource, /FXAA_CAS_MAX_SHARPNESS\s*=\s*1\.5/);
   assert.match(postProcessSource, /export interface FxaaCasPostProcessSettings/);
   assert.match(postProcessSource, /settingsBuffer:\s*GPUBuffer/);
   assert.match(postProcessSource, /writeSettings\(/);
@@ -66,4 +69,7 @@ test("compute post-process exposes live upper-right controls for toggles and sam
   assert.match(shader, /settings\.fxaaEnabled != 0u/);
   assert.match(shader, /settings\.casEnabled != 0u/);
   assert.match(shader, /settings\.sampleRadius/);
+  assert.match(shader, /localRange/);
+  assert.match(shader, /haloWindow/);
+  assert.doesNotMatch(shader, /return clamp\(sharpened,\s*localMin,\s*localMax\)/);
 });

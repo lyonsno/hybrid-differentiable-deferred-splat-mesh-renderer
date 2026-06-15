@@ -67,7 +67,9 @@ fn cas_sharpen(coord: vec2i, size: vec2u, color: vec3f) -> vec3f {
   let localMin = min(color, min(min(north, south), min(west, east)));
   let localMax = max(color, max(max(north, south), max(west, east)));
   let sharpened = color + (color - lowPass) * settings.casSharpness;
-  return clamp(sharpened, localMin, localMax);
+  let localRange = max(localMax - localMin, vec3f(0.001));
+  let haloWindow = localRange * settings.casSharpness * 0.65;
+  return clamp(sharpened, max(vec3f(0.0), localMin - haloWindow), localMax + haloWindow);
 }
 
 @compute @workgroup_size(8, 8, 1)

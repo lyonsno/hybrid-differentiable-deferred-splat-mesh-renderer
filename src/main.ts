@@ -168,6 +168,7 @@ import {
 } from "./tileLocalPrepassBridge.js";
 import { createTileLocalTexturePresenter } from "./tileLocalTexturePresenter.js";
 import {
+  FXAA_CAS_MAX_SHARPNESS,
   createFxaaCasPostProcess,
   createPostProcessOutputTexture,
   type FxaaCasPostProcess,
@@ -1117,15 +1118,19 @@ function readPostProcessSettings(controls: PostProcessControls): FxaaCasPostProc
     fxaaEnabled: controls.fxaaEnabled?.checked ?? true,
     casEnabled: controls.casEnabled?.checked ?? true,
     sampleRadius: clampInteger(Number(controls.sampleRadius?.value ?? 2), 1, 4),
-    casSharpness: clampNumber(Number(controls.casSharpness?.value ?? 0.18), 0, 0.4),
+    casSharpness: postProcessSharpnessFromPercent(Number(controls.casSharpness?.value ?? 35)),
   };
+}
+
+function postProcessSharpnessFromPercent(percent: number): number {
+  return (clampNumber(percent, 0, 100) / 100) * FXAA_CAS_MAX_SHARPNESS;
 }
 
 function updatePostProcessSharpnessLabel(controls: PostProcessControls): void {
   if (!controls.casSharpness || !controls.casSharpnessValue) {
     return;
   }
-  controls.casSharpnessValue.value = clampNumber(Number(controls.casSharpness.value), 0, 0.4).toFixed(2);
+  controls.casSharpnessValue.value = `${Math.round(clampNumber(Number(controls.casSharpness.value), 0, 100))}%`;
 }
 
 function formatPostProcessSettings(settings: FxaaCasPostProcessSettings): string {
@@ -1136,7 +1141,8 @@ function formatPostProcessSettings(settings: FxaaCasPostProcessSettings): string
     settings.fxaaEnabled ? "fxaa" : null,
     settings.casEnabled ? "cas" : null,
   ].filter(Boolean).join("+") || "passthrough";
-  return `${stages}/${settings.sampleRadius}x/sharp ${settings.casSharpness.toFixed(2)}`;
+  const sharpnessPercent = Math.round((clampNumber(settings.casSharpness, 0, FXAA_CAS_MAX_SHARPNESS) / FXAA_CAS_MAX_SHARPNESS) * 100);
+  return `${stages}/${settings.sampleRadius}x/sharp ${sharpnessPercent}%`;
 }
 
 async function main() {

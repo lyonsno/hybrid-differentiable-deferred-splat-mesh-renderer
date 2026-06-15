@@ -1,0 +1,194 @@
+{
+  "generatedAt": "2026-06-15T20:58:26.761Z",
+  "reportDir": "smoke-reports/lane3-fxaa-cas-effect-after-repair-0615",
+  "captures": [
+    {
+      "id": "off",
+      "settings": {
+        "enabled": false,
+        "fxaa": true,
+        "cas": true,
+        "samples": 2,
+        "sharpness": 35
+      },
+      "stats": "1280×720 | 0 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: off | app frame: 0.4ms | slowest app stage: frame-uniforms 0ms",
+      "smokePostProcess": {
+        "enabled": false,
+        "fxaaEnabled": true,
+        "casEnabled": true,
+        "sampleRadius": 2,
+        "casSharpness": 0.5249999999999999
+      }
+    },
+    {
+      "id": "default",
+      "settings": {
+        "enabled": true,
+        "fxaa": true,
+        "cas": true,
+        "samples": 2,
+        "sharpness": 35
+      },
+      "stats": "1280×720 | 3 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/2x/sharp 35% | app frame: 0.2ms | slowest app stage: frame-uniforms 0ms | render: 12.89ms",
+      "smokePostProcess": {
+        "enabled": true,
+        "fxaaEnabled": true,
+        "casEnabled": true,
+        "sampleRadius": 2,
+        "casSharpness": 0.5249999999999999
+      }
+    },
+    {
+      "id": "extreme",
+      "settings": {
+        "enabled": true,
+        "fxaa": true,
+        "cas": true,
+        "samples": 4,
+        "sharpness": 100
+      },
+      "stats": "1280×720 | 3 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/4x/sharp 100% | app frame: 0.1ms | slowest app stage: frame-uniforms 0ms | render: 10.71ms",
+      "smokePostProcess": {
+        "enabled": true,
+        "fxaaEnabled": true,
+        "casEnabled": true,
+        "sampleRadius": 4,
+        "casSharpness": 1.5
+      }
+    },
+    {
+      "id": "fxaa-only",
+      "settings": {
+        "enabled": true,
+        "fxaa": true,
+        "cas": false,
+        "samples": 4,
+        "sharpness": 100
+      },
+      "stats": "1280×720 | 3 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa/4x/sharp 100% | app frame: 0.2ms | slowest app stage: uniform-upload 0.1ms | render: 10.78ms",
+      "smokePostProcess": {
+        "enabled": true,
+        "fxaaEnabled": true,
+        "casEnabled": false,
+        "sampleRadius": 4,
+        "casSharpness": 1.5
+      }
+    }
+  ],
+  "diffs": [
+    {
+      "a": "default",
+      "b": "off",
+      "total": 921600,
+      "changed": 5005,
+      "changedRatio": 0.005430772569444444,
+      "meanAbs": [
+        0.065576171875,
+        0.054521484375,
+        0.04366644965277778,
+        0
+      ],
+      "max": [
+        44,
+        36,
+        30,
+        0
+      ],
+      "maxSum": 98,
+      "bbox": {
+        "minX": 490,
+        "minY": 300,
+        "maxX": 798,
+        "maxY": 431
+      }
+    },
+    {
+      "a": "extreme",
+      "b": "off",
+      "total": 921600,
+      "changed": 20775,
+      "changedRatio": 0.022542317708333332,
+      "meanAbs": [
+        0.2770855034722222,
+        0.24041558159722223,
+        0.2025347222222222,
+        0
+      ],
+      "max": [
+        66,
+        77,
+        71,
+        0
+      ],
+      "maxSum": 213,
+      "bbox": {
+        "minX": 483,
+        "minY": 298,
+        "maxX": 804,
+        "maxY": 433
+      }
+    },
+    {
+      "a": "extreme",
+      "b": "default",
+      "total": 921600,
+      "changed": 19943,
+      "changedRatio": 0.021639539930555556,
+      "meanAbs": [
+        0.256259765625,
+        0.22196397569444445,
+        0.1861664496527778,
+        0
+      ],
+      "max": [
+        73,
+        70,
+        64,
+        0
+      ],
+      "maxSum": 193,
+      "bbox": {
+        "minX": 484,
+        "minY": 298,
+        "maxX": 803,
+        "maxY": 433
+      }
+    },
+    {
+      "a": "extreme",
+      "b": "fxaa-only",
+      "total": 921600,
+      "changed": 22390,
+      "changedRatio": 0.02429470486111111,
+      "meanAbs": [
+        0.3737033420138889,
+        0.32658962673611114,
+        0.2749663628472222,
+        0
+      ],
+      "max": [
+        100,
+        102,
+        96,
+        0
+      ],
+      "maxSum": 284,
+      "bbox": {
+        "minX": 481,
+        "minY": 298,
+        "maxX": 805,
+        "maxY": 433
+      }
+    }
+  ],
+  "consoleMessages": [
+    {
+      "type": "debug",
+      "text": "[vite] connecting..."
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connected."
+    }
+  ]
+}
