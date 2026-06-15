@@ -21,6 +21,7 @@ export interface TileSplatCompositorResources {
   readonly plan: TileSplatCompositorPlan;
   readonly countPipeline: GPUComputePipeline;
   readonly scatterPipeline: GPUComputePipeline;
+  readonly sortPipeline: GPUComputePipeline;
   readonly compositePipeline: GPUComputePipeline;
   readonly splatBindGroupLayout: GPUBindGroupLayout;
   readonly tileBindGroupLayout: GPUBindGroupLayout;
@@ -94,6 +95,11 @@ export function createTileSplatCompositor(
     layout: pipelineLayout,
     compute: { module: shaderModule, entryPoint: "scatter_tile_refs" },
   });
+  const sortPipeline = device.createComputePipeline({
+    label: "tile_splat_sort_pipeline",
+    layout: pipelineLayout,
+    compute: { module: shaderModule, entryPoint: "sort_tile_refs" },
+  });
   const compositePipeline = device.createComputePipeline({
     label: "tile_splat_composite_pipeline",
     layout: pipelineLayout,
@@ -122,7 +128,7 @@ export function createTileSplatCompositor(
   });
 
   return {
-    plan, countPipeline, scatterPipeline, compositePipeline,
+    plan, countPipeline, scatterPipeline, sortPipeline, compositePipeline,
     splatBindGroupLayout, tileBindGroupLayout,
     tileCountBuffer, tileOffsetBuffer, tileRefBuffer, frameUniformBuffer,
     destroy() {
@@ -220,6 +226,20 @@ export function encodeTileSplatScatterPass(
   pass.setBindGroup(0, bindGroups.splatBindGroup);
   pass.setBindGroup(1, bindGroups.tileBindGroup);
   pass.dispatchWorkgroups(Math.ceil(resources.plan.splatCount / 256));
+  pass.end();
+}
+
+export function encodeTileSplatSortPass(
+  encoder: GPUCommandEncoder,
+  resources: TileSplatCompositorResources,
+  bindGroups: TileSplatCompositorBindGroups,
+): void {
+  const pass = encoder.beginComputePass({ label: "tile_splat_sort" });
+  pass.setPipeline(resources.sortPipeline);
+  pass.setBindGroup(0, bindGroups.splatBindGroup);
+  pass.setBindGroup(1, bindGroups.tileBindGroup);
+  // One workgroup per tile
+  pass.dispatchWorkgroups(resources.plan.tileCount);
   pass.end();
 }
 
