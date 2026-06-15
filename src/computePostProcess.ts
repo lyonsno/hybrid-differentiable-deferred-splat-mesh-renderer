@@ -2,12 +2,23 @@ import computePostProcessShader from "./shaders/compute_post_process.wgsl?raw";
 
 export const FXAA_CAS_MAX_SHARPNESS = 1.5;
 
+export type FxaaCasDebugView = "final" | "fxaa-mask" | "cas-mask" | "difference";
+
+const FXAA_CAS_DEBUG_VIEW_CODES: Record<FxaaCasDebugView, number> = {
+  final: 0,
+  "fxaa-mask": 1,
+  "cas-mask": 2,
+  difference: 3,
+};
+
 export interface FxaaCasPostProcessSettings {
   readonly enabled: boolean;
   readonly fxaaEnabled: boolean;
   readonly casEnabled: boolean;
   readonly sampleRadius: number;
+  readonly sampleCount: number;
   readonly casSharpness: number;
+  readonly debugView: FxaaCasDebugView;
 }
 
 export interface FxaaCasPostProcess {
@@ -78,7 +89,10 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
       u32[1] = settings.fxaaEnabled ? 1 : 0;
       u32[2] = settings.casEnabled ? 1 : 0;
       u32[3] = clampInteger(settings.sampleRadius, 1, 4);
-      f32[4] = clampNumber(settings.casSharpness, 0, FXAA_CAS_MAX_SHARPNESS);
+      u32[4] = clampInteger(settings.sampleCount, 4, 12);
+      u32[5] = FXAA_CAS_DEBUG_VIEW_CODES[settings.debugView] ?? FXAA_CAS_DEBUG_VIEW_CODES.final;
+      f32[6] = clampNumber(settings.casSharpness, 0, FXAA_CAS_MAX_SHARPNESS);
+      u32[7] = 0;
       queue.writeBuffer(settingsBuffer, 0, buffer);
     },
     encode(

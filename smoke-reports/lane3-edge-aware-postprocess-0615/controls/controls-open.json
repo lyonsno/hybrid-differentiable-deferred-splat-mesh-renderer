@@ -1,0 +1,25 @@
+{
+  "controls": {
+    "x": 1084,
+    "y": 8,
+    "width": 188,
+    "height": 252.1875
+  },
+  "stats": {
+    "x": 8,
+    "y": 8,
+    "width": 1062,
+    "height": 66.5625
+  },
+  "overlaps": false,
+  "smokePostProcess": {
+    "enabled": true,
+    "fxaaEnabled": true,
+    "casEnabled": true,
+    "sampleRadius": 2,
+    "sampleCount": 8,
+    "casSharpness": 0.5249999999999999,
+    "debugView": "cas-mask"
+  },
+  "statsText": "1280×720 | 0 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 35%/cas-mask | app frame: 0.6ms | slowest app stage: frame-uniforms 0ms"
+}

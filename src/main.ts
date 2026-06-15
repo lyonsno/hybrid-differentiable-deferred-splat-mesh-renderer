@@ -172,6 +172,7 @@ import {
   createFxaaCasPostProcess,
   createPostProcessOutputTexture,
   type FxaaCasPostProcess,
+  type FxaaCasDebugView,
   type FxaaCasPostProcessSettings,
 } from "./computePostProcess.js";
 import {
@@ -245,9 +246,11 @@ interface PostProcessControls {
   readonly enabled: HTMLInputElement | null;
   readonly fxaaEnabled: HTMLInputElement | null;
   readonly casEnabled: HTMLInputElement | null;
+  readonly sampleCount: HTMLSelectElement | null;
   readonly sampleRadius: HTMLSelectElement | null;
   readonly casSharpness: HTMLInputElement | null;
   readonly casSharpnessValue: HTMLOutputElement | null;
+  readonly debugView: HTMLSelectElement | null;
 }
 
 interface ActiveSplatScene {
@@ -1095,9 +1098,11 @@ function createPostProcessControls(requestFrame: () => void): PostProcessControl
     enabled: document.getElementById("postprocess-enabled") as HTMLInputElement | null,
     fxaaEnabled: document.getElementById("postprocess-fxaa-enabled") as HTMLInputElement | null,
     casEnabled: document.getElementById("postprocess-cas-enabled") as HTMLInputElement | null,
-    sampleRadius: document.getElementById("postprocess-samples") as HTMLSelectElement | null,
+    sampleCount: document.getElementById("postprocess-samples") as HTMLSelectElement | null,
+    sampleRadius: document.getElementById("postprocess-radius") as HTMLSelectElement | null,
     casSharpness: document.getElementById("postprocess-sharpness") as HTMLInputElement | null,
     casSharpnessValue: document.getElementById("postprocess-sharpness-value") as HTMLOutputElement | null,
+    debugView: document.getElementById("postprocess-debug-view") as HTMLSelectElement | null,
   };
   const update = () => {
     updatePostProcessSharpnessLabel(controls);
@@ -1106,8 +1111,10 @@ function createPostProcessControls(requestFrame: () => void): PostProcessControl
   controls.enabled?.addEventListener("change", update);
   controls.fxaaEnabled?.addEventListener("change", update);
   controls.casEnabled?.addEventListener("change", update);
+  controls.sampleCount?.addEventListener("change", update);
   controls.sampleRadius?.addEventListener("change", update);
   controls.casSharpness?.addEventListener("input", update);
+  controls.debugView?.addEventListener("change", update);
   updatePostProcessSharpnessLabel(controls);
   return controls;
 }
@@ -1118,12 +1125,21 @@ function readPostProcessSettings(controls: PostProcessControls): FxaaCasPostProc
     fxaaEnabled: controls.fxaaEnabled?.checked ?? true,
     casEnabled: controls.casEnabled?.checked ?? true,
     sampleRadius: clampInteger(Number(controls.sampleRadius?.value ?? 2), 1, 4),
+    sampleCount: clampInteger(Number(controls.sampleCount?.value ?? 8), 4, 12),
     casSharpness: postProcessSharpnessFromPercent(Number(controls.casSharpness?.value ?? 35)),
+    debugView: postProcessDebugViewFromSelection(controls.debugView?.value),
   };
 }
 
 function postProcessSharpnessFromPercent(percent: number): number {
   return (clampNumber(percent, 0, 100) / 100) * FXAA_CAS_MAX_SHARPNESS;
+}
+
+function postProcessDebugViewFromSelection(value: string | undefined): FxaaCasDebugView {
+  if (value === "fxaa-mask" || value === "cas-mask" || value === "difference") {
+    return value;
+  }
+  return "final";
 }
 
 function updatePostProcessSharpnessLabel(controls: PostProcessControls): void {
@@ -1142,7 +1158,8 @@ function formatPostProcessSettings(settings: FxaaCasPostProcessSettings): string
     settings.casEnabled ? "cas" : null,
   ].filter(Boolean).join("+") || "passthrough";
   const sharpnessPercent = Math.round((clampNumber(settings.casSharpness, 0, FXAA_CAS_MAX_SHARPNESS) / FXAA_CAS_MAX_SHARPNESS) * 100);
-  return `${stages}/${settings.sampleRadius}x/sharp ${sharpnessPercent}%`;
+  const debugSuffix = settings.debugView === "final" ? "" : `/${settings.debugView}`;
+  return `${stages}/${settings.sampleCount}s/r${settings.sampleRadius}/sharp ${sharpnessPercent}%${debugSuffix}`;
 }
 
 async function main() {

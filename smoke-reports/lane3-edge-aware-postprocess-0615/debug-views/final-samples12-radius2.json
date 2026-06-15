@@ -1,0 +1,27 @@
+{
+  "id": "final-samples12-radius2",
+  "requested": {
+    "samples": 12,
+    "radius": 2,
+    "sharpness": 60,
+    "view": "final"
+  },
+  "stats": "1280×720 | 1 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/12s/r2/sharp 60% | app frame: 0.3ms | slowest app stage: frame-uniforms 0ms | render: 5.40ms",
+  "smokePostProcess": {
+    "enabled": true,
+    "fxaaEnabled": true,
+    "casEnabled": true,
+    "sampleRadius": 2,
+    "sampleCount": 12,
+    "casSharpness": 0.8999999999999999,
+    "debugView": "final"
+  },
+  "rendererLabel": "compute",
+  "realSplatEvidence": true,
+  "splatCount": 94406,
+  "metrics": {
+    "distinctColorCount": 17833,
+    "nonBlack": 27830,
+    "meanRgbSum": 27.020704210069443
+  }
+}

@@ -1,0 +1,189 @@
+{
+  "generatedAt": "2026-06-15T21:26:38.080Z",
+  "reportDir": "smoke-reports/lane3-edge-aware-postprocess-0615/debug-views",
+  "captures": [
+    {
+      "id": "final-samples8-radius2",
+      "settings": {
+        "samples": 8,
+        "radius": 2,
+        "sharpness": 60,
+        "view": "final"
+      },
+      "stats": "1280×720 | 4 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 60% | app frame: 0.4ms | slowest app stage: frame-uniforms 0ms | render: 2.49ms",
+      "smokePostProcess": {
+        "enabled": true,
+        "fxaaEnabled": true,
+        "casEnabled": true,
+        "sampleRadius": 2,
+        "sampleCount": 8,
+        "casSharpness": 0.8999999999999999,
+        "debugView": "final"
+      },
+      "metrics": {
+        "distinctColorCount": 17865,
+        "nonBlack": 27823,
+        "meanRgbSum": 27.019751519097223
+      }
+    },
+    {
+      "id": "fxaa-mask",
+      "settings": {
+        "samples": 8,
+        "radius": 2,
+        "sharpness": 60,
+        "view": "fxaa-mask"
+      },
+      "stats": "1280×720 | 1 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 60%/fxaa-mask | app frame: 0.3ms | slowest app stage: frame-uniforms 0ms | render: 11.62ms",
+      "smokePostProcess": {
+        "enabled": true,
+        "fxaaEnabled": true,
+        "casEnabled": true,
+        "sampleRadius": 2,
+        "sampleCount": 8,
+        "casSharpness": 0.8999999999999999,
+        "debugView": "fxaa-mask"
+      },
+      "metrics": {
+        "distinctColorCount": 256,
+        "nonBlack": 29169,
+        "meanRgbSum": 21.541637369791665
+      }
+    },
+    {
+      "id": "cas-mask",
+      "settings": {
+        "samples": 8,
+        "radius": 2,
+        "sharpness": 60,
+        "view": "cas-mask"
+      },
+      "stats": "1280×720 | 2 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 60%/cas-mask | app frame: 0.3ms | slowest app stage: frame-uniforms 0ms | render: 6.75ms",
+      "smokePostProcess": {
+        "enabled": true,
+        "fxaaEnabled": true,
+        "casEnabled": true,
+        "sampleRadius": 2,
+        "sampleCount": 8,
+        "casSharpness": 0.8999999999999999,
+        "debugView": "cas-mask"
+      },
+      "metrics": {
+        "distinctColorCount": 168,
+        "nonBlack": 26012,
+        "meanRgbSum": 4.137281901041667
+      }
+    },
+    {
+      "id": "difference",
+      "settings": {
+        "samples": 8,
+        "radius": 2,
+        "sharpness": 60,
+        "view": "difference"
+      },
+      "stats": "1280×720 | 2 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 60%/difference | app frame: 0.3ms | slowest app stage: frame-uniforms 0.1ms | render: 4.62ms",
+      "smokePostProcess": {
+        "enabled": true,
+        "fxaaEnabled": true,
+        "casEnabled": true,
+        "sampleRadius": 2,
+        "sampleCount": 8,
+        "casSharpness": 0.8999999999999999,
+        "debugView": "difference"
+      },
+      "metrics": {
+        "distinctColorCount": 4726,
+        "nonBlack": 6686,
+        "meanRgbSum": 0.8250336371527778
+      }
+    },
+    {
+      "id": "final-samples4-radius2",
+      "settings": {
+        "samples": 4,
+        "radius": 2,
+        "sharpness": 60,
+        "view": "final"
+      },
+      "stats": "1280×720 | 1 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/4s/r2/sharp 60% | app frame: 0.3ms | slowest app stage: frame-uniforms 0ms | render: 11.77ms",
+      "smokePostProcess": {
+        "enabled": true,
+        "fxaaEnabled": true,
+        "casEnabled": true,
+        "sampleRadius": 2,
+        "sampleCount": 4,
+        "casSharpness": 0.8999999999999999,
+        "debugView": "final"
+      },
+      "metrics": {
+        "distinctColorCount": 17926,
+        "nonBlack": 27844,
+        "meanRgbSum": 27.03396484375
+      }
+    },
+    {
+      "id": "final-samples12-radius2",
+      "settings": {
+        "samples": 12,
+        "radius": 2,
+        "sharpness": 60,
+        "view": "final"
+      },
+      "stats": "1280×720 | 1 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/12s/r2/sharp 60% | app frame: 0.3ms | slowest app stage: frame-uniforms 0ms | render: 5.40ms",
+      "smokePostProcess": {
+        "enabled": true,
+        "fxaaEnabled": true,
+        "casEnabled": true,
+        "sampleRadius": 2,
+        "sampleCount": 12,
+        "casSharpness": 0.8999999999999999,
+        "debugView": "final"
+      },
+      "metrics": {
+        "distinctColorCount": 17833,
+        "nonBlack": 27830,
+        "meanRgbSum": 27.020704210069443
+      }
+    }
+  ],
+  "diffs": [
+    {
+      "a": "final-samples4-radius2",
+      "b": "final-samples8-radius2",
+      "changed": 2205,
+      "total": 921600,
+      "changedRatio": 0.002392578125,
+      "meanSum": 0.06445638020833333,
+      "maxSum": 49
+    },
+    {
+      "a": "final-samples12-radius2",
+      "b": "final-samples8-radius2",
+      "changed": 383,
+      "total": 921600,
+      "changedRatio": 0.00041558159722222224,
+      "meanSum": 0.028038194444444445,
+      "maxSum": 15
+    },
+    {
+      "a": "final-samples12-radius2",
+      "b": "final-samples4-radius2",
+      "changed": 2339,
+      "total": 921600,
+      "changedRatio": 0.0025379774305555555,
+      "meanSum": 0.06229275173611111,
+      "maxSum": 43
+    }
+  ],
+  "consoleMessages": [
+    {
+      "type": "debug",
+      "text": "[vite] connecting..."
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connected."
+    }
+  ]
+}

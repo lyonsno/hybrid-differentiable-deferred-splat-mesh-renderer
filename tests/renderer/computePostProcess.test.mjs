@@ -43,18 +43,26 @@ test("compute post-process exposes live upper-right controls for toggles and sam
   assert.match(html, /id="postprocess-fxaa-enabled"/);
   assert.match(html, /id="postprocess-cas-enabled"/);
   assert.match(html, /id="postprocess-samples"/);
+  assert.match(html, /id="postprocess-radius"/);
+  assert.match(html, /id="postprocess-debug-view"/);
   assert.match(html, /id="postprocess-sharpness"/);
   assert.match(html, /id="postprocess-sharpness"[^>]*max="100"/);
   assert.match(html, /#postprocess-controls[\s\S]*position:\s*fixed[\s\S]*right:\s*8px[\s\S]*top:\s*8px/);
 
   assert.match(mainSource, /const postProcessControls = createPostProcessControls\(requestFrame\)/);
   assert.match(mainSource, /postProcessSharpnessFromPercent/);
+  assert.match(mainSource, /sampleCount:\s*clampInteger/);
+  assert.match(mainSource, /sampleRadius:\s*clampInteger/);
+  assert.match(mainSource, /postProcessDebugViewFromSelection/);
   assert.match(mainSource, /readPostProcessSettings\(postProcessControls\)/);
   assert.match(mainSource, /cc\.postProcess\.writeSettings\(gpu\.device\.queue,\s*postProcessSettings\)/);
   assert.match(mainSource, /postProcess:\s*postProcessSettings/);
 
   assert.match(postProcessSource, /FXAA_CAS_MAX_SHARPNESS\s*=\s*1\.5/);
+  assert.match(postProcessSource, /export type FxaaCasDebugView/);
   assert.match(postProcessSource, /export interface FxaaCasPostProcessSettings/);
+  assert.match(postProcessSource, /readonly sampleCount:\s*number/);
+  assert.match(postProcessSource, /readonly debugView:\s*FxaaCasDebugView/);
   assert.match(postProcessSource, /settingsBuffer:\s*GPUBuffer/);
   assert.match(postProcessSource, /writeSettings\(/);
   assert.match(postProcessSource, /binding:\s*2[\s\S]*buffer:\s*\{\s*type:\s*"uniform"\s*\}/);
@@ -64,11 +72,18 @@ test("compute post-process exposes live upper-right controls for toggles and sam
   assert.match(shader, /fxaaEnabled:\s*u32/);
   assert.match(shader, /casEnabled:\s*u32/);
   assert.match(shader, /sampleRadius:\s*u32/);
+  assert.match(shader, /sampleCount:\s*u32/);
+  assert.match(shader, /debugView:\s*u32/);
   assert.match(shader, /casSharpness:\s*f32/);
   assert.match(shader, /settings\.enabled == 0u/);
   assert.match(shader, /settings\.fxaaEnabled != 0u/);
   assert.match(shader, /settings\.casEnabled != 0u/);
   assert.match(shader, /settings\.sampleRadius/);
+  assert.match(shader, /settings\.sampleCount/);
+  assert.match(shader, /fn cas_alias_risk/);
+  assert.match(shader, /fn cas_detail_mask/);
+  assert.match(shader, /fn fxaa_edge_mask/);
+  assert.match(shader, /settings\.debugView/);
   assert.match(shader, /localRange/);
   assert.match(shader, /haloWindow/);
   assert.doesNotMatch(shader, /return clamp\(sharpened,\s*localMin,\s*localMax\)/);
