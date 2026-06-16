@@ -171,6 +171,7 @@ import {
   FXAA_CAS_MAX_SHARPNESS,
   POST_PROCESS_MAX_DOF_STRENGTH,
   createFxaaCasPostProcess,
+  createPostProcessDofTexture,
   createPostProcessOutputTexture,
   type FxaaCasPostProcess,
   type FxaaCasDebugView,
@@ -316,6 +317,10 @@ interface ActiveSplatScene {
     auxView: GPUTextureView;
     postProcessedTexture: GPUTexture;
     postProcessedView: GPUTextureView;
+    dofLowResTexture: GPUTexture;
+    dofLowResView: GPUTextureView;
+    dofBlurScratchTexture: GPUTexture;
+    dofBlurScratchView: GPUTextureView;
     temporalHistoryTextures: [GPUTexture, GPUTexture];
     temporalHistoryViews: [GPUTextureView, GPUTextureView];
     temporalHistoryReadIndex: 0 | 1;
@@ -2086,6 +2091,8 @@ async function main() {
         cc.outputView,
         cc.auxView,
         cc.postProcessedView,
+        cc.dofLowResView,
+        cc.dofBlurScratchView,
         width,
         height
       );
@@ -9478,6 +9485,18 @@ function createComputeCompositorState(
     viewportHeight,
     "compute_compositor_post_process_output"
   );
+  const dofLowResTexture = createPostProcessDofTexture(
+    device,
+    viewportWidth,
+    viewportHeight,
+    "compute_compositor_dof_low_res"
+  );
+  const dofBlurScratchTexture = createPostProcessDofTexture(
+    device,
+    viewportWidth,
+    viewportHeight,
+    "compute_compositor_dof_blur_scratch"
+  );
   const temporalHistoryTextures: [GPUTexture, GPUTexture] = [
     createTemporalResolveTexture(device, viewportWidth, viewportHeight, "temporal_resolve_history_a"),
     createTemporalResolveTexture(device, viewportWidth, viewportHeight, "temporal_resolve_history_b"),
@@ -9500,6 +9519,10 @@ function createComputeCompositorState(
     auxView: computeAuxTexture.createView(),
     postProcessedTexture,
     postProcessedView: postProcessedTexture.createView(),
+    dofLowResTexture,
+    dofLowResView: dofLowResTexture.createView(),
+    dofBlurScratchTexture,
+    dofBlurScratchView: dofBlurScratchTexture.createView(),
     temporalHistoryTextures,
     temporalHistoryViews: [
       temporalHistoryTextures[0].createView(),
@@ -9558,6 +9581,8 @@ function destroyComputeCompositorState(state: ActiveSplatScene["computeComposito
   state.outputTexture.destroy();
   state.auxTexture.destroy();
   state.postProcessedTexture.destroy();
+  state.dofLowResTexture.destroy();
+  state.dofBlurScratchTexture.destroy();
   state.temporalHistoryTextures[0].destroy();
   state.temporalHistoryTextures[1].destroy();
 }

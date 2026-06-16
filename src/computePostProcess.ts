@@ -31,6 +31,9 @@ export interface FxaaCasPostProcessSettings {
 
 export interface FxaaCasPostProcess {
   readonly pipeline: GPUComputePipeline;
+  readonly dofDownsamplePipeline: GPUComputePipeline;
+  readonly dofBlurHorizontalPipeline: GPUComputePipeline;
+  readonly dofBlurVerticalPipeline: GPUComputePipeline;
   readonly bindGroupLayout: GPUBindGroupLayout;
   readonly settingsBuffer: GPUBuffer;
   writeSettings(queue: GPUQueue, settings: FxaaCasPostProcessSettings): void;
@@ -39,6 +42,8 @@ export interface FxaaCasPostProcess {
     inputView: GPUTextureView,
     inputAuxView: GPUTextureView,
     outputView: GPUTextureView,
+    dofLowResView: GPUTextureView,
+    dofBlurScratchView: GPUTextureView,
     width: number,
     height: number
   ): void;
@@ -72,6 +77,11 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
         visibility: GPUShaderStage.COMPUTE,
         texture: { sampleType: "unfilterable-float" },
       },
+      {
+        binding: 4,
+        visibility: GPUShaderStage.COMPUTE,
+        texture: { sampleType: "unfilterable-float" },
+      },
     ],
   });
   const settingsBuffer = device.createBuffer({
@@ -90,9 +100,45 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
       entryPoint: "fxaa_cas_post_process",
     },
   });
+  const dofDownsamplePipeline = device.createComputePipeline({
+    label: "compute_dof_downsample",
+    layout: device.createPipelineLayout({
+      label: "compute_dof_downsample_layout",
+      bindGroupLayouts: [bindGroupLayout],
+    }),
+    compute: {
+      module: shaderModule,
+      entryPoint: "dof_downsample",
+    },
+  });
+  const dofBlurHorizontalPipeline = device.createComputePipeline({
+    label: "compute_dof_blur_horizontal",
+    layout: device.createPipelineLayout({
+      label: "compute_dof_blur_horizontal_layout",
+      bindGroupLayouts: [bindGroupLayout],
+    }),
+    compute: {
+      module: shaderModule,
+      entryPoint: "dof_blur_horizontal",
+    },
+  });
+  const dofBlurVerticalPipeline = device.createComputePipeline({
+    label: "compute_dof_blur_vertical",
+    layout: device.createPipelineLayout({
+      label: "compute_dof_blur_vertical_layout",
+      bindGroupLayouts: [bindGroupLayout],
+    }),
+    compute: {
+      module: shaderModule,
+      entryPoint: "dof_blur_vertical",
+    },
+  });
 
   return {
     pipeline,
+    dofDownsamplePipeline,
+    dofBlurHorizontalPipeline,
+    dofBlurVerticalPipeline,
     bindGroupLayout,
     settingsBuffer,
     writeSettings(queue: GPUQueue, settings: FxaaCasPostProcessSettings): void {
@@ -118,9 +164,46 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
       inputView: GPUTextureView,
       inputAuxView: GPUTextureView,
       outputView: GPUTextureView,
+      dofLowResView: GPUTextureView,
+      dofBlurScratchView: GPUTextureView,
       width: number,
       height: number
     ): void {
+      const lowResWidth = Math.ceil(width / 2);
+      const lowResHeight = Math.ceil(height / 2);
+      const downsampleBindGroup = device.createBindGroup({
+        label: "compute_dof_downsample_bg",
+        layout: bindGroupLayout,
+        entries: [
+          { binding: 0, resource: inputView },
+          { binding: 1, resource: dofLowResView },
+          { binding: 2, resource: { buffer: settingsBuffer } },
+          { binding: 3, resource: inputAuxView },
+          { binding: 4, resource: inputView },
+        ],
+      });
+      const horizontalBlurBindGroup = device.createBindGroup({
+        label: "compute_dof_blur_horizontal_bg",
+        layout: bindGroupLayout,
+        entries: [
+          { binding: 0, resource: dofLowResView },
+          { binding: 1, resource: dofBlurScratchView },
+          { binding: 2, resource: { buffer: settingsBuffer } },
+          { binding: 3, resource: inputAuxView },
+          { binding: 4, resource: dofLowResView },
+        ],
+      });
+      const verticalBlurBindGroup = device.createBindGroup({
+        label: "compute_dof_blur_vertical_bg",
+        layout: bindGroupLayout,
+        entries: [
+          { binding: 0, resource: dofBlurScratchView },
+          { binding: 1, resource: dofLowResView },
+          { binding: 2, resource: { buffer: settingsBuffer } },
+          { binding: 3, resource: inputAuxView },
+          { binding: 4, resource: dofBlurScratchView },
+        ],
+      });
       const bindGroup = device.createBindGroup({
         label: "compute_fxaa_cas_post_process_bg",
         layout: bindGroupLayout,
@@ -129,8 +212,30 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
           { binding: 1, resource: outputView },
           { binding: 2, resource: { buffer: settingsBuffer } },
           { binding: 3, resource: inputAuxView },
+          { binding: 4, resource: dofLowResView },
         ],
       });
+      const downsamplePass = encoder.beginComputePass({ label: "compute_dof_downsample" });
+      downsamplePass.setPipeline(dofDownsamplePipeline);
+      downsamplePass.setBindGroup(0, downsampleBindGroup);
+      downsamplePass.dispatchWorkgroups(
+        Math.ceil(Math.ceil(width / 2) / 8),
+        Math.ceil(Math.ceil(height / 2) / 8)
+      );
+      downsamplePass.end();
+
+      const horizontalBlurPass = encoder.beginComputePass({ label: "compute_dof_blur_horizontal" });
+      horizontalBlurPass.setPipeline(dofBlurHorizontalPipeline);
+      horizontalBlurPass.setBindGroup(0, horizontalBlurBindGroup);
+      horizontalBlurPass.dispatchWorkgroups(Math.ceil(lowResWidth / 8), Math.ceil(lowResHeight / 8));
+      horizontalBlurPass.end();
+
+      const verticalBlurPass = encoder.beginComputePass({ label: "compute_dof_blur_vertical" });
+      verticalBlurPass.setPipeline(dofBlurVerticalPipeline);
+      verticalBlurPass.setBindGroup(0, verticalBlurBindGroup);
+      verticalBlurPass.dispatchWorkgroups(Math.ceil(lowResWidth / 8), Math.ceil(lowResHeight / 8));
+      verticalBlurPass.end();
+
       const pass = encoder.beginComputePass({ label: "compute_fxaa_cas_post_process" });
       pass.setPipeline(pipeline);
       pass.setBindGroup(0, bindGroup);
@@ -152,6 +257,20 @@ export function createPostProcessOutputTexture(
   return device.createTexture({
     label,
     size: [width, height],
+    format: "rgba16float",
+    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+  });
+}
+
+export function createPostProcessDofTexture(
+  device: GPUDevice,
+  width: number,
+  height: number,
+  label = "compute_compositor_dof_low_res"
+): GPUTexture {
+  return device.createTexture({
+    label,
+    size: [Math.ceil(width / 2), Math.ceil(height / 2)],
     format: "rgba16float",
     usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
   });

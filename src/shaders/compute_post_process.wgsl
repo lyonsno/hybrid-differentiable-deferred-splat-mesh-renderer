@@ -1,6 +1,7 @@
 @group(0) @binding(0) var postProcessInput: texture_2d<f32>;
 @group(0) @binding(1) var postProcessOutput: texture_storage_2d<rgba16float, write>;
 @group(0) @binding(3) var postProcessAux: texture_2d<f32>;
+@group(0) @binding(4) var postProcessDofBlur: texture_2d<f32>;
 
 struct PostProcessSettings {
   enabled: u32,
@@ -269,6 +270,17 @@ fn dof_debug_mask(mask: f32) -> f32 {
   return pow(clamp(mask, 0.0, 1.0), POST_PROCESS_DOF_DEBUG_MASK_GAMMA);
 }
 
+fn load_dof_wide_blur(coord: vec2i, size: vec2u) -> vec3f {
+  let blurSize = textureDimensions(postProcessDofBlur);
+  let uv = (vec2f(coord) + vec2f(0.5)) / vec2f(size);
+  let blurCoord = clamp(
+    vec2i(floor(uv * vec2f(blurSize))),
+    vec2i(0),
+    vec2i(i32(blurSize.x) - 1, i32(blurSize.y) - 1)
+  );
+  return textureLoad(postProcessDofBlur, blurCoord, 0).rgb;
+}
+
 fn dof_sample(coord: vec2i, size: vec2u, originDepth: f32, originCoc: f32, offset: vec2i) -> vec4f {
   let sampleCoord = coord + offset;
   let sampleAux = load_aux(sampleCoord, size);
@@ -322,9 +334,69 @@ fn depth_confidence_guided_dof(coord: vec2i, size: vec2u, color: vec3f) -> vec3f
     weightSum += n.a + s.a + w.a + e.a;
   }
 
-  let blurred = sum / max(weightSum, 0.0001);
+  let localBlurred = sum / max(weightSum, 0.0001);
+  let wideBlurred = load_dof_wide_blur(coord, size);
+  let wideBlurWeight = ramp(8.0, max(f32(clamp(settings.dofRadius, 1u, 64u)) * 0.85, 8.5), originCoc);
+  let blurred = mix(localBlurred, wideBlurred, wideBlurWeight);
   let dofBlend = clamp(originCoc / max(f32(clamp(settings.dofRadius, 1u, 64u)), 1.0), 0.0, 1.0);
   return mix(color, blurred, dofBlend);
+}
+
+@compute @workgroup_size(8, 8, 1)
+fn dof_downsample(@builtin(global_invocation_id) globalId: vec3u) {
+  let outputSize = textureDimensions(postProcessOutput);
+  if (globalId.x >= outputSize.x || globalId.y >= outputSize.y) {
+    return;
+  }
+
+  let inputSize = textureDimensions(postProcessInput);
+  let coord = vec2i(globalId.xy);
+  let sourceCoord = coord * 2;
+  let c0 = load_rgb(sourceCoord, inputSize);
+  let c1 = load_rgb(sourceCoord + vec2i(1, 0), inputSize);
+  let c2 = load_rgb(sourceCoord + vec2i(0, 1), inputSize);
+  let c3 = load_rgb(sourceCoord + vec2i(1, 1), inputSize);
+  let averaged = (c0 + c1 + c2 + c3) * 0.25;
+  textureStore(postProcessOutput, coord, vec4f(averaged, 1.0));
+}
+
+fn dof_blur_radius() -> i32 {
+  return max(1, i32(ceil(f32(clamp(settings.dofRadius, 1u, 64u)) * 0.5)));
+}
+
+fn dof_blur_sample(coord: vec2i, size: vec2u, axis: vec2i) -> vec3f {
+  let radius = dof_blur_radius();
+  let nearRadius = max(1, radius / 3);
+  let midRadius = max(1, (radius * 2) / 3);
+  var sum = load_rgb(coord, size) * 0.24;
+  sum += load_rgb(coord + axis * nearRadius, size) * 0.18;
+  sum += load_rgb(coord - axis * nearRadius, size) * 0.18;
+  sum += load_rgb(coord + axis * midRadius, size) * 0.13;
+  sum += load_rgb(coord - axis * midRadius, size) * 0.13;
+  sum += load_rgb(coord + axis * radius, size) * 0.07;
+  sum += load_rgb(coord - axis * radius, size) * 0.07;
+  return sum;
+}
+
+fn dof_blur(axis: vec2i, globalId: vec3u) {
+  let outputSize = textureDimensions(postProcessOutput);
+  if (globalId.x >= outputSize.x || globalId.y >= outputSize.y) {
+    return;
+  }
+
+  let coord = vec2i(globalId.xy);
+  let blurred = dof_blur_sample(coord, outputSize, axis);
+  textureStore(postProcessOutput, coord, vec4f(max(blurred, vec3f(0.0)), 1.0));
+}
+
+@compute @workgroup_size(8, 8, 1)
+fn dof_blur_horizontal(@builtin(global_invocation_id) globalId: vec3u) {
+  dof_blur(vec2i(1, 0), globalId);
+}
+
+@compute @workgroup_size(8, 8, 1)
+fn dof_blur_vertical(@builtin(global_invocation_id) globalId: vec3u) {
+  dof_blur(vec2i(0, 1), globalId);
 }
 
 @compute @workgroup_size(8, 8, 1)
