@@ -15,7 +15,11 @@ struct PostProcessSettings {
   dofFocusDepth: f32,
   dofStrength: f32,
   dofRadius: u32,
+  dofLocalEnabled: u32,
+  dofWideEnabled: u32,
   _pad0: u32,
+  _pad1: u32,
+  _pad2: u32,
 };
 
 @group(0) @binding(2) var<uniform> settings: PostProcessSettings;
@@ -29,6 +33,9 @@ const DEBUG_VIEW_DIFFERENCE = 3u;
 const DEBUG_VIEW_DEPTH = 4u;
 const DEBUG_VIEW_CONFIDENCE = 5u;
 const DEBUG_VIEW_DOF_MASK = 6u;
+const DEBUG_VIEW_DOF_DOWNSAMPLE = 7u;
+const DEBUG_VIEW_DOF_BLUR_H = 8u;
+const DEBUG_VIEW_DOF_BLUR_V = 9u;
 const POST_PROCESS_DOF_FOCUS_DEAD_ZONE = 0.005;
 const POST_PROCESS_DOF_COC_SCALE = 4.0;
 const POST_PROCESS_DOF_DEBUG_MASK_GAMMA = 0.5;
@@ -334,10 +341,23 @@ fn depth_confidence_guided_dof(coord: vec2i, size: vec2u, color: vec3f) -> vec3f
     weightSum += n.a + s.a + w.a + e.a;
   }
 
+  let useLocalBlur = settings.dofLocalEnabled != 0u;
+  let useWideBlur = settings.dofWideEnabled != 0u;
+  if (!useLocalBlur && !useWideBlur) {
+    return color;
+  }
+
   let localBlurred = sum / max(weightSum, 0.0001);
   let wideBlurred = load_dof_wide_blur(coord, size);
   let wideBlurWeight = ramp(8.0, max(f32(clamp(settings.dofRadius, 1u, 64u)) * 0.85, 8.5), originCoc);
-  let blurred = mix(localBlurred, wideBlurred, wideBlurWeight);
+  var blurred = color;
+  if (useLocalBlur && useWideBlur) {
+    blurred = mix(localBlurred, wideBlurred, wideBlurWeight);
+  } else if (useLocalBlur) {
+    blurred = localBlurred;
+  } else {
+    blurred = wideBlurred;
+  }
   let dofBlend = clamp(originCoc / max(f32(clamp(settings.dofRadius, 1u, 64u)), 1.0), 0.0, 1.0);
   return mix(color, blurred, dofBlend);
 }
@@ -433,6 +453,12 @@ fn fxaa_cas_post_process(@builtin(global_invocation_id) globalId: vec3u) {
     textureStore(postProcessOutput, coord, vec4f(vec3f(clamp(aux.g, 0.0, 1.0)), source.a));
   } else if (settings.debugView == DEBUG_VIEW_DOF_MASK) {
     textureStore(postProcessOutput, coord, vec4f(vec3f(dof_debug_mask(dofMask)), 1.0));
+  } else if (
+    settings.debugView == DEBUG_VIEW_DOF_DOWNSAMPLE ||
+    settings.debugView == DEBUG_VIEW_DOF_BLUR_H ||
+    settings.debugView == DEBUG_VIEW_DOF_BLUR_V
+  ) {
+    textureStore(postProcessOutput, coord, vec4f(max(load_dof_wide_blur(coord, outputSize), vec3f(0.0)), source.a));
   } else {
     textureStore(postProcessOutput, coord, vec4f(finalColor, source.a));
   }

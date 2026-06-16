@@ -264,6 +264,8 @@ interface PostProcessControls {
   readonly casSharpness: HTMLInputElement | null;
   readonly casSharpnessValue: HTMLOutputElement | null;
   readonly dofEnabled: HTMLInputElement | null;
+  readonly dofLocalEnabled: HTMLInputElement | null;
+  readonly dofWideEnabled: HTMLInputElement | null;
   readonly dofFocus: HTMLInputElement | null;
   readonly dofFocusValue: HTMLOutputElement | null;
   readonly dofStrength: HTMLInputElement | null;
@@ -1155,6 +1157,8 @@ function createPostProcessControls(requestFrame: () => void): PostProcessControl
     casSharpness: document.getElementById("postprocess-sharpness") as HTMLInputElement | null,
     casSharpnessValue: document.getElementById("postprocess-sharpness-value") as HTMLOutputElement | null,
     dofEnabled: document.getElementById("postprocess-dof-enabled") as HTMLInputElement | null,
+    dofLocalEnabled: document.getElementById("postprocess-dof-local-enabled") as HTMLInputElement | null,
+    dofWideEnabled: document.getElementById("postprocess-dof-wide-enabled") as HTMLInputElement | null,
     dofFocus: document.getElementById("postprocess-dof-focus") as HTMLInputElement | null,
     dofFocusValue: document.getElementById("postprocess-dof-focus-value") as HTMLOutputElement | null,
     dofStrength: document.getElementById("postprocess-dof-strength") as HTMLInputElement | null,
@@ -1174,6 +1178,8 @@ function createPostProcessControls(requestFrame: () => void): PostProcessControl
   controls.sampleRadius?.addEventListener("change", update);
   controls.casSharpness?.addEventListener("input", update);
   controls.dofEnabled?.addEventListener("change", update);
+  controls.dofLocalEnabled?.addEventListener("change", update);
+  controls.dofWideEnabled?.addEventListener("change", update);
   controls.dofFocus?.addEventListener("input", update);
   controls.dofStrength?.addEventListener("input", update);
   controls.dofRadius?.addEventListener("change", update);
@@ -1193,6 +1199,8 @@ function readPostProcessSettings(controls: PostProcessControls): FxaaCasPostProc
     casSharpness: postProcessSharpnessFromPercent(Number(controls.casSharpness?.value ?? 35)),
     debugView: postProcessDebugViewFromSelection(controls.debugView?.value),
     dofEnabled: controls.dofEnabled?.checked ?? false,
+    dofLocalEnabled: controls.dofLocalEnabled?.checked ?? true,
+    dofWideEnabled: controls.dofWideEnabled?.checked ?? true,
     dofFocusDepth: postProcessDofFocusFromPercent(Number(controls.dofFocus?.value ?? POST_PROCESS_DOF_DEFAULT_FOCUS_PERCENT)),
     dofStrength: postProcessDofStrengthFromPercent(Number(controls.dofStrength?.value ?? 35)),
     dofRadius: clampInteger(Number(controls.dofRadius?.value ?? 8), 1, 64),
@@ -1210,7 +1218,10 @@ function postProcessDebugViewFromSelection(value: string | undefined): FxaaCasDe
     value === "difference" ||
     value === "depth" ||
     value === "confidence" ||
-    value === "dof-mask"
+    value === "dof-mask" ||
+    value === "dof-downsample" ||
+    value === "dof-blur-h" ||
+    value === "dof-blur-v"
   ) {
     return value;
   }
@@ -1252,7 +1263,7 @@ function formatPostProcessSettings(settings: FxaaCasPostProcessSettings): string
   ].filter(Boolean).join("+") || "passthrough";
   const sharpnessPercent = Math.round((clampNumber(settings.casSharpness, 0, FXAA_CAS_MAX_SHARPNESS) / FXAA_CAS_MAX_SHARPNESS) * 100);
   const dofSuffix = settings.dofEnabled
-    ? `/dof f${Math.round(settings.dofFocusDepth * 100)} a${Math.round((settings.dofStrength / POST_PROCESS_MAX_DOF_STRENGTH) * 100)} r${settings.dofRadius}`
+    ? `/dof ${settings.dofLocalEnabled ? "local" : "no-local"}+${settings.dofWideEnabled ? "wide" : "no-wide"} f${Math.round(settings.dofFocusDepth * 100)} a${Math.round((settings.dofStrength / POST_PROCESS_MAX_DOF_STRENGTH) * 100)} r${settings.dofRadius}`
     : "";
   const debugSuffix = settings.debugView === "final" ? "" : `/${settings.debugView}`;
   return `${stages}/${settings.sampleCount}s/r${settings.sampleRadius}/sharp ${sharpnessPercent}%${dofSuffix}${debugSuffix}`;
@@ -1381,6 +1392,8 @@ function temporalResolveResetKey(
     postProcessSettings.casSharpness.toFixed(5),
     postProcessSettings.debugView,
     postProcessSettings.dofEnabled ? 1 : 0,
+    postProcessSettings.dofLocalEnabled ? 1 : 0,
+    postProcessSettings.dofWideEnabled ? 1 : 0,
     postProcessSettings.dofFocusDepth.toFixed(5),
     postProcessSettings.dofStrength.toFixed(5),
     postProcessSettings.dofRadius,

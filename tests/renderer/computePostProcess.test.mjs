@@ -134,6 +134,8 @@ test("compute renderer exposes auxiliary depth-confidence guided DOF", () => {
   const postProcessShader = readFileSync(new URL("../../src/shaders/compute_post_process.wgsl", import.meta.url), "utf8");
 
   assert.match(html, /id="postprocess-dof-enabled"/);
+  assert.match(html, /id="postprocess-dof-local-enabled"/);
+  assert.match(html, /id="postprocess-dof-wide-enabled"/);
   assert.match(html, /id="postprocess-dof-focus"/);
   assert.match(html, /id="postprocess-dof-strength"/);
   assert.match(html, /id="postprocess-dof-radius"/);
@@ -141,6 +143,9 @@ test("compute renderer exposes auxiliary depth-confidence guided DOF", () => {
   assert.match(html, /value="depth"/);
   assert.match(html, /value="confidence"/);
   assert.match(html, /value="dof-mask"/);
+  assert.match(html, /value="dof-downsample"/);
+  assert.match(html, /value="dof-blur-h"/);
+  assert.match(html, /value="dof-blur-v"/);
 
   assert.match(mainSource, /auxTexture:\s*GPUTexture/);
   assert.match(mainSource, /auxView:\s*GPUTextureView/);
@@ -161,6 +166,8 @@ test("compute renderer exposes auxiliary depth-confidence guided DOF", () => {
   assert.doesNotMatch(mainSource, /function postProcessDofFocusFromPercent\([\s\S]*?return clampNumber\(percent,\s*0,\s*100\) \/ 100;\s*\}/);
   assert.match(mainSource, /postProcessDofStrengthFromPercent/);
   assert.match(mainSource, /dofEnabled:\s*controls\.dofEnabled/);
+  assert.match(mainSource, /dofLocalEnabled:\s*controls\.dofLocalEnabled/);
+  assert.match(mainSource, /dofWideEnabled:\s*controls\.dofWideEnabled/);
   assert.match(mainSource, /dofFocusDepth:\s*postProcessDofFocusFromPercent/);
   assert.match(mainSource, /dofStrength:\s*postProcessDofStrengthFromPercent/);
   assert.match(mainSource, /dofRadius:\s*clampInteger\(Number\(controls\.dofRadius\?\.value \?\? 8\),\s*1,\s*64\)/);
@@ -181,7 +188,13 @@ test("compute renderer exposes auxiliary depth-confidence guided DOF", () => {
   assert.match(postProcessSource, /dofFocusDepth:\s*number/);
   assert.match(postProcessSource, /dofStrength:\s*number/);
   assert.match(postProcessSource, /dofRadius:\s*number/);
+  assert.match(postProcessSource, /dofLocalEnabled:\s*boolean/);
+  assert.match(postProcessSource, /dofWideEnabled:\s*boolean/);
   assert.match(postProcessSource, /clampInteger\(settings\.dofRadius,\s*1,\s*64\)/);
+  assert.match(postProcessSource, /lastSettings:\s*FxaaCasPostProcessSettings/);
+  assert.match(postProcessSource, /debugView === "dof-downsample"/);
+  assert.match(postProcessSource, /debugView === "dof-blur-h"/);
+  assert.match(postProcessSource, /resource:\s*finalDofBlurView/);
   assert.match(postProcessSource, /inputAuxView:\s*GPUTextureView/);
   assert.match(postProcessSource, /dofLowResView:\s*GPUTextureView/);
   assert.match(postProcessSource, /dofBlurScratchView:\s*GPUTextureView/);
@@ -196,7 +209,7 @@ test("compute renderer exposes auxiliary depth-confidence guided DOF", () => {
   assert.match(postProcessSource, /dispatchWorkgroups\(\s*Math\.ceil\(Math\.ceil\(width \/ 2\) \/ 8\)/);
   assert.match(postProcessSource, /binding:\s*3[\s\S]*texture:\s*\{\s*sampleType:\s*"unfilterable-float"\s*\}/);
   assert.match(postProcessSource, /binding:\s*4[\s\S]*texture:\s*\{\s*sampleType:\s*"unfilterable-float"\s*\}/);
-  assert.match(postProcessSource, /size:\s*48/);
+  assert.match(postProcessSource, /size:\s*64/);
 
   assert.match(postProcessShader, /@group\(0\) @binding\(3\) var postProcessAux/);
   assert.match(postProcessShader, /@group\(0\) @binding\(4\) var postProcessDofBlur/);
@@ -206,9 +219,14 @@ test("compute renderer exposes auxiliary depth-confidence guided DOF", () => {
   assert.match(postProcessShader, /dofFocusDepth:\s*f32/);
   assert.match(postProcessShader, /dofStrength:\s*f32/);
   assert.match(postProcessShader, /dofRadius:\s*u32/);
+  assert.match(postProcessShader, /dofLocalEnabled:\s*u32/);
+  assert.match(postProcessShader, /dofWideEnabled:\s*u32/);
   assert.match(postProcessShader, /DEBUG_VIEW_DEPTH/);
   assert.match(postProcessShader, /DEBUG_VIEW_CONFIDENCE/);
   assert.match(postProcessShader, /DEBUG_VIEW_DOF_MASK/);
+  assert.match(postProcessShader, /DEBUG_VIEW_DOF_DOWNSAMPLE/);
+  assert.match(postProcessShader, /DEBUG_VIEW_DOF_BLUR_H/);
+  assert.match(postProcessShader, /DEBUG_VIEW_DOF_BLUR_V/);
   assert.match(postProcessShader, /fn dof_circle_of_confusion/);
   assert.match(postProcessShader, /POST_PROCESS_DOF_FOCUS_DEAD_ZONE\s*=\s*0\.005/);
   assert.match(postProcessShader, /POST_PROCESS_DOF_COC_SCALE\s*=\s*4\.0/);
@@ -224,4 +242,7 @@ test("compute renderer exposes auxiliary depth-confidence guided DOF", () => {
   assert.match(postProcessShader, /fn dof_blur_horizontal/);
   assert.match(postProcessShader, /fn dof_blur_vertical/);
   assert.match(postProcessShader, /mix\(localBlurred,\s*wideBlurred,\s*wideBlurWeight\)/);
+  assert.match(postProcessShader, /settings\.dofLocalEnabled != 0u/);
+  assert.match(postProcessShader, /settings\.dofWideEnabled != 0u/);
+  assert.match(postProcessShader, /settings\.debugView == DEBUG_VIEW_DOF_DOWNSAMPLE/);
 });

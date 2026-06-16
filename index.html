@@ -136,6 +136,14 @@
           <span>DOF</span>
           <input id="postprocess-dof-enabled" type="checkbox" />
         </label>
+        <label for="postprocess-dof-local-enabled">
+          <span>DOF local</span>
+          <input id="postprocess-dof-local-enabled" type="checkbox" checked />
+        </label>
+        <label for="postprocess-dof-wide-enabled">
+          <span>DOF wide</span>
+          <input id="postprocess-dof-wide-enabled" type="checkbox" checked />
+        </label>
         <label for="postprocess-dof-focus">
           <span>Focus</span>
           <span>
@@ -172,6 +180,9 @@
             <option value="depth">Depth</option>
             <option value="confidence">Confidence</option>
             <option value="dof-mask">DOF mask</option>
+            <option value="dof-downsample">DOF downsample</option>
+            <option value="dof-blur-h">DOF blur H</option>
+            <option value="dof-blur-v">DOF blur V</option>
           </select>
         </label>
         <label for="postprocess-temporal-mode">

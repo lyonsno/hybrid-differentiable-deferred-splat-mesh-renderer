@@ -3,7 +3,17 @@ import computePostProcessShader from "./shaders/compute_post_process.wgsl?raw";
 export const FXAA_CAS_MAX_SHARPNESS = 1.5;
 export const POST_PROCESS_MAX_DOF_STRENGTH = 4;
 
-export type FxaaCasDebugView = "final" | "fxaa-mask" | "cas-mask" | "difference" | "depth" | "confidence" | "dof-mask";
+export type FxaaCasDebugView =
+  | "final"
+  | "fxaa-mask"
+  | "cas-mask"
+  | "difference"
+  | "depth"
+  | "confidence"
+  | "dof-mask"
+  | "dof-downsample"
+  | "dof-blur-h"
+  | "dof-blur-v";
 
 const FXAA_CAS_DEBUG_VIEW_CODES: Record<FxaaCasDebugView, number> = {
   final: 0,
@@ -13,6 +23,9 @@ const FXAA_CAS_DEBUG_VIEW_CODES: Record<FxaaCasDebugView, number> = {
   depth: 4,
   confidence: 5,
   "dof-mask": 6,
+  "dof-downsample": 7,
+  "dof-blur-h": 8,
+  "dof-blur-v": 9,
 };
 
 export interface FxaaCasPostProcessSettings {
@@ -27,6 +40,8 @@ export interface FxaaCasPostProcessSettings {
   readonly dofFocusDepth: number;
   readonly dofStrength: number;
   readonly dofRadius: number;
+  readonly dofLocalEnabled: boolean;
+  readonly dofWideEnabled: boolean;
 }
 
 export interface FxaaCasPostProcess {
@@ -86,9 +101,24 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
   });
   const settingsBuffer = device.createBuffer({
     label: "compute_fxaa_cas_post_process_settings",
-    size: 48,
+    size: 64,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
+  let lastSettings: FxaaCasPostProcessSettings = {
+    enabled: true,
+    fxaaEnabled: true,
+    casEnabled: true,
+    sampleRadius: 2,
+    sampleCount: 8,
+    casSharpness: FXAA_CAS_MAX_SHARPNESS * 0.35,
+    debugView: "final",
+    dofEnabled: false,
+    dofFocusDepth: 0.975,
+    dofStrength: POST_PROCESS_MAX_DOF_STRENGTH * 0.35,
+    dofRadius: 4,
+    dofLocalEnabled: true,
+    dofWideEnabled: true,
+  };
   const pipeline = device.createComputePipeline({
     label: "compute_fxaa_cas_post_process",
     layout: device.createPipelineLayout({
@@ -142,7 +172,8 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
     bindGroupLayout,
     settingsBuffer,
     writeSettings(queue: GPUQueue, settings: FxaaCasPostProcessSettings): void {
-      const buffer = new ArrayBuffer(48);
+      lastSettings = settings;
+      const buffer = new ArrayBuffer(64);
       const u32 = new Uint32Array(buffer);
       const f32 = new Float32Array(buffer);
       u32[0] = settings.enabled ? 1 : 0;
@@ -156,7 +187,11 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
       f32[8] = clampNumber(settings.dofFocusDepth, 0, 1);
       f32[9] = clampNumber(settings.dofStrength, 0, POST_PROCESS_MAX_DOF_STRENGTH);
       u32[10] = clampInteger(settings.dofRadius, 1, 64);
-      u32[11] = 0;
+      u32[11] = settings.dofLocalEnabled ? 1 : 0;
+      u32[12] = settings.dofWideEnabled ? 1 : 0;
+      u32[13] = 0;
+      u32[14] = 0;
+      u32[15] = 0;
       queue.writeBuffer(settingsBuffer, 0, buffer);
     },
     encode(
@@ -171,6 +206,15 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
     ): void {
       const lowResWidth = Math.ceil(width / 2);
       const lowResHeight = Math.ceil(height / 2);
+      const debugView = lastSettings.debugView;
+      const debugDofDownsample = debugView === "dof-downsample";
+      const debugDofBlurH = debugView === "dof-blur-h";
+      const debugDofBlurV = debugView === "dof-blur-v";
+      const debugWidePass = debugDofDownsample || debugDofBlurH || debugDofBlurV;
+      const shouldRunWidePass = lastSettings.dofWideEnabled || debugWidePass;
+      const shouldRunHorizontalBlur = shouldRunWidePass && !debugDofDownsample;
+      const shouldRunVerticalBlur = shouldRunHorizontalBlur && !debugDofBlurH;
+      const finalDofBlurView = debugDofBlurH ? dofBlurScratchView : dofLowResView;
       const downsampleBindGroup = device.createBindGroup({
         label: "compute_dof_downsample_bg",
         layout: bindGroupLayout,
@@ -212,29 +256,35 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
           { binding: 1, resource: outputView },
           { binding: 2, resource: { buffer: settingsBuffer } },
           { binding: 3, resource: inputAuxView },
-          { binding: 4, resource: dofLowResView },
+          { binding: 4, resource: finalDofBlurView },
         ],
       });
-      const downsamplePass = encoder.beginComputePass({ label: "compute_dof_downsample" });
-      downsamplePass.setPipeline(dofDownsamplePipeline);
-      downsamplePass.setBindGroup(0, downsampleBindGroup);
-      downsamplePass.dispatchWorkgroups(
-        Math.ceil(Math.ceil(width / 2) / 8),
-        Math.ceil(Math.ceil(height / 2) / 8)
-      );
-      downsamplePass.end();
+      if (shouldRunWidePass) {
+        const downsamplePass = encoder.beginComputePass({ label: "compute_dof_downsample" });
+        downsamplePass.setPipeline(dofDownsamplePipeline);
+        downsamplePass.setBindGroup(0, downsampleBindGroup);
+        downsamplePass.dispatchWorkgroups(
+          Math.ceil(Math.ceil(width / 2) / 8),
+          Math.ceil(Math.ceil(height / 2) / 8)
+        );
+        downsamplePass.end();
+      }
 
-      const horizontalBlurPass = encoder.beginComputePass({ label: "compute_dof_blur_horizontal" });
-      horizontalBlurPass.setPipeline(dofBlurHorizontalPipeline);
-      horizontalBlurPass.setBindGroup(0, horizontalBlurBindGroup);
-      horizontalBlurPass.dispatchWorkgroups(Math.ceil(lowResWidth / 8), Math.ceil(lowResHeight / 8));
-      horizontalBlurPass.end();
+      if (shouldRunHorizontalBlur) {
+        const horizontalBlurPass = encoder.beginComputePass({ label: "compute_dof_blur_horizontal" });
+        horizontalBlurPass.setPipeline(dofBlurHorizontalPipeline);
+        horizontalBlurPass.setBindGroup(0, horizontalBlurBindGroup);
+        horizontalBlurPass.dispatchWorkgroups(Math.ceil(lowResWidth / 8), Math.ceil(lowResHeight / 8));
+        horizontalBlurPass.end();
+      }
 
-      const verticalBlurPass = encoder.beginComputePass({ label: "compute_dof_blur_vertical" });
-      verticalBlurPass.setPipeline(dofBlurVerticalPipeline);
-      verticalBlurPass.setBindGroup(0, verticalBlurBindGroup);
-      verticalBlurPass.dispatchWorkgroups(Math.ceil(lowResWidth / 8), Math.ceil(lowResHeight / 8));
-      verticalBlurPass.end();
+      if (shouldRunVerticalBlur) {
+        const verticalBlurPass = encoder.beginComputePass({ label: "compute_dof_blur_vertical" });
+        verticalBlurPass.setPipeline(dofBlurVerticalPipeline);
+        verticalBlurPass.setBindGroup(0, verticalBlurBindGroup);
+        verticalBlurPass.dispatchWorkgroups(Math.ceil(lowResWidth / 8), Math.ceil(lowResHeight / 8));
+        verticalBlurPass.end();
+      }
 
       const pass = encoder.beginComputePass({ label: "compute_fxaa_cas_post_process" });
       pass.setPipeline(pipeline);
