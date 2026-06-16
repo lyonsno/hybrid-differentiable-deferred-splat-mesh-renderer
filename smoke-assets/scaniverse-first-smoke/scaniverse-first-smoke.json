@@ -80,9 +80,20 @@
     ],
     "radius": 0.22154541313648224
   },
+  "materials": {
+    "roughness_path": "scaniverse-first-smoke.roughness.f32.bin",
+    "roughness_component_type": "float32",
+    "roughness_byte_length": 377624,
+    "metalness_path": "scaniverse-first-smoke.metalness.f32.bin",
+    "metalness_component_type": "float32",
+    "metalness_byte_length": 377624,
+    "source": "splat_oracle harvest+sam3+material_solve (no inverse tone mapping)"
+  },
   "decode": {
     "color": "displayable RGB float3 from loader: SH DC via 0.5 + 0.28209479 * f_dc, or uchar RGB / 255",
     "opacity": "float opacity from loader: sigmoid(opacity) for PLY logit field, or 1.0 when absent",
-    "radius": "max(exp(scale_0), exp(scale_1), exp(scale_2)) from log-space PLY scale fields"
+    "radius": "max(exp(scale_0), exp(scale_1), exp(scale_2)) from log-space PLY scale fields",
+    "roughness": "float32 per splat [0,1] from SAM3 semantic priors + cross-view luminance variance",
+    "metalness": "float32 per splat [0,1] from SAM3 semantic priors"
   }
 }

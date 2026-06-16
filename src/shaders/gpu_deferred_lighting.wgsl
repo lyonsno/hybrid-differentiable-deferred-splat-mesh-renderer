@@ -22,7 +22,8 @@ struct Params {
 @group(0) @binding(1) var colorTexture: texture_2d<f32>;
 @group(0) @binding(2) var depthTexture: texture_2d<f32>;
 @group(0) @binding(3) var normalTexture: texture_2d<u32>;
-@group(0) @binding(4) var outputLit: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(4) var materialTexture: texture_2d<u32>;
+@group(0) @binding(5) var outputLit: texture_storage_2d<rgba16float, write>;
 
 const PI = 3.14159265359;
 
@@ -97,9 +98,11 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let NdotH = max(dot(N, H), 0.0);
   let HdotV = max(dot(H, V), 0.0);
 
-  // Material properties
-  let roughness = params.roughness;
-  let metallic = params.metallic;
+  // Material properties from G-buffer (per-pixel voted roughness/metalness)
+  let packedMat = textureLoad(materialTexture, px, 0).r;
+  let matVec = unpack2x16float(packedMat);
+  let roughness = max(matVec.x, 0.04); // clamp to avoid singularities
+  let metallic = matVec.y;
   let F0 = mix(vec3f(0.04), albedo, metallic);
 
   // Cook-Torrance BRDF

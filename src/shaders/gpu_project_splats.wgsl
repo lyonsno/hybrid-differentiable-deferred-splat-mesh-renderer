@@ -5,7 +5,7 @@
 //   [2] inverseCov2d.x (f32)
 //   [3] inverseCov2d.y (f32)
 //   [4] inverseCov2d.z (f32)
-//   [5] pack2x16float(octEncode(normal)) — oct-encoded world normal
+//   [5] pack2x16float(roughness, metalness) — per-splat PBR material
 //   [6] pack2x16float(opacity, 0)
 //   [7] tileBounds packed as u8x4 (minTileX, minTileY, maxTileX, maxTileY)
 //
@@ -36,6 +36,8 @@ struct FrameUniforms {
 @group(0) @binding(5) var<storage, read> sortedIndices: array<u32>;
 @group(0) @binding(6) var<storage, read_write> projCache: array<u32>;
 @group(0) @binding(7) var<storage, read_write> depthBuffer: array<u32>;
+@group(0) @binding(8) var<storage, read> roughnessData: array<f32>;
+@group(0) @binding(9) var<storage, read> metalnessData: array<f32>;
 
 // --- Projection math (same as composite shader) ---
 
@@ -160,7 +162,9 @@ fn project_splats(@builtin(global_invocation_id) globalId: vec3u) {
   projCache[base + 2u] = bitcast<u32>(inverseCov2d.x);
   projCache[base + 3u] = bitcast<u32>(inverseCov2d.y);
   projCache[base + 4u] = bitcast<u32>(inverseCov2d.z);
-  projCache[base + 5u] = pack2x16float(octEncode(normal)); // oct-encoded world normal
+  let roughness = roughnessData[splatId];
+  let metalness = metalnessData[splatId];
+  projCache[base + 5u] = pack2x16float(vec2f(roughness, metalness)); // per-splat PBR material
   projCache[base + 6u] = pack2x16float(vec2f(radius, sourceOpacity));
   depthBuffer[sortRank] = bitcast<u32>(depthNdc); // separate depth buffer for per-tile sort
   // Pack tile bounds as 4 bytes (supports up to 255 tiles per axis)

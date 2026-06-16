@@ -33,6 +33,7 @@ fn fs_depth(in: VertexOut) -> @location(0) vec4f {
 
 // --- Normal visualization ---
 @group(1) @binding(0) var normalTexture: texture_2d<u32>;
+@group(1) @binding(1) var materialTexture: texture_2d<u32>;
 
 fn octDecode(oct: vec2f) -> vec3f {
   var n = vec3f(oct.x, oct.y, 1.0 - abs(oct.x) - abs(oct.y));
@@ -51,4 +52,17 @@ fn fs_normal(in: VertexOut) -> @location(0) vec4f {
   let normal = octDecode(oct);
   // Map normal [-1,1] to color [0,1]
   return vec4f(normal * 0.5 + 0.5, 1.0);
+}
+
+// --- Roughness visualization ---
+@fragment
+fn fs_roughness(in: VertexOut) -> @location(0) vec4f {
+  let texSize = textureDimensions(materialTexture);
+  let coord = vec2i(in.uv * vec2f(f32(texSize.x), f32(texSize.y)));
+  let packed = textureLoad(materialTexture, coord, 0).r;
+  let mat = unpack2x16float(packed);
+  let roughness = mat.x;
+  // Green = rough (matte), Red = smooth (shiny), Blue = metallic
+  let metalness = mat.y;
+  return vec4f(1.0 - roughness, roughness, metalness, 1.0);
 }

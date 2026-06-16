@@ -171,6 +171,8 @@ export function createTileSplatCompositor(
       { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // sortedIndices
       { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },           // projCache (write)
       { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },           // depthBuffer (write)
+      { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // roughness
+      { binding: 9, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // metalness
     ],
   });
 
@@ -196,6 +198,7 @@ export function createTileSplatCompositor(
       { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // depthBuffer
       { binding: 5, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "r32float" } }, // G-buffer depth
       { binding: 6, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "r32uint" } }, // G-buffer normal (oct, pack2x16float)
+      { binding: 7, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "r32uint" } }, // G-buffer material (pack2x16float roughness, metalness)
     ],
   });
 
@@ -662,11 +665,28 @@ export function createTileSplatBindGroups(
     scaleBuffer: GPUBuffer;
     rotationBuffer: GPUBuffer;
     opacityBuffer: GPUBuffer;
+    roughnessBuffer?: GPUBuffer;
+    metalnessBuffer?: GPUBuffer;
     sortedIndexBuffer: GPUBuffer;
   },
   outputTexture: GPUTexture,
-  gbufferTextures: { depth: GPUTexture; normal: GPUTexture },
+  gbufferTextures: { depth: GPUTexture; normal: GPUTexture; material: GPUTexture },
 ): TileSplatCompositorBindGroups {
+  // Default material buffer (all 0.75 roughness / 0.0 metalness) for when no material data exists
+  const defaultMaterialBuffer = (label: string, defaultValue: number) => {
+    const buf = device.createBuffer({
+      label,
+      size: Math.max(16, resources.plan.splatCount * 4),
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+    const data = new Float32Array(resources.plan.splatCount);
+    data.fill(defaultValue);
+    device.queue.writeBuffer(buf, 0, data);
+    return buf;
+  };
+  const roughnessBuffer = splatBuffers.roughnessBuffer ?? defaultMaterialBuffer("default_roughness", 0.75);
+  const metalnessBuffer = splatBuffers.metalnessBuffer ?? defaultMaterialBuffer("default_metalness", 0.0);
+
   // Project pass: reads raw splat data, writes projection cache
   const projectBindGroup = device.createBindGroup({
     label: "project_splats_bg",
@@ -680,6 +700,8 @@ export function createTileSplatBindGroups(
       { binding: 5, resource: { buffer: splatBuffers.sortedIndexBuffer } },
       { binding: 6, resource: { buffer: resources.projCacheBuffer } },
       { binding: 7, resource: { buffer: resources.depthBuffer } },
+      { binding: 8, resource: { buffer: roughnessBuffer } },
+      { binding: 9, resource: { buffer: metalnessBuffer } },
     ],
   });
 
@@ -706,6 +728,7 @@ export function createTileSplatBindGroups(
       { binding: 4, resource: { buffer: resources.depthBuffer } },
       { binding: 5, resource: gbufferTextures.depth.createView() },
       { binding: 6, resource: gbufferTextures.normal.createView() },
+      { binding: 7, resource: gbufferTextures.material.createView() },
     ],
   });
 
@@ -811,6 +834,7 @@ export function createTileSplatBindGroups(
       { binding: 4, resource: { buffer: resources.depthBuffer } },
       { binding: 5, resource: gbufferTextures.depth.createView() },
       { binding: 6, resource: gbufferTextures.normal.createView() },
+      { binding: 7, resource: gbufferTextures.material.createView() },
     ],
   });
 

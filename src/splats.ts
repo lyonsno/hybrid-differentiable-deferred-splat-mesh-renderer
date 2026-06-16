@@ -45,6 +45,8 @@ export interface SplatAttributes {
   scales: Float32Array;
   rotations: Float32Array;
   sh?: SplatSphericalHarmonics;
+  roughness?: Float32Array;
+  metalness?: Float32Array;
   originalIds: Uint32Array;
   bounds: SplatBounds;
   layout: FirstSmokeSplatLayout;
@@ -65,6 +67,8 @@ export interface SplatGpuBuffers {
   opacityBuffer: GPUBuffer;
   scaleBuffer: GPUBuffer;
   rotationBuffer: GPUBuffer;
+  roughnessBuffer?: GPUBuffer;
+  metalnessBuffer?: GPUBuffer;
   originalIdBuffer: GPUBuffer;
   bounds: SplatBounds;
   layout: FirstSmokeSplatLayout;
@@ -168,8 +172,29 @@ export async function fetchFirstSmokeSplatPayload(
             init,
             "first-smoke splat SH sidecar"
           );
+    const materialsSection = root.materials as Record<string, unknown> | undefined;
+    const roughnessPath = materialsSection?.roughness_path as string | undefined;
+    const metalnessPath = materialsSection?.metalness_path as string | undefined;
+    const roughnessBytes =
+      roughnessPath === undefined
+        ? undefined
+        : await fetchArrayBuffer(
+            fetchImpl,
+            resolveSidecarUrl(input, roughnessPath),
+            init,
+            "first-smoke splat roughness sidecar"
+          );
+    const metalnessBytes =
+      metalnessPath === undefined
+        ? undefined
+        : await fetchArrayBuffer(
+            fetchImpl,
+            resolveSidecarUrl(input, metalnessPath),
+            init,
+            "first-smoke splat metalness sidecar"
+          );
 
-    return decodeFirstSmokeSplatManifest(payload, payloadBytes, idsBytes, scalesBytes, rotationsBytes, shBytes);
+    return decodeFirstSmokeSplatManifest(payload, payloadBytes, idsBytes, scalesBytes, rotationsBytes, shBytes, roughnessBytes, metalnessBytes);
   }
 
   return decodeFirstSmokeSplatPayload(payload);
@@ -214,7 +239,9 @@ export function decodeFirstSmokeSplatManifest(
   idsBytes?: ArrayBuffer,
   scalesBytes?: ArrayBuffer,
   rotationsBytes?: ArrayBuffer,
-  shBytes?: ArrayBuffer
+  shBytes?: ArrayBuffer,
+  roughnessBytes?: ArrayBuffer,
+  metalnessBytes?: ArrayBuffer,
 ): SplatAttributes {
   const root = requireRecord(manifest, "manifest");
   const count = requirePositiveInteger(
@@ -291,6 +318,14 @@ export function decodeFirstSmokeSplatManifest(
         ? identityRotations(count)
         : decodeFloat32Bytes(rotationsBytes, count * 4, "shape.rotations"),
     sh: decodeShSidecar(root, count, shBytes),
+    roughness:
+      roughnessBytes === undefined
+        ? undefined
+        : decodeFloat32Bytes(roughnessBytes, count, "materials.roughness"),
+    metalness:
+      metalnessBytes === undefined
+        ? undefined
+        : decodeFloat32Bytes(metalnessBytes, count, "materials.metalness"),
     originalIds:
       idsBytes === undefined
         ? decodeOriginalIds(undefined, count)
@@ -361,6 +396,12 @@ export function uploadSplatAttributeBuffers(
       attributes.rotations,
       "first_smoke_splat_rotations"
     ),
+    roughnessBuffer: attributes.roughness
+      ? createMappedStorageBuffer(device, attributes.roughness, "first_smoke_splat_roughness")
+      : undefined,
+    metalnessBuffer: attributes.metalness
+      ? createMappedStorageBuffer(device, attributes.metalness, "first_smoke_splat_metalness")
+      : undefined,
     originalIdBuffer: createMappedStorageBuffer(
       device,
       attributes.originalIds,

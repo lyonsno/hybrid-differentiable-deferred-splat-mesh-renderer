@@ -30,6 +30,17 @@ MATERIAL_CLASSES = {
     "wood_furniture": 19,
     "paper": 20,
     "cardboard": 21,
+    # Food and tableware
+    "ceramic_plate": 22,
+    "pastry_crust": 23,
+    "bread": 24,
+    "cream": 25,
+    "chocolate": 26,
+    "fruit_jam": 27,
+    "powdered_sugar": 28,
+    "glaze": 29,
+    "metal_utensil": 30,
+    "tablecloth": 31,
 }
 
 # Inverse mapping
@@ -58,6 +69,17 @@ MATERIAL_PROMPTS = {
     "wood_furniture": "wood furniture",
     "paper": "paper",
     "cardboard": "cardboard",
+    # Food and tableware
+    "ceramic_plate": "ceramic plate",
+    "pastry_crust": "pastry crust, baked dough",
+    "bread": "bread",
+    "cream": "whipped cream, custard, cream filling",
+    "chocolate": "chocolate, chocolate sauce",
+    "fruit_jam": "fruit jam, berry compote, fruit filling",
+    "powdered_sugar": "powdered sugar, icing sugar",
+    "glaze": "glazed surface, sugar glaze, shiny food coating",
+    "metal_utensil": "metal spoon, metal fork, metal spatula, serving utensil",
+    "tablecloth": "tablecloth, napkin, linen",
 }
 
 # Reflective materials (for ghost detection)
@@ -144,6 +166,37 @@ MATERIAL_PRIORS: dict[str, MaterialPrior] = {
     ),
     "cardboard": MaterialPrior(
         albedo_range=(0.25, 0.50), roughness_range=(0.7, 0.95), metalness=0.0,
+    ),
+    # Food and tableware
+    "ceramic_plate": MaterialPrior(
+        albedo_range=(0.50, 0.90), roughness_range=(0.1, 0.35), metalness=0.0,
+    ),
+    "pastry_crust": MaterialPrior(
+        albedo_range=(0.15, 0.45), roughness_range=(0.7, 0.95), metalness=0.0,
+    ),
+    "bread": MaterialPrior(
+        albedo_range=(0.20, 0.50), roughness_range=(0.8, 1.0), metalness=0.0,
+    ),
+    "cream": MaterialPrior(
+        albedo_range=(0.70, 0.95), roughness_range=(0.4, 0.7), metalness=0.0,
+    ),
+    "chocolate": MaterialPrior(
+        albedo_range=(0.03, 0.15), roughness_range=(0.3, 0.6), metalness=0.0,
+    ),
+    "fruit_jam": MaterialPrior(
+        albedo_range=(0.05, 0.25), roughness_range=(0.2, 0.5), metalness=0.0,
+    ),
+    "powdered_sugar": MaterialPrior(
+        albedo_range=(0.80, 0.98), roughness_range=(0.8, 1.0), metalness=0.0,
+    ),
+    "glaze": MaterialPrior(
+        albedo_range=(0.30, 0.70), roughness_range=(0.05, 0.25), metalness=0.0,
+    ),
+    "metal_utensil": MaterialPrior(
+        albedo_range=(0.40, 0.70), roughness_range=(0.15, 0.4), metalness=1.0,
+    ),
+    "tablecloth": MaterialPrior(
+        albedo_range=(0.50, 0.90), roughness_range=(0.7, 1.0), metalness=0.0,
     ),
 }
 
