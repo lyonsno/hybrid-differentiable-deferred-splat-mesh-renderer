@@ -153,6 +153,32 @@ import {
   type TileSplatCompositorResources,
   type TileSplatCompositorBindGroups,
 } from "./gpuTileSplatCompositor.js";
+import gbufferDebugPresentShader from "./shaders/gbuffer_debug_present.wgsl?raw";
+import screenSpaceNormalsShader from "./shaders/gpu_screen_space_normals.wgsl?raw";
+import deferredLightingShader from "./shaders/gpu_deferred_lighting.wgsl?raw";
+
+function mat4Inverse(m: Float32Array): Float32Array | null {
+  const o = new Float32Array(16);
+  const a00=m[0],a01=m[1],a02=m[2],a03=m[3],a10=m[4],a11=m[5],a12=m[6],a13=m[7];
+  const a20=m[8],a21=m[9],a22=m[10],a23=m[11],a30=m[12],a31=m[13],a32=m[14],a33=m[15];
+  const b00=a00*a11-a01*a10, b01=a00*a12-a02*a10, b02=a00*a13-a03*a10;
+  const b03=a01*a12-a02*a11, b04=a01*a13-a03*a11, b05=a02*a13-a03*a12;
+  const b06=a20*a31-a21*a30, b07=a20*a32-a22*a30, b08=a20*a33-a23*a30;
+  const b09=a21*a32-a22*a31, b10=a21*a33-a23*a31, b11=a22*a33-a23*a32;
+  let det=b00*b11-b01*b10+b02*b09+b03*b08-b04*b07+b05*b06;
+  if (Math.abs(det)<1e-10) return null;
+  det=1/det;
+  o[0]=(a11*b11-a12*b10+a13*b09)*det; o[1]=(a02*b10-a01*b11-a03*b09)*det;
+  o[2]=(a31*b05-a32*b04+a33*b03)*det; o[3]=(a22*b04-a21*b05-a23*b03)*det;
+  o[4]=(a12*b08-a10*b11-a13*b07)*det; o[5]=(a00*b11-a02*b08+a03*b07)*det;
+  o[6]=(a32*b02-a30*b05-a33*b01)*det; o[7]=(a20*b05-a22*b02+a23*b01)*det;
+  o[8]=(a10*b10-a11*b08+a13*b06)*det; o[9]=(a01*b08-a00*b10-a03*b06)*det;
+  o[10]=(a30*b04-a31*b02+a33*b00)*det; o[11]=(a21*b02-a20*b04-a23*b00)*det;
+  o[12]=(a11*b07-a10*b09-a12*b06)*det; o[13]=(a00*b09-a01*b07+a02*b06)*det;
+  o[14]=(a31*b01-a30*b03-a32*b00)*det; o[15]=(a20*b03-a21*b01+a22*b00)*det;
+  return o;
+}
+
 import {
   fetchFirstSmokeSplatPayload,
   uploadSplatAttributeBuffers,
@@ -257,6 +283,11 @@ interface ActiveSplatScene {
     bindGroups: TileSplatCompositorBindGroups;
     outputTexture: GPUTexture;
     outputView: GPUTextureView;
+    gbufferDepthView: GPUTextureView;
+    gbufferNormalTexture: GPUTexture;
+    gbufferNormalView: GPUTextureView;
+    litTexture: GPUTexture;
+    litView: GPUTextureView;
     frameUniformData: Float32Array;
   } | null;
 }
@@ -1111,6 +1142,236 @@ async function main() {
   const splatRenderer = createSplatPlateRenderer(gpu.device, gpu.format, bgl);
   const tileLocalPresenter = createTileLocalTexturePresenter(gpu.device, gpu.format);
 
+  // G-buffer debug presenters
+  const gbufferDebugPresenter = (() => {
+    const mod = gpu.device.createShaderModule({
+      label: "gbuffer_debug_present_shader",
+      code: gbufferDebugPresentShader,
+    });
+    const sampler = gpu.device.createSampler({ magFilter: "nearest", minFilter: "nearest" });
+    const depthBgl = gpu.device.createBindGroupLayout({
+      label: "gbuffer_debug_depth_bgl",
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.FRAGMENT, sampler: { type: "non-filtering" } },
+        { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "unfilterable-float" } },
+      ],
+    });
+    const normalBgl = gpu.device.createBindGroupLayout({
+      label: "gbuffer_debug_normal_bgl",
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "uint" } },
+      ],
+    });
+    const depthStencil = { format: "depth32float" as const, depthWriteEnabled: false, depthCompare: "always" as const };
+    const depthPipeline = gpu.device.createRenderPipeline({
+      label: "gbuffer_debug_depth_pipeline",
+      layout: gpu.device.createPipelineLayout({ bindGroupLayouts: [depthBgl] }),
+      vertex: { module: mod, entryPoint: "vs" },
+      fragment: { module: mod, entryPoint: "fs_depth", targets: [{ format: gpu.format }] },
+      primitive: { topology: "triangle-list" },
+      depthStencil,
+    });
+    const normalPipeline = gpu.device.createRenderPipeline({
+      label: "gbuffer_debug_normal_pipeline",
+      layout: gpu.device.createPipelineLayout({ bindGroupLayouts: [depthBgl, normalBgl] }),
+      vertex: { module: mod, entryPoint: "vs" },
+      fragment: { module: mod, entryPoint: "fs_normal", targets: [{ format: gpu.format }] },
+      primitive: { topology: "triangle-list" },
+      depthStencil,
+    });
+    return {
+      drawDepth(pass: GPURenderPassEncoder, depthView: GPUTextureView) {
+        const bg = gpu.device.createBindGroup({
+          layout: depthBgl,
+          entries: [
+            { binding: 0, resource: sampler },
+            { binding: 1, resource: depthView },
+          ],
+        });
+        pass.setPipeline(depthPipeline);
+        pass.setBindGroup(0, bg);
+        pass.draw(3);
+      },
+      drawNormal(pass: GPURenderPassEncoder, depthView: GPUTextureView, normalView: GPUTextureView) {
+        const bg0 = gpu.device.createBindGroup({
+          layout: depthBgl,
+          entries: [
+            { binding: 0, resource: sampler },
+            { binding: 1, resource: depthView },
+          ],
+        });
+        const bg1 = gpu.device.createBindGroup({
+          layout: normalBgl,
+          entries: [
+            { binding: 0, resource: normalView },
+          ],
+        });
+        pass.setPipeline(normalPipeline);
+        pass.setBindGroup(0, bg0);
+        pass.setBindGroup(1, bg1);
+        pass.draw(3);
+      },
+    };
+  })();
+
+  // G-buffer view mode: cycle with 'G' key
+  type GBufferViewMode = "color" | "depth" | "normal" | "lit";
+  let gbufferViewMode: GBufferViewMode = "color";
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "g" || e.key === "G") {
+      const modes: GBufferViewMode[] = ["color", "depth", "normal", "lit"];
+      const idx = modes.indexOf(gbufferViewMode);
+      gbufferViewMode = modes[(idx + 1) % modes.length];
+      console.log(`G-buffer view: ${gbufferViewMode}`);
+    }
+  });
+
+  // Screen-space normal reconstruction pass
+  const screenSpaceNormals = (() => {
+    const mod = gpu.device.createShaderModule({
+      label: "screen_space_normals_shader",
+      code: screenSpaceNormalsShader,
+    });
+    const bgl = gpu.device.createBindGroupLayout({
+      label: "screen_space_normals_bgl",
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+        { binding: 1, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float" } },
+        { binding: 2, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "r32uint" } },
+      ],
+    });
+    const pipeline = gpu.device.createComputePipeline({
+      label: "screen_space_normals_pipeline",
+      layout: gpu.device.createPipelineLayout({ bindGroupLayouts: [bgl] }),
+      compute: { module: mod, entryPoint: "main" },
+    });
+    // Params: viewport(8) + nearFar(8) + viewProjInv(64) = 80 bytes
+    const paramsBuffer = gpu.device.createBuffer({
+      label: "screen_space_normals_params",
+      size: 80,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+    return {
+      pipeline,
+      bgl,
+      paramsBuffer,
+      encode(
+        encoder: GPUCommandEncoder,
+        depthView: GPUTextureView,
+        normalTexture: GPUTexture,
+        viewport: [number, number],
+        viewProjInverse: Float32Array,
+      ) {
+        // Write params
+        const params = new Float32Array(20); // 80 bytes = 20 floats
+        params[0] = viewport[0]; // width
+        params[1] = viewport[1]; // height
+        params[2] = 0.1;  // near (placeholder)
+        params[3] = 100.0; // far (placeholder)
+        params.set(viewProjInverse, 4); // mat4x4 at offset 16 bytes
+        gpu.device.queue.writeBuffer(paramsBuffer, 0, params);
+
+        const bg = gpu.device.createBindGroup({
+          layout: bgl,
+          entries: [
+            { binding: 0, resource: { buffer: paramsBuffer } },
+            { binding: 1, resource: depthView },
+            { binding: 2, resource: normalTexture.createView() },
+          ],
+        });
+        const pass = encoder.beginComputePass({ label: "screen_space_normals" });
+        pass.setPipeline(pipeline);
+        pass.setBindGroup(0, bg);
+        pass.dispatchWorkgroups(
+          Math.ceil(viewport[0] / 8),
+          Math.ceil(viewport[1] / 8),
+        );
+        pass.end();
+      },
+    };
+  })();
+
+  // Deferred lighting pass
+  const deferredLighting = (() => {
+    const mod = gpu.device.createShaderModule({
+      label: "deferred_lighting_shader",
+      code: deferredLightingShader,
+    });
+    const bgl = gpu.device.createBindGroupLayout({
+      label: "deferred_lighting_bgl",
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+        { binding: 1, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "float" } },  // color (rgba16float)
+        { binding: 2, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float" } }, // depth (r32float)
+        { binding: 3, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "uint" } },   // normal (r32uint)
+        { binding: 4, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba16float" } },
+      ],
+    });
+    const pipeline = gpu.device.createComputePipeline({
+      label: "deferred_lighting_pipeline",
+      layout: gpu.device.createPipelineLayout({ bindGroupLayouts: [bgl] }),
+      compute: { module: mod, entryPoint: "main" },
+    });
+    // Params: viewport(8) + roughness(4) + metallic(4) + viewProjInv(64) +
+    //         cameraPos(12) + pad(4) + lightDir(12) + pad(4) + lightColor(12) +
+    //         lightIntensity(4) + ambientColor(12) + pad(4) = 144 bytes
+    const paramsBuffer = gpu.device.createBuffer({
+      label: "deferred_lighting_params",
+      size: 144,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+    return {
+      pipeline,
+      bgl,
+      paramsBuffer,
+      encode(
+        encoder: GPUCommandEncoder,
+        colorView: GPUTextureView,
+        depthView: GPUTextureView,
+        normalView: GPUTextureView,
+        litTexture: GPUTexture,
+        viewport: [number, number],
+        viewProjInverse: Float32Array,
+        cameraPos: Float32Array,
+      ) {
+        const params = new Float32Array(36); // 144 bytes
+        params[0] = viewport[0];
+        params[1] = viewport[1];
+        params[2] = 0.65; // roughness
+        params[3] = 0.0;  // metallic (dielectric)
+        params.set(viewProjInverse, 4); // viewProjInv at offset 16
+        params[20] = cameraPos[0]; params[21] = cameraPos[1]; params[22] = cameraPos[2];
+        // lightDir: upper-right, slightly behind camera
+        params[24] = -0.4; params[25] = -0.7; params[26] = -0.6;
+        // lightColor
+        params[28] = 1.0; params[29] = 0.95; params[30] = 0.9;
+        params[31] = 2.5; // lightIntensity
+        // ambientColor
+        params[32] = 0.15; params[33] = 0.15; params[34] = 0.18;
+        gpu.device.queue.writeBuffer(paramsBuffer, 0, params);
+
+        const bg = gpu.device.createBindGroup({
+          layout: bgl,
+          entries: [
+            { binding: 0, resource: { buffer: paramsBuffer } },
+            { binding: 1, resource: colorView },
+            { binding: 2, resource: depthView },
+            { binding: 3, resource: normalView },
+            { binding: 4, resource: litTexture.createView() },
+          ],
+        });
+        const pass = encoder.beginComputePass({ label: "deferred_lighting" });
+        pass.setPipeline(pipeline);
+        pass.setBindGroup(0, bg);
+        pass.dispatchWorkgroups(
+          Math.ceil(viewport[0] / 8),
+          Math.ceil(viewport[1] / 8),
+        );
+        pass.end();
+      },
+    };
+  })();
+
   // shape-witness: detect ?synthetic=shape-witness-<id> and load the real synthetic fixture
   // through the real WebGPU renderer path. This is the renderer-path-integration lane wiring.
   // The fixture data replaces the real Scaniverse asset; the real compositor and plate
@@ -1304,6 +1565,24 @@ async function main() {
         format: "rgba16float",
         usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
       });
+      const gbufferDepthTexture = gpu.device.createTexture({
+        label: "gbuffer_depth",
+        size: [initialViewportWidth, initialViewportHeight],
+        format: "r32float",
+        usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+      });
+      const gbufferNormalTexture = gpu.device.createTexture({
+        label: "gbuffer_normal",
+        size: [initialViewportWidth, initialViewportHeight],
+        format: "r32uint",
+        usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+      });
+      const litTexture = gpu.device.createTexture({
+        label: "deferred_lit_output",
+        size: [initialViewportWidth, initialViewportHeight],
+        format: "rgba16float",
+        usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+      });
       const computeBindGroups = createTileSplatBindGroups(
         gpu.device,
         computeResources,
@@ -1316,12 +1595,18 @@ async function main() {
           sortedIndexBuffer,
         },
         computeOutputTexture,
+        { depth: gbufferDepthTexture, normal: gbufferNormalTexture },
       );
       computeCompositorState = {
         resources: computeResources,
         bindGroups: computeBindGroups,
         outputTexture: computeOutputTexture,
         outputView: computeOutputTexture.createView(),
+        gbufferDepthView: gbufferDepthTexture.createView(),
+        gbufferNormalTexture: gbufferNormalTexture,
+        gbufferNormalView: gbufferNormalTexture.createView(),
+        litTexture: litTexture,
+        litView: litTexture.createView(),
         frameUniformData: new Float32Array(TILE_SPLAT_FRAME_UNIFORM_BYTES / 4),
         lastSortedViewProj: null as Float32Array | null,
         hasSortedRefs: false,
@@ -1728,6 +2013,28 @@ async function main() {
         encodeCompositeOnly(encoder, resources, bindGroups);
       }
 
+      // Screen-space normal reconstruction + deferred lighting
+      const vpInv = mat4Inverse(viewProj);
+      if (vpInv) {
+        screenSpaceNormals.encode(
+          encoder,
+          cc.gbufferDepthView,
+          cc.gbufferNormalTexture,
+          [resources.plan.viewportWidth, resources.plan.viewportHeight],
+          vpInv,
+        );
+        deferredLighting.encode(
+          encoder,
+          cc.outputView,
+          cc.gbufferDepthView,
+          cc.gbufferNormalView,
+          cc.litTexture,
+          [resources.plan.viewportWidth, resources.plan.viewportHeight],
+          vpInv,
+          new Float32Array(cam.position),
+        );
+      }
+
       // Continue with same encoder (no split needed anymore)
     }
 
@@ -1765,7 +2072,16 @@ async function main() {
     }
 
     if (scene.rendererMode === "compute" && scene.computeCompositor) {
-      tileLocalPresenter.draw(renderPass, scene.computeCompositor.outputView);
+      const cc = scene.computeCompositor;
+      if (gbufferViewMode === "depth") {
+        gbufferDebugPresenter.drawDepth(renderPass, cc.gbufferDepthView);
+      } else if (gbufferViewMode === "normal") {
+        gbufferDebugPresenter.drawNormal(renderPass, cc.gbufferDepthView, cc.gbufferNormalView);
+      } else if (gbufferViewMode === "lit") {
+        tileLocalPresenter.draw(renderPass, cc.litView);
+      } else {
+        tileLocalPresenter.draw(renderPass, cc.outputView);
+      }
     } else if (scene.rendererMode === "tile-local-visible" && scene.tileLocalState) {
       tileLocalPresenter.draw(renderPass, scene.tileLocalState.outputView);
     } else {

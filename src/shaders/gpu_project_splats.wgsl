@@ -5,7 +5,7 @@
 //   [2] inverseCov2d.x (f32)
 //   [3] inverseCov2d.y (f32)
 //   [4] inverseCov2d.z (f32)
-//   [5] pack2x16float(radius, depthNdc)
+//   [5] pack2x16float(octEncode(normal)) — oct-encoded world normal
 //   [6] pack2x16float(opacity, 0)
 //   [7] tileBounds packed as u8x4 (minTileX, minTileY, maxTileX, maxTileY)
 //
@@ -43,6 +43,16 @@ fn rotateAxis(rotation: vec4f, axis: vec3f) -> vec3f {
   let q = rotation / max(length(rotation), 0.000001);
   let u = vec3f(q.y, q.z, q.w);
   return axis + 2.0 * cross(u, cross(u, axis) + q.x * axis);
+}
+
+// Octahedral normal encoding: vec3f unit normal → vec2f in [-1,1]
+fn octEncode(n: vec3f) -> vec2f {
+  let sum = abs(n.x) + abs(n.y) + abs(n.z);
+  var p = n.xy / sum;
+  if (n.z < 0.0) {
+    p = (1.0 - abs(p.yx)) * select(vec2f(-1.0), vec2f(1.0), p >= vec2f(0.0));
+  }
+  return p;
 }
 
 fn viewProjectionLinearRow(row: u32) -> vec3f {
@@ -99,6 +109,15 @@ fn project_splats(@builtin(global_invocation_id) globalId: vec3u) {
   let axis1 = rotateAxis(rotation, vec3f(0.0, 1.0, 0.0)) * scale.y;
   let axis2 = rotateAxis(rotation, vec3f(0.0, 0.0, 1.0)) * scale.z;
 
+  // Normal: smallest-scale axis is the thin direction of the ellipsoid.
+  // axis0/1/2 already have scale baked in, so the shortest one is the normal direction.
+  let len0 = dot(axis0, axis0);
+  let len1 = dot(axis1, axis1);
+  let len2 = dot(axis2, axis2);
+  let minLen = min(len0, min(len1, len2));
+  let normalAxis = select(select(axis2, axis1, len1 == minLen), axis0, len0 == minLen);
+  let normal = normalize(normalAxis);
+
   let viewportScale = vec2f(frame.viewport.x, frame.viewport.y) * 0.5;
   let a0 = projectAxisJacobian(axis0, centerClip) * viewportScale;
   let a1 = projectAxisJacobian(axis1, centerClip) * viewportScale;
@@ -141,7 +160,7 @@ fn project_splats(@builtin(global_invocation_id) globalId: vec3u) {
   projCache[base + 2u] = bitcast<u32>(inverseCov2d.x);
   projCache[base + 3u] = bitcast<u32>(inverseCov2d.y);
   projCache[base + 4u] = bitcast<u32>(inverseCov2d.z);
-  projCache[base + 5u] = bitcast<u32>(depthNdc); // full f32 precision
+  projCache[base + 5u] = pack2x16float(octEncode(normal)); // oct-encoded world normal
   projCache[base + 6u] = pack2x16float(vec2f(radius, sourceOpacity));
   depthBuffer[sortRank] = bitcast<u32>(depthNdc); // separate depth buffer for per-tile sort
   // Pack tile bounds as 4 bytes (supports up to 255 tiles per axis)

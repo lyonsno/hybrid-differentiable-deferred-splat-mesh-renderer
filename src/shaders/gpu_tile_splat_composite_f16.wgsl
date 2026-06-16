@@ -41,16 +41,37 @@ const PROJ_STRIDE = 8u;
 @group(1) @binding(2) var<storage, read_write> tileEntries: array<u32>;
 @group(1) @binding(3) var outputColor: texture_storage_2d<rgba16float, write>;
 @group(1) @binding(4) var<storage, read> depthBuffer: array<u32>;
+@group(1) @binding(5) var outputDepth: texture_storage_2d<r32float, write>;
+@group(1) @binding(6) var outputNormal: texture_storage_2d<r32uint, write>;
 
 const BATCH_SIZE = 64u;
 const ALPHA_THRESHOLD: f16 = 1.0h / 255.0h;
 const TRANSMITTANCE_CUTOFF: f16 = 0.001h;
 const TILE_PX = 16u;
 
+fn octDecode(oct: vec2f) -> vec3f {
+  var n = vec3f(oct.x, oct.y, 1.0 - abs(oct.x) - abs(oct.y));
+  if (n.z < 0.0) {
+    n = vec3f((1.0 - abs(n.yx)) * select(vec2f(-1.0), vec2f(1.0), n.xy >= vec2f(0.0)), n.z);
+  }
+  return normalize(n);
+}
+
+fn octEncode(n: vec3f) -> vec2f {
+  let sum = abs(n.x) + abs(n.y) + abs(n.z);
+  var p = n.xy / sum;
+  if (n.z < 0.0) {
+    p = (1.0 - abs(p.yx)) * select(vec2f(-1.0), vec2f(1.0), p >= vec2f(0.0));
+  }
+  return p;
+}
+
 // Shared memory: centers and coefficients stay f32, color goes f16
 var<workgroup> shCenter: array<vec2f, 64>;
 var<workgroup> shCoeffs: array<vec3f, 64>;  // (covXX*-0.5, covYY*-0.5, -covXY)
 var<workgroup> shColor: array<vec4<f16>, 64>;   // (r, g, b, opacity) — half precision
+var<workgroup> shNormalOct: array<vec2f, 64>; // oct-encoded world normal
+var<workgroup> shDepth: array<f32, 64>;       // depthNdc per splat
 var<workgroup> shTileRefCount: atomic<u32>;
 
 @compute @workgroup_size(8, 8, 1)
@@ -75,6 +96,14 @@ fn composite(
   var c10 = vec3<f16>(0.0h);
   var c01 = vec3<f16>(0.0h);
   var c11 = vec3<f16>(0.0h);
+
+  // G-buffer: alpha-weighted voting for depth and normal (2x2 quad)
+  var gbDepthWeighted = vec4f(0.0);
+  var gbWeightSum = vec4f(0.0);
+  var gbNorm00 = vec3f(0.0);
+  var gbNorm10 = vec3f(0.0);
+  var gbNorm01 = vec3f(0.0);
+  var gbNorm11 = vec3f(0.0);
 
   let refStart = tileOffsets[tileId];
   if (localIdx == 0u) {
@@ -108,8 +137,12 @@ fn composite(
         f16(colors[colorBase]), f16(colors[colorBase + 1u]), f16(colors[colorBase + 2u]),
         f16(opacity),
       );
+      shNormalOct[localIdx] = unpack2x16float(projCache[cacheBase + 5u]);
+      shDepth[localIdx] = bitcast<f32>(depthBuffer[sortRank]);
     } else {
       shColor[localIdx] = vec4<f16>(0.0h);
+      shNormalOct[localIdx] = vec2f(0.0);
+      shDepth[localIdx] = 1.0;
     }
 
     workgroupBarrier();
@@ -147,6 +180,20 @@ fn composite(
         c11 += splatColor.rgb * weight.w;
         T = select(T, newT, valid);
 
+        // G-buffer: alpha-weighted voting for depth and normal.
+        // Gate on minimum weight to suppress ghost splats at silhouette edges.
+        let w32 = vec4f(weight);
+        let splatDepth = shDepth[i];
+        let splatNormal = octDecode(shNormalOct[i]);
+        let gbValid = w32 > vec4f(0.01);
+        let gbWeight = select(vec4f(0.0), w32, gbValid);
+        gbDepthWeighted += gbWeight * vec4f(splatDepth);
+        gbWeightSum += gbWeight;
+        gbNorm00 += splatNormal * gbWeight.x;
+        gbNorm10 += splatNormal * gbWeight.y;
+        gbNorm01 += splatNormal * gbWeight.z;
+        gbNorm11 += splatNormal * gbWeight.w;
+
         if (all(T < vec4<f16>(TRANSMITTANCE_CUTOFF))) {
           threadDone = true;
           break;
@@ -157,20 +204,40 @@ fn composite(
     workgroupBarrier();
   }
 
+  // Finalize G-buffer: normalize weighted votes
+  let safeWeight = max(gbWeightSum, vec4f(0.0001));
+  let gbDepth = gbDepthWeighted / safeWeight;
+  let finalNorm00 = octEncode(normalize(gbNorm00 + vec3f(0.0, 0.0, 0.0001)));
+  let finalNorm10 = octEncode(normalize(gbNorm10 + vec3f(0.0, 0.0, 0.0001)));
+  let finalNorm01 = octEncode(normalize(gbNorm01 + vec3f(0.0, 0.0, 0.0001)));
+  let finalNorm11 = octEncode(normalize(gbNorm11 + vec3f(0.0, 0.0, 0.0001)));
+
   // Write results — promote to f32 for textureStore
   let bgColor = vec3<f16>(0.02h, 0.02h, 0.04h);
   let outputSize = textureDimensions(outputColor);
 
   if (basePixel.x < outputSize.x && basePixel.y < outputSize.y) {
-    textureStore(outputColor, vec2i(basePixel), vec4f(vec3f(c00 + T.x * bgColor), 1.0));
+    let px = vec2i(basePixel);
+    textureStore(outputColor, px, vec4f(vec3f(c00 + T.x * bgColor), 1.0));
+    textureStore(outputDepth, px, vec4f(gbDepth.x, 0.0, 0.0, 0.0));
+    textureStore(outputNormal, px, vec4u(pack2x16float(finalNorm00), 0u, 0u, 0u));
   }
   if (basePixel.x + 1u < outputSize.x && basePixel.y < outputSize.y) {
-    textureStore(outputColor, vec2i(vec2u(basePixel.x + 1u, basePixel.y)), vec4f(vec3f(c10 + T.y * bgColor), 1.0));
+    let px = vec2i(vec2u(basePixel.x + 1u, basePixel.y));
+    textureStore(outputColor, px, vec4f(vec3f(c10 + T.y * bgColor), 1.0));
+    textureStore(outputDepth, px, vec4f(gbDepth.y, 0.0, 0.0, 0.0));
+    textureStore(outputNormal, px, vec4u(pack2x16float(finalNorm10), 0u, 0u, 0u));
   }
   if (basePixel.x < outputSize.x && basePixel.y + 1u < outputSize.y) {
-    textureStore(outputColor, vec2i(vec2u(basePixel.x, basePixel.y + 1u)), vec4f(vec3f(c01 + T.z * bgColor), 1.0));
+    let px = vec2i(vec2u(basePixel.x, basePixel.y + 1u));
+    textureStore(outputColor, px, vec4f(vec3f(c01 + T.z * bgColor), 1.0));
+    textureStore(outputDepth, px, vec4f(gbDepth.z, 0.0, 0.0, 0.0));
+    textureStore(outputNormal, px, vec4u(pack2x16float(finalNorm01), 0u, 0u, 0u));
   }
   if (basePixel.x + 1u < outputSize.x && basePixel.y + 1u < outputSize.y) {
-    textureStore(outputColor, vec2i(vec2u(basePixel.x + 1u, basePixel.y + 1u)), vec4f(vec3f(c11 + T.w * bgColor), 1.0));
+    let px = vec2i(vec2u(basePixel.x + 1u, basePixel.y + 1u));
+    textureStore(outputColor, px, vec4f(vec3f(c11 + T.w * bgColor), 1.0));
+    textureStore(outputDepth, px, vec4f(gbDepth.w, 0.0, 0.0, 0.0));
+    textureStore(outputNormal, px, vec4u(pack2x16float(finalNorm11), 0u, 0u, 0u));
   }
 }

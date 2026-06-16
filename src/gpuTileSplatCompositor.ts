@@ -185,7 +185,7 @@ export function createTileSplatCompositor(
     ],
   });
 
-  // @group(1): tile data (3 storage + 1 storage texture + 1 read-only depth)
+  // @group(1): tile data (3 storage + 3 storage textures + 1 read-only depth)
   const tileBindGroupLayout = device.createBindGroupLayout({
     label: "tile_splat_tile_bgl",
     entries: [
@@ -194,6 +194,8 @@ export function createTileSplatCompositor(
       { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
       { binding: 3, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba16float" } },
       { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // depthBuffer
+      { binding: 5, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "r32float" } }, // G-buffer depth
+      { binding: 6, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "r32uint" } }, // G-buffer normal (oct, pack2x16float)
     ],
   });
 
@@ -653,6 +655,7 @@ export function createTileSplatBindGroups(
     sortedIndexBuffer: GPUBuffer;
   },
   outputTexture: GPUTexture,
+  gbufferTextures: { depth: GPUTexture; normal: GPUTexture },
 ): TileSplatCompositorBindGroups {
   // Project pass: reads raw splat data, writes projection cache
   const projectBindGroup = device.createBindGroup({
@@ -691,6 +694,8 @@ export function createTileSplatBindGroups(
       { binding: 2, resource: { buffer: resources.tileRefBuffer } },
       { binding: 3, resource: outputTexture.createView() },
       { binding: 4, resource: { buffer: resources.depthBuffer } },
+      { binding: 5, resource: gbufferTextures.depth.createView() },
+      { binding: 6, resource: gbufferTextures.normal.createView() },
     ],
   });
 
@@ -794,6 +799,8 @@ export function createTileSplatBindGroups(
       { binding: 2, resource: { buffer: resources.tileRefSortedBuffer } },
       { binding: 3, resource: outputTexture.createView() },
       { binding: 4, resource: { buffer: resources.depthBuffer } },
+      { binding: 5, resource: gbufferTextures.depth.createView() },
+      { binding: 6, resource: gbufferTextures.normal.createView() },
     ],
   });
 
