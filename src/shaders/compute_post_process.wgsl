@@ -258,7 +258,7 @@ fn dof_circle_of_confusion(coord: vec2i, size: vec2u) -> f32 {
   let maxR = dof_max_radius();
 
   // Near CoC: ramps from 0 at focusDepth to maxR at nearPlane
-  let nearDistance = smooth_ramp(focusDepth, nearPlane, depth);
+  let nearDistance = 1.0 - smooth_ramp(nearPlane, focusDepth, depth);
   let nearCoc = nearDistance * aperture * maxR * clamp(settings.dofNearBlur, 0.0, 1.0);
 
   // Far CoC: ramps from 0 at focusDepth to maxR at farPlane
@@ -283,7 +283,7 @@ fn dof_signed_coc(coord: vec2i, size: vec2u) -> f32 {
   let aperture = clamp(settings.dofStrength, 0.0, 4.0);
   let maxR = dof_max_radius();
 
-  let nearDistance = smooth_ramp(focusDepth, nearPlane, depth);
+  let nearDistance = 1.0 - smooth_ramp(nearPlane, focusDepth, depth);
   let nearCoc = nearDistance * aperture * maxR * clamp(settings.dofNearBlur, 0.0, 1.0);
   let farDistance = smooth_ramp(focusDepth, farPlane, depth);
   let farCoc = farDistance * aperture * maxR * clamp(settings.dofFarBlur, 0.0, 1.0);
@@ -303,7 +303,7 @@ fn dof_near_weight(coord: vec2i, size: vec2u) -> f32 {
   let depth = clamp(aux.r, 0.0, 1.0);
   let focusDepth = clamp(settings.dofFocusDepth, 0.0, 1.0);
   let nearPlane = clamp(settings.dofNearPlaneDepth, 0.0, focusDepth);
-  let nearDistance = smooth_ramp(focusDepth, nearPlane, depth);
+  let nearDistance = 1.0 - smooth_ramp(nearPlane, focusDepth, depth);
   return select(0.0, nearDistance, settings.dofNearEnabled != 0u);
 }
 

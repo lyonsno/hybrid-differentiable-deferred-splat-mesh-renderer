@@ -285,7 +285,7 @@ test("compute renderer exposes two-layer near/far DOF with dynamic kernel radius
   assert.match(postProcessShader, /fn dof_debug_mask/);
   assert.match(postProcessShader, /fn load_dof_wide_blur_bilinear/);
   assert.match(postProcessShader, /c00\.rgb \* c00\.a \* w00/);
-  assert.match(postProcessShader, /smooth_ramp\(focusDepth,\s*nearPlane,\s*depth\)/);
+  assert.match(postProcessShader, /1\.0 - smooth_ramp\(nearPlane,\s*focusDepth,\s*depth\)/);
   assert.match(postProcessShader, /smooth_ramp\(focusDepth,\s*farPlane,\s*depth\)/);
   assert.match(postProcessShader, /settings\.dofNearEnabled != 0u/);
   assert.match(postProcessShader, /settings\.dofFarEnabled != 0u/);
@@ -335,7 +335,7 @@ test("DOF controls use occupied-depth plane precision and settings persist", () 
 
   // Two-layer near/far blur architecture
   assert.match(postProcessShader, /fn smooth_ramp/);
-  assert.match(postProcessShader, /smooth_ramp\(focusDepth,\s*nearPlane,\s*depth\)/);
+  assert.match(postProcessShader, /1\.0 - smooth_ramp\(nearPlane,\s*focusDepth,\s*depth\)/);
   assert.match(postProcessShader, /smooth_ramp\(focusDepth,\s*farPlane,\s*depth\)/);
   assert.match(postProcessShader, /fn dof_downsample_tap/);
   assert.match(postProcessShader, /fn dof_blur_sample_dynamic/);
