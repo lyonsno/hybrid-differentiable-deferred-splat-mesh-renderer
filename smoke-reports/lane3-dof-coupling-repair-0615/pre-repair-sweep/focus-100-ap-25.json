@@ -1,0 +1,45 @@
+{
+  "state": {
+    "postProcess": {
+      "enabled": true,
+      "fxaaEnabled": true,
+      "casEnabled": true,
+      "sampleRadius": 2,
+      "sampleCount": 8,
+      "casSharpness": 0.5249999999999999,
+      "debugView": "final",
+      "dofEnabled": true,
+      "dofFocusDepth": 1,
+      "dofStrength": 1,
+      "dofRadius": 8
+    },
+    "postProcessAux": {
+      "depthConfidence": "rgba16float",
+      "channels": {
+        "r": "alpha-weighted-depth-ndc",
+        "g": "coverage-confidence",
+        "b": "normalized-tile-support",
+        "a": "valid"
+      }
+    }
+  },
+  "analysis": {
+    "width": 1280,
+    "height": 720,
+    "totalPixels": 921600,
+    "backgroundColor": {
+      "r": 5,
+      "g": 5,
+      "b": 10,
+      "a": 255
+    },
+    "distinctColorCount": 18111,
+    "changedPixels": 36009,
+    "changedPixelRatio": 0.039072265625,
+    "averageDelta": 3.329696903935268,
+    "pixelDeltaThreshold": 12,
+    "perceptualFingerprint": "01010101010101000000000000000000000000000000000000000003030000000000000607000000000000000000000000000000000000000000000000000000",
+    "bridgeBlockRatio": 0.056179775280898875,
+    "nonblank": true
+  }
+}

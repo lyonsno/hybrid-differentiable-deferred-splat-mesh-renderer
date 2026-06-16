@@ -13,7 +13,6 @@ export type FxaaCasDebugView =
   | "dof-mask"
   | "dof-layers"
   | "dof-near-mask"
-  | "dof-mid-mask"
   | "dof-far-mask"
   | "dof-downsample"
   | "dof-blur-h"
@@ -34,8 +33,7 @@ const FXAA_CAS_DEBUG_VIEW_CODES: Record<FxaaCasDebugView, number> = {
   "dof-blur-hv": 10,
   "dof-layers": 11,
   "dof-near-mask": 12,
-  "dof-mid-mask": 13,
-  "dof-far-mask": 14,
+  "dof-far-mask": 13,
 };
 
 export interface FxaaCasPostProcessSettings {
@@ -50,15 +48,11 @@ export interface FxaaCasPostProcessSettings {
   readonly dofFocusDepth: number;
   readonly dofStrength: number;
   readonly dofRadius: number;
-  readonly dofLocalEnabled: boolean;
-  readonly dofWideEnabled: boolean;
   readonly dofNearEnabled: boolean;
-  readonly dofMidEnabled: boolean;
   readonly dofFarEnabled: boolean;
   readonly dofNearPlaneDepth: number;
   readonly dofFarPlaneDepth: number;
   readonly dofNearBlur: number;
-  readonly dofMidBlur: number;
   readonly dofFarBlur: number;
 }
 
@@ -134,15 +128,11 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
     dofFocusDepth: 0.975,
     dofStrength: POST_PROCESS_MAX_DOF_STRENGTH * 0.35,
     dofRadius: 4,
-    dofLocalEnabled: true,
-    dofWideEnabled: true,
     dofNearEnabled: true,
-    dofMidEnabled: true,
     dofFarEnabled: true,
     dofNearPlaneDepth: 0.995,
     dofFarPlaneDepth: 0.9995,
     dofNearBlur: 1,
-    dofMidBlur: 0.2,
     dofFarBlur: 1,
   };
   const pipeline = device.createComputePipeline({
@@ -213,16 +203,12 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
       f32[8] = clampNumber(settings.dofFocusDepth, 0, 1);
       f32[9] = clampNumber(settings.dofStrength, 0, POST_PROCESS_MAX_DOF_STRENGTH);
       u32[10] = clampInteger(settings.dofRadius, 1, 128);
-      u32[11] = settings.dofLocalEnabled ? 1 : 0;
-      u32[12] = settings.dofWideEnabled ? 1 : 0;
-      u32[13] = settings.dofNearEnabled ? 1 : 0;
-      u32[14] = settings.dofMidEnabled ? 1 : 0;
-      u32[15] = settings.dofFarEnabled ? 1 : 0;
-      f32[16] = clampNumber(settings.dofNearPlaneDepth, 0, 1);
-      f32[17] = clampNumber(settings.dofFarPlaneDepth, 0, 1);
-      f32[18] = clampNumber(settings.dofNearBlur, 0, 1);
-      f32[19] = clampNumber(settings.dofMidBlur, 0, 1);
-      f32[20] = clampNumber(settings.dofFarBlur, 0, 1);
+      u32[11] = settings.dofNearEnabled ? 1 : 0;
+      u32[12] = settings.dofFarEnabled ? 1 : 0;
+      f32[13] = clampNumber(settings.dofNearPlaneDepth, 0, 1);
+      f32[14] = clampNumber(settings.dofFarPlaneDepth, 0, 1);
+      f32[15] = clampNumber(settings.dofNearBlur, 0, 1);
+      f32[16] = clampNumber(settings.dofFarBlur, 0, 1);
       queue.writeBuffer(settingsBuffer, 0, buffer);
     },
     encode(
@@ -243,7 +229,7 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
       const debugDofBlurVOnly = debugView === "dof-blur-v-only";
       const debugDofBlurHv = debugView === "dof-blur-hv";
       const debugWidePass = debugDofDownsample || debugDofBlurH || debugDofBlurVOnly || debugDofBlurHv;
-      const shouldRunWidePass = lastSettings.dofWideEnabled || debugWidePass;
+      const shouldRunWidePass = lastSettings.dofEnabled || debugWidePass;
       const shouldRunHorizontalBlur = shouldRunWidePass && !debugDofDownsample && !debugDofBlurVOnly;
       const shouldRunVerticalOnlyBlur = debugDofBlurVOnly;
       const shouldRunVerticalBlur = shouldRunWidePass && !debugDofDownsample && !debugDofBlurH && !debugDofBlurVOnly;

@@ -1,0 +1,152 @@
+{
+  "url": "http://127.0.0.1:5177/?renderer=compute&asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-close",
+  "controlSnapshot": {
+    "postprocess-enabled": {
+      "type": "checkbox",
+      "value": "on",
+      "checked": true,
+      "min": "",
+      "max": ""
+    },
+    "postprocess-fxaa-enabled": {
+      "type": "checkbox",
+      "value": "on",
+      "checked": true,
+      "min": "",
+      "max": ""
+    },
+    "postprocess-cas-enabled": {
+      "type": "checkbox",
+      "value": "on",
+      "checked": true,
+      "min": "",
+      "max": ""
+    },
+    "postprocess-samples": {
+      "type": "select-one",
+      "value": "8"
+    },
+    "postprocess-radius": {
+      "type": "select-one",
+      "value": "2"
+    },
+    "postprocess-sharpness": {
+      "type": "range",
+      "value": "35",
+      "checked": false,
+      "min": "0",
+      "max": "100"
+    },
+    "postprocess-dof-enabled": {
+      "type": "checkbox",
+      "value": "on",
+      "checked": false,
+      "min": "",
+      "max": ""
+    },
+    "postprocess-dof-focus": {
+      "type": "range",
+      "value": "50",
+      "checked": false,
+      "min": "0",
+      "max": "100"
+    },
+    "postprocess-dof-strength": {
+      "type": "range",
+      "value": "35",
+      "checked": false,
+      "min": "0",
+      "max": "100"
+    },
+    "postprocess-dof-radius": {
+      "type": "select-one",
+      "value": "4"
+    },
+    "postprocess-debug-view": {
+      "type": "select-one",
+      "value": "final"
+    },
+    "postprocess-temporal-mode": {
+      "type": "select-one",
+      "value": "idle"
+    },
+    "postprocess-temporal-frames": {
+      "type": "select-one",
+      "value": "8"
+    },
+    "postprocess-temporal-view": {
+      "type": "select-one",
+      "value": "final"
+    }
+  },
+  "errors": [],
+  "captures": {
+    "off": {
+      "path": "smoke-reports/lane3-dof-multires-0615/dof-comparison/dof-off.png",
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 44900,
+        "changedPixels": 182485,
+        "changedPixelRatio": 0.19800889756944445,
+        "averageDelta": 14.901019241902395,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "0000000000000000000000000000000000000001000000000000010b070100000000050b0c07000000010d0e0a08040000010204040302000000000000000000",
+        "bridgeBlockRatio": 0.4563106796116505,
+        "nonblank": true
+      }
+    },
+    "on": {
+      "path": "smoke-reports/lane3-dof-multires-0615/dof-comparison/dof-on-radius64-strength100.png",
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 39897,
+        "changedPixels": 182538,
+        "changedPixelRatio": 0.19806640625,
+        "averageDelta": 14.802676866323834,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "0000000000000000000000000000000000000001000000000000010a070100000000050b0c07000000010d0e0a08040000010204040302000000000000000000",
+        "bridgeBlockRatio": 0.5034674063800277,
+        "nonblank": true
+      }
+    },
+    "mask": {
+      "path": "smoke-reports/lane3-dof-multires-0615/dof-comparison/dof-mask-radius64-strength100.png",
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 255
+        },
+        "distinctColorCount": 136,
+        "changedPixels": 224485,
+        "changedPixelRatio": 0.2435818142361111,
+        "averageDelta": 24.721107855902776,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "0000000000000000000000000000000000000001000000000000010f0b01000000000710100a000000030e0f0f0e07000003070a0c0c07000000000001010000",
+        "bridgeBlockRatio": 0.6894977168949772,
+        "nonblank": true
+      }
+    }
+  },
+  "diff": null
+}

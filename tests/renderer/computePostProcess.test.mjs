@@ -125,7 +125,7 @@ test("compute renderer exposes idle temporal resolve controls and evidence", () 
   assert.match(shader, /textureLoad\(historyFrame/);
 });
 
-test("compute renderer exposes auxiliary depth-confidence guided DOF", () => {
+test("compute renderer exposes two-layer near/far DOF with dynamic kernel radius", () => {
   const html = readFileSync(new URL("../../index.html", import.meta.url), "utf8");
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const compositorSource = readFileSync(new URL("../../src/gpuTileSplatCompositor.ts", import.meta.url), "utf8");
@@ -133,19 +133,20 @@ test("compute renderer exposes auxiliary depth-confidence guided DOF", () => {
   const postProcessSource = readFileSync(new URL("../../src/computePostProcess.ts", import.meta.url), "utf8");
   const postProcessShader = readFileSync(new URL("../../src/shaders/compute_post_process.wgsl", import.meta.url), "utf8");
 
+  // HTML controls: near/far only, no mid, no local/wide
   assert.match(html, /id="postprocess-dof-enabled"/);
-  assert.match(html, /id="postprocess-dof-local-enabled"/);
-  assert.match(html, /id="postprocess-dof-wide-enabled"/);
   assert.match(html, /id="postprocess-dof-near-enabled"/);
-  assert.match(html, /id="postprocess-dof-mid-enabled"/);
   assert.match(html, /id="postprocess-dof-far-enabled"/);
+  assert.doesNotMatch(html, /id="postprocess-dof-mid-enabled"/);
+  assert.doesNotMatch(html, /id="postprocess-dof-local-enabled"/);
+  assert.doesNotMatch(html, /id="postprocess-dof-wide-enabled"/);
   assert.match(html, /id="postprocess-dof-near-plane"/);
   assert.match(html, /id="postprocess-dof-focus"/);
-  assert.match(html, /<span>Mid plane<\/span>/);
+  assert.match(html, /<span>Focus<\/span>/);
   assert.match(html, /id="postprocess-dof-far-plane"/);
   assert.match(html, /id="postprocess-dof-strength"/);
   assert.match(html, /id="postprocess-dof-near-blur"/);
-  assert.match(html, /id="postprocess-dof-mid-blur"/);
+  assert.doesNotMatch(html, /id="postprocess-dof-mid-blur"/);
   assert.match(html, /id="postprocess-dof-far-blur"/);
   assert.match(html, /id="postprocess-dof-radius"/);
   assert.match(html, /<option value="64">64 px<\/option>/);
@@ -156,14 +157,14 @@ test("compute renderer exposes auxiliary depth-confidence guided DOF", () => {
   assert.match(html, /value="dof-mask"/);
   assert.match(html, /value="dof-layers"/);
   assert.match(html, /value="dof-near-mask"/);
-  assert.match(html, /value="dof-mid-mask"/);
+  assert.doesNotMatch(html, /value="dof-mid-mask"/);
   assert.match(html, /value="dof-far-mask"/);
   assert.match(html, /value="dof-downsample"/);
   assert.match(html, /value="dof-blur-h"/);
   assert.match(html, /value="dof-blur-v-only"/);
   assert.match(html, /value="dof-blur-hv"/);
-  assert.doesNotMatch(html, /<option value="dof-blur-v">DOF blur V<\/option>/);
 
+  // main.ts: aux/dof textures and settings
   assert.match(mainSource, /auxTexture:\s*GPUTexture/);
   assert.match(mainSource, /auxView:\s*GPUTextureView/);
   assert.match(mainSource, /dofLowResTexture:\s*GPUTexture/);
@@ -174,33 +175,30 @@ test("compute renderer exposes auxiliary depth-confidence guided DOF", () => {
   assert.match(mainSource, /createPostProcessDofTexture\([\s\S]*"compute_compositor_dof_low_res"/);
   assert.match(mainSource, /createPostProcessDofTexture\([\s\S]*"compute_compositor_dof_blur_scratch"/);
   assert.match(mainSource, /computeAuxTexture/);
-  assert.match(mainSource, /createTileSplatBindGroups\([\s\S]*computeOutputTexture,\s*computeAuxTexture/);
   assert.match(mainSource, /cc\.postProcess\.encode\(\s*activeEncoder,\s*cc\.outputView,\s*cc\.auxView,\s*cc\.postProcessedView,\s*cc\.dofLowResView,\s*cc\.dofBlurScratchView/);
   assert.match(mainSource, /postProcessDofFocusFromPercent/);
   assert.match(mainSource, /POST_PROCESS_DOF_PLANE_PERCENT_MIN\s*=\s*90/);
   assert.match(mainSource, /POST_PROCESS_DOF_PLANE_PERCENT_MAX\s*=\s*100/);
   assert.match(mainSource, /clampNumber\(percent,\s*POST_PROCESS_DOF_PLANE_PERCENT_MIN,\s*POST_PROCESS_DOF_PLANE_PERCENT_MAX\) \/ 100/);
-  assert.doesNotMatch(mainSource, /function postProcessDofFocusFromPercent\([\s\S]*?return clampNumber\(percent,\s*0,\s*100\) \/ 100;\s*\}/);
   assert.match(mainSource, /postProcessDofStrengthFromPercent/);
   assert.match(mainSource, /dofEnabled:\s*controls\.dofEnabled/);
-  assert.match(mainSource, /dofLocalEnabled:\s*controls\.dofLocalEnabled/);
-  assert.match(mainSource, /dofWideEnabled:\s*controls\.dofWideEnabled/);
   assert.match(mainSource, /dofNearEnabled:\s*controls\.dofNearEnabled/);
-  assert.match(mainSource, /dofMidEnabled:\s*controls\.dofMidEnabled/);
   assert.match(mainSource, /dofFarEnabled:\s*controls\.dofFarEnabled/);
+  assert.doesNotMatch(mainSource, /dofMidEnabled/);
+  assert.doesNotMatch(mainSource, /dofLocalEnabled/);
+  assert.doesNotMatch(mainSource, /dofWideEnabled/);
   assert.match(mainSource, /dofNearPlaneDepth:\s*postProcessDofPlaneFromPercent\(Number\(controls\.dofNearPlane/);
   assert.match(mainSource, /dofFocusDepth:\s*postProcessDofFocusFromPercent/);
   assert.match(mainSource, /dofFarPlaneDepth:\s*postProcessDofPlaneFromPercent\(Number\(controls\.dofFarPlane/);
   assert.match(mainSource, /dofStrength:\s*postProcessDofStrengthFromPercent/);
   assert.match(mainSource, /dofNearBlur:\s*postProcessDofLayerBlurFromPercent\(Number\(controls\.dofNearBlur/);
-  assert.match(mainSource, /dofMidBlur:\s*postProcessDofLayerBlurFromPercent\(Number\(controls\.dofMidBlur/);
   assert.match(mainSource, /dofFarBlur:\s*postProcessDofLayerBlurFromPercent\(Number\(controls\.dofFarBlur/);
   assert.match(mainSource, /dofRadius:\s*clampInteger\(Number\(controls\.dofRadius\?\.value \?\? 8\),\s*1,\s*128\)/);
   assert.match(mainSource, /postProcessSettings\.dofEnabled \? 1 : 0/);
   assert.match(mainSource, /postProcessSettings\.dofFocusDepth\.toFixed\(5\)/);
-  assert.match(mainSource, /postProcessAux:\s*postProcessAux/);
   assert.match(mainSource, /depthConfidence:\s*"rgba16float"/);
 
+  // Compositor: aux output
   assert.match(compositorSource, /outputAuxTexture:\s*GPUTexture/);
   assert.match(compositorSource, /binding:\s*4[\s\S]*storageTexture:\s*\{\s*access:\s*"write-only",\s*format:\s*"rgba16float"\s*\}/);
   assert.match(compositorSource, /outputAuxTexture\.createView\(\)/);
@@ -209,20 +207,21 @@ test("compute renderer exposes auxiliary depth-confidence guided DOF", () => {
   assert.match(compositorShader, /coverageConfidence/);
   assert.match(compositorShader, /textureStore\(outputAux/);
 
+  // PostProcess TS: two-layer settings, no mid
   assert.match(postProcessSource, /dofEnabled:\s*boolean/);
   assert.match(postProcessSource, /dofFocusDepth:\s*number/);
   assert.match(postProcessSource, /dofStrength:\s*number/);
   assert.match(postProcessSource, /dofRadius:\s*number/);
-  assert.match(postProcessSource, /dofLocalEnabled:\s*boolean/);
-  assert.match(postProcessSource, /dofWideEnabled:\s*boolean/);
   assert.match(postProcessSource, /dofNearEnabled:\s*boolean/);
-  assert.match(postProcessSource, /dofMidEnabled:\s*boolean/);
   assert.match(postProcessSource, /dofFarEnabled:\s*boolean/);
+  assert.doesNotMatch(postProcessSource, /dofMidEnabled/);
+  assert.doesNotMatch(postProcessSource, /dofLocalEnabled/);
+  assert.doesNotMatch(postProcessSource, /dofWideEnabled/);
   assert.match(postProcessSource, /dofNearPlaneDepth:\s*number/);
   assert.match(postProcessSource, /dofFarPlaneDepth:\s*number/);
   assert.match(postProcessSource, /dofNearBlur:\s*number/);
-  assert.match(postProcessSource, /dofMidBlur:\s*number/);
   assert.match(postProcessSource, /dofFarBlur:\s*number/);
+  assert.doesNotMatch(postProcessSource, /dofMidBlur/);
   assert.match(postProcessSource, /clampInteger\(settings\.dofRadius,\s*1,\s*128\)/);
   assert.match(postProcessSource, /lastSettings:\s*FxaaCasPostProcessSettings/);
   assert.match(postProcessSource, /debugView === "dof-downsample"/);
@@ -247,6 +246,7 @@ test("compute renderer exposes auxiliary depth-confidence guided DOF", () => {
   assert.match(postProcessSource, /binding:\s*4[\s\S]*texture:\s*\{\s*sampleType:\s*"unfilterable-float"\s*\}/);
   assert.match(postProcessSource, /size:\s*128/);
 
+  // WGSL shader: two-layer DOF with dynamic kernel
   assert.match(postProcessShader, /@group\(0\) @binding\(3\) var postProcessAux/);
   assert.match(postProcessShader, /@group\(0\) @binding\(4\) var postProcessDofBlur/);
   assert.match(postProcessShader, /textureLoad\(postProcessInput/);
@@ -255,65 +255,60 @@ test("compute renderer exposes auxiliary depth-confidence guided DOF", () => {
   assert.match(postProcessShader, /dofFocusDepth:\s*f32/);
   assert.match(postProcessShader, /dofStrength:\s*f32/);
   assert.match(postProcessShader, /dofRadius:\s*u32/);
-  assert.match(postProcessShader, /dofLocalEnabled:\s*u32/);
-  assert.match(postProcessShader, /dofWideEnabled:\s*u32/);
   assert.match(postProcessShader, /dofNearEnabled:\s*u32/);
-  assert.match(postProcessShader, /dofMidEnabled:\s*u32/);
   assert.match(postProcessShader, /dofFarEnabled:\s*u32/);
+  assert.doesNotMatch(postProcessShader, /dofMidEnabled/);
+  assert.doesNotMatch(postProcessShader, /dofLocalEnabled/);
+  assert.doesNotMatch(postProcessShader, /dofWideEnabled/);
   assert.match(postProcessShader, /dofNearPlaneDepth:\s*f32/);
   assert.match(postProcessShader, /dofFarPlaneDepth:\s*f32/);
   assert.match(postProcessShader, /dofNearBlur:\s*f32/);
-  assert.match(postProcessShader, /dofMidBlur:\s*f32/);
   assert.match(postProcessShader, /dofFarBlur:\s*f32/);
+  assert.doesNotMatch(postProcessShader, /dofMidBlur/);
   assert.match(postProcessShader, /DEBUG_VIEW_DEPTH/);
   assert.match(postProcessShader, /DEBUG_VIEW_CONFIDENCE/);
   assert.match(postProcessShader, /DEBUG_VIEW_DOF_MASK/);
   assert.match(postProcessShader, /DEBUG_VIEW_DOF_LAYERS/);
   assert.match(postProcessShader, /DEBUG_VIEW_DOF_NEAR_MASK/);
-  assert.match(postProcessShader, /DEBUG_VIEW_DOF_MID_MASK/);
+  assert.doesNotMatch(postProcessShader, /DEBUG_VIEW_DOF_MID_MASK/);
   assert.match(postProcessShader, /DEBUG_VIEW_DOF_FAR_MASK/);
   assert.match(postProcessShader, /DEBUG_VIEW_DOF_DOWNSAMPLE/);
   assert.match(postProcessShader, /DEBUG_VIEW_DOF_BLUR_H/);
   assert.match(postProcessShader, /DEBUG_VIEW_DOF_BLUR_V_ONLY/);
   assert.match(postProcessShader, /DEBUG_VIEW_DOF_BLUR_HV/);
   assert.match(postProcessShader, /fn dof_circle_of_confusion/);
-  assert.match(postProcessShader, /POST_PROCESS_DOF_FOCUS_DEAD_ZONE\s*=\s*0\.005/);
-  assert.match(postProcessShader, /POST_PROCESS_DOF_COC_SCALE\s*=\s*4\.0/);
+  assert.match(postProcessShader, /fn dof_signed_coc/);
+  assert.match(postProcessShader, /fn dof_near_weight/);
+  assert.match(postProcessShader, /fn dof_far_weight/);
   assert.match(postProcessShader, /POST_PROCESS_DOF_DEBUG_MASK_GAMMA\s*=\s*0\.5/);
   assert.match(postProcessShader, /clamp\(settings\.dofRadius,\s*1u,\s*128u\)/);
-  assert.match(postProcessShader, /focusDistance \* POST_PROCESS_DOF_COC_SCALE \* settings\.dofStrength/);
   assert.match(postProcessShader, /fn dof_debug_mask/);
-  assert.match(postProcessShader, /fn dof_layer_weights/);
-  assert.match(postProcessShader, /fn dof_layer_plane_window/);
-  assert.match(postProcessShader, /fn dof_enabled_layer_weights/);
-  assert.match(postProcessShader, /fn dof_layer_debug_rgb/);
   assert.match(postProcessShader, /fn load_dof_wide_blur_bilinear/);
   assert.match(postProcessShader, /c00\.rgb \* c00\.a \* w00/);
-  assert.match(postProcessShader, /signedDistance = depth - focusDepth/);
+  assert.match(postProcessShader, /smooth_ramp\(focusDepth,\s*nearPlane,\s*depth\)/);
+  assert.match(postProcessShader, /smooth_ramp\(focusDepth,\s*farPlane,\s*depth\)/);
   assert.match(postProcessShader, /settings\.dofNearEnabled != 0u/);
-  assert.match(postProcessShader, /settings\.dofMidEnabled != 0u/);
   assert.match(postProcessShader, /settings\.dofFarEnabled != 0u/);
   assert.match(postProcessShader, /settings\.dofNearBlur/);
-  assert.match(postProcessShader, /settings\.dofMidBlur/);
   assert.match(postProcessShader, /settings\.dofFarBlur/);
-  assert.match(postProcessShader, /vec4f\(vec3f\(dof_debug_mask\(dofMask\)\),\s*1\.0\)/);
-  assert.doesNotMatch(postProcessShader, /abs\(depth - focusDepth\) - 0\.025/);
   assert.match(postProcessShader, /fn depth_confidence_guided_dof/);
   assert.match(postProcessShader, /fn load_dof_wide_blur/);
   assert.match(postProcessShader, /fn dof_downsample/);
   assert.match(postProcessShader, /fn dof_blur_horizontal/);
   assert.match(postProcessShader, /fn dof_blur_vertical/);
-  assert.match(postProcessShader, /const POST_PROCESS_DOF_BLUR_TAPS = 17i/);
-  assert.match(postProcessShader, /for \(var tap = -POST_PROCESS_DOF_BLUR_HALF_TAPS/);
-  assert.match(postProcessShader, /exp\(-0\.5 \* normalizedOffset \* normalizedOffset/);
-  assert.match(postProcessShader, /wideBlurWeight \* nearLayer/);
-  assert.match(postProcessShader, /settings\.dofLocalEnabled != 0u/);
-  assert.match(postProcessShader, /settings\.dofWideEnabled != 0u/);
+  // Dynamic kernel: per-pixel radius function and dynamic blur sample
+  assert.match(postProcessShader, /fn dof_blur_radius_for_pixel/);
+  assert.match(postProcessShader, /fn dof_blur_sample_dynamic/);
+  assert.match(postProcessShader, /POST_PROCESS_DOF_BLUR_MAX_TAPS\s*=\s*17i/);
+  assert.match(postProcessShader, /POST_PROCESS_DOF_BLUR_MAX_HALF_TAPS\s*=\s*8i/);
+  // No blend-with-sharp: uses smooth_ramp transition, not mix(sharp, blurred, cocNormalized)
+  assert.match(postProcessShader, /smooth_ramp\(transitionStart,\s*transitionEnd,\s*coc\)/);
+  assert.doesNotMatch(postProcessShader, /mix\(color,\s*blurred,\s*dofBlend\)/);
   assert.match(postProcessShader, /settings\.debugView == DEBUG_VIEW_DOF_DOWNSAMPLE/);
   assert.match(postProcessShader, /settings\.debugView == DEBUG_VIEW_DOF_BLUR_V_ONLY/);
 });
 
-test("DOF controls persist, expose occupied-depth plane precision, and keep wide blur near-only", () => {
+test("DOF controls use occupied-depth plane precision and settings persist", () => {
   const html = readFileSync(new URL("../../index.html", import.meta.url), "utf8");
   const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const postProcessShader = readFileSync(new URL("../../src/shaders/compute_post_process.wgsl", import.meta.url), "utf8");
@@ -338,25 +333,12 @@ test("DOF controls persist, expose occupied-depth plane precision, and keep wide
   assert.match(mainSource, /restorePostProcessControlState\(controls\)/);
   assert.match(mainSource, /persistPostProcessControlState\(controls\)/);
 
+  // Two-layer near/far blur architecture
   assert.match(postProcessShader, /fn smooth_ramp/);
-  assert.match(postProcessShader, /nearBase = 1\.0 - smooth_ramp\(nearPlane,\s*focusDepth,\s*depth\)/);
-  assert.match(postProcessShader, /farBase = smooth_ramp\(focusDepth,\s*farPlane,\s*depth\)/);
+  assert.match(postProcessShader, /smooth_ramp\(focusDepth,\s*nearPlane,\s*depth\)/);
+  assert.match(postProcessShader, /smooth_ramp\(focusDepth,\s*farPlane,\s*depth\)/);
   assert.match(postProcessShader, /fn dof_downsample_tap/);
-  assert.match(postProcessShader, /load_aux\(sampleCoord,\s*inputSize\)/);
-  assert.match(postProcessShader, /textureStore\(postProcessOutput,\s*coord,\s*vec4f\(downsampled\.rgb,\s*downsampled\.a\)\)/);
-  assert.match(postProcessShader, /fn dof_blur_sample\(coord: vec2i,\s*size: vec2u,\s*axis: vec2i\) -> vec4f/);
-  assert.match(postProcessShader, /sample\.rgb \* sample\.a \* weight/);
+  assert.match(postProcessShader, /fn dof_blur_sample_dynamic/);
   assert.match(postProcessShader, /fn load_dof_wide_blur\(coord: vec2i,\s*size: vec2u\) -> vec4f/);
-  assert.match(postProcessShader, /let nearWideWeight =/);
-  assert.match(postProcessShader, /wideBlurWeight \* nearLayer/);
-  assert.match(postProcessShader, /let farRadiusWeight =/);
-  assert.match(postProcessShader, /fn weighted_dof_sample/);
-  assert.match(postProcessShader, /let innerRadius = max\(1,\s*radius \/ 4\)/);
-  assert.match(postProcessShader, /let midRadius = max\(1,\s*radius \/ 2\)/);
-  assert.match(postProcessShader, /let outerWeight = 0\.35/);
-  assert.match(postProcessShader, /let innerWeight = 0\.85/);
-  assert.doesNotMatch(postProcessShader, /signedLayerWeight = max\(nearLayer,\s*farLayer\)/);
-  assert.doesNotMatch(postProcessShader, /mix\(localWideBlurred,\s*wideBlurred,\s*signedLayerWeight\)/);
-  assert.doesNotMatch(postProcessShader, /max\(sampleConfidence,\s*0\.2\)/);
-  assert.doesNotMatch(postProcessShader, /vec4f\(averaged,\s*1\.0\)/);
+  assert.match(postProcessShader, /fn dof_blur_radius_for_pixel/);
 });

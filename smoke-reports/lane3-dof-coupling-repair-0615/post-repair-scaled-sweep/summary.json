@@ -1,0 +1,824 @@
+{
+  "outDir": "smoke-reports/lane3-dof-coupling-repair-0615/post-repair-scaled-sweep",
+  "captures": [
+    {
+      "name": "off-focus50-ap0",
+      "path": "smoke-reports/lane3-dof-coupling-repair-0615/post-repair-scaled-sweep/off-focus50-ap0.png",
+      "state": {
+        "controls": {
+          "temporal": "off",
+          "dof": false,
+          "focus": "50",
+          "aperture": "0",
+          "radius": "8",
+          "view": "final"
+        },
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": false,
+          "dofFocusDepth": 0.95,
+          "dofStrength": 0,
+          "dofRadius": 8
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      }
+    },
+    {
+      "name": "off-focus50-ap0-repeat",
+      "path": "smoke-reports/lane3-dof-coupling-repair-0615/post-repair-scaled-sweep/off-focus50-ap0-repeat.png",
+      "state": {
+        "controls": {
+          "temporal": "off",
+          "dof": false,
+          "focus": "50",
+          "aperture": "0",
+          "radius": "8",
+          "view": "final"
+        },
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": false,
+          "dofFocusDepth": 0.95,
+          "dofStrength": 0,
+          "dofRadius": 8
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      }
+    },
+    {
+      "name": "focus0-ap100",
+      "path": "smoke-reports/lane3-dof-coupling-repair-0615/post-repair-scaled-sweep/focus0-ap100.png",
+      "state": {
+        "controls": {
+          "temporal": "off",
+          "dof": true,
+          "focus": "0",
+          "aperture": "100",
+          "radius": "8",
+          "view": "final"
+        },
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.9,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      }
+    },
+    {
+      "name": "focus25-ap100",
+      "path": "smoke-reports/lane3-dof-coupling-repair-0615/post-repair-scaled-sweep/focus25-ap100.png",
+      "state": {
+        "controls": {
+          "temporal": "off",
+          "dof": true,
+          "focus": "25",
+          "aperture": "100",
+          "radius": "8",
+          "view": "final"
+        },
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.925,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      }
+    },
+    {
+      "name": "focus50-ap100",
+      "path": "smoke-reports/lane3-dof-coupling-repair-0615/post-repair-scaled-sweep/focus50-ap100.png",
+      "state": {
+        "controls": {
+          "temporal": "off",
+          "dof": true,
+          "focus": "50",
+          "aperture": "100",
+          "radius": "8",
+          "view": "final"
+        },
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.95,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      }
+    },
+    {
+      "name": "focus75-ap100",
+      "path": "smoke-reports/lane3-dof-coupling-repair-0615/post-repair-scaled-sweep/focus75-ap100.png",
+      "state": {
+        "controls": {
+          "temporal": "off",
+          "dof": true,
+          "focus": "75",
+          "aperture": "100",
+          "radius": "8",
+          "view": "final"
+        },
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.975,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      }
+    },
+    {
+      "name": "focus100-ap100",
+      "path": "smoke-reports/lane3-dof-coupling-repair-0615/post-repair-scaled-sweep/focus100-ap100.png",
+      "state": {
+        "controls": {
+          "temporal": "off",
+          "dof": true,
+          "focus": "100",
+          "aperture": "100",
+          "radius": "8",
+          "view": "final"
+        },
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 1,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      }
+    },
+    {
+      "name": "focus50-ap0",
+      "path": "smoke-reports/lane3-dof-coupling-repair-0615/post-repair-scaled-sweep/focus50-ap0.png",
+      "state": {
+        "controls": {
+          "temporal": "off",
+          "dof": true,
+          "focus": "50",
+          "aperture": "0",
+          "radius": "8",
+          "view": "final"
+        },
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.95,
+          "dofStrength": 0,
+          "dofRadius": 8
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      }
+    },
+    {
+      "name": "focus50-ap25",
+      "path": "smoke-reports/lane3-dof-coupling-repair-0615/post-repair-scaled-sweep/focus50-ap25.png",
+      "state": {
+        "controls": {
+          "temporal": "off",
+          "dof": true,
+          "focus": "50",
+          "aperture": "25",
+          "radius": "8",
+          "view": "final"
+        },
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.95,
+          "dofStrength": 1,
+          "dofRadius": 8
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      }
+    },
+    {
+      "name": "focus50-ap50",
+      "path": "smoke-reports/lane3-dof-coupling-repair-0615/post-repair-scaled-sweep/focus50-ap50.png",
+      "state": {
+        "controls": {
+          "temporal": "off",
+          "dof": true,
+          "focus": "50",
+          "aperture": "50",
+          "radius": "8",
+          "view": "final"
+        },
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.95,
+          "dofStrength": 2,
+          "dofRadius": 8
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      }
+    },
+    {
+      "name": "focus50-ap75",
+      "path": "smoke-reports/lane3-dof-coupling-repair-0615/post-repair-scaled-sweep/focus50-ap75.png",
+      "state": {
+        "controls": {
+          "temporal": "off",
+          "dof": true,
+          "focus": "50",
+          "aperture": "75",
+          "radius": "8",
+          "view": "final"
+        },
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.95,
+          "dofStrength": 3,
+          "dofRadius": 8
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      }
+    },
+    {
+      "name": "focus50-ap100-repeat",
+      "path": "smoke-reports/lane3-dof-coupling-repair-0615/post-repair-scaled-sweep/focus50-ap100-repeat.png",
+      "state": {
+        "controls": {
+          "temporal": "off",
+          "dof": true,
+          "focus": "50",
+          "aperture": "100",
+          "radius": "8",
+          "view": "final"
+        },
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.95,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      }
+    },
+    {
+      "name": "dof-mask-focus50-ap100",
+      "path": "smoke-reports/lane3-dof-coupling-repair-0615/post-repair-scaled-sweep/dof-mask-focus50-ap100.png",
+      "state": {
+        "controls": {
+          "temporal": "off",
+          "dof": true,
+          "focus": "50",
+          "aperture": "100",
+          "radius": "8",
+          "view": "dof-mask"
+        },
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "dof-mask",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.95,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      }
+    },
+    {
+      "name": "depth",
+      "path": "smoke-reports/lane3-dof-coupling-repair-0615/post-repair-scaled-sweep/depth.png",
+      "state": {
+        "controls": {
+          "temporal": "off",
+          "dof": false,
+          "focus": "50",
+          "aperture": "0",
+          "radius": "8",
+          "view": "depth"
+        },
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "depth",
+          "dofEnabled": false,
+          "dofFocusDepth": 0.95,
+          "dofStrength": 0,
+          "dofRadius": 8
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      }
+    }
+  ],
+  "comparisons": {
+    "offRepeat": {
+      "a": "off-focus50-ap0.png",
+      "b": "off-focus50-ap0-repeat.png",
+      "changedPixels": 0,
+      "changedPercent": 0,
+      "maxSum": 0,
+      "meanSum": 0
+    },
+    "focus0VsOff": {
+      "a": "focus0-ap100.png",
+      "b": "off-focus50-ap0.png",
+      "changedPixels": 22622,
+      "changedPercent": 2.4546,
+      "maxSum": 325,
+      "meanSum": 1.4426
+    },
+    "focus25VsOff": {
+      "a": "focus25-ap100.png",
+      "b": "off-focus50-ap0.png",
+      "changedPixels": 22210,
+      "changedPercent": 2.4099,
+      "maxSum": 325,
+      "meanSum": 1.3918
+    },
+    "focus50VsOff": {
+      "a": "focus50-ap100.png",
+      "b": "off-focus50-ap0.png",
+      "changedPixels": 18691,
+      "changedPercent": 2.0281,
+      "maxSum": 194,
+      "meanSum": 0.7662
+    },
+    "focus75VsOff": {
+      "a": "focus75-ap100.png",
+      "b": "off-focus50-ap0.png",
+      "changedPixels": 5443,
+      "changedPercent": 0.5906,
+      "maxSum": 45,
+      "meanSum": 0.1513
+    },
+    "focus100VsOff": {
+      "a": "focus100-ap100.png",
+      "b": "off-focus50-ap0.png",
+      "changedPixels": 0,
+      "changedPercent": 0,
+      "maxSum": 0,
+      "meanSum": 0
+    },
+    "focus0Vs100": {
+      "a": "focus0-ap100.png",
+      "b": "focus100-ap100.png",
+      "changedPixels": 22622,
+      "changedPercent": 2.4546,
+      "maxSum": 325,
+      "meanSum": 1.4426
+    },
+    "focus25Vs75": {
+      "a": "focus25-ap100.png",
+      "b": "focus75-ap100.png",
+      "changedPixels": 21884,
+      "changedPercent": 2.3746,
+      "maxSum": 293,
+      "meanSum": 1.2899
+    },
+    "aperture0Vs25AtFocus50": {
+      "a": "focus50-ap0.png",
+      "b": "focus50-ap25.png",
+      "changedPixels": 328,
+      "changedPercent": 0.0356,
+      "maxSum": 17,
+      "meanSum": 0.0458
+    },
+    "aperture0Vs50AtFocus50": {
+      "a": "focus50-ap0.png",
+      "b": "focus50-ap50.png",
+      "changedPixels": 7046,
+      "changedPercent": 0.7645,
+      "maxSum": 54,
+      "meanSum": 0.186
+    },
+    "aperture0Vs75AtFocus50": {
+      "a": "focus50-ap0.png",
+      "b": "focus50-ap75.png",
+      "changedPixels": 15157,
+      "changedPercent": 1.6446,
+      "maxSum": 122,
+      "meanSum": 0.4745
+    },
+    "aperture0Vs100AtFocus50": {
+      "a": "focus50-ap0.png",
+      "b": "focus50-ap100-repeat.png",
+      "changedPixels": 18691,
+      "changedPercent": 2.0281,
+      "maxSum": 194,
+      "meanSum": 0.7662
+    },
+    "aperture25Vs100AtFocus50": {
+      "a": "focus50-ap25.png",
+      "b": "focus50-ap100-repeat.png",
+      "changedPixels": 18418,
+      "changedPercent": 1.9985,
+      "maxSum": 187,
+      "meanSum": 0.7355
+    },
+    "repeatFocus50": {
+      "a": "focus50-ap100.png",
+      "b": "focus50-ap100-repeat.png",
+      "changedPixels": 0,
+      "changedPercent": 0,
+      "maxSum": 0,
+      "meanSum": 0
+    }
+  },
+  "consoleMessages": [
+    {
+      "type": "debug",
+      "text": "[vite] connecting..."
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connected."
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connecting..."
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connected."
+    }
+  ],
+  "pageErrors": []
+}

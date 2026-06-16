@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:5177/?renderer=compute&asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-close",
+  "captures": [
+    {
+      "state": "all",
+      "path": "smoke-reports/lane3-dof-three-layers-0615/toggle-check/all-dof-layers.png",
+      "controlState": {
+        "near": true,
+        "mid": true,
+        "far": true,
+        "stats": "1440×900 | 3 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 93,410 splats/108 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 35%/dof local+wide nmf f95 a100 r128/dof-layers | temporal: idle/8/8 | app frame: 0.3ms | slowest app stage: frame-uniforms 0ms | render: 4.83ms"
+      }
+    },
+    {
+      "state": "far-off",
+      "path": "smoke-reports/lane3-dof-three-layers-0615/toggle-check/far-off-dof-layers.png",
+      "controlState": {
+        "near": true,
+        "mid": true,
+        "far": false,
+        "stats": "1440×900 | 14 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 93,410 splats/108 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 35%/dof local+wide nm- f95 a100 r128/dof-layers | temporal: idle/8/8 | app frame: 0ms | slowest app stage: frame-uniforms 0ms | render: 3.67ms"
+      }
+    },
+    {
+      "state": "near-mid-off",
+      "path": "smoke-reports/lane3-dof-three-layers-0615/toggle-check/near-mid-off-dof-layers.png",
+      "controlState": {
+        "near": false,
+        "mid": false,
+        "far": true,
+        "stats": "1440×900 | 15 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 93,410 splats/108 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 35%/dof local+wide --f f95 a100 r128/dof-layers | temporal: idle/8/8 | app frame: 0.3ms | slowest app stage: frame-uniforms 0ms | render: 4.61ms"
+      }
+    }
+  ],
+  "failures": []
+}

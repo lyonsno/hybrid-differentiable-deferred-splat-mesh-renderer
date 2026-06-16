@@ -1,0 +1,17 @@
+{
+  "url": "http://127.0.0.1:5177/?renderer=compute&asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-close",
+  "persisted": {
+    "dofEnabled": true,
+    "nearPlane": "90",
+    "midPlane": "95.2",
+    "farPlane": "99.7",
+    "aperture": "100",
+    "radius": "128",
+    "farBlur": "100",
+    "debugView": "final",
+    "storage": "{\"version\":1,\"values\":{\"postprocess-samples\":\"8\",\"postprocess-radius\":\"2\",\"postprocess-sharpness\":\"35\",\"postprocess-dof-near-plane\":\"90\",\"postprocess-dof-focus\":\"95.2\",\"postprocess-dof-far-plane\":\"99.7\",\"postprocess-dof-strength\":\"100\",\"postprocess-dof-near-blur\":\"100\",\"postprocess-dof-mid-blur\":\"35\",\"postprocess-dof-far-blur\":\"100\",\"postprocess-dof-radius\":\"128\",\"postprocess-debug-view\":\"final\"},\"checked\":{\"postprocess-enabled\":true,\"postprocess-fxaa-enabled\":true,\"postprocess-cas-enabled\":true,\"postprocess-dof-enabled\":true,\"postprocess-dof-local-enabled\":true,\"postprocess-dof-wide-enabled\":true,\"postprocess-dof-near-enabled\":true,\"postprocess-dof-mid-enabled\":true,\"postprocess-dof-far-enabled\":true},\"detailsOpen\":false}",
+    "stats": "1600×1000 | 0 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 93,147 splats/132 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 35%/dof local+wide nmf p900/952/997 b100/35/100 a100 r128 | temporal: idle/8/8 | app frame: 0.3ms | slowest app stage: frame-uniforms 0ms | render: 14.01ms"
+  },
+  "consoleMessages": [],
+  "pageErrors": []
+}

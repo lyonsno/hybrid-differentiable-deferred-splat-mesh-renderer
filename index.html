@@ -76,7 +76,6 @@
     #postprocess-dof-focus-value,
     #postprocess-dof-far-plane-value,
     #postprocess-dof-near-blur-value,
-    #postprocess-dof-mid-blur-value,
     #postprocess-dof-far-blur-value,
     #postprocess-dof-strength-value {
       min-width: 3.5ch;
@@ -141,21 +140,9 @@
           <span>DOF</span>
           <input id="postprocess-dof-enabled" type="checkbox" />
         </label>
-        <label for="postprocess-dof-local-enabled">
-          <span>DOF local</span>
-          <input id="postprocess-dof-local-enabled" type="checkbox" checked />
-        </label>
-        <label for="postprocess-dof-wide-enabled">
-          <span>DOF wide</span>
-          <input id="postprocess-dof-wide-enabled" type="checkbox" checked />
-        </label>
         <label for="postprocess-dof-near-enabled">
           <span>DOF near</span>
           <input id="postprocess-dof-near-enabled" type="checkbox" checked />
-        </label>
-        <label for="postprocess-dof-mid-enabled">
-          <span>DOF mid</span>
-          <input id="postprocess-dof-mid-enabled" type="checkbox" checked />
         </label>
         <label for="postprocess-dof-far-enabled">
           <span>DOF far</span>
@@ -169,7 +156,7 @@
           </span>
         </label>
         <label for="postprocess-dof-focus">
-          <span>Mid plane</span>
+          <span>Focus</span>
           <span>
             <input id="postprocess-dof-focus" type="range" min="90" max="100" step="0.1" value="95" />
             <output id="postprocess-dof-focus-value" for="postprocess-dof-focus">95%</output>
@@ -194,13 +181,6 @@
           <span>
             <input id="postprocess-dof-near-blur" type="range" min="0" max="100" step="1" value="100" />
             <output id="postprocess-dof-near-blur-value" for="postprocess-dof-near-blur">100%</output>
-          </span>
-        </label>
-        <label for="postprocess-dof-mid-blur">
-          <span>Mid blur</span>
-          <span>
-            <input id="postprocess-dof-mid-blur" type="range" min="0" max="100" step="1" value="20" />
-            <output id="postprocess-dof-mid-blur-value" for="postprocess-dof-mid-blur">20%</output>
           </span>
         </label>
         <label for="postprocess-dof-far-blur">
@@ -236,7 +216,6 @@
             <option value="dof-mask">DOF mask</option>
             <option value="dof-layers">DOF layers</option>
             <option value="dof-near-mask">DOF near</option>
-            <option value="dof-mid-mask">DOF mid</option>
             <option value="dof-far-mask">DOF far</option>
             <option value="dof-downsample">DOF downsample</option>
             <option value="dof-blur-h">DOF blur H</option>

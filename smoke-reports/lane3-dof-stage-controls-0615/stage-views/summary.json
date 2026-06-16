@@ -1,0 +1,241 @@
+{
+  "url": "http://127.0.0.1:5177/?renderer=compute&asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-close",
+  "controls": {
+    "postprocess-enabled": {
+      "value": "on",
+      "checked": true
+    },
+    "postprocess-fxaa-enabled": {
+      "value": "on",
+      "checked": false
+    },
+    "postprocess-cas-enabled": {
+      "value": "on",
+      "checked": false
+    },
+    "postprocess-samples": {
+      "value": "8"
+    },
+    "postprocess-radius": {
+      "value": "2"
+    },
+    "postprocess-sharpness": {
+      "value": "35",
+      "checked": false
+    },
+    "postprocess-dof-enabled": {
+      "value": "on",
+      "checked": true
+    },
+    "postprocess-dof-local-enabled": {
+      "value": "on",
+      "checked": true
+    },
+    "postprocess-dof-wide-enabled": {
+      "value": "on",
+      "checked": true
+    },
+    "postprocess-dof-focus": {
+      "value": "50",
+      "checked": false
+    },
+    "postprocess-dof-strength": {
+      "value": "100",
+      "checked": false
+    },
+    "postprocess-dof-radius": {
+      "value": "64"
+    },
+    "postprocess-debug-view": {
+      "value": "final"
+    },
+    "postprocess-temporal-mode": {
+      "value": "idle"
+    },
+    "postprocess-temporal-frames": {
+      "value": "8"
+    },
+    "postprocess-temporal-view": {
+      "value": "final"
+    }
+  },
+  "errors": [],
+  "captures": {
+    "finalBoth": {
+      "path": "smoke-reports/lane3-dof-stage-controls-0615/stage-views/final-both-local-wide.png",
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 39945,
+        "changedPixels": 182543,
+        "changedPixelRatio": 0.19807183159722222,
+        "averageDelta": 14.811438440397902,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "0000000000000000000000000000000000000001000000000000010a070100000000050b0c07000000010d0e0a08040000010204040302000000000000000000",
+        "bridgeBlockRatio": 0.5062413314840499,
+        "nonblank": true
+      }
+    },
+    "localOnly": {
+      "path": "smoke-reports/lane3-dof-stage-controls-0615/stage-views/final-local-only.png",
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 40928,
+        "changedPixels": 182538,
+        "changedPixelRatio": 0.19806640625,
+        "averageDelta": 14.86373083044434,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "0000000000000000000000000000000000000001000000000000010b070100000000050b0c07000000010d0e0a08040000010204040302000000000000000000",
+        "bridgeBlockRatio": 0.5006934812760055,
+        "nonblank": true
+      }
+    },
+    "wideOnly": {
+      "path": "smoke-reports/lane3-dof-stage-controls-0615/stage-views/final-wide-only.png",
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 35591,
+        "changedPixels": 183060,
+        "changedPixelRatio": 0.1986328125,
+        "averageDelta": 14.48521809896315,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "0000000000000000000000000000000000000001000000000000010a070000000000040c0c06000000010c0d0a08030000010204040302000000000000000000",
+        "bridgeBlockRatio": 0.5581717451523546,
+        "nonblank": true
+      }
+    },
+    "noDofStages": {
+      "path": "smoke-reports/lane3-dof-stage-controls-0615/stage-views/final-no-local-no-wide.png",
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 44914,
+        "changedPixels": 182485,
+        "changedPixelRatio": 0.19800889756944445,
+        "averageDelta": 14.901209490744996,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "0000000000000000000000000000000000000001000000000000010b070100000000050b0c07000000010d0e0a08040000010204040302000000000000000000",
+        "bridgeBlockRatio": 0.4549237170596394,
+        "nonblank": true
+      }
+    },
+    "mask": {
+      "path": "smoke-reports/lane3-dof-stage-controls-0615/stage-views/debug-dof-mask.png",
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 255
+        },
+        "distinctColorCount": 136,
+        "changedPixels": 224485,
+        "changedPixelRatio": 0.2435818142361111,
+        "averageDelta": 24.721099175347224,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "0000000000000000000000000000000000000001000000000000010f0b01000000000710100a000000030e0f0f0e07000003070a0c0c07000000000001010000",
+        "bridgeBlockRatio": 0.6894977168949772,
+        "nonblank": true
+      }
+    },
+    "downsample": {
+      "path": "smoke-reports/lane3-dof-stage-controls-0615/stage-views/debug-dof-downsample.png",
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 20735,
+        "changedPixels": 182536,
+        "changedPixelRatio": 0.19806423611111112,
+        "averageDelta": 14.896349826393568,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "0000000000000000000000000000000000000001000000000000010b070100000000050b0c07000000010d0e0a08040000010204040302000000000000000000",
+        "bridgeBlockRatio": 0.4763231197771588,
+        "nonblank": true
+      }
+    },
+    "blurH": {
+      "path": "smoke-reports/lane3-dof-stage-controls-0615/stage-views/debug-dof-blur-h.png",
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 14882,
+        "changedPixels": 203336,
+        "changedPixelRatio": 0.22063368055555554,
+        "averageDelta": 14.894885706025212,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "0000000000000000000000000000000000000001000000000000010a070100000000050b0c07000000010c0e0a08040000010204040302000000000000000000",
+        "bridgeBlockRatio": 0.609511889862328,
+        "nonblank": true
+      }
+    },
+    "blurV": {
+      "path": "smoke-reports/lane3-dof-stage-controls-0615/stage-views/debug-dof-blur-v.png",
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 11357,
+        "changedPixels": 230008,
+        "changedPixelRatio": 0.24957465277777777,
+        "averageDelta": 14.900318287046419,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "00000000000000000000000000000000000000020100000000000109070100000000050c0c06000000010a0c0a08030000010304040302000000000000000000",
+        "bridgeBlockRatio": 0.829050279329609,
+        "nonblank": true
+      }
+    }
+  }
+}

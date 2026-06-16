@@ -15,15 +15,11 @@ struct PostProcessSettings {
   dofFocusDepth: f32,
   dofStrength: f32,
   dofRadius: u32,
-  dofLocalEnabled: u32,
-  dofWideEnabled: u32,
   dofNearEnabled: u32,
-  dofMidEnabled: u32,
   dofFarEnabled: u32,
   dofNearPlaneDepth: f32,
   dofFarPlaneDepth: f32,
   dofNearBlur: f32,
-  dofMidBlur: f32,
   dofFarBlur: f32,
 };
 
@@ -44,13 +40,10 @@ const DEBUG_VIEW_DOF_BLUR_V_ONLY = 9u;
 const DEBUG_VIEW_DOF_BLUR_HV = 10u;
 const DEBUG_VIEW_DOF_LAYERS = 11u;
 const DEBUG_VIEW_DOF_NEAR_MASK = 12u;
-const DEBUG_VIEW_DOF_MID_MASK = 13u;
-const DEBUG_VIEW_DOF_FAR_MASK = 14u;
-const POST_PROCESS_DOF_FOCUS_DEAD_ZONE = 0.005;
-const POST_PROCESS_DOF_COC_SCALE = 4.0;
+const DEBUG_VIEW_DOF_FAR_MASK = 13u;
 const POST_PROCESS_DOF_DEBUG_MASK_GAMMA = 0.5;
-const POST_PROCESS_DOF_BLUR_TAPS = 17i;
-const POST_PROCESS_DOF_BLUR_HALF_TAPS = 8i;
+const POST_PROCESS_DOF_BLUR_MAX_TAPS = 17i;
+const POST_PROCESS_DOF_BLUR_MAX_HALF_TAPS = 8i;
 
 fn luma(color: vec3f) -> f32 {
   return dot(color, vec3f(0.299, 0.587, 0.114));
@@ -101,91 +94,64 @@ fn neighborhood_average(coord: vec2i, size: vec2u) -> vec3f {
     sum += load_rgb(coord + vec2i(radius, -radius), size);
     sum += load_rgb(coord + vec2i(-radius, radius), size);
     sum += load_rgb(coord + vec2i(radius, radius), size);
-    count += 4.0;
+    count = 8.0;
   }
-
   if (sampleCount >= 12u) {
-    let nearRadius = max(1, radius / 2);
-    sum += load_rgb(coord + vec2i(0, -nearRadius), size);
-    sum += load_rgb(coord + vec2i(0, nearRadius), size);
-    sum += load_rgb(coord + vec2i(-nearRadius, 0), size);
-    sum += load_rgb(coord + vec2i(nearRadius, 0), size);
-    count += 4.0;
+    let halfRadius = max(1, radius / 2);
+    sum += load_rgb(coord + vec2i(0, -halfRadius), size);
+    sum += load_rgb(coord + vec2i(0, halfRadius), size);
+    sum += load_rgb(coord + vec2i(-halfRadius, 0), size);
+    sum += load_rgb(coord + vec2i(halfRadius, 0), size);
+    count = 12.0;
   }
-
   return sum / count;
 }
 
-fn local_min_rgb(coord: vec2i, size: vec2u, color: vec3f) -> vec3f {
+fn local_luma_range(coord: vec2i, size: vec2u, center: vec3f) -> vec2f {
   let radius = configured_radius();
-  let sampleCount = configured_sample_count();
-  var localMin = color;
-  localMin = min(localMin, load_rgb(coord + vec2i(0, -radius), size));
-  localMin = min(localMin, load_rgb(coord + vec2i(0, radius), size));
-  localMin = min(localMin, load_rgb(coord + vec2i(-radius, 0), size));
-  localMin = min(localMin, load_rgb(coord + vec2i(radius, 0), size));
+  let n = luma(load_rgb(coord + vec2i(0, -radius), size));
+  let s = luma(load_rgb(coord + vec2i(0, radius), size));
+  let w = luma(load_rgb(coord + vec2i(-radius, 0), size));
+  let e = luma(load_rgb(coord + vec2i(radius, 0), size));
+  let c = luma(center);
+  var lo = min(min(n, s), min(w, min(e, c)));
+  var hi = max(max(n, s), max(w, max(e, c)));
 
-  if (sampleCount >= 8u) {
-    localMin = min(localMin, load_rgb(coord + vec2i(-radius, -radius), size));
-    localMin = min(localMin, load_rgb(coord + vec2i(radius, -radius), size));
-    localMin = min(localMin, load_rgb(coord + vec2i(-radius, radius), size));
-    localMin = min(localMin, load_rgb(coord + vec2i(radius, radius), size));
+  if (configured_sample_count() >= 8u) {
+    let nw = luma(load_rgb(coord + vec2i(-radius, -radius), size));
+    let ne = luma(load_rgb(coord + vec2i(radius, -radius), size));
+    let sw = luma(load_rgb(coord + vec2i(-radius, radius), size));
+    let se = luma(load_rgb(coord + vec2i(radius, radius), size));
+    lo = min(lo, min(min(nw, ne), min(sw, se)));
+    hi = max(hi, max(max(nw, ne), max(sw, se)));
   }
-
-  return localMin;
+  return vec2f(lo, hi);
 }
 
-fn local_max_rgb(coord: vec2i, size: vec2u, color: vec3f) -> vec3f {
+fn local_min_rgb(coord: vec2i, size: vec2u, center: vec3f) -> vec3f {
   let radius = configured_radius();
-  let sampleCount = configured_sample_count();
-  var localMax = color;
-  localMax = max(localMax, load_rgb(coord + vec2i(0, -radius), size));
-  localMax = max(localMax, load_rgb(coord + vec2i(0, radius), size));
-  localMax = max(localMax, load_rgb(coord + vec2i(-radius, 0), size));
-  localMax = max(localMax, load_rgb(coord + vec2i(radius, 0), size));
-
-  if (sampleCount >= 8u) {
-    localMax = max(localMax, load_rgb(coord + vec2i(-radius, -radius), size));
-    localMax = max(localMax, load_rgb(coord + vec2i(radius, -radius), size));
-    localMax = max(localMax, load_rgb(coord + vec2i(-radius, radius), size));
-    localMax = max(localMax, load_rgb(coord + vec2i(radius, radius), size));
-  }
-
-  return localMax;
+  let n = load_rgb(coord + vec2i(0, -radius), size);
+  let s = load_rgb(coord + vec2i(0, radius), size);
+  let w = load_rgb(coord + vec2i(-radius, 0), size);
+  let e = load_rgb(coord + vec2i(radius, 0), size);
+  return min(center, min(min(n, s), min(w, e)));
 }
 
-fn local_luma_range(coord: vec2i, size: vec2u, color: vec3f) -> vec2f {
+fn local_max_rgb(coord: vec2i, size: vec2u, center: vec3f) -> vec3f {
   let radius = configured_radius();
-  let sampleCount = configured_sample_count();
-  let centerLuma = luma(color);
-  var minLuma = centerLuma;
-  var maxLuma = centerLuma;
-
-  let northLuma = luma(load_rgb(coord + vec2i(0, -radius), size));
-  let southLuma = luma(load_rgb(coord + vec2i(0, radius), size));
-  let westLuma = luma(load_rgb(coord + vec2i(-radius, 0), size));
-  let eastLuma = luma(load_rgb(coord + vec2i(radius, 0), size));
-  minLuma = min(minLuma, min(min(northLuma, southLuma), min(westLuma, eastLuma)));
-  maxLuma = max(maxLuma, max(max(northLuma, southLuma), max(westLuma, eastLuma)));
-
-  if (sampleCount >= 8u) {
-    let nwLuma = luma(load_rgb(coord + vec2i(-radius, -radius), size));
-    let neLuma = luma(load_rgb(coord + vec2i(radius, -radius), size));
-    let swLuma = luma(load_rgb(coord + vec2i(-radius, radius), size));
-    let seLuma = luma(load_rgb(coord + vec2i(radius, radius), size));
-    minLuma = min(minLuma, min(min(nwLuma, neLuma), min(swLuma, seLuma)));
-    maxLuma = max(maxLuma, max(max(nwLuma, neLuma), max(swLuma, seLuma)));
-  }
-
-  return vec2f(minLuma, maxLuma);
+  let n = load_rgb(coord + vec2i(0, -radius), size);
+  let s = load_rgb(coord + vec2i(0, radius), size);
+  let w = load_rgb(coord + vec2i(-radius, 0), size);
+  let e = load_rgb(coord + vec2i(radius, 0), size);
+  return max(center, max(max(n, s), max(w, e)));
 }
 
 fn fxaa_edge_mask(coord: vec2i, size: vec2u) -> f32 {
-  let color = load_rgb(coord, size);
-  let lumaRange = local_luma_range(coord, size, color);
+  let center = load_rgb(coord, size);
+  let lumaRange = local_luma_range(coord, size, center);
   let contrast = lumaRange.y - lumaRange.x;
   let edgeThreshold = max(FXAA_EDGE_THRESHOLD_MIN, lumaRange.y * FXAA_EDGE_THRESHOLD);
-  return ramp(edgeThreshold, edgeThreshold * 5.0, contrast);
+  return ramp(edgeThreshold * 0.75, edgeThreshold * 2.0, contrast);
 }
 
 fn fxaa_filter(coord: vec2i, size: vec2u) -> vec3f {
@@ -195,7 +161,6 @@ fn fxaa_filter(coord: vec2i, size: vec2u) -> vec3f {
   let south = load_rgb(coord + vec2i(0, radius), size);
   let west = load_rgb(coord + vec2i(-radius, 0), size);
   let east = load_rgb(coord + vec2i(radius, 0), size);
-
   let centerLuma = luma(center);
   let northLuma = luma(north);
   let southLuma = luma(south);
@@ -276,60 +241,91 @@ fn cas_sharpen(coord: vec2i, size: vec2u, color: vec3f) -> vec3f {
   return clamp(sharpened, max(vec3f(0.0), localMin - haloWindow), localMax + haloWindow);
 }
 
+// --- DOF: two-layer (near + far) with dynamic kernel radius ---
+
+fn dof_max_radius() -> f32 {
+  return f32(clamp(settings.dofRadius, 1u, 128u));
+}
+
 fn dof_circle_of_confusion(coord: vec2i, size: vec2u) -> f32 {
   let aux = load_aux(coord, size);
   let depth = clamp(aux.r, 0.0, 1.0);
   let coverageConfidence = clamp(aux.g, 0.0, 1.0);
   let focusDepth = clamp(settings.dofFocusDepth, 0.0, 1.0);
-  let maxRadius = f32(clamp(settings.dofRadius, 1u, 128u));
-  let focusDistance = max(abs(depth - focusDepth) - POST_PROCESS_DOF_FOCUS_DEAD_ZONE, 0.0);
-  return clamp(
-    focusDistance * POST_PROCESS_DOF_COC_SCALE * settings.dofStrength * coverageConfidence * maxRadius,
-    0.0,
-    maxRadius
-  );
+  let nearPlane = clamp(settings.dofNearPlaneDepth, 0.0, focusDepth);
+  let farPlane = clamp(settings.dofFarPlaneDepth, focusDepth, 1.0);
+  let aperture = clamp(settings.dofStrength, 0.0, 4.0);
+  let maxR = dof_max_radius();
+
+  // Near CoC: ramps from 0 at focusDepth to maxR at nearPlane
+  let nearDistance = smooth_ramp(focusDepth, nearPlane, depth);
+  let nearCoc = nearDistance * aperture * maxR * clamp(settings.dofNearBlur, 0.0, 1.0);
+
+  // Far CoC: ramps from 0 at focusDepth to maxR at farPlane
+  let farDistance = smooth_ramp(focusDepth, farPlane, depth);
+  let farCoc = farDistance * aperture * maxR * clamp(settings.dofFarBlur, 0.0, 1.0);
+
+  // Enable gating
+  let nearGated = select(0.0, nearCoc, settings.dofNearEnabled != 0u);
+  let farGated = select(0.0, farCoc, settings.dofFarEnabled != 0u);
+
+  return clamp(max(nearGated, farGated) * coverageConfidence, 0.0, maxR);
+}
+
+fn dof_signed_coc(coord: vec2i, size: vec2u) -> f32 {
+  // Positive = near (foreground), negative = far (background)
+  let aux = load_aux(coord, size);
+  let depth = clamp(aux.r, 0.0, 1.0);
+  let coverageConfidence = clamp(aux.g, 0.0, 1.0);
+  let focusDepth = clamp(settings.dofFocusDepth, 0.0, 1.0);
+  let nearPlane = clamp(settings.dofNearPlaneDepth, 0.0, focusDepth);
+  let farPlane = clamp(settings.dofFarPlaneDepth, focusDepth, 1.0);
+  let aperture = clamp(settings.dofStrength, 0.0, 4.0);
+  let maxR = dof_max_radius();
+
+  let nearDistance = smooth_ramp(focusDepth, nearPlane, depth);
+  let nearCoc = nearDistance * aperture * maxR * clamp(settings.dofNearBlur, 0.0, 1.0);
+  let farDistance = smooth_ramp(focusDepth, farPlane, depth);
+  let farCoc = farDistance * aperture * maxR * clamp(settings.dofFarBlur, 0.0, 1.0);
+
+  let nearGated = select(0.0, nearCoc, settings.dofNearEnabled != 0u);
+  let farGated = select(0.0, farCoc, settings.dofFarEnabled != 0u);
+
+  // Near wins if both active, sign differentiates
+  if (nearGated >= farGated) {
+    return clamp(nearGated * coverageConfidence, 0.0, maxR);
+  }
+  return clamp(-farGated * coverageConfidence, -maxR, 0.0);
+}
+
+fn dof_near_weight(coord: vec2i, size: vec2u) -> f32 {
+  let aux = load_aux(coord, size);
+  let depth = clamp(aux.r, 0.0, 1.0);
+  let focusDepth = clamp(settings.dofFocusDepth, 0.0, 1.0);
+  let nearPlane = clamp(settings.dofNearPlaneDepth, 0.0, focusDepth);
+  let nearDistance = smooth_ramp(focusDepth, nearPlane, depth);
+  return select(0.0, nearDistance, settings.dofNearEnabled != 0u);
+}
+
+fn dof_far_weight(coord: vec2i, size: vec2u) -> f32 {
+  let aux = load_aux(coord, size);
+  let depth = clamp(aux.r, 0.0, 1.0);
+  let focusDepth = clamp(settings.dofFocusDepth, 0.0, 1.0);
+  let farPlane = clamp(settings.dofFarPlaneDepth, focusDepth, 1.0);
+  let farDistance = smooth_ramp(focusDepth, farPlane, depth);
+  return select(0.0, farDistance, settings.dofFarEnabled != 0u);
 }
 
 fn dof_debug_mask(mask: f32) -> f32 {
   return pow(clamp(mask, 0.0, 1.0), POST_PROCESS_DOF_DEBUG_MASK_GAMMA);
 }
 
-fn dof_layer_plane_window() -> vec4f {
-  let midPlane = clamp(settings.dofFocusDepth, 0.0, 1.0);
-  let nearPlane = min(clamp(settings.dofNearPlaneDepth, 0.0, 1.0), midPlane - 0.0005);
-  let farPlane = max(clamp(settings.dofFarPlaneDepth, 0.0, 1.0), midPlane + 0.0005);
-  return vec4f(nearPlane, midPlane, farPlane, max(farPlane - nearPlane, 0.0005));
-}
-
-fn dof_layer_weights(coord: vec2i, size: vec2u) -> vec4f {
-  let aux = load_aux(coord, size);
-  let depth = clamp(aux.r, 0.0, 1.0);
-  let coverageConfidence = clamp(aux.g, 0.0, 1.0);
-  let planes = dof_layer_plane_window();
-  let nearPlane = planes.x;
-  let focusDepth = planes.y;
-  let farPlane = planes.z;
-  let signedDistance = depth - focusDepth;
-  let aperture = clamp(settings.dofStrength / 4.0, 0.0, 1.0);
-  let nearBase = 1.0 - smooth_ramp(nearPlane, focusDepth, depth);
-  let farBase = smooth_ramp(focusDepth, farPlane, depth);
-  let midBase = clamp(1.0 - max(nearBase, farBase), 0.0, 1.0);
-  let nearLayer = nearBase * coverageConfidence * aperture * clamp(settings.dofNearBlur, 0.0, 1.0);
-  let midLayer = midBase * coverageConfidence * aperture * clamp(settings.dofMidBlur, 0.0, 1.0);
-  let farLayer = farBase * coverageConfidence * aperture * clamp(settings.dofFarBlur, 0.0, 1.0);
-  return vec4f(nearLayer, midLayer, farLayer, max(max(nearLayer, midLayer), farLayer));
-}
-
-fn dof_enabled_layer_weights(coord: vec2i, size: vec2u) -> vec4f {
-  let layers = dof_layer_weights(coord, size);
-  let nearLayer = select(0.0, layers.x, settings.dofNearEnabled != 0u);
-  let midLayer = select(0.0, layers.y, settings.dofMidEnabled != 0u);
-  let farLayer = select(0.0, layers.z, settings.dofFarEnabled != 0u);
-  return vec4f(nearLayer, midLayer, farLayer, max(max(nearLayer, midLayer), farLayer));
-}
-
-fn dof_layer_debug_rgb(layers: vec4f) -> vec3f {
-  return vec3f(dof_debug_mask(layers.x), dof_debug_mask(layers.y), dof_debug_mask(layers.z));
+fn dof_layer_debug_rgb(coord: vec2i, size: vec2u) -> vec3f {
+  let near = dof_near_weight(coord, size);
+  let far = dof_far_weight(coord, size);
+  // Red = near, Blue = far, Green = focus (neither)
+  let focus = clamp(1.0 - max(near, far), 0.0, 1.0);
+  return vec3f(dof_debug_mask(near), dof_debug_mask(focus), dof_debug_mask(far));
 }
 
 fn load_dof_blur_pixel(coord: vec2i, size: vec2u) -> vec4f {
@@ -366,112 +362,43 @@ fn load_dof_wide_blur(coord: vec2i, size: vec2u) -> vec4f {
   return load_dof_wide_blur_bilinear(coord, size);
 }
 
-fn dof_sample(coord: vec2i, size: vec2u, originDepth: f32, originCoc: f32, offset: vec2i) -> vec4f {
-  let sampleCoord = coord + offset;
-  let sampleAux = load_aux(sampleCoord, size);
-  let sampleDepth = clamp(sampleAux.r, 0.0, 1.0);
-  let sampleConfidence = clamp(sampleAux.g, 0.0, 1.0);
-  let sampleCoc = dof_circle_of_confusion(sampleCoord, size);
-  let depthDiff = abs(sampleDepth - originDepth);
-  let depthWeight = 1.0 - ramp(0.025, 0.16, depthDiff);
-  let blurWeight = clamp(max(originCoc, sampleCoc) / max(f32(clamp(settings.dofRadius, 1u, 128u)), 1.0), 0.05, 1.0);
-  let weight = max(0.0, depthWeight * blurWeight * sampleConfidence);
-  return vec4f(load_rgb(sampleCoord, size) * weight, weight);
-}
-
-fn weighted_dof_sample(coord: vec2i, size: vec2u, originDepth: f32, originCoc: f32, offset: vec2i, sampleWeight: f32) -> vec4f {
-  let sample = dof_sample(coord, size, originDepth, originCoc, offset);
-  return vec4f(sample.rgb * sampleWeight, sample.a * sampleWeight);
-}
-
+// Dynamic-radius DOF composite: uses CoC to pick blur result, not blend-with-sharp
 fn depth_confidence_guided_dof(coord: vec2i, size: vec2u, color: vec3f) -> vec3f {
-  let originAux = load_aux(coord, size);
-  let originDepth = clamp(originAux.r, 0.0, 1.0);
-  let layers = dof_enabled_layer_weights(coord, size);
-  let nearLayer = layers.x;
-  let midLayer = layers.y;
-  let farLayer = layers.z;
-  let enabledLayerWeight = layers.w;
-  let maxRadius = f32(clamp(settings.dofRadius, 1u, 128u));
-  let midRadiusWeight = midLayer * 0.55;
-  let farRadiusWeight = farLayer * 0.9;
-  let nearRadiusWeight = nearLayer;
-  let layerRadiusWeight = max(max(nearRadiusWeight, midRadiusWeight), farRadiusWeight);
-  let originCoc = max(dof_circle_of_confusion(coord, size), layerRadiusWeight * maxRadius);
-  if (originCoc < 0.35 || enabledLayerWeight <= 0.0) {
+  let coc = dof_circle_of_confusion(coord, size);
+  if (coc < 0.5) {
     return color;
   }
 
-  let radius = i32(max(1.0, ceil(originCoc)));
-  let innerRadius = max(1, radius / 4);
-  let midRadius = max(1, radius / 2);
-  let outerWeight = 0.35;
-  let midWeight = 0.6;
-  let innerWeight = 0.85;
-  var sum = vec3f(0.0);
-  var weightSum = 0.0;
+  let maxR = dof_max_radius();
+  let cocNormalized = clamp(coc / max(maxR, 1.0), 0.0, 1.0);
 
-  let centerWeight = 1.0;
-  sum += color * centerWeight;
-  weightSum += centerWeight;
-
-  let north = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(0, -radius), outerWeight);
-  let south = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(0, radius), outerWeight);
-  let west = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(-radius, 0), outerWeight);
-  let east = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(radius, 0), outerWeight);
-  sum += north.rgb + south.rgb + west.rgb + east.rgb;
-  weightSum += north.a + south.a + west.a + east.a;
-
-  let nw = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(-radius, -radius), outerWeight);
-  let ne = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(radius, -radius), outerWeight);
-  let sw = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(-radius, radius), outerWeight);
-  let se = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(radius, radius), outerWeight);
-  sum += nw.rgb + ne.rgb + sw.rgb + se.rgb;
-  weightSum += nw.a + ne.a + sw.a + se.a;
-
-  let midN = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(0, -midRadius), midWeight);
-  let midS = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(0, midRadius), midWeight);
-  let midW = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(-midRadius, 0), midWeight);
-  let midE = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(midRadius, 0), midWeight);
-  let midNw = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(-midRadius, -midRadius), midWeight);
-  let midNe = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(midRadius, -midRadius), midWeight);
-  let midSw = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(-midRadius, midRadius), midWeight);
-  let midSe = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(midRadius, midRadius), midWeight);
-  sum += midN.rgb + midS.rgb + midW.rgb + midE.rgb + midNw.rgb + midNe.rgb + midSw.rgb + midSe.rgb;
-  weightSum += midN.a + midS.a + midW.a + midE.a + midNw.a + midNe.a + midSw.a + midSe.a;
-
-  let innerN = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(0, -innerRadius), innerWeight);
-  let innerS = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(0, innerRadius), innerWeight);
-  let innerW = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(-innerRadius, 0), innerWeight);
-  let innerE = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(innerRadius, 0), innerWeight);
-  let innerNw = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(-innerRadius, -innerRadius), innerWeight);
-  let innerNe = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(innerRadius, -innerRadius), innerWeight);
-  let innerSw = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(-innerRadius, innerRadius), innerWeight);
-  let innerSe = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(innerRadius, innerRadius), innerWeight);
-  sum += innerN.rgb + innerS.rgb + innerW.rgb + innerE.rgb + innerNw.rgb + innerNe.rgb + innerSw.rgb + innerSe.rgb;
-  weightSum += innerN.a + innerS.a + innerW.a + innerE.a + innerNw.a + innerNe.a + innerSw.a + innerSe.a;
-
-  let useLocalBlur = settings.dofLocalEnabled != 0u;
-  let useWideBlur = settings.dofWideEnabled != 0u;
-  if (!useLocalBlur && !useWideBlur) {
-    return color;
-  }
-
-  let localBlurred = sum / max(weightSum, 0.0001);
+  // Load the wide (half-res separable Gaussian) blur result
   let wideBlur = load_dof_wide_blur(coord, size);
-  let wideBlurred = wideBlur.rgb;
-  let wideBlurWeight = ramp(8.0, max(f32(clamp(settings.dofRadius, 1u, 128u)) * 0.85, 8.5), originCoc);
-  let nearWideWeight = clamp(wideBlurWeight * nearLayer * wideBlur.a, 0.0, 1.0);
-  var blurred = color;
-  if (useLocalBlur && useWideBlur) {
-    blurred = mix(localBlurred, wideBlurred, nearWideWeight);
-  } else if (useLocalBlur) {
-    blurred = localBlurred;
-  } else {
-    blurred = mix(color, wideBlurred, nearWideWeight);
-  }
-  let dofBlend = clamp(max(originCoc / max(maxRadius, 1.0), enabledLayerWeight), 0.0, 1.0);
-  return mix(color, blurred, dofBlend);
+  let wideColor = wideBlur.rgb;
+  let wideOccupancy = wideBlur.a;
+
+  // The wide blur IS the DOF result for this pixel.
+  // CoC controls the transition from sharp to blurred — not by blending,
+  // but by ramping from the sharp image at coc≈0 to the fully blurred
+  // image at coc >= transition threshold. The transition is narrow so
+  // there's no ghosting/double-image at intermediate values.
+  let transitionStart = 2.0;
+  let transitionEnd = max(8.0, maxR * 0.15);
+  let blurAmount = smooth_ramp(transitionStart, transitionEnd, coc);
+
+  // Use wide blur when available (occupancy > 0), fall back to color
+  let blurred = select(color, wideColor, wideOccupancy > 0.01);
+
+  return mix(color, blurred, blurAmount);
+}
+
+// --- Downsample pass: writes CoC into alpha for dynamic-radius blur ---
+
+fn dof_downsample_tap(sampleCoord: vec2i, inputSize: vec2u) -> vec4f {
+  let confidence = clamp(load_aux(sampleCoord, inputSize).g, 0.0, 1.0);
+  let coc = abs(dof_signed_coc(sampleCoord, inputSize));
+  let weight = confidence * clamp(coc / max(dof_max_radius(), 1.0), 0.05, 1.0);
+  return vec4f(load_rgb(sampleCoord, inputSize) * weight, weight);
 }
 
 @compute @workgroup_size(8, 8, 1)
@@ -494,24 +421,29 @@ fn dof_downsample(@builtin(global_invocation_id) globalId: vec3u) {
   textureStore(postProcessOutput, coord, vec4f(downsampled.rgb, downsampled.a));
 }
 
-fn dof_downsample_tap(sampleCoord: vec2i, inputSize: vec2u) -> vec4f {
-  let confidence = clamp(load_aux(sampleCoord, inputSize).g, 0.0, 1.0);
-  return vec4f(load_rgb(sampleCoord, inputSize) * confidence, confidence);
+// --- Blur passes: dynamic per-pixel radius from CoC ---
+
+fn dof_blur_radius_for_pixel(coord: vec2i, size: vec2u) -> i32 {
+  // Read CoC at the corresponding full-res location
+  let inputSize = textureDimensions(postProcessAux);
+  let fullCoord = coord * 2;
+  let coc = abs(dof_signed_coc(fullCoord, inputSize));
+  // Half-res radius: coc is in full-res pixels, blur runs at half-res
+  let halfResCoc = coc * 0.5;
+  return clamp(i32(ceil(halfResCoc)), 1, i32(POST_PROCESS_DOF_BLUR_MAX_HALF_TAPS));
 }
 
-fn dof_blur_radius() -> i32 {
-  return max(1, i32(ceil(f32(clamp(settings.dofRadius, 1u, 128u)) * 0.5)));
-}
-
-fn dof_blur_sample(coord: vec2i, size: vec2u, axis: vec2i) -> vec4f {
-  let radius = dof_blur_radius();
-  let sigma = max(f32(radius) * 0.42, 1.0);
+fn dof_blur_sample_dynamic(coord: vec2i, size: vec2u, axis: vec2i) -> vec4f {
+  let pixelRadius = dof_blur_radius_for_pixel(coord, size);
+  let sigma = max(f32(pixelRadius) * 0.42, 1.0);
   var sum = vec3f(0.0);
   var occupancySum = 0.0;
   var weightSum = 0.0;
-  for (var tap = -POST_PROCESS_DOF_BLUR_HALF_TAPS; tap <= POST_PROCESS_DOF_BLUR_HALF_TAPS; tap = tap + 1) {
-    let tapT = f32(tap) / f32(POST_PROCESS_DOF_BLUR_HALF_TAPS);
-    let sampleOffset = i32(round(tapT * f32(radius)));
+  for (var tap = -POST_PROCESS_DOF_BLUR_MAX_HALF_TAPS; tap <= POST_PROCESS_DOF_BLUR_MAX_HALF_TAPS; tap = tap + 1) {
+    let sampleOffset = i32(round(f32(tap) * f32(pixelRadius) / f32(POST_PROCESS_DOF_BLUR_MAX_HALF_TAPS)));
+    if (abs(sampleOffset) > pixelRadius) {
+      continue;
+    }
     let normalizedOffset = f32(sampleOffset) / sigma;
     let weight = exp(-0.5 * normalizedOffset * normalizedOffset);
     let sample = textureLoad(postProcessInput, clamp_coord(coord + axis * sampleOffset, size), 0);
@@ -523,26 +455,28 @@ fn dof_blur_sample(coord: vec2i, size: vec2u, axis: vec2i) -> vec4f {
   return vec4f(resolve_weighted_dof_color(sum, occupancySum, vec3f(0.0)), occupancy);
 }
 
-fn dof_blur(axis: vec2i, globalId: vec3u) {
+fn dof_blur_dynamic(axis: vec2i, globalId: vec3u) {
   let outputSize = textureDimensions(postProcessOutput);
   if (globalId.x >= outputSize.x || globalId.y >= outputSize.y) {
     return;
   }
 
   let coord = vec2i(globalId.xy);
-  let blurred = dof_blur_sample(coord, outputSize, axis);
+  let blurred = dof_blur_sample_dynamic(coord, outputSize, axis);
   textureStore(postProcessOutput, coord, vec4f(max(blurred.rgb, vec3f(0.0)), blurred.a));
 }
 
 @compute @workgroup_size(8, 8, 1)
 fn dof_blur_horizontal(@builtin(global_invocation_id) globalId: vec3u) {
-  dof_blur(vec2i(1, 0), globalId);
+  dof_blur_dynamic(vec2i(1, 0), globalId);
 }
 
 @compute @workgroup_size(8, 8, 1)
 fn dof_blur_vertical(@builtin(global_invocation_id) globalId: vec3u) {
-  dof_blur(vec2i(0, 1), globalId);
+  dof_blur_dynamic(vec2i(0, 1), globalId);
 }
+
+// --- Final composite pass ---
 
 @compute @workgroup_size(8, 8, 1)
 fn fxaa_cas_post_process(@builtin(global_invocation_id) globalId: vec3u) {
@@ -564,8 +498,8 @@ fn fxaa_cas_post_process(@builtin(global_invocation_id) globalId: vec3u) {
   let dofColor = select(casColor, depth_confidence_guided_dof(coord, outputSize, casColor), settings.dofEnabled != 0u);
   let finalColor = max(dofColor, vec3f(0.0));
   let aux = load_aux(coord, outputSize);
-  let dofMask = clamp(dof_circle_of_confusion(coord, outputSize) / max(f32(clamp(settings.dofRadius, 1u, 128u)), 1.0), 0.0, 1.0);
-  let dofLayers = dof_enabled_layer_weights(coord, outputSize);
+  let cocValue = dof_circle_of_confusion(coord, outputSize);
+  let dofMask = clamp(cocValue / max(dof_max_radius(), 1.0), 0.0, 1.0);
 
   if (settings.debugView == DEBUG_VIEW_FXAA_MASK) {
     textureStore(postProcessOutput, coord, vec4f(vec3f(fxaaMask), source.a));
@@ -580,13 +514,11 @@ fn fxaa_cas_post_process(@builtin(global_invocation_id) globalId: vec3u) {
   } else if (settings.debugView == DEBUG_VIEW_DOF_MASK) {
     textureStore(postProcessOutput, coord, vec4f(vec3f(dof_debug_mask(dofMask)), 1.0));
   } else if (settings.debugView == DEBUG_VIEW_DOF_LAYERS) {
-    textureStore(postProcessOutput, coord, vec4f(dof_layer_debug_rgb(dofLayers), 1.0));
+    textureStore(postProcessOutput, coord, vec4f(dof_layer_debug_rgb(coord, outputSize), 1.0));
   } else if (settings.debugView == DEBUG_VIEW_DOF_NEAR_MASK) {
-    textureStore(postProcessOutput, coord, vec4f(vec3f(dof_debug_mask(dofLayers.x)), 1.0));
-  } else if (settings.debugView == DEBUG_VIEW_DOF_MID_MASK) {
-    textureStore(postProcessOutput, coord, vec4f(vec3f(dof_debug_mask(dofLayers.y)), 1.0));
+    textureStore(postProcessOutput, coord, vec4f(vec3f(dof_debug_mask(dof_near_weight(coord, outputSize))), 1.0));
   } else if (settings.debugView == DEBUG_VIEW_DOF_FAR_MASK) {
-    textureStore(postProcessOutput, coord, vec4f(vec3f(dof_debug_mask(dofLayers.z)), 1.0));
+    textureStore(postProcessOutput, coord, vec4f(vec3f(dof_debug_mask(dof_far_weight(coord, outputSize))), 1.0));
   } else if (
     settings.debugView == DEBUG_VIEW_DOF_DOWNSAMPLE ||
     settings.debugView == DEBUG_VIEW_DOF_BLUR_H ||

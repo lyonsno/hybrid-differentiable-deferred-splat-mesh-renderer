@@ -1,0 +1,682 @@
+{
+  "url": "http://127.0.0.1:5177/?renderer=compute",
+  "browserChannel": "chrome",
+  "consoleMessages": [],
+  "pageErrors": [],
+  "captures": {
+    "off": {
+      "state": {
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": false,
+          "dofFocusDepth": 0.45,
+          "dofStrength": 0,
+          "dofRadius": 8
+        },
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      },
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 18110,
+        "changedPixels": 35556,
+        "changedPixelRatio": 0.03858072916666667,
+        "averageDelta": 3.3025777633102744,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "01010101010101000000000000000000000000000000000000000003030000000000000607000000000000000000000000000000000000000000000000000000",
+        "bridgeBlockRatio": 0.055248618784530384,
+        "nonblank": true
+      }
+    },
+    "focus0": {
+      "state": {
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 0,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      },
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 13957,
+        "changedPixels": 36455,
+        "changedPixelRatio": 0.03955620659722222,
+        "averageDelta": 3.352650824652898,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "01010101010101000000000000000000000000000000000000000003030000000000000607000000000000000000000000000000000000000000000000000000",
+        "bridgeBlockRatio": 0.08839779005524862,
+        "nonblank": true
+      }
+    },
+    "focus25": {
+      "state": {
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.25,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      },
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 13899,
+        "changedPixels": 36395,
+        "changedPixelRatio": 0.03949110243055556,
+        "averageDelta": 3.343943142361249,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "01010101010101000000000000000000000000000000000000000003030000000000000607000000000000000000000000000000000000000000000000000000",
+        "bridgeBlockRatio": 0.08839779005524862,
+        "nonblank": true
+      }
+    },
+    "focus50": {
+      "state": {
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.5,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      },
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 13852,
+        "changedPixels": 36262,
+        "changedPixelRatio": 0.03934678819444445,
+        "averageDelta": 3.327340133101978,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "01010101010101000000000000000000000000000000000000000003030000000000000607000000000000000000000000000000000000000000000000000000",
+        "bridgeBlockRatio": 0.08839779005524862,
+        "nonblank": true
+      }
+    },
+    "focus75": {
+      "state": {
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.75,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      },
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 13947,
+        "changedPixels": 36071,
+        "changedPixelRatio": 0.03913953993055556,
+        "averageDelta": 3.3007490596065825,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "01010101010101000000000000000000000000000000000000000003030000000000000607000000000000000000000000000000000000000000000000000000",
+        "bridgeBlockRatio": 0.09444444444444444,
+        "nonblank": true
+      }
+    },
+    "focus100": {
+      "state": {
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 1,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      },
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 18110,
+        "changedPixels": 36031,
+        "changedPixelRatio": 0.03909613715277778,
+        "averageDelta": 3.330436559606563,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "01010101010101000000000000000000000000000000000000000003030000000000000607000000000000000000000000000000000000000000000000000000",
+        "bridgeBlockRatio": 0.056179775280898875,
+        "nonblank": true
+      }
+    },
+    "ap0": {
+      "state": {
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 1,
+          "dofStrength": 0,
+          "dofRadius": 8
+        },
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      },
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 18111,
+        "changedPixels": 35949,
+        "changedPixelRatio": 0.039007161458333335,
+        "averageDelta": 3.3265921585649028,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "01010101010101000000000000000000000000000000000000000003030000000000000607000000000000000000000000000000000000000000000000000000",
+        "bridgeBlockRatio": 0.055865921787709494,
+        "nonblank": true
+      }
+    },
+    "ap25": {
+      "state": {
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 1,
+          "dofStrength": 1,
+          "dofRadius": 8
+        },
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      },
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 18111,
+        "changedPixels": 36009,
+        "changedPixelRatio": 0.039072265625,
+        "averageDelta": 3.329696903935268,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "01010101010101000000000000000000000000000000000000000003030000000000000607000000000000000000000000000000000000000000000000000000",
+        "bridgeBlockRatio": 0.056179775280898875,
+        "nonblank": true
+      }
+    },
+    "ap50": {
+      "state": {
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 1,
+          "dofStrength": 2,
+          "dofRadius": 8
+        },
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      },
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 18111,
+        "changedPixels": 36021,
+        "changedPixelRatio": 0.03908528645833333,
+        "averageDelta": 3.3303569878473054,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "01010101010101000000000000000000000000000000000000000003030000000000000607000000000000000000000000000000000000000000000000000000",
+        "bridgeBlockRatio": 0.056179775280898875,
+        "nonblank": true
+      }
+    },
+    "ap75": {
+      "state": {
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 1,
+          "dofStrength": 3,
+          "dofRadius": 8
+        },
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      },
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 18111,
+        "changedPixels": 36018,
+        "changedPixelRatio": 0.03908203125,
+        "averageDelta": 3.3297724971065645,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "01010101010101000000000000000000000000000000000000000003030000000000000607000000000000000000000000000000000000000000000000000000",
+        "bridgeBlockRatio": 0.056179775280898875,
+        "nonblank": true
+      }
+    },
+    "ap100": {
+      "state": {
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 1,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      },
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 18111,
+        "changedPixels": 36040,
+        "changedPixelRatio": 0.03910590277777778,
+        "averageDelta": 3.3318424479167494,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "01010101010101000000000000000000000000000000000000000003030000000000000607000000000000000000000000000000000000000000000000000000",
+        "bridgeBlockRatio": 0.056179775280898875,
+        "nonblank": true
+      }
+    },
+    "mask0": {
+      "state": {
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "dof-mask",
+          "dofEnabled": true,
+          "dofFocusDepth": 0,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      },
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 255
+        },
+        "distinctColorCount": 568,
+        "changedPixels": 38198,
+        "changedPixelRatio": 0.04144748263888889,
+        "averageDelta": 7.920116464120326,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "01010101010101010000000000000000000000000000000000000008080000000000001316000000000000000000000000000000000000000000000000000000",
+        "bridgeBlockRatio": 0.35638297872340424,
+        "nonblank": true
+      }
+    },
+    "mask50": {
+      "state": {
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "dof-mask",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.5,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      },
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 255
+        },
+        "distinctColorCount": 570,
+        "changedPixels": 37586,
+        "changedPixelRatio": 0.04078342013888889,
+        "averageDelta": 7.682128906249958,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "01010101010101010000000000000000000000000000000000000008080000000000001215000000000000000000000000000000000000000000000000000000",
+        "bridgeBlockRatio": 0.3621621621621622,
+        "nonblank": true
+      }
+    },
+    "mask100": {
+      "state": {
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "dof-mask",
+          "dofEnabled": true,
+          "dofFocusDepth": 1,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      },
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 255
+        },
+        "distinctColorCount": 317,
+        "changedPixels": 10241,
+        "changedPixelRatio": 0.011112196180555556,
+        "averageDelta": 0.752171585648107,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "01010101010101010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+        "bridgeBlockRatio": 0,
+        "nonblank": true
+      }
+    }
+  },
+  "diffs": {
+    "focus0VsOff": {
+      "changedPixels": 28509,
+      "changedPercent": 3.093,
+      "maxChannelSum": 325,
+      "meanChannelSum": 2.1827
+    },
+    "focus50VsOff": {
+      "changedPixels": 27813,
+      "changedPercent": 3.018,
+      "maxChannelSum": 325,
+      "meanChannelSum": 2.0636
+    },
+    "focus100VsOff": {
+      "changedPixels": 4189,
+      "changedPercent": 0.455,
+      "maxChannelSum": 259,
+      "meanChannelSum": 0.6072
+    },
+    "focus0Vs100": {
+      "changedPixels": 25739,
+      "changedPercent": 2.793,
+      "maxChannelSum": 325,
+      "meanChannelSum": 1.7706
+    },
+    "aperture0Vs100AtFocus100": {
+      "changedPixels": 601,
+      "changedPercent": 0.065,
+      "maxChannelSum": 259,
+      "meanChannelSum": 0.0918
+    },
+    "aperture25Vs100AtFocus100": {
+      "changedPixels": 560,
+      "changedPercent": 0.061,
+      "maxChannelSum": 259,
+      "meanChannelSum": 0.0835
+    },
+    "mask0Vs100": {
+      "changedPixels": 33449,
+      "changedPercent": 3.629,
+      "maxChannelSum": 765,
+      "meanChannelSum": 22.1645
+    }
+  }
+}

@@ -1,0 +1,666 @@
+{
+  "outDir": "smoke-reports/lane3-dof-mask-repair-0615/post-repair-mask-sweep",
+  "captures": [
+    {
+      "name": "mask-f0-a100",
+      "path": "smoke-reports/lane3-dof-mask-repair-0615/post-repair-mask-sweep/mask-f0-a100.png",
+      "state": {
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "dof-mask",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.95,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      }
+    },
+    {
+      "name": "mask-f25-a100",
+      "path": "smoke-reports/lane3-dof-mask-repair-0615/post-repair-mask-sweep/mask-f25-a100.png",
+      "state": {
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "dof-mask",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.9624999999999999,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      }
+    },
+    {
+      "name": "mask-f50-a100",
+      "path": "smoke-reports/lane3-dof-mask-repair-0615/post-repair-mask-sweep/mask-f50-a100.png",
+      "state": {
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "dof-mask",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.975,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      }
+    },
+    {
+      "name": "mask-f75-a100",
+      "path": "smoke-reports/lane3-dof-mask-repair-0615/post-repair-mask-sweep/mask-f75-a100.png",
+      "state": {
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "dof-mask",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.9875,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      }
+    },
+    {
+      "name": "mask-f100-a100",
+      "path": "smoke-reports/lane3-dof-mask-repair-0615/post-repair-mask-sweep/mask-f100-a100.png",
+      "state": {
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "dof-mask",
+          "dofEnabled": true,
+          "dofFocusDepth": 1,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      }
+    },
+    {
+      "name": "mask-default-f50-a35",
+      "path": "smoke-reports/lane3-dof-mask-repair-0615/post-repair-mask-sweep/mask-default-f50-a35.png",
+      "state": {
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "dof-mask",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.975,
+          "dofStrength": 1.4,
+          "dofRadius": 8
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      }
+    },
+    {
+      "name": "final-f0-a0",
+      "path": "smoke-reports/lane3-dof-mask-repair-0615/post-repair-mask-sweep/final-f0-a0.png",
+      "state": {
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.95,
+          "dofStrength": 0,
+          "dofRadius": 8
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      }
+    },
+    {
+      "name": "final-f0-a100",
+      "path": "smoke-reports/lane3-dof-mask-repair-0615/post-repair-mask-sweep/final-f0-a100.png",
+      "state": {
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.95,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      }
+    },
+    {
+      "name": "final-f50-a0",
+      "path": "smoke-reports/lane3-dof-mask-repair-0615/post-repair-mask-sweep/final-f50-a0.png",
+      "state": {
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.975,
+          "dofStrength": 0,
+          "dofRadius": 8
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      }
+    },
+    {
+      "name": "final-f50-a100",
+      "path": "smoke-reports/lane3-dof-mask-repair-0615/post-repair-mask-sweep/final-f50-a100.png",
+      "state": {
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.975,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      }
+    },
+    {
+      "name": "depth-f50",
+      "path": "smoke-reports/lane3-dof-mask-repair-0615/post-repair-mask-sweep/depth-f50.png",
+      "state": {
+        "postProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "depth",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.975,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "temporalResolve": {
+          "mode": "off",
+          "maxHistoryFrames": 8,
+          "debugView": "final",
+          "historyFrameCount": 0,
+          "pendingTemporalResolve": false,
+          "jitterOffsetPx": [
+            0,
+            0
+          ],
+          "resetReason": "disabled"
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        }
+      }
+    }
+  ],
+  "stats": {
+    "mask-f0-a100": {
+      "name": "mask-f0-a100",
+      "min": 0,
+      "max": 214,
+      "mean": 5.8005,
+      "uniqueCount": 203,
+      "nonblackPixels": 28893,
+      "nonblackPercent": 3.1351,
+      "brightPercent": 0,
+      "bbox": {
+        "minX": 468,
+        "minY": 300,
+        "maxX": 811,
+        "maxY": 438
+      }
+    },
+    "mask-f25-a100": {
+      "name": "mask-f25-a100",
+      "min": 0,
+      "max": 181,
+      "mean": 4.9044,
+      "uniqueCount": 172,
+      "nonblackPixels": 28893,
+      "nonblackPercent": 3.1351,
+      "brightPercent": 0,
+      "bbox": {
+        "minX": 468,
+        "minY": 300,
+        "maxX": 811,
+        "maxY": 438
+      }
+    },
+    "mask-f50-a100": {
+      "name": "mask-f50-a100",
+      "min": 0,
+      "max": 141,
+      "mean": 3.8028,
+      "uniqueCount": 134,
+      "nonblackPixels": 28893,
+      "nonblackPercent": 3.1351,
+      "brightPercent": 0,
+      "bbox": {
+        "minX": 468,
+        "minY": 300,
+        "maxX": 811,
+        "maxY": 438
+      }
+    },
+    "mask-f75-a100": {
+      "name": "mask-f75-a100",
+      "min": 0,
+      "max": 82,
+      "mean": 2.1936,
+      "uniqueCount": 79,
+      "nonblackPixels": 28022,
+      "nonblackPercent": 3.0406,
+      "brightPercent": 0,
+      "bbox": {
+        "minX": 471,
+        "minY": 301,
+        "maxX": 809,
+        "maxY": 435
+      }
+    },
+    "mask-f100-a100": {
+      "name": "mask-f100-a100",
+      "min": 0,
+      "max": 0,
+      "mean": 0,
+      "uniqueCount": 1,
+      "nonblackPixels": 0,
+      "nonblackPercent": 0,
+      "brightPercent": 0,
+      "bbox": null
+    },
+    "mask-default-f50-a35": {
+      "name": "mask-default-f50-a35",
+      "min": 0,
+      "max": 83,
+      "mean": 2.2439,
+      "uniqueCount": 80,
+      "nonblackPixels": 28045,
+      "nonblackPercent": 3.0431,
+      "brightPercent": 0,
+      "bbox": {
+        "minX": 470,
+        "minY": 301,
+        "maxX": 809,
+        "maxY": 435
+      }
+    },
+    "final-f0-a0": {
+      "name": "final-f0-a0",
+      "min": 7,
+      "max": 220,
+      "mean": 9.3277,
+      "uniqueCount": 213,
+      "nonblackPixels": 27781,
+      "nonblackPercent": 3.0144,
+      "brightPercent": 0,
+      "bbox": {
+        "minX": 472,
+        "minY": 299,
+        "maxX": 807,
+        "maxY": 433
+      }
+    },
+    "final-f0-a100": {
+      "name": "final-f0-a100",
+      "min": 7,
+      "max": 180,
+      "mean": 9.3162,
+      "uniqueCount": 174,
+      "nonblackPixels": 27782,
+      "nonblackPercent": 3.0145,
+      "brightPercent": 0,
+      "bbox": {
+        "minX": 472,
+        "minY": 299,
+        "maxX": 807,
+        "maxY": 433
+      }
+    },
+    "final-f50-a0": {
+      "name": "final-f50-a0",
+      "min": 7,
+      "max": 220,
+      "mean": 9.3277,
+      "uniqueCount": 213,
+      "nonblackPixels": 27781,
+      "nonblackPercent": 3.0144,
+      "brightPercent": 0,
+      "bbox": {
+        "minX": 472,
+        "minY": 299,
+        "maxX": 807,
+        "maxY": 433
+      }
+    },
+    "final-f50-a100": {
+      "name": "final-f50-a100",
+      "min": 7,
+      "max": 209,
+      "mean": 9.3273,
+      "uniqueCount": 203,
+      "nonblackPixels": 27781,
+      "nonblackPercent": 3.0144,
+      "brightPercent": 0,
+      "bbox": {
+        "minX": 472,
+        "minY": 299,
+        "maxX": 807,
+        "maxY": 433
+      }
+    },
+    "depth-f50": {
+      "name": "depth-f50",
+      "min": 0,
+      "max": 255,
+      "mean": 6.5922,
+      "uniqueCount": 256,
+      "nonblackPixels": 27033,
+      "nonblackPercent": 2.9333,
+      "brightPercent": 2.3319,
+      "bbox": {
+        "minX": 474,
+        "minY": 301,
+        "maxX": 807,
+        "maxY": 432
+      }
+    }
+  },
+  "comparisons": {
+    "aperture0Vs100AtFocus0": {
+      "a": "final-f0-a0.png",
+      "b": "final-f0-a100.png",
+      "changedPixels": 18715,
+      "changedPercent": 2.0307,
+      "maxSum": 195,
+      "meanSum": 0.77
+    },
+    "aperture0Vs100AtFocus50": {
+      "a": "final-f50-a0.png",
+      "b": "final-f50-a100.png",
+      "changedPixels": 5445,
+      "changedPercent": 0.5908,
+      "maxSum": 45,
+      "meanSum": 0.1514
+    },
+    "focus0Vs50AtA100": {
+      "a": "final-f0-a100.png",
+      "b": "final-f50-a100.png",
+      "changedPixels": 17654,
+      "changedPercent": 1.9156,
+      "maxSum": 170,
+      "meanSum": 0.6517
+    }
+  },
+  "consoleMessages": [
+    {
+      "type": "debug",
+      "text": "[vite] connecting..."
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connected."
+    }
+  ],
+  "pageErrors": []
+}

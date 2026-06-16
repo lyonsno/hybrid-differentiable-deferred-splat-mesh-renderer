@@ -1,0 +1,56 @@
+{
+  "localOnlyVsNoStages": {
+    "changedPixelRatio": 0.17767686631944443,
+    "changedPixelRatioThreshold12": 0.043859592013888886,
+    "averageRgbDelta": 1.5007769097222223,
+    "maxRgbDelta": 74
+  },
+  "wideOnlyVsNoStages": {
+    "changedPixelRatio": 0.21379557291666668,
+    "changedPixelRatioThreshold12": 0.07827582465277778,
+    "averageRgbDelta": 3.0167784288194444,
+    "maxRgbDelta": 145
+  },
+  "bothVsNoStages": {
+    "changedPixelRatio": 0.18405381944444443,
+    "changedPixelRatioThreshold12": 0.051376953125,
+    "averageRgbDelta": 1.7548383246527777,
+    "maxRgbDelta": 90
+  },
+  "wideOnlyVsLocalOnly": {
+    "changedPixelRatio": 0.21120442708333334,
+    "changedPixelRatioThreshold12": 0.06414171006944444,
+    "averageRgbDelta": 2.1186729600694445,
+    "maxRgbDelta": 92
+  },
+  "blurHVsDownsample": {
+    "changedPixelRatio": 0.32842881944444446,
+    "changedPixelRatioThreshold12": 0.20039496527777778,
+    "averageRgbDelta": 10.96947482638889,
+    "maxRgbDelta": 426
+  },
+  "blurVOnlyVsDownsample": {
+    "changedPixelRatio": 0.4443012152777778,
+    "changedPixelRatioThreshold12": 0.3137109375,
+    "averageRgbDelta": 18.634700520833334,
+    "maxRgbDelta": 572
+  },
+  "blurHVVsBlurH": {
+    "changedPixelRatio": 0.5202083333333334,
+    "changedPixelRatioThreshold12": 0.3085590277777778,
+    "averageRgbDelta": 13.688676215277777,
+    "maxRgbDelta": 419
+  },
+  "blurHVVsVOnly": {
+    "changedPixelRatio": 0.48550347222222223,
+    "changedPixelRatioThreshold12": 0.17132378472222223,
+    "averageRgbDelta": 5.485794270833333,
+    "maxRgbDelta": 110
+  },
+  "maskVsNoStages": {
+    "changedPixelRatio": 1,
+    "changedPixelRatioThreshold12": 0.9909917534722222,
+    "averageRgbDelta": 47.82924045138889,
+    "maxRgbDelta": 381
+  }
+}

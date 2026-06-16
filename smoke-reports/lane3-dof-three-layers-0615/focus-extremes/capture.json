@@ -1,0 +1,60 @@
+{
+  "url": "http://127.0.0.1:5177/?renderer=compute&asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-close",
+  "captures": [
+    {
+      "focus": "0",
+      "view": "dof-layers",
+      "path": "smoke-reports/lane3-dof-three-layers-0615/focus-extremes/focus-0-dof-layers.png",
+      "stats": "1440×900 | 4 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 93,410 splats/108 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 35%/dof local+wide nmf f95 a100 r128/dof-layers | temporal: idle/8/8 | app frame: 0.2ms | slowest app stage: frame-uniforms 0ms | render: 4.26ms"
+    },
+    {
+      "focus": "0",
+      "view": "dof-near-mask",
+      "path": "smoke-reports/lane3-dof-three-layers-0615/focus-extremes/focus-0-dof-near-mask.png",
+      "stats": "1440×900 | 4 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 93,410 splats/108 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 35%/dof local+wide nmf f95 a100 r128/dof-near-mask | temporal: idle/8/8 | app frame: 0.2ms | slowest app stage: frame-uniforms 0ms | render: 4.46ms"
+    },
+    {
+      "focus": "0",
+      "view": "dof-far-mask",
+      "path": "smoke-reports/lane3-dof-three-layers-0615/focus-extremes/focus-0-dof-far-mask.png",
+      "stats": "1440×900 | 25 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 93,410 splats/108 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 35%/dof local+wide nmf f95 a100 r128/dof-far-mask | temporal: idle/8/8 | app frame: 0.2ms | slowest app stage: frame-uniforms 0ms | render: 3.89ms"
+    },
+    {
+      "focus": "50",
+      "view": "dof-layers",
+      "path": "smoke-reports/lane3-dof-three-layers-0615/focus-extremes/focus-50-dof-layers.png",
+      "stats": "1440×900 | 25 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 93,410 splats/108 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 35%/dof local+wide nmf f98 a100 r128/dof-layers | temporal: idle/8/8 | app frame: 0.1ms | slowest app stage: frame-uniforms 0ms | render: 3.55ms"
+    },
+    {
+      "focus": "50",
+      "view": "dof-near-mask",
+      "path": "smoke-reports/lane3-dof-three-layers-0615/focus-extremes/focus-50-dof-near-mask.png",
+      "stats": "1440×900 | 21 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 93,410 splats/108 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 35%/dof local+wide nmf f98 a100 r128/dof-near-mask | temporal: idle/8/8 | app frame: 0.1ms | slowest app stage: frame-uniforms 0ms | render: 3.77ms"
+    },
+    {
+      "focus": "50",
+      "view": "dof-far-mask",
+      "path": "smoke-reports/lane3-dof-three-layers-0615/focus-extremes/focus-50-dof-far-mask.png",
+      "stats": "1440×900 | 21 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 93,410 splats/108 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 35%/dof local+wide nmf f98 a100 r128/dof-far-mask | temporal: idle/8/8 | app frame: 0.1ms | slowest app stage: frame-uniforms 0ms | render: 6.07ms"
+    },
+    {
+      "focus": "100",
+      "view": "dof-layers",
+      "path": "smoke-reports/lane3-dof-three-layers-0615/focus-extremes/focus-100-dof-layers.png",
+      "stats": "1440×900 | 21 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 93,410 splats/108 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 35%/dof local+wide nmf f100 a100 r128/dof-layers | temporal: idle/8/8 | app frame: 0.3ms | slowest app stage: frame-uniforms 0ms | render: 3.36ms"
+    },
+    {
+      "focus": "100",
+      "view": "dof-near-mask",
+      "path": "smoke-reports/lane3-dof-three-layers-0615/focus-extremes/focus-100-dof-near-mask.png",
+      "stats": "1440×900 | 21 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 93,410 splats/108 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 35%/dof local+wide nmf f100 a100 r128/dof-near-mask | temporal: idle/8/8 | app frame: 0.3ms | slowest app stage: frame-uniforms 0ms | render: 3.63ms"
+    },
+    {
+      "focus": "100",
+      "view": "dof-far-mask",
+      "path": "smoke-reports/lane3-dof-three-layers-0615/focus-extremes/focus-100-dof-far-mask.png",
+      "stats": "1440×900 | 22 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 93,410 splats/108 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 35%/dof local+wide nmf f100 a100 r128/dof-far-mask | temporal: idle/8/8 | app frame: 0.1ms | slowest app stage: uniform-upload 0.1ms | render: 3.69ms"
+    }
+  ],
+  "failures": []
+}

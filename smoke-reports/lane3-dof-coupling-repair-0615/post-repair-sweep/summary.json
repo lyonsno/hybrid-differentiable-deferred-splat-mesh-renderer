@@ -1,0 +1,528 @@
+{
+  "outDir": "smoke-reports/lane3-dof-coupling-repair-0615/post-repair-sweep",
+  "captures": [
+    {
+      "name": "off-focus50-ap0",
+      "path": "smoke-reports/lane3-dof-coupling-repair-0615/post-repair-sweep/off-focus50-ap0.png",
+      "state": {
+        "controls": {
+          "dof": false,
+          "focus": "50",
+          "aperture": "0",
+          "radius": "8",
+          "view": "final"
+        },
+        "witnessPostProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": false,
+          "dofFocusDepth": 0.95,
+          "dofStrength": 0,
+          "dofRadius": 8
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        },
+        "stats": "1280×720 | 6 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 35% | temporal: idle/8/8 | app frame: 0.1ms | slowest app stage: frame-uniforms 0ms | render: 3.65ms"
+      }
+    },
+    {
+      "name": "focus0-ap100",
+      "path": "smoke-reports/lane3-dof-coupling-repair-0615/post-repair-sweep/focus0-ap100.png",
+      "state": {
+        "controls": {
+          "dof": true,
+          "focus": "0",
+          "aperture": "100",
+          "radius": "8",
+          "view": "final"
+        },
+        "witnessPostProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.9,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        },
+        "stats": "1280×720 | 1 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 35%/dof f90 a100 r8 | temporal: idle/8/8 | app frame: 0.3ms | slowest app stage: queue-submit 0.1ms | render: 4.18ms"
+      }
+    },
+    {
+      "name": "focus50-ap100",
+      "path": "smoke-reports/lane3-dof-coupling-repair-0615/post-repair-sweep/focus50-ap100.png",
+      "state": {
+        "controls": {
+          "dof": true,
+          "focus": "50",
+          "aperture": "100",
+          "radius": "8",
+          "view": "final"
+        },
+        "witnessPostProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.95,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        },
+        "stats": "1280×720 | 1 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 35%/dof f95 a100 r8 | temporal: idle/8/8 | app frame: 0.3ms | slowest app stage: frame-uniforms 0.1ms | render: 3.98ms"
+      }
+    },
+    {
+      "name": "focus80-ap100",
+      "path": "smoke-reports/lane3-dof-coupling-repair-0615/post-repair-sweep/focus80-ap100.png",
+      "state": {
+        "controls": {
+          "dof": true,
+          "focus": "80",
+          "aperture": "100",
+          "radius": "8",
+          "view": "final"
+        },
+        "witnessPostProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.98,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        },
+        "stats": "1280×720 | 1 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 35%/dof f98 a100 r8 | temporal: idle/8/8 | app frame: 0.2ms | slowest app stage: frame-uniforms 0ms | render: 5.01ms"
+      }
+    },
+    {
+      "name": "focus100-ap100",
+      "path": "smoke-reports/lane3-dof-coupling-repair-0615/post-repair-sweep/focus100-ap100.png",
+      "state": {
+        "controls": {
+          "dof": true,
+          "focus": "100",
+          "aperture": "100",
+          "radius": "8",
+          "view": "final"
+        },
+        "witnessPostProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 1,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        },
+        "stats": "1280×720 | 1 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 35%/dof f100 a100 r8 | temporal: idle/8/8 | app frame: 0.1ms | slowest app stage: frame-uniforms 0ms | render: 4.24ms"
+      }
+    },
+    {
+      "name": "focus50-ap0",
+      "path": "smoke-reports/lane3-dof-coupling-repair-0615/post-repair-sweep/focus50-ap0.png",
+      "state": {
+        "controls": {
+          "dof": true,
+          "focus": "50",
+          "aperture": "0",
+          "radius": "8",
+          "view": "final"
+        },
+        "witnessPostProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.95,
+          "dofStrength": 0,
+          "dofRadius": 8
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        },
+        "stats": "1280×720 | 1 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 35%/dof f95 a0 r8 | temporal: idle/8/8 | app frame: 0.2ms | slowest app stage: frame-uniforms 0ms | render: 3.76ms"
+      }
+    },
+    {
+      "name": "focus50-ap25",
+      "path": "smoke-reports/lane3-dof-coupling-repair-0615/post-repair-sweep/focus50-ap25.png",
+      "state": {
+        "controls": {
+          "dof": true,
+          "focus": "50",
+          "aperture": "25",
+          "radius": "8",
+          "view": "final"
+        },
+        "witnessPostProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.95,
+          "dofStrength": 1,
+          "dofRadius": 8
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        },
+        "stats": "1280×720 | 1 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 35%/dof f95 a25 r8 | temporal: idle/8/8 | app frame: 0.2ms | slowest app stage: frame-uniforms 0ms | render: 3.62ms"
+      }
+    },
+    {
+      "name": "focus50-ap50",
+      "path": "smoke-reports/lane3-dof-coupling-repair-0615/post-repair-sweep/focus50-ap50.png",
+      "state": {
+        "controls": {
+          "dof": true,
+          "focus": "50",
+          "aperture": "50",
+          "radius": "8",
+          "view": "final"
+        },
+        "witnessPostProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.95,
+          "dofStrength": 2,
+          "dofRadius": 8
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        },
+        "stats": "1280×720 | 1 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 35%/dof f95 a50 r8 | temporal: idle/8/8 | app frame: 0.2ms | slowest app stage: frame-uniforms 0ms | render: 4.70ms"
+      }
+    },
+    {
+      "name": "focus50-ap75",
+      "path": "smoke-reports/lane3-dof-coupling-repair-0615/post-repair-sweep/focus50-ap75.png",
+      "state": {
+        "controls": {
+          "dof": true,
+          "focus": "50",
+          "aperture": "75",
+          "radius": "8",
+          "view": "final"
+        },
+        "witnessPostProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.95,
+          "dofStrength": 3,
+          "dofRadius": 8
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        },
+        "stats": "1280×720 | 1 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 35%/dof f95 a75 r8 | temporal: idle/8/8 | app frame: 0.1ms | slowest app stage: frame-uniforms 0ms | render: 3.60ms"
+      }
+    },
+    {
+      "name": "focus50-ap100-repeat",
+      "path": "smoke-reports/lane3-dof-coupling-repair-0615/post-repair-sweep/focus50-ap100-repeat.png",
+      "state": {
+        "controls": {
+          "dof": true,
+          "focus": "50",
+          "aperture": "100",
+          "radius": "8",
+          "view": "final"
+        },
+        "witnessPostProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "final",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.95,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        },
+        "stats": "1280×720 | 1 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 35%/dof f95 a100 r8 | temporal: idle/8/8 | app frame: 0.1ms | slowest app stage: frame-uniforms 0ms | render: 3.74ms"
+      }
+    },
+    {
+      "name": "dof-mask-focus50-ap100",
+      "path": "smoke-reports/lane3-dof-coupling-repair-0615/post-repair-sweep/dof-mask-focus50-ap100.png",
+      "state": {
+        "controls": {
+          "dof": true,
+          "focus": "50",
+          "aperture": "100",
+          "radius": "8",
+          "view": "dof-mask"
+        },
+        "witnessPostProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "dof-mask",
+          "dofEnabled": true,
+          "dofFocusDepth": 0.95,
+          "dofStrength": 4,
+          "dofRadius": 8
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        },
+        "stats": "1280×720 | 1 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 35%/dof f95 a100 r8/dof-mask | temporal: idle/8/8 | app frame: 0.2ms | slowest app stage: uniform-upload 0.1ms | render: 4.63ms"
+      }
+    },
+    {
+      "name": "depth",
+      "path": "smoke-reports/lane3-dof-coupling-repair-0615/post-repair-sweep/depth.png",
+      "state": {
+        "controls": {
+          "dof": false,
+          "focus": "50",
+          "aperture": "0",
+          "radius": "8",
+          "view": "depth"
+        },
+        "witnessPostProcess": {
+          "enabled": true,
+          "fxaaEnabled": true,
+          "casEnabled": true,
+          "sampleRadius": 2,
+          "sampleCount": 8,
+          "casSharpness": 0.5249999999999999,
+          "debugView": "depth",
+          "dofEnabled": false,
+          "dofFocusDepth": 0.95,
+          "dofStrength": 0,
+          "dofRadius": 8
+        },
+        "rendererLabel": "compute",
+        "postProcessAux": {
+          "depthConfidence": "rgba16float",
+          "channels": {
+            "r": "alpha-weighted-depth-ndc",
+            "g": "coverage-confidence",
+            "b": "normalized-tile-support",
+            "a": "valid"
+          }
+        },
+        "stats": "1280×720 | 1 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 90,551 splats/13 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 35%/depth | temporal: idle/8/8 | app frame: 0.2ms | slowest app stage: frame-uniforms 0ms | render: 4.84ms"
+      }
+    }
+  ],
+  "comparisons": {
+    "focus0VsOff": {
+      "changedPixels": 0,
+      "changedPercent": 0,
+      "maxSum": 0,
+      "meanSum": 0
+    },
+    "focus50VsOff": {
+      "changedPixels": 0,
+      "changedPercent": 0,
+      "maxSum": 0,
+      "meanSum": 0
+    },
+    "focus80VsOff": {
+      "changedPixels": 0,
+      "changedPercent": 0,
+      "maxSum": 0,
+      "meanSum": 0
+    },
+    "focus100VsOff": {
+      "changedPixels": 0,
+      "changedPercent": 0,
+      "maxSum": 0,
+      "meanSum": 0
+    },
+    "focus0Vs100": {
+      "changedPixels": 0,
+      "changedPercent": 0,
+      "maxSum": 0,
+      "meanSum": 0
+    },
+    "aperture0Vs25AtFocus50": {
+      "changedPixels": 0,
+      "changedPercent": 0,
+      "maxSum": 0,
+      "meanSum": 0
+    },
+    "aperture0Vs50AtFocus50": {
+      "changedPixels": 0,
+      "changedPercent": 0,
+      "maxSum": 0,
+      "meanSum": 0
+    },
+    "aperture0Vs75AtFocus50": {
+      "changedPixels": 0,
+      "changedPercent": 0,
+      "maxSum": 0,
+      "meanSum": 0
+    },
+    "aperture0Vs100AtFocus50": {
+      "changedPixels": 0,
+      "changedPercent": 0,
+      "maxSum": 0,
+      "meanSum": 0
+    },
+    "aperture25Vs100AtFocus50": {
+      "changedPixels": 0,
+      "changedPercent": 0,
+      "maxSum": 0,
+      "meanSum": 0
+    },
+    "repeatFocus50": {
+      "changedPixels": 0,
+      "changedPercent": 0,
+      "maxSum": 0,
+      "meanSum": 0
+    }
+  },
+  "consoleMessages": [
+    {
+      "type": "debug",
+      "text": "[vite] connecting..."
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connected."
+    }
+  ],
+  "pageErrors": []
+}

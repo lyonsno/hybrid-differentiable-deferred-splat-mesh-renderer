@@ -1,0 +1,115 @@
+{
+  "dir": "smoke-reports/lane3-dof-coupling-repair-0615/post-repair-sweep",
+  "comparisons": {
+    "focus0VsOff": {
+      "a": "focus0-ap100.png",
+      "b": "off-focus50-ap0.png",
+      "changedPixels": 9460,
+      "changedPercent": 1.0265,
+      "rgbChangedPixels": 9460,
+      "rgbChangedPercent": 1.0265,
+      "maxSum": 259,
+      "meanSum": 0.7949
+    },
+    "focus50VsOff": {
+      "a": "focus50-ap100.png",
+      "b": "off-focus50-ap0.png",
+      "changedPixels": 5180,
+      "changedPercent": 0.5621,
+      "rgbChangedPixels": 5180,
+      "rgbChangedPercent": 0.5621,
+      "maxSum": 259,
+      "meanSum": 0.6968
+    },
+    "focus80VsOff": {
+      "a": "focus80-ap100.png",
+      "b": "off-focus50-ap0.png",
+      "changedPixels": 4759,
+      "changedPercent": 0.5164,
+      "rgbChangedPixels": 4759,
+      "rgbChangedPercent": 0.5164,
+      "maxSum": 259,
+      "meanSum": 0.6705
+    },
+    "focus100VsOff": {
+      "a": "focus100-ap100.png",
+      "b": "off-focus50-ap0.png",
+      "changedPixels": 4866,
+      "changedPercent": 0.528,
+      "rgbChangedPixels": 4866,
+      "rgbChangedPercent": 0.528,
+      "maxSum": 259,
+      "meanSum": 0.6805
+    },
+    "focus0Vs100": {
+      "a": "focus0-ap100.png",
+      "b": "focus100-ap100.png",
+      "changedPixels": 6292,
+      "changedPercent": 0.6827,
+      "rgbChangedPixels": 6292,
+      "rgbChangedPercent": 0.6827,
+      "maxSum": 259,
+      "meanSum": 0.3087
+    },
+    "aperture0Vs25AtFocus50": {
+      "a": "focus50-ap0.png",
+      "b": "focus50-ap25.png",
+      "changedPixels": 927,
+      "changedPercent": 0.1006,
+      "rgbChangedPixels": 927,
+      "rgbChangedPercent": 0.1006,
+      "maxSum": 259,
+      "meanSum": 0.0827
+    },
+    "aperture0Vs50AtFocus50": {
+      "a": "focus50-ap0.png",
+      "b": "focus50-ap50.png",
+      "changedPixels": 540,
+      "changedPercent": 0.0586,
+      "rgbChangedPixels": 540,
+      "rgbChangedPercent": 0.0586,
+      "maxSum": 259,
+      "meanSum": 0.0674
+    },
+    "aperture0Vs75AtFocus50": {
+      "a": "focus50-ap0.png",
+      "b": "focus50-ap75.png",
+      "changedPixels": 608,
+      "changedPercent": 0.066,
+      "rgbChangedPixels": 608,
+      "rgbChangedPercent": 0.066,
+      "maxSum": 259,
+      "meanSum": 0.0766
+    },
+    "aperture0Vs100AtFocus50": {
+      "a": "focus50-ap0.png",
+      "b": "focus50-ap100-repeat.png",
+      "changedPixels": 580,
+      "changedPercent": 0.0629,
+      "rgbChangedPixels": 580,
+      "rgbChangedPercent": 0.0629,
+      "maxSum": 259,
+      "meanSum": 0.0778
+    },
+    "aperture25Vs100AtFocus50": {
+      "a": "focus50-ap25.png",
+      "b": "focus50-ap100-repeat.png",
+      "changedPixels": 1074,
+      "changedPercent": 0.1165,
+      "rgbChangedPixels": 1074,
+      "rgbChangedPercent": 0.1165,
+      "maxSum": 259,
+      "meanSum": 0.0952
+    },
+    "repeatFocus50": {
+      "a": "focus50-ap100.png",
+      "b": "focus50-ap100-repeat.png",
+      "changedPixels": 1719,
+      "changedPercent": 0.1865,
+      "rgbChangedPixels": 1719,
+      "rgbChangedPercent": 0.1865,
+      "maxSum": 259,
+      "meanSum": 0.1714
+    }
+  }
+}

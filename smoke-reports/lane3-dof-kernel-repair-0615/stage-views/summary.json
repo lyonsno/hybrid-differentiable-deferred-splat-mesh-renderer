@@ -1,0 +1,263 @@
+{
+  "url": "http://127.0.0.1:5177/?renderer=compute&asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-close",
+  "controls": {
+    "postprocess-enabled": {
+      "value": "on",
+      "checked": true
+    },
+    "postprocess-fxaa-enabled": {
+      "value": "on",
+      "checked": false
+    },
+    "postprocess-cas-enabled": {
+      "value": "on",
+      "checked": false
+    },
+    "postprocess-samples": {
+      "value": "8"
+    },
+    "postprocess-radius": {
+      "value": "2"
+    },
+    "postprocess-sharpness": {
+      "value": "35",
+      "checked": false
+    },
+    "postprocess-dof-enabled": {
+      "value": "on",
+      "checked": true
+    },
+    "postprocess-dof-local-enabled": {
+      "value": "on",
+      "checked": true
+    },
+    "postprocess-dof-wide-enabled": {
+      "value": "on",
+      "checked": true
+    },
+    "postprocess-dof-focus": {
+      "value": "50",
+      "checked": false
+    },
+    "postprocess-dof-strength": {
+      "value": "100",
+      "checked": false
+    },
+    "postprocess-dof-radius": {
+      "value": "128"
+    },
+    "postprocess-debug-view": {
+      "value": "final"
+    },
+    "postprocess-temporal-mode": {
+      "value": "idle"
+    },
+    "postprocess-temporal-frames": {
+      "value": "8"
+    },
+    "postprocess-temporal-view": {
+      "value": "final"
+    }
+  },
+  "errors": [],
+  "captures": {
+    "finalBoth": {
+      "path": "smoke-reports/lane3-dof-kernel-repair-0615/stage-views/final-both-local-wide-r128.png",
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 38186,
+        "changedPixels": 182710,
+        "changedPixelRatio": 0.19825303819444445,
+        "averageDelta": 14.718718894679794,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "0000000000000000000000000000000000000001000000000000010a070100000000050b0c07000000010c0d0a08040000010204040302000000000000000000",
+        "bridgeBlockRatio": 0.5096952908587258,
+        "nonblank": true
+      }
+    },
+    "localOnly": {
+      "path": "smoke-reports/lane3-dof-kernel-repair-0615/stage-views/final-local-only-r128.png",
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 39491,
+        "changedPixels": 182672,
+        "changedPixelRatio": 0.19821180555555556,
+        "averageDelta": 14.839133752897842,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "0000000000000000000000000000000000000001000000000000010b070100000000050b0c07000000010d0e0a08040000010204040302000000000000000000",
+        "bridgeBlockRatio": 0.5,
+        "nonblank": true
+      }
+    },
+    "wideOnly": {
+      "path": "smoke-reports/lane3-dof-kernel-repair-0615/stage-views/final-wide-only-r128.png",
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 34205,
+        "changedPixels": 183266,
+        "changedPixelRatio": 0.19885633680555556,
+        "averageDelta": 14.26236617477312,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "0000000000000000000000000000000000000001000000000000010a070000000000040b0c06000000010c0d0a08030000010204040302000000000000000000",
+        "bridgeBlockRatio": 0.554016620498615,
+        "nonblank": true
+      }
+    },
+    "noDofStages": {
+      "path": "smoke-reports/lane3-dof-kernel-repair-0615/stage-views/final-no-local-no-wide-r128.png",
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 44918,
+        "changedPixels": 182485,
+        "changedPixelRatio": 0.19800889756944445,
+        "averageDelta": 14.901232277203261,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "0000000000000000000000000000000000000001000000000000010b070100000000050b0c07000000010d0e0a08040000010204040302000000000000000000",
+        "bridgeBlockRatio": 0.4549237170596394,
+        "nonblank": true
+      }
+    },
+    "mask": {
+      "path": "smoke-reports/lane3-dof-kernel-repair-0615/stage-views/debug-dof-mask-r128.png",
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 0,
+          "g": 0,
+          "b": 0,
+          "a": 255
+        },
+        "distinctColorCount": 136,
+        "changedPixels": 224485,
+        "changedPixelRatio": 0.2435818142361111,
+        "averageDelta": 24.721099175347224,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "0000000000000000000000000000000000000001000000000000010f0b01000000000710100a000000030e0f0f0e07000003070a0c0c07000000000001010000",
+        "bridgeBlockRatio": 0.6894977168949772,
+        "nonblank": true
+      }
+    },
+    "downsample": {
+      "path": "smoke-reports/lane3-dof-kernel-repair-0615/stage-views/debug-dof-downsample-r128.png",
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 20717,
+        "changedPixels": 182536,
+        "changedPixelRatio": 0.19806423611111112,
+        "averageDelta": 14.89607638889321,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "0000000000000000000000000000000000000001000000000000010b070100000000050b0c07000000010d0e0a08040000010204040302000000000000000000",
+        "bridgeBlockRatio": 0.4763231197771588,
+        "nonblank": true
+      }
+    },
+    "blurH": {
+      "path": "smoke-reports/lane3-dof-kernel-repair-0615/stage-views/debug-dof-blur-h-r128.png",
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 12987,
+        "changedPixels": 213028,
+        "changedPixelRatio": 0.23115017361111112,
+        "averageDelta": 14.898378182878572,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "0000000000000000000000000000000000000001000000000000020a070100000000050b0c07000000020c0d0a08040000010204040302000000000000000000",
+        "bridgeBlockRatio": 0.6896551724137931,
+        "nonblank": true
+      }
+    },
+    "blurVOnly": {
+      "path": "smoke-reports/lane3-dof-kernel-repair-0615/stage-views/debug-dof-blur-v-only-r128.png",
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 14754,
+        "changedPixels": 241984,
+        "changedPixelRatio": 0.26256944444444447,
+        "averageDelta": 14.909425636582926,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "00000000000000000000000000000000000000030100000000000109070200000000050c0b0601000001090b0a07030000010405040302000000000101010000",
+        "bridgeBlockRatio": 0.8296760710553814,
+        "nonblank": true
+      }
+    },
+    "blurHV": {
+      "path": "smoke-reports/lane3-dof-kernel-repair-0615/stage-views/debug-dof-blur-hv-r128.png",
+      "analysis": {
+        "width": 1280,
+        "height": 720,
+        "totalPixels": 921600,
+        "backgroundColor": {
+          "r": 5,
+          "g": 5,
+          "b": 10,
+          "a": 255
+        },
+        "distinctColorCount": 7477,
+        "changedPixels": 257332,
+        "changedPixelRatio": 0.27922309027777775,
+        "averageDelta": 14.907936921308993,
+        "pixelDeltaThreshold": 12,
+        "perceptualFingerprint": "00000000000000000000000000000000000000020100000000000208070200000000060b0b0601000001090b0907030000010405040302000000000101010000",
+        "bridgeBlockRatio": 0.9686888454011742,
+        "nonblank": true
+      }
+    }
+  }
+}

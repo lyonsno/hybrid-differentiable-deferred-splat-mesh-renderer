@@ -1,0 +1,30 @@
+{
+  "url": "http://127.0.0.1:5177/?renderer=compute&asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json&witnessView=dessert-close",
+  "captures": [
+    {
+      "farBlur": 0,
+      "path": "smoke-reports/lane3-dof-plane-controls-0616/far-coupling/far-blur-0.png",
+      "state": {
+        "view": "dof-far-mask",
+        "nearPlane": "0",
+        "midPlane": "0",
+        "farPlane": "0",
+        "farBlur": "0",
+        "stats": "1440×900 | 4 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 93,410 splats/108 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 35%/dof local+wide nmf p950/950/950 b100/20/0 a100 r128/dof-far-mask | temporal: idle/8/8 | app frame: 0.2ms | slowest app stage: frame-uniforms 0ms | render: 4.37ms"
+      }
+    },
+    {
+      "farBlur": 100,
+      "path": "smoke-reports/lane3-dof-plane-controls-0616/far-coupling/far-blur-100.png",
+      "state": {
+        "view": "dof-far-mask",
+        "nearPlane": "0",
+        "midPlane": "0",
+        "farPlane": "0",
+        "farBlur": "100",
+        "stats": "1440×900 | 19 fps | 94,406 real Scaniverse splats | renderer: compute | sort: gpu-bitonic-cpu-depth-keys | alpha: coverage-aware density 93,410 splats/108 tiles | arena requested: cpu | arena effective: cpu | post-fx: fxaa+cas/8s/r2/sharp 35%/dof local+wide nmf p950/950/950 b100/20/100 a100 r128/dof-far-mask | temporal: idle/8/8 | app frame: 0.2ms | slowest app stage: frame-uniforms 0ms | render: 4.48ms"
+      }
+    }
+  ],
+  "failures": []
+}
