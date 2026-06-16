@@ -13,7 +13,8 @@ export type FxaaCasDebugView =
   | "dof-mask"
   | "dof-downsample"
   | "dof-blur-h"
-  | "dof-blur-v";
+  | "dof-blur-v-only"
+  | "dof-blur-hv";
 
 const FXAA_CAS_DEBUG_VIEW_CODES: Record<FxaaCasDebugView, number> = {
   final: 0,
@@ -25,7 +26,8 @@ const FXAA_CAS_DEBUG_VIEW_CODES: Record<FxaaCasDebugView, number> = {
   "dof-mask": 6,
   "dof-downsample": 7,
   "dof-blur-h": 8,
-  "dof-blur-v": 9,
+  "dof-blur-v-only": 9,
+  "dof-blur-hv": 10,
 };
 
 export interface FxaaCasPostProcessSettings {
@@ -186,7 +188,7 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
       u32[7] = settings.dofEnabled ? 1 : 0;
       f32[8] = clampNumber(settings.dofFocusDepth, 0, 1);
       f32[9] = clampNumber(settings.dofStrength, 0, POST_PROCESS_MAX_DOF_STRENGTH);
-      u32[10] = clampInteger(settings.dofRadius, 1, 64);
+      u32[10] = clampInteger(settings.dofRadius, 1, 128);
       u32[11] = settings.dofLocalEnabled ? 1 : 0;
       u32[12] = settings.dofWideEnabled ? 1 : 0;
       u32[13] = 0;
@@ -209,12 +211,14 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
       const debugView = lastSettings.debugView;
       const debugDofDownsample = debugView === "dof-downsample";
       const debugDofBlurH = debugView === "dof-blur-h";
-      const debugDofBlurV = debugView === "dof-blur-v";
-      const debugWidePass = debugDofDownsample || debugDofBlurH || debugDofBlurV;
+      const debugDofBlurVOnly = debugView === "dof-blur-v-only";
+      const debugDofBlurHv = debugView === "dof-blur-hv";
+      const debugWidePass = debugDofDownsample || debugDofBlurH || debugDofBlurVOnly || debugDofBlurHv;
       const shouldRunWidePass = lastSettings.dofWideEnabled || debugWidePass;
-      const shouldRunHorizontalBlur = shouldRunWidePass && !debugDofDownsample;
-      const shouldRunVerticalBlur = shouldRunHorizontalBlur && !debugDofBlurH;
-      const finalDofBlurView = debugDofBlurH ? dofBlurScratchView : dofLowResView;
+      const shouldRunHorizontalBlur = shouldRunWidePass && !debugDofDownsample && !debugDofBlurVOnly;
+      const shouldRunVerticalOnlyBlur = debugDofBlurVOnly;
+      const shouldRunVerticalBlur = shouldRunWidePass && !debugDofDownsample && !debugDofBlurH && !debugDofBlurVOnly;
+      const finalDofBlurView = debugDofBlurH || debugDofBlurVOnly ? dofBlurScratchView : dofLowResView;
       const downsampleBindGroup = device.createBindGroup({
         label: "compute_dof_downsample_bg",
         layout: bindGroupLayout,
@@ -248,6 +252,17 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
           { binding: 4, resource: dofBlurScratchView },
         ],
       });
+      const verticalOnlyBlurBindGroup = device.createBindGroup({
+        label: "compute_dof_blur_vertical_only_bg",
+        layout: bindGroupLayout,
+        entries: [
+          { binding: 0, resource: dofLowResView },
+          { binding: 1, resource: dofBlurScratchView },
+          { binding: 2, resource: { buffer: settingsBuffer } },
+          { binding: 3, resource: inputAuxView },
+          { binding: 4, resource: dofLowResView },
+        ],
+      });
       const bindGroup = device.createBindGroup({
         label: "compute_fxaa_cas_post_process_bg",
         layout: bindGroupLayout,
@@ -276,6 +291,14 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
         horizontalBlurPass.setBindGroup(0, horizontalBlurBindGroup);
         horizontalBlurPass.dispatchWorkgroups(Math.ceil(lowResWidth / 8), Math.ceil(lowResHeight / 8));
         horizontalBlurPass.end();
+      }
+
+      if (shouldRunVerticalOnlyBlur) {
+        const verticalOnlyBlurPass = encoder.beginComputePass({ label: "compute_dof_blur_vertical_only" });
+        verticalOnlyBlurPass.setPipeline(dofBlurVerticalPipeline);
+        verticalOnlyBlurPass.setBindGroup(0, verticalOnlyBlurBindGroup);
+        verticalOnlyBlurPass.dispatchWorkgroups(Math.ceil(lowResWidth / 8), Math.ceil(lowResHeight / 8));
+        verticalOnlyBlurPass.end();
       }
 
       if (shouldRunVerticalBlur) {

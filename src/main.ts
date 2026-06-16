@@ -1203,7 +1203,7 @@ function readPostProcessSettings(controls: PostProcessControls): FxaaCasPostProc
     dofWideEnabled: controls.dofWideEnabled?.checked ?? true,
     dofFocusDepth: postProcessDofFocusFromPercent(Number(controls.dofFocus?.value ?? POST_PROCESS_DOF_DEFAULT_FOCUS_PERCENT)),
     dofStrength: postProcessDofStrengthFromPercent(Number(controls.dofStrength?.value ?? 35)),
-    dofRadius: clampInteger(Number(controls.dofRadius?.value ?? 8), 1, 64),
+    dofRadius: clampInteger(Number(controls.dofRadius?.value ?? 8), 1, 128),
   };
 }
 
@@ -1221,7 +1221,8 @@ function postProcessDebugViewFromSelection(value: string | undefined): FxaaCasDe
     value === "dof-mask" ||
     value === "dof-downsample" ||
     value === "dof-blur-h" ||
-    value === "dof-blur-v"
+    value === "dof-blur-v-only" ||
+    value === "dof-blur-hv"
   ) {
     return value;
   }

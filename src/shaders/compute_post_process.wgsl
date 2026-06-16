@@ -35,10 +35,13 @@ const DEBUG_VIEW_CONFIDENCE = 5u;
 const DEBUG_VIEW_DOF_MASK = 6u;
 const DEBUG_VIEW_DOF_DOWNSAMPLE = 7u;
 const DEBUG_VIEW_DOF_BLUR_H = 8u;
-const DEBUG_VIEW_DOF_BLUR_V = 9u;
+const DEBUG_VIEW_DOF_BLUR_V_ONLY = 9u;
+const DEBUG_VIEW_DOF_BLUR_HV = 10u;
 const POST_PROCESS_DOF_FOCUS_DEAD_ZONE = 0.005;
 const POST_PROCESS_DOF_COC_SCALE = 4.0;
 const POST_PROCESS_DOF_DEBUG_MASK_GAMMA = 0.5;
+const POST_PROCESS_DOF_BLUR_TAPS = 17i;
+const POST_PROCESS_DOF_BLUR_HALF_TAPS = 8i;
 
 fn luma(color: vec3f) -> f32 {
   return dot(color, vec3f(0.299, 0.587, 0.114));
@@ -264,7 +267,7 @@ fn dof_circle_of_confusion(coord: vec2i, size: vec2u) -> f32 {
   let depth = clamp(aux.r, 0.0, 1.0);
   let coverageConfidence = clamp(aux.g, 0.0, 1.0);
   let focusDepth = clamp(settings.dofFocusDepth, 0.0, 1.0);
-  let maxRadius = f32(clamp(settings.dofRadius, 1u, 64u));
+  let maxRadius = f32(clamp(settings.dofRadius, 1u, 128u));
   let focusDistance = max(abs(depth - focusDepth) - POST_PROCESS_DOF_FOCUS_DEAD_ZONE, 0.0);
   return clamp(
     focusDistance * POST_PROCESS_DOF_COC_SCALE * settings.dofStrength * coverageConfidence * maxRadius,
@@ -296,7 +299,7 @@ fn dof_sample(coord: vec2i, size: vec2u, originDepth: f32, originCoc: f32, offse
   let sampleCoc = dof_circle_of_confusion(sampleCoord, size);
   let depthDiff = abs(sampleDepth - originDepth);
   let depthWeight = 1.0 - ramp(0.025, 0.16, depthDiff);
-  let blurWeight = clamp(max(originCoc, sampleCoc) / max(f32(clamp(settings.dofRadius, 1u, 64u)), 1.0), 0.05, 1.0);
+  let blurWeight = clamp(max(originCoc, sampleCoc) / max(f32(clamp(settings.dofRadius, 1u, 128u)), 1.0), 0.05, 1.0);
   let weight = max(0.0, depthWeight * blurWeight * max(sampleConfidence, 0.2));
   return vec4f(load_rgb(sampleCoord, size) * weight, weight);
 }
@@ -349,7 +352,7 @@ fn depth_confidence_guided_dof(coord: vec2i, size: vec2u, color: vec3f) -> vec3f
 
   let localBlurred = sum / max(weightSum, 0.0001);
   let wideBlurred = load_dof_wide_blur(coord, size);
-  let wideBlurWeight = ramp(8.0, max(f32(clamp(settings.dofRadius, 1u, 64u)) * 0.85, 8.5), originCoc);
+  let wideBlurWeight = ramp(8.0, max(f32(clamp(settings.dofRadius, 1u, 128u)) * 0.85, 8.5), originCoc);
   var blurred = color;
   if (useLocalBlur && useWideBlur) {
     blurred = mix(localBlurred, wideBlurred, wideBlurWeight);
@@ -358,7 +361,7 @@ fn depth_confidence_guided_dof(coord: vec2i, size: vec2u, color: vec3f) -> vec3f
   } else {
     blurred = wideBlurred;
   }
-  let dofBlend = clamp(originCoc / max(f32(clamp(settings.dofRadius, 1u, 64u)), 1.0), 0.0, 1.0);
+  let dofBlend = clamp(originCoc / max(f32(clamp(settings.dofRadius, 1u, 128u)), 1.0), 0.0, 1.0);
   return mix(color, blurred, dofBlend);
 }
 
@@ -381,21 +384,23 @@ fn dof_downsample(@builtin(global_invocation_id) globalId: vec3u) {
 }
 
 fn dof_blur_radius() -> i32 {
-  return max(1, i32(ceil(f32(clamp(settings.dofRadius, 1u, 64u)) * 0.5)));
+  return max(1, i32(ceil(f32(clamp(settings.dofRadius, 1u, 128u)) * 0.5)));
 }
 
 fn dof_blur_sample(coord: vec2i, size: vec2u, axis: vec2i) -> vec3f {
   let radius = dof_blur_radius();
-  let nearRadius = max(1, radius / 3);
-  let midRadius = max(1, (radius * 2) / 3);
-  var sum = load_rgb(coord, size) * 0.24;
-  sum += load_rgb(coord + axis * nearRadius, size) * 0.18;
-  sum += load_rgb(coord - axis * nearRadius, size) * 0.18;
-  sum += load_rgb(coord + axis * midRadius, size) * 0.13;
-  sum += load_rgb(coord - axis * midRadius, size) * 0.13;
-  sum += load_rgb(coord + axis * radius, size) * 0.07;
-  sum += load_rgb(coord - axis * radius, size) * 0.07;
-  return sum;
+  let sigma = max(f32(radius) * 0.42, 1.0);
+  var sum = vec3f(0.0);
+  var weightSum = 0.0;
+  for (var tap = -POST_PROCESS_DOF_BLUR_HALF_TAPS; tap <= POST_PROCESS_DOF_BLUR_HALF_TAPS; tap = tap + 1) {
+    let tapT = f32(tap) / f32(POST_PROCESS_DOF_BLUR_HALF_TAPS);
+    let sampleOffset = i32(round(tapT * f32(radius)));
+    let normalizedOffset = f32(sampleOffset) / sigma;
+    let weight = exp(-0.5 * normalizedOffset * normalizedOffset);
+    sum += load_rgb(coord + axis * sampleOffset, size) * weight;
+    weightSum += weight;
+  }
+  return sum / max(weightSum, 0.0001);
 }
 
 fn dof_blur(axis: vec2i, globalId: vec3u) {
@@ -439,7 +444,7 @@ fn fxaa_cas_post_process(@builtin(global_invocation_id) globalId: vec3u) {
   let dofColor = select(casColor, depth_confidence_guided_dof(coord, outputSize, casColor), settings.dofEnabled != 0u);
   let finalColor = max(dofColor, vec3f(0.0));
   let aux = load_aux(coord, outputSize);
-  let dofMask = clamp(dof_circle_of_confusion(coord, outputSize) / max(f32(clamp(settings.dofRadius, 1u, 64u)), 1.0), 0.0, 1.0);
+  let dofMask = clamp(dof_circle_of_confusion(coord, outputSize) / max(f32(clamp(settings.dofRadius, 1u, 128u)), 1.0), 0.0, 1.0);
 
   if (settings.debugView == DEBUG_VIEW_FXAA_MASK) {
     textureStore(postProcessOutput, coord, vec4f(vec3f(fxaaMask), source.a));
@@ -456,7 +461,8 @@ fn fxaa_cas_post_process(@builtin(global_invocation_id) globalId: vec3u) {
   } else if (
     settings.debugView == DEBUG_VIEW_DOF_DOWNSAMPLE ||
     settings.debugView == DEBUG_VIEW_DOF_BLUR_H ||
-    settings.debugView == DEBUG_VIEW_DOF_BLUR_V
+    settings.debugView == DEBUG_VIEW_DOF_BLUR_V_ONLY ||
+    settings.debugView == DEBUG_VIEW_DOF_BLUR_HV
   ) {
     textureStore(postProcessOutput, coord, vec4f(max(load_dof_wide_blur(coord, outputSize), vec3f(0.0)), source.a));
   } else {
