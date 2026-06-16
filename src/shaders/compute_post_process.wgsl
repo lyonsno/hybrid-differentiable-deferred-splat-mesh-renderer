@@ -17,9 +17,9 @@ struct PostProcessSettings {
   dofRadius: u32,
   dofLocalEnabled: u32,
   dofWideEnabled: u32,
-  _pad0: u32,
-  _pad1: u32,
-  _pad2: u32,
+  dofNearEnabled: u32,
+  dofMidEnabled: u32,
+  dofFarEnabled: u32,
 };
 
 @group(0) @binding(2) var<uniform> settings: PostProcessSettings;
@@ -37,6 +37,10 @@ const DEBUG_VIEW_DOF_DOWNSAMPLE = 7u;
 const DEBUG_VIEW_DOF_BLUR_H = 8u;
 const DEBUG_VIEW_DOF_BLUR_V_ONLY = 9u;
 const DEBUG_VIEW_DOF_BLUR_HV = 10u;
+const DEBUG_VIEW_DOF_LAYERS = 11u;
+const DEBUG_VIEW_DOF_NEAR_MASK = 12u;
+const DEBUG_VIEW_DOF_MID_MASK = 13u;
+const DEBUG_VIEW_DOF_FAR_MASK = 14u;
 const POST_PROCESS_DOF_FOCUS_DEAD_ZONE = 0.005;
 const POST_PROCESS_DOF_COC_SCALE = 4.0;
 const POST_PROCESS_DOF_DEBUG_MASK_GAMMA = 0.5;
@@ -280,15 +284,56 @@ fn dof_debug_mask(mask: f32) -> f32 {
   return pow(clamp(mask, 0.0, 1.0), POST_PROCESS_DOF_DEBUG_MASK_GAMMA);
 }
 
-fn load_dof_wide_blur(coord: vec2i, size: vec2u) -> vec3f {
-  let blurSize = textureDimensions(postProcessDofBlur);
-  let uv = (vec2f(coord) + vec2f(0.5)) / vec2f(size);
-  let blurCoord = clamp(
-    vec2i(floor(uv * vec2f(blurSize))),
-    vec2i(0),
-    vec2i(i32(blurSize.x) - 1, i32(blurSize.y) - 1)
+fn dof_layer_weights(coord: vec2i, size: vec2u) -> vec4f {
+  let aux = load_aux(coord, size);
+  let depth = clamp(aux.r, 0.0, 1.0);
+  let coverageConfidence = clamp(aux.g, 0.0, 1.0);
+  let focusDepth = clamp(settings.dofFocusDepth, 0.0, 1.0);
+  let signedDistance = depth - focusDepth;
+  let maxRadius = f32(clamp(settings.dofRadius, 1u, 128u));
+  let focusDistance = max(abs(signedDistance) - POST_PROCESS_DOF_FOCUS_DEAD_ZONE, 0.0);
+  let coc = clamp(
+    focusDistance * POST_PROCESS_DOF_COC_SCALE * settings.dofStrength * coverageConfidence * maxRadius,
+    0.0,
+    maxRadius
   );
-  return textureLoad(postProcessDofBlur, blurCoord, 0).rgb;
+  let cocNorm = clamp(coc / max(maxRadius, 1.0), 0.0, 1.0);
+  let nearLayer = select(0.0, cocNorm, signedDistance < -POST_PROCESS_DOF_FOCUS_DEAD_ZONE);
+  let farLayer = select(0.0, cocNorm, signedDistance > POST_PROCESS_DOF_FOCUS_DEAD_ZONE);
+  let midLayer = clamp(1.0 - max(nearLayer, farLayer), 0.0, 1.0) * coverageConfidence;
+  return vec4f(nearLayer, midLayer, farLayer, cocNorm);
+}
+
+fn dof_enabled_layer_weights(coord: vec2i, size: vec2u) -> vec4f {
+  let layers = dof_layer_weights(coord, size);
+  let nearLayer = select(0.0, layers.x, settings.dofNearEnabled != 0u);
+  let midLayer = select(0.0, layers.y, settings.dofMidEnabled != 0u);
+  let farLayer = select(0.0, layers.z, settings.dofFarEnabled != 0u);
+  return vec4f(nearLayer, midLayer, farLayer, max(max(nearLayer, midLayer), farLayer));
+}
+
+fn dof_layer_debug_rgb(layers: vec4f) -> vec3f {
+  return vec3f(dof_debug_mask(layers.x), dof_debug_mask(layers.y), dof_debug_mask(layers.z));
+}
+
+fn load_dof_blur_pixel(coord: vec2i, size: vec2u) -> vec3f {
+  return textureLoad(postProcessDofBlur, clamp_coord(coord, size), 0).rgb;
+}
+
+fn load_dof_wide_blur_bilinear(coord: vec2i, size: vec2u) -> vec3f {
+  let blurSize = textureDimensions(postProcessDofBlur);
+  let blurUv = ((vec2f(coord) + vec2f(0.5)) / vec2f(size)) * vec2f(blurSize) - vec2f(0.5);
+  let base = vec2i(floor(blurUv));
+  let f = fract(blurUv);
+  let c00 = load_dof_blur_pixel(base, blurSize);
+  let c10 = load_dof_blur_pixel(base + vec2i(1, 0), blurSize);
+  let c01 = load_dof_blur_pixel(base + vec2i(0, 1), blurSize);
+  let c11 = load_dof_blur_pixel(base + vec2i(1, 1), blurSize);
+  return mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y);
+}
+
+fn load_dof_wide_blur(coord: vec2i, size: vec2u) -> vec3f {
+  return load_dof_wide_blur_bilinear(coord, size);
 }
 
 fn dof_sample(coord: vec2i, size: vec2u, originDepth: f32, originCoc: f32, offset: vec2i) -> vec4f {
@@ -308,7 +353,12 @@ fn depth_confidence_guided_dof(coord: vec2i, size: vec2u, color: vec3f) -> vec3f
   let originAux = load_aux(coord, size);
   let originDepth = clamp(originAux.r, 0.0, 1.0);
   let originCoc = dof_circle_of_confusion(coord, size);
-  if (originCoc < 0.35) {
+  let layers = dof_enabled_layer_weights(coord, size);
+  let nearLayer = layers.x;
+  let midLayer = layers.y;
+  let farLayer = layers.z;
+  let enabledLayerWeight = layers.w;
+  if (originCoc < 0.35 || enabledLayerWeight <= 0.0) {
     return color;
   }
 
@@ -353,16 +403,18 @@ fn depth_confidence_guided_dof(coord: vec2i, size: vec2u, color: vec3f) -> vec3f
   let localBlurred = sum / max(weightSum, 0.0001);
   let wideBlurred = load_dof_wide_blur(coord, size);
   let wideBlurWeight = ramp(8.0, max(f32(clamp(settings.dofRadius, 1u, 128u)) * 0.85, 8.5), originCoc);
+  let signedLayerWeight = max(nearLayer, farLayer);
   var blurred = color;
   if (useLocalBlur && useWideBlur) {
-    blurred = mix(localBlurred, wideBlurred, wideBlurWeight);
+    let localWideBlurred = mix(localBlurred, wideBlurred, wideBlurWeight);
+    blurred = mix(localWideBlurred, wideBlurred, signedLayerWeight);
   } else if (useLocalBlur) {
     blurred = localBlurred;
   } else {
     blurred = wideBlurred;
   }
   let dofBlend = clamp(originCoc / max(f32(clamp(settings.dofRadius, 1u, 128u)), 1.0), 0.0, 1.0);
-  return mix(color, blurred, dofBlend);
+  return mix(color, blurred, clamp(dofBlend * enabledLayerWeight, 0.0, 1.0));
 }
 
 @compute @workgroup_size(8, 8, 1)
@@ -445,6 +497,7 @@ fn fxaa_cas_post_process(@builtin(global_invocation_id) globalId: vec3u) {
   let finalColor = max(dofColor, vec3f(0.0));
   let aux = load_aux(coord, outputSize);
   let dofMask = clamp(dof_circle_of_confusion(coord, outputSize) / max(f32(clamp(settings.dofRadius, 1u, 128u)), 1.0), 0.0, 1.0);
+  let dofLayers = dof_enabled_layer_weights(coord, outputSize);
 
   if (settings.debugView == DEBUG_VIEW_FXAA_MASK) {
     textureStore(postProcessOutput, coord, vec4f(vec3f(fxaaMask), source.a));
@@ -458,6 +511,14 @@ fn fxaa_cas_post_process(@builtin(global_invocation_id) globalId: vec3u) {
     textureStore(postProcessOutput, coord, vec4f(vec3f(clamp(aux.g, 0.0, 1.0)), source.a));
   } else if (settings.debugView == DEBUG_VIEW_DOF_MASK) {
     textureStore(postProcessOutput, coord, vec4f(vec3f(dof_debug_mask(dofMask)), 1.0));
+  } else if (settings.debugView == DEBUG_VIEW_DOF_LAYERS) {
+    textureStore(postProcessOutput, coord, vec4f(dof_layer_debug_rgb(dofLayers), 1.0));
+  } else if (settings.debugView == DEBUG_VIEW_DOF_NEAR_MASK) {
+    textureStore(postProcessOutput, coord, vec4f(vec3f(dof_debug_mask(dofLayers.x)), 1.0));
+  } else if (settings.debugView == DEBUG_VIEW_DOF_MID_MASK) {
+    textureStore(postProcessOutput, coord, vec4f(vec3f(dof_debug_mask(dofLayers.y)), 1.0));
+  } else if (settings.debugView == DEBUG_VIEW_DOF_FAR_MASK) {
+    textureStore(postProcessOutput, coord, vec4f(vec3f(dof_debug_mask(dofLayers.z)), 1.0));
   } else if (
     settings.debugView == DEBUG_VIEW_DOF_DOWNSAMPLE ||
     settings.debugView == DEBUG_VIEW_DOF_BLUR_H ||

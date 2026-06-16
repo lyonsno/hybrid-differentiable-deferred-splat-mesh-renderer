@@ -266,6 +266,9 @@ interface PostProcessControls {
   readonly dofEnabled: HTMLInputElement | null;
   readonly dofLocalEnabled: HTMLInputElement | null;
   readonly dofWideEnabled: HTMLInputElement | null;
+  readonly dofNearEnabled: HTMLInputElement | null;
+  readonly dofMidEnabled: HTMLInputElement | null;
+  readonly dofFarEnabled: HTMLInputElement | null;
   readonly dofFocus: HTMLInputElement | null;
   readonly dofFocusValue: HTMLOutputElement | null;
   readonly dofStrength: HTMLInputElement | null;
@@ -1159,6 +1162,9 @@ function createPostProcessControls(requestFrame: () => void): PostProcessControl
     dofEnabled: document.getElementById("postprocess-dof-enabled") as HTMLInputElement | null,
     dofLocalEnabled: document.getElementById("postprocess-dof-local-enabled") as HTMLInputElement | null,
     dofWideEnabled: document.getElementById("postprocess-dof-wide-enabled") as HTMLInputElement | null,
+    dofNearEnabled: document.getElementById("postprocess-dof-near-enabled") as HTMLInputElement | null,
+    dofMidEnabled: document.getElementById("postprocess-dof-mid-enabled") as HTMLInputElement | null,
+    dofFarEnabled: document.getElementById("postprocess-dof-far-enabled") as HTMLInputElement | null,
     dofFocus: document.getElementById("postprocess-dof-focus") as HTMLInputElement | null,
     dofFocusValue: document.getElementById("postprocess-dof-focus-value") as HTMLOutputElement | null,
     dofStrength: document.getElementById("postprocess-dof-strength") as HTMLInputElement | null,
@@ -1180,6 +1186,9 @@ function createPostProcessControls(requestFrame: () => void): PostProcessControl
   controls.dofEnabled?.addEventListener("change", update);
   controls.dofLocalEnabled?.addEventListener("change", update);
   controls.dofWideEnabled?.addEventListener("change", update);
+  controls.dofNearEnabled?.addEventListener("change", update);
+  controls.dofMidEnabled?.addEventListener("change", update);
+  controls.dofFarEnabled?.addEventListener("change", update);
   controls.dofFocus?.addEventListener("input", update);
   controls.dofStrength?.addEventListener("input", update);
   controls.dofRadius?.addEventListener("change", update);
@@ -1201,6 +1210,9 @@ function readPostProcessSettings(controls: PostProcessControls): FxaaCasPostProc
     dofEnabled: controls.dofEnabled?.checked ?? false,
     dofLocalEnabled: controls.dofLocalEnabled?.checked ?? true,
     dofWideEnabled: controls.dofWideEnabled?.checked ?? true,
+    dofNearEnabled: controls.dofNearEnabled?.checked ?? true,
+    dofMidEnabled: controls.dofMidEnabled?.checked ?? true,
+    dofFarEnabled: controls.dofFarEnabled?.checked ?? true,
     dofFocusDepth: postProcessDofFocusFromPercent(Number(controls.dofFocus?.value ?? POST_PROCESS_DOF_DEFAULT_FOCUS_PERCENT)),
     dofStrength: postProcessDofStrengthFromPercent(Number(controls.dofStrength?.value ?? 35)),
     dofRadius: clampInteger(Number(controls.dofRadius?.value ?? 8), 1, 128),
@@ -1219,6 +1231,10 @@ function postProcessDebugViewFromSelection(value: string | undefined): FxaaCasDe
     value === "depth" ||
     value === "confidence" ||
     value === "dof-mask" ||
+    value === "dof-layers" ||
+    value === "dof-near-mask" ||
+    value === "dof-mid-mask" ||
+    value === "dof-far-mask" ||
     value === "dof-downsample" ||
     value === "dof-blur-h" ||
     value === "dof-blur-v-only" ||
@@ -1264,7 +1280,7 @@ function formatPostProcessSettings(settings: FxaaCasPostProcessSettings): string
   ].filter(Boolean).join("+") || "passthrough";
   const sharpnessPercent = Math.round((clampNumber(settings.casSharpness, 0, FXAA_CAS_MAX_SHARPNESS) / FXAA_CAS_MAX_SHARPNESS) * 100);
   const dofSuffix = settings.dofEnabled
-    ? `/dof ${settings.dofLocalEnabled ? "local" : "no-local"}+${settings.dofWideEnabled ? "wide" : "no-wide"} f${Math.round(settings.dofFocusDepth * 100)} a${Math.round((settings.dofStrength / POST_PROCESS_MAX_DOF_STRENGTH) * 100)} r${settings.dofRadius}`
+    ? `/dof ${settings.dofLocalEnabled ? "local" : "no-local"}+${settings.dofWideEnabled ? "wide" : "no-wide"} ${settings.dofNearEnabled ? "n" : "-"}${settings.dofMidEnabled ? "m" : "-"}${settings.dofFarEnabled ? "f" : "-"} f${Math.round(settings.dofFocusDepth * 100)} a${Math.round((settings.dofStrength / POST_PROCESS_MAX_DOF_STRENGTH) * 100)} r${settings.dofRadius}`
     : "";
   const debugSuffix = settings.debugView === "final" ? "" : `/${settings.debugView}`;
   return `${stages}/${settings.sampleCount}s/r${settings.sampleRadius}/sharp ${sharpnessPercent}%${dofSuffix}${debugSuffix}`;
@@ -1395,6 +1411,9 @@ function temporalResolveResetKey(
     postProcessSettings.dofEnabled ? 1 : 0,
     postProcessSettings.dofLocalEnabled ? 1 : 0,
     postProcessSettings.dofWideEnabled ? 1 : 0,
+    postProcessSettings.dofNearEnabled ? 1 : 0,
+    postProcessSettings.dofMidEnabled ? 1 : 0,
+    postProcessSettings.dofFarEnabled ? 1 : 0,
     postProcessSettings.dofFocusDepth.toFixed(5),
     postProcessSettings.dofStrength.toFixed(5),
     postProcessSettings.dofRadius,

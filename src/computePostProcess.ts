@@ -11,6 +11,10 @@ export type FxaaCasDebugView =
   | "depth"
   | "confidence"
   | "dof-mask"
+  | "dof-layers"
+  | "dof-near-mask"
+  | "dof-mid-mask"
+  | "dof-far-mask"
   | "dof-downsample"
   | "dof-blur-h"
   | "dof-blur-v-only"
@@ -28,6 +32,10 @@ const FXAA_CAS_DEBUG_VIEW_CODES: Record<FxaaCasDebugView, number> = {
   "dof-blur-h": 8,
   "dof-blur-v-only": 9,
   "dof-blur-hv": 10,
+  "dof-layers": 11,
+  "dof-near-mask": 12,
+  "dof-mid-mask": 13,
+  "dof-far-mask": 14,
 };
 
 export interface FxaaCasPostProcessSettings {
@@ -44,6 +52,9 @@ export interface FxaaCasPostProcessSettings {
   readonly dofRadius: number;
   readonly dofLocalEnabled: boolean;
   readonly dofWideEnabled: boolean;
+  readonly dofNearEnabled: boolean;
+  readonly dofMidEnabled: boolean;
+  readonly dofFarEnabled: boolean;
 }
 
 export interface FxaaCasPostProcess {
@@ -120,6 +131,9 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
     dofRadius: 4,
     dofLocalEnabled: true,
     dofWideEnabled: true,
+    dofNearEnabled: true,
+    dofMidEnabled: true,
+    dofFarEnabled: true,
   };
   const pipeline = device.createComputePipeline({
     label: "compute_fxaa_cas_post_process",
@@ -191,9 +205,9 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
       u32[10] = clampInteger(settings.dofRadius, 1, 128);
       u32[11] = settings.dofLocalEnabled ? 1 : 0;
       u32[12] = settings.dofWideEnabled ? 1 : 0;
-      u32[13] = 0;
-      u32[14] = 0;
-      u32[15] = 0;
+      u32[13] = settings.dofNearEnabled ? 1 : 0;
+      u32[14] = settings.dofMidEnabled ? 1 : 0;
+      u32[15] = settings.dofFarEnabled ? 1 : 0;
       queue.writeBuffer(settingsBuffer, 0, buffer);
     },
     encode(
