@@ -438,7 +438,7 @@ test("renderer updates the uploaded opacity buffer with alpha density compensati
   const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
 
   assert.match(source, /writeAlphaDensityCompensatedOpacities/);
-  assert.match(source, /queue\.writeBuffer\(scene\.buffers\.opacityBuffer/);
+  assert.match(source, /queue\.writeBuffer\(buffers\.opacityBuffer/);
   assert.match(source, /selectedAlphaDensityMode/);
   assert.match(source, /alpha: \$\{alphaSummary\.accountingMode\} density/);
 });
