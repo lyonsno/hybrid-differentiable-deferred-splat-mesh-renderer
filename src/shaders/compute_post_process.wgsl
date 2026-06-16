@@ -20,6 +20,11 @@ struct PostProcessSettings {
   dofNearEnabled: u32,
   dofMidEnabled: u32,
   dofFarEnabled: u32,
+  dofNearPlaneDepth: f32,
+  dofFarPlaneDepth: f32,
+  dofNearBlur: f32,
+  dofMidBlur: f32,
+  dofFarBlur: f32,
 };
 
 @group(0) @binding(2) var<uniform> settings: PostProcessSettings;
@@ -284,24 +289,30 @@ fn dof_debug_mask(mask: f32) -> f32 {
   return pow(clamp(mask, 0.0, 1.0), POST_PROCESS_DOF_DEBUG_MASK_GAMMA);
 }
 
+fn dof_layer_plane_window() -> vec4f {
+  let midPlane = clamp(settings.dofFocusDepth, 0.0, 1.0);
+  let nearPlane = min(clamp(settings.dofNearPlaneDepth, 0.0, 1.0), midPlane - 0.0005);
+  let farPlane = max(clamp(settings.dofFarPlaneDepth, 0.0, 1.0), midPlane + 0.0005);
+  return vec4f(nearPlane, midPlane, farPlane, max(farPlane - nearPlane, 0.0005));
+}
+
 fn dof_layer_weights(coord: vec2i, size: vec2u) -> vec4f {
   let aux = load_aux(coord, size);
   let depth = clamp(aux.r, 0.0, 1.0);
   let coverageConfidence = clamp(aux.g, 0.0, 1.0);
-  let focusDepth = clamp(settings.dofFocusDepth, 0.0, 1.0);
+  let planes = dof_layer_plane_window();
+  let nearPlane = planes.x;
+  let focusDepth = planes.y;
+  let farPlane = planes.z;
   let signedDistance = depth - focusDepth;
-  let maxRadius = f32(clamp(settings.dofRadius, 1u, 128u));
-  let focusDistance = max(abs(signedDistance) - POST_PROCESS_DOF_FOCUS_DEAD_ZONE, 0.0);
-  let coc = clamp(
-    focusDistance * POST_PROCESS_DOF_COC_SCALE * settings.dofStrength * coverageConfidence * maxRadius,
-    0.0,
-    maxRadius
-  );
-  let cocNorm = clamp(coc / max(maxRadius, 1.0), 0.0, 1.0);
-  let nearLayer = select(0.0, cocNorm, signedDistance < -POST_PROCESS_DOF_FOCUS_DEAD_ZONE);
-  let farLayer = select(0.0, cocNorm, signedDistance > POST_PROCESS_DOF_FOCUS_DEAD_ZONE);
-  let midLayer = clamp(1.0 - max(nearLayer, farLayer), 0.0, 1.0) * coverageConfidence;
-  return vec4f(nearLayer, midLayer, farLayer, cocNorm);
+  let aperture = clamp(settings.dofStrength / 4.0, 0.0, 1.0);
+  let nearBase = 1.0 - ramp(nearPlane, focusDepth, depth);
+  let farBase = ramp(focusDepth, farPlane, depth);
+  let midBase = clamp(1.0 - max(nearBase, farBase), 0.0, 1.0);
+  let nearLayer = nearBase * coverageConfidence * aperture * clamp(settings.dofNearBlur, 0.0, 1.0);
+  let midLayer = midBase * coverageConfidence * aperture * clamp(settings.dofMidBlur, 0.0, 1.0);
+  let farLayer = farBase * coverageConfidence * aperture * clamp(settings.dofFarBlur, 0.0, 1.0);
+  return vec4f(nearLayer, midLayer, farLayer, max(max(nearLayer, midLayer), farLayer));
 }
 
 fn dof_enabled_layer_weights(coord: vec2i, size: vec2u) -> vec4f {
@@ -352,12 +363,13 @@ fn dof_sample(coord: vec2i, size: vec2u, originDepth: f32, originCoc: f32, offse
 fn depth_confidence_guided_dof(coord: vec2i, size: vec2u, color: vec3f) -> vec3f {
   let originAux = load_aux(coord, size);
   let originDepth = clamp(originAux.r, 0.0, 1.0);
-  let originCoc = dof_circle_of_confusion(coord, size);
   let layers = dof_enabled_layer_weights(coord, size);
   let nearLayer = layers.x;
   let midLayer = layers.y;
   let farLayer = layers.z;
   let enabledLayerWeight = layers.w;
+  let maxRadius = f32(clamp(settings.dofRadius, 1u, 128u));
+  let originCoc = max(dof_circle_of_confusion(coord, size), enabledLayerWeight * maxRadius);
   if (originCoc < 0.35 || enabledLayerWeight <= 0.0) {
     return color;
   }
@@ -413,8 +425,8 @@ fn depth_confidence_guided_dof(coord: vec2i, size: vec2u, color: vec3f) -> vec3f
   } else {
     blurred = wideBlurred;
   }
-  let dofBlend = clamp(originCoc / max(f32(clamp(settings.dofRadius, 1u, 128u)), 1.0), 0.0, 1.0);
-  return mix(color, blurred, clamp(dofBlend * enabledLayerWeight, 0.0, 1.0));
+  let dofBlend = clamp(max(originCoc / max(maxRadius, 1.0), enabledLayerWeight), 0.0, 1.0);
+  return mix(color, blurred, dofBlend);
 }
 
 @compute @workgroup_size(8, 8, 1)

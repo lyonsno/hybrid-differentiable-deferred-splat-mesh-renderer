@@ -55,6 +55,11 @@ export interface FxaaCasPostProcessSettings {
   readonly dofNearEnabled: boolean;
   readonly dofMidEnabled: boolean;
   readonly dofFarEnabled: boolean;
+  readonly dofNearPlaneDepth: number;
+  readonly dofFarPlaneDepth: number;
+  readonly dofNearBlur: number;
+  readonly dofMidBlur: number;
+  readonly dofFarBlur: number;
 }
 
 export interface FxaaCasPostProcess {
@@ -114,7 +119,7 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
   });
   const settingsBuffer = device.createBuffer({
     label: "compute_fxaa_cas_post_process_settings",
-    size: 64,
+    size: 128,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
   let lastSettings: FxaaCasPostProcessSettings = {
@@ -134,6 +139,11 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
     dofNearEnabled: true,
     dofMidEnabled: true,
     dofFarEnabled: true,
+    dofNearPlaneDepth: 0.995,
+    dofFarPlaneDepth: 0.9995,
+    dofNearBlur: 1,
+    dofMidBlur: 0.2,
+    dofFarBlur: 1,
   };
   const pipeline = device.createComputePipeline({
     label: "compute_fxaa_cas_post_process",
@@ -189,7 +199,7 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
     settingsBuffer,
     writeSettings(queue: GPUQueue, settings: FxaaCasPostProcessSettings): void {
       lastSettings = settings;
-      const buffer = new ArrayBuffer(64);
+      const buffer = new ArrayBuffer(128);
       const u32 = new Uint32Array(buffer);
       const f32 = new Float32Array(buffer);
       u32[0] = settings.enabled ? 1 : 0;
@@ -208,6 +218,11 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
       u32[13] = settings.dofNearEnabled ? 1 : 0;
       u32[14] = settings.dofMidEnabled ? 1 : 0;
       u32[15] = settings.dofFarEnabled ? 1 : 0;
+      f32[16] = clampNumber(settings.dofNearPlaneDepth, 0, 1);
+      f32[17] = clampNumber(settings.dofFarPlaneDepth, 0, 1);
+      f32[18] = clampNumber(settings.dofNearBlur, 0, 1);
+      f32[19] = clampNumber(settings.dofMidBlur, 0, 1);
+      f32[20] = clampNumber(settings.dofFarBlur, 0, 1);
       queue.writeBuffer(settingsBuffer, 0, buffer);
     },
     encode(
