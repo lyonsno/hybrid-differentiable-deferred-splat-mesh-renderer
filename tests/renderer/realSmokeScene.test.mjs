@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   REAL_SCANIVERSE_SMOKE_ASSET_PATH,
+  REAL_SCANIVERSE_SPLAT_SCALE,
   applyRealScaniverseWitnessView,
   composeFirstSmokeViewProjection,
   configureCameraForSplatBounds,
@@ -51,6 +52,10 @@ test("real smoke evidence is closeable Scaniverse evidence, not synthetic harnes
   assert.equal(evidence.assetPath, REAL_SCANIVERSE_SMOKE_ASSET_PATH);
   assert.equal(evidence.splatCount, 3);
   assert.equal(evidence.sortedIdCount, 3);
+});
+
+test("legacy real Scaniverse plate renderer keeps the established splat scale", () => {
+  assert.equal(REAL_SCANIVERSE_SPLAT_SCALE, 3000);
 });
 
 test("real smoke camera framing targets the Scaniverse bounds", () => {

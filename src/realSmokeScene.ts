@@ -5,7 +5,7 @@ import { framingFromBounds, type SplatAttributes, type SplatBounds } from "./spl
 export const REAL_SCANIVERSE_SMOKE_ASSET_PATH =
   "/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json";
 
-export const REAL_SCANIVERSE_SPLAT_SCALE = 600;
+export const REAL_SCANIVERSE_SPLAT_SCALE = 3000;
 export const REAL_SCANIVERSE_MIN_RADIUS_PX = 1.5;
 export const REAL_SCANIVERSE_NEAR_FADE_START_NDC = 0;
 export const REAL_SCANIVERSE_NEAR_FADE_END_NDC = 0.08;

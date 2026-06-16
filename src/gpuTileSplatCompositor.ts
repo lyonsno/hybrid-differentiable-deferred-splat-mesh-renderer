@@ -606,6 +606,16 @@ export function createTileSplatCompositor(
       prefixParamsBuffer.destroy();
       reorderParamsBuffer.destroy();
       tileDepthSortParamsBuffer.destroy();
+      classifyParamsBuffer.destroy();
+      bucketSortParamsBuffer.destroy();
+      chunkSortParamsBuffer.destroy();
+      smallTileListBuffer.destroy();
+      largeTileListBuffer.destroy();
+      tileListCountsBuffer.destroy();
+      largeTileOverflowBasesBuffer.destroy();
+      chunkRangesBuffer.destroy();
+      totalChunksBuffer.destroy();
+      indirectDispatchBuffer.destroy();
       radixSort.destroy();
     },
   };

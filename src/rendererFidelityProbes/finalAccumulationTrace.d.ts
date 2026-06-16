@@ -12,6 +12,8 @@ export interface FinalAccumulationTraceStep {
   readonly runningColor: readonly [number, number, number];
   readonly accumulationStatus: "accumulated" | "skipped-zero-tile-coverage";
   readonly tileCoverageWeight: number;
+  readonly sourceFrontierSupportColorMaterialBefore?: number;
+  readonly sourceFrontierSupportColorMaterialAfter?: number;
   readonly viewRank: number;
   readonly viewDepth: number;
   readonly tileIndex: number;

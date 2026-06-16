@@ -283,12 +283,15 @@ interface ActiveSplatScene {
     bindGroups: TileSplatCompositorBindGroups;
     outputTexture: GPUTexture;
     outputView: GPUTextureView;
+    gbufferDepthTexture: GPUTexture;
     gbufferDepthView: GPUTextureView;
     gbufferNormalTexture: GPUTexture;
     gbufferNormalView: GPUTextureView;
     litTexture: GPUTexture;
     litView: GPUTextureView;
     frameUniformData: Float32Array;
+    lastSortedViewProj: Float32Array | null;
+    hasSortedRefs: boolean;
   } | null;
 }
 
@@ -634,6 +637,8 @@ interface TileLocalCompositorInputReadback {
       readonly sourceFrontierColorAuthority?: number;
       readonly sourceFrontierRunningColorAuthorityBefore?: number;
       readonly sourceFrontierRunningColorAuthorityAfter?: number;
+      readonly sourceFrontierSupportColorMaterialBefore?: number;
+      readonly sourceFrontierSupportColorMaterialAfter?: number;
       readonly coverageAlpha: number;
       readonly colorAlpha: number;
       readonly colorOcclusionAlpha: number;
@@ -1602,6 +1607,7 @@ async function main() {
         bindGroups: computeBindGroups,
         outputTexture: computeOutputTexture,
         outputView: computeOutputTexture.createView(),
+        gbufferDepthTexture: gbufferDepthTexture,
         gbufferDepthView: gbufferDepthTexture.createView(),
         gbufferNormalTexture: gbufferNormalTexture,
         gbufferNormalView: gbufferNormalTexture.createView(),
@@ -10406,6 +10412,13 @@ function destroySplatScene(scene: ActiveSplatScene | null): void {
   }
   if (scene.tileLocalState) {
     destroyTileLocalSceneState(scene.tileLocalState);
+  }
+  if (scene.computeCompositor) {
+    scene.computeCompositor.resources.destroy();
+    scene.computeCompositor.outputTexture.destroy();
+    scene.computeCompositor.gbufferDepthTexture.destroy();
+    scene.computeCompositor.gbufferNormalTexture.destroy();
+    scene.computeCompositor.litTexture.destroy();
   }
   scene.buffers.positionBuffer.destroy();
   scene.buffers.colorBuffer.destroy();
