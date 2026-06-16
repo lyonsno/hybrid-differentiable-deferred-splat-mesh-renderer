@@ -195,8 +195,9 @@ import {
 } from "./rendererFidelityProbes/syntheticShapeLoader.js";
 import { getShapeFixture } from "./syntheticShapeFixtures.js";
 
-const POST_PROCESS_DOF_FOCUS_DEPTH_MIN = 0.95;
-const POST_PROCESS_DOF_FOCUS_DEPTH_MAX = 1;
+const POST_PROCESS_SETTINGS_STORAGE_KEY = "hybrid-splat-postprocess-settings-v1";
+const POST_PROCESS_DOF_PLANE_PERCENT_MIN = 90;
+const POST_PROCESS_DOF_PLANE_PERCENT_MAX = 100;
 const POST_PROCESS_DOF_DEFAULT_NEAR_PLANE_PERCENT = 90;
 const POST_PROCESS_DOF_DEFAULT_FOCUS_PERCENT = 95;
 const POST_PROCESS_DOF_DEFAULT_FAR_PLANE_PERCENT = 99;
@@ -287,6 +288,13 @@ interface PostProcessControls {
   readonly dofFarBlurValue: HTMLOutputElement | null;
   readonly dofRadius: HTMLSelectElement | null;
   readonly debugView: HTMLSelectElement | null;
+}
+
+interface PersistedPostProcessControlState {
+  readonly version: 1;
+  readonly values: Record<string, string>;
+  readonly checked: Record<string, boolean>;
+  readonly detailsOpen: boolean;
 }
 
 interface TemporalResolveControls {
@@ -1194,7 +1202,9 @@ function createPostProcessControls(requestFrame: () => void): PostProcessControl
     dofRadius: document.getElementById("postprocess-dof-radius") as HTMLSelectElement | null,
     debugView: document.getElementById("postprocess-debug-view") as HTMLSelectElement | null,
   };
+  restorePostProcessControlState(controls);
   const update = () => {
+    persistPostProcessControlState(controls);
     updatePostProcessSharpnessLabel(controls);
     updatePostProcessDofLabels(controls);
     requestFrame();
@@ -1223,6 +1233,100 @@ function createPostProcessControls(requestFrame: () => void): PostProcessControl
   updatePostProcessSharpnessLabel(controls);
   updatePostProcessDofLabels(controls);
   return controls;
+}
+
+function postProcessPersistableControls(controls: PostProcessControls): readonly (HTMLInputElement | HTMLSelectElement | null)[] {
+  return [
+    controls.enabled,
+    controls.fxaaEnabled,
+    controls.casEnabled,
+    controls.sampleCount,
+    controls.sampleRadius,
+    controls.casSharpness,
+    controls.dofEnabled,
+    controls.dofLocalEnabled,
+    controls.dofWideEnabled,
+    controls.dofNearEnabled,
+    controls.dofMidEnabled,
+    controls.dofFarEnabled,
+    controls.dofNearPlane,
+    controls.dofFocus,
+    controls.dofFarPlane,
+    controls.dofStrength,
+    controls.dofNearBlur,
+    controls.dofMidBlur,
+    controls.dofFarBlur,
+    controls.dofRadius,
+    controls.debugView,
+  ];
+}
+
+function restorePostProcessControlState(controls: PostProcessControls): void {
+  let raw: string | null = null;
+  try {
+    raw = window.localStorage.getItem(POST_PROCESS_SETTINGS_STORAGE_KEY);
+  } catch {
+    return;
+  }
+  if (!raw) {
+    return;
+  }
+
+  let state: Partial<PersistedPostProcessControlState>;
+  try {
+    state = JSON.parse(raw) as Partial<PersistedPostProcessControlState>;
+  } catch {
+    return;
+  }
+
+  for (const control of postProcessPersistableControls(controls)) {
+    if (!control?.id) {
+      continue;
+    }
+    if (control instanceof HTMLInputElement && control.type === "checkbox") {
+      const checked = state.checked?.[control.id];
+      if (typeof checked === "boolean") {
+        control.checked = checked;
+      }
+      continue;
+    }
+    const value = state.values?.[control.id];
+    if (typeof value === "string") {
+      control.value = value;
+    }
+  }
+
+  const details = document.querySelector<HTMLDetailsElement>("#postprocess-controls details");
+  if (details && typeof state.detailsOpen === "boolean") {
+    details.open = state.detailsOpen;
+  }
+}
+
+function persistPostProcessControlState(controls: PostProcessControls): void {
+  const values: Record<string, string> = {};
+  const checked: Record<string, boolean> = {};
+  for (const control of postProcessPersistableControls(controls)) {
+    if (!control?.id) {
+      continue;
+    }
+    if (control instanceof HTMLInputElement && control.type === "checkbox") {
+      checked[control.id] = control.checked;
+    } else {
+      values[control.id] = control.value;
+    }
+  }
+  const details = document.querySelector<HTMLDetailsElement>("#postprocess-controls details");
+  const state: PersistedPostProcessControlState = {
+    version: 1,
+    values,
+    checked,
+    detailsOpen: details?.open ?? true,
+  };
+  try {
+    window.localStorage.setItem(POST_PROCESS_SETTINGS_STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // Persistence is a tuning convenience; render controls should still work without storage.
+  }
 }
 
 function readPostProcessSettings(controls: PostProcessControls): FxaaCasPostProcessSettings {
@@ -1282,8 +1386,7 @@ function postProcessDofFocusFromPercent(percent: number): number {
 }
 
 function postProcessDofPlaneFromPercent(percent: number): number {
-  const focusT = clampNumber(percent, 0, 100) / 100;
-  return POST_PROCESS_DOF_FOCUS_DEPTH_MIN + focusT * (POST_PROCESS_DOF_FOCUS_DEPTH_MAX - POST_PROCESS_DOF_FOCUS_DEPTH_MIN);
+  return clampNumber(percent, POST_PROCESS_DOF_PLANE_PERCENT_MIN, POST_PROCESS_DOF_PLANE_PERCENT_MAX) / 100;
 }
 
 function postProcessDofStrengthFromPercent(percent: number): number {
@@ -1298,30 +1401,34 @@ function updatePostProcessSharpnessLabel(controls: PostProcessControls): void {
   if (!controls.casSharpness || !controls.casSharpnessValue) {
     return;
   }
-  controls.casSharpnessValue.value = `${Math.round(clampNumber(Number(controls.casSharpness.value), 0, 100))}%`;
+  controls.casSharpnessValue.value = formatPostProcessControlPercent(Number(controls.casSharpness.value));
+}
+
+function formatPostProcessControlPercent(percent: number): string {
+  return `${clampNumber(percent, 0, 100).toFixed(1).replace(".0", "")}%`;
 }
 
 function updatePostProcessDofLabels(controls: PostProcessControls): void {
   if (controls.dofNearPlane && controls.dofNearPlaneValue) {
-    controls.dofNearPlaneValue.value = `${Math.round(clampNumber(Number(controls.dofNearPlane.value), 0, 100))}%`;
+    controls.dofNearPlaneValue.value = formatPostProcessControlPercent(Number(controls.dofNearPlane.value));
   }
   if (controls.dofFocus && controls.dofFocusValue) {
-    controls.dofFocusValue.value = `${Math.round(clampNumber(Number(controls.dofFocus.value), 0, 100))}%`;
+    controls.dofFocusValue.value = formatPostProcessControlPercent(Number(controls.dofFocus.value));
   }
   if (controls.dofFarPlane && controls.dofFarPlaneValue) {
-    controls.dofFarPlaneValue.value = `${Math.round(clampNumber(Number(controls.dofFarPlane.value), 0, 100))}%`;
+    controls.dofFarPlaneValue.value = formatPostProcessControlPercent(Number(controls.dofFarPlane.value));
   }
   if (controls.dofStrength && controls.dofStrengthValue) {
-    controls.dofStrengthValue.value = `${Math.round(clampNumber(Number(controls.dofStrength.value), 0, 100))}%`;
+    controls.dofStrengthValue.value = formatPostProcessControlPercent(Number(controls.dofStrength.value));
   }
   if (controls.dofNearBlur && controls.dofNearBlurValue) {
-    controls.dofNearBlurValue.value = `${Math.round(clampNumber(Number(controls.dofNearBlur.value), 0, 100))}%`;
+    controls.dofNearBlurValue.value = formatPostProcessControlPercent(Number(controls.dofNearBlur.value));
   }
   if (controls.dofMidBlur && controls.dofMidBlurValue) {
-    controls.dofMidBlurValue.value = `${Math.round(clampNumber(Number(controls.dofMidBlur.value), 0, 100))}%`;
+    controls.dofMidBlurValue.value = formatPostProcessControlPercent(Number(controls.dofMidBlur.value));
   }
   if (controls.dofFarBlur && controls.dofFarBlurValue) {
-    controls.dofFarBlurValue.value = `${Math.round(clampNumber(Number(controls.dofFarBlur.value), 0, 100))}%`;
+    controls.dofFarBlurValue.value = formatPostProcessControlPercent(Number(controls.dofFarBlur.value));
   }
 }
 

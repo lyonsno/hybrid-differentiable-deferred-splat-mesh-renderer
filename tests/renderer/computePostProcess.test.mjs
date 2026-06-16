@@ -177,9 +177,9 @@ test("compute renderer exposes auxiliary depth-confidence guided DOF", () => {
   assert.match(mainSource, /createTileSplatBindGroups\([\s\S]*computeOutputTexture,\s*computeAuxTexture/);
   assert.match(mainSource, /cc\.postProcess\.encode\(\s*activeEncoder,\s*cc\.outputView,\s*cc\.auxView,\s*cc\.postProcessedView,\s*cc\.dofLowResView,\s*cc\.dofBlurScratchView/);
   assert.match(mainSource, /postProcessDofFocusFromPercent/);
-  assert.match(mainSource, /POST_PROCESS_DOF_FOCUS_DEPTH_MIN\s*=\s*0\.95/);
-  assert.match(mainSource, /POST_PROCESS_DOF_FOCUS_DEPTH_MAX\s*=\s*1/);
-  assert.match(mainSource, /POST_PROCESS_DOF_FOCUS_DEPTH_MIN \+ focusT \* \(POST_PROCESS_DOF_FOCUS_DEPTH_MAX - POST_PROCESS_DOF_FOCUS_DEPTH_MIN\)/);
+  assert.match(mainSource, /POST_PROCESS_DOF_PLANE_PERCENT_MIN\s*=\s*90/);
+  assert.match(mainSource, /POST_PROCESS_DOF_PLANE_PERCENT_MAX\s*=\s*100/);
+  assert.match(mainSource, /clampNumber\(percent,\s*POST_PROCESS_DOF_PLANE_PERCENT_MIN,\s*POST_PROCESS_DOF_PLANE_PERCENT_MAX\) \/ 100/);
   assert.doesNotMatch(mainSource, /function postProcessDofFocusFromPercent\([\s\S]*?return clampNumber\(percent,\s*0,\s*100\) \/ 100;\s*\}/);
   assert.match(mainSource, /postProcessDofStrengthFromPercent/);
   assert.match(mainSource, /dofEnabled:\s*controls\.dofEnabled/);
@@ -288,7 +288,7 @@ test("compute renderer exposes auxiliary depth-confidence guided DOF", () => {
   assert.match(postProcessShader, /fn dof_enabled_layer_weights/);
   assert.match(postProcessShader, /fn dof_layer_debug_rgb/);
   assert.match(postProcessShader, /fn load_dof_wide_blur_bilinear/);
-  assert.match(postProcessShader, /mix\(mix\(c00,\s*c10,\s*f\.x\),\s*mix\(c01,\s*c11,\s*f\.x\),\s*f\.y\)/);
+  assert.match(postProcessShader, /c00\.rgb \* c00\.a \* w00/);
   assert.match(postProcessShader, /signedDistance = depth - focusDepth/);
   assert.match(postProcessShader, /settings\.dofNearEnabled != 0u/);
   assert.match(postProcessShader, /settings\.dofMidEnabled != 0u/);
@@ -306,9 +306,57 @@ test("compute renderer exposes auxiliary depth-confidence guided DOF", () => {
   assert.match(postProcessShader, /const POST_PROCESS_DOF_BLUR_TAPS = 17i/);
   assert.match(postProcessShader, /for \(var tap = -POST_PROCESS_DOF_BLUR_HALF_TAPS/);
   assert.match(postProcessShader, /exp\(-0\.5 \* normalizedOffset \* normalizedOffset/);
-  assert.match(postProcessShader, /mix\(localBlurred,\s*wideBlurred,\s*wideBlurWeight\)/);
+  assert.match(postProcessShader, /wideBlurWeight \* nearLayer/);
   assert.match(postProcessShader, /settings\.dofLocalEnabled != 0u/);
   assert.match(postProcessShader, /settings\.dofWideEnabled != 0u/);
   assert.match(postProcessShader, /settings\.debugView == DEBUG_VIEW_DOF_DOWNSAMPLE/);
   assert.match(postProcessShader, /settings\.debugView == DEBUG_VIEW_DOF_BLUR_V_ONLY/);
+});
+
+test("DOF controls persist, expose occupied-depth plane precision, and keep wide blur near-only", () => {
+  const html = readFileSync(new URL("../../index.html", import.meta.url), "utf8");
+  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const postProcessShader = readFileSync(new URL("../../src/shaders/compute_post_process.wgsl", import.meta.url), "utf8");
+
+  for (const id of ["near-plane", "focus", "far-plane"]) {
+    assert.match(
+      html,
+      new RegExp(`id="postprocess-dof-${id}"[^>]*min="90"[^>]*max="100"[^>]*step="0\\.1"`)
+    );
+  }
+  assert.match(mainSource, /const POST_PROCESS_DOF_PLANE_PERCENT_MIN = 90/);
+  assert.match(mainSource, /const POST_PROCESS_DOF_PLANE_PERCENT_MAX = 100/);
+  assert.match(mainSource, /clampNumber\(percent,\s*POST_PROCESS_DOF_PLANE_PERCENT_MIN,\s*POST_PROCESS_DOF_PLANE_PERCENT_MAX\) \/ 100/);
+  assert.match(mainSource, /function formatPostProcessControlPercent/);
+  assert.match(mainSource, /toFixed\(1\)\.replace\("\.0",\s*""\)/);
+
+  assert.match(mainSource, /const POST_PROCESS_SETTINGS_STORAGE_KEY/);
+  assert.match(mainSource, /function restorePostProcessControlState/);
+  assert.match(mainSource, /function persistPostProcessControlState/);
+  assert.match(mainSource, /window\.localStorage\.getItem\(POST_PROCESS_SETTINGS_STORAGE_KEY\)/);
+  assert.match(mainSource, /window\.localStorage\.setItem\(POST_PROCESS_SETTINGS_STORAGE_KEY/);
+  assert.match(mainSource, /restorePostProcessControlState\(controls\)/);
+  assert.match(mainSource, /persistPostProcessControlState\(controls\)/);
+
+  assert.match(postProcessShader, /fn smooth_ramp/);
+  assert.match(postProcessShader, /nearBase = 1\.0 - smooth_ramp\(nearPlane,\s*focusDepth,\s*depth\)/);
+  assert.match(postProcessShader, /farBase = smooth_ramp\(focusDepth,\s*farPlane,\s*depth\)/);
+  assert.match(postProcessShader, /fn dof_downsample_tap/);
+  assert.match(postProcessShader, /load_aux\(sampleCoord,\s*inputSize\)/);
+  assert.match(postProcessShader, /textureStore\(postProcessOutput,\s*coord,\s*vec4f\(downsampled\.rgb,\s*downsampled\.a\)\)/);
+  assert.match(postProcessShader, /fn dof_blur_sample\(coord: vec2i,\s*size: vec2u,\s*axis: vec2i\) -> vec4f/);
+  assert.match(postProcessShader, /sample\.rgb \* sample\.a \* weight/);
+  assert.match(postProcessShader, /fn load_dof_wide_blur\(coord: vec2i,\s*size: vec2u\) -> vec4f/);
+  assert.match(postProcessShader, /let nearWideWeight =/);
+  assert.match(postProcessShader, /wideBlurWeight \* nearLayer/);
+  assert.match(postProcessShader, /let farRadiusWeight =/);
+  assert.match(postProcessShader, /fn weighted_dof_sample/);
+  assert.match(postProcessShader, /let innerRadius = max\(1,\s*radius \/ 4\)/);
+  assert.match(postProcessShader, /let midRadius = max\(1,\s*radius \/ 2\)/);
+  assert.match(postProcessShader, /let outerWeight = 0\.35/);
+  assert.match(postProcessShader, /let innerWeight = 0\.85/);
+  assert.doesNotMatch(postProcessShader, /signedLayerWeight = max\(nearLayer,\s*farLayer\)/);
+  assert.doesNotMatch(postProcessShader, /mix\(localWideBlurred,\s*wideBlurred,\s*signedLayerWeight\)/);
+  assert.doesNotMatch(postProcessShader, /max\(sampleConfidence,\s*0\.2\)/);
+  assert.doesNotMatch(postProcessShader, /vec4f\(averaged,\s*1\.0\)/);
 });

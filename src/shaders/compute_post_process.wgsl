@@ -81,6 +81,11 @@ fn ramp(edge0: f32, edge1: f32, value: f32) -> f32 {
   return clamp((value - edge0) / max(edge1 - edge0, 0.0001), 0.0, 1.0);
 }
 
+fn smooth_ramp(edge0: f32, edge1: f32, value: f32) -> f32 {
+  let t = ramp(edge0, edge1, value);
+  return t * t * (3.0 - 2.0 * t);
+}
+
 fn neighborhood_average(coord: vec2i, size: vec2u) -> vec3f {
   let radius = configured_radius();
   let sampleCount = configured_sample_count();
@@ -306,8 +311,8 @@ fn dof_layer_weights(coord: vec2i, size: vec2u) -> vec4f {
   let farPlane = planes.z;
   let signedDistance = depth - focusDepth;
   let aperture = clamp(settings.dofStrength / 4.0, 0.0, 1.0);
-  let nearBase = 1.0 - ramp(nearPlane, focusDepth, depth);
-  let farBase = ramp(focusDepth, farPlane, depth);
+  let nearBase = 1.0 - smooth_ramp(nearPlane, focusDepth, depth);
+  let farBase = smooth_ramp(focusDepth, farPlane, depth);
   let midBase = clamp(1.0 - max(nearBase, farBase), 0.0, 1.0);
   let nearLayer = nearBase * coverageConfidence * aperture * clamp(settings.dofNearBlur, 0.0, 1.0);
   let midLayer = midBase * coverageConfidence * aperture * clamp(settings.dofMidBlur, 0.0, 1.0);
@@ -327,11 +332,15 @@ fn dof_layer_debug_rgb(layers: vec4f) -> vec3f {
   return vec3f(dof_debug_mask(layers.x), dof_debug_mask(layers.y), dof_debug_mask(layers.z));
 }
 
-fn load_dof_blur_pixel(coord: vec2i, size: vec2u) -> vec3f {
-  return textureLoad(postProcessDofBlur, clamp_coord(coord, size), 0).rgb;
+fn load_dof_blur_pixel(coord: vec2i, size: vec2u) -> vec4f {
+  return textureLoad(postProcessDofBlur, clamp_coord(coord, size), 0);
 }
 
-fn load_dof_wide_blur_bilinear(coord: vec2i, size: vec2u) -> vec3f {
+fn resolve_weighted_dof_color(weightedColor: vec3f, occupancy: f32, fallback: vec3f) -> vec3f {
+  return select(fallback, weightedColor / occupancy, occupancy > 0.0001);
+}
+
+fn load_dof_wide_blur_bilinear(coord: vec2i, size: vec2u) -> vec4f {
   let blurSize = textureDimensions(postProcessDofBlur);
   let blurUv = ((vec2f(coord) + vec2f(0.5)) / vec2f(size)) * vec2f(blurSize) - vec2f(0.5);
   let base = vec2i(floor(blurUv));
@@ -340,10 +349,20 @@ fn load_dof_wide_blur_bilinear(coord: vec2i, size: vec2u) -> vec3f {
   let c10 = load_dof_blur_pixel(base + vec2i(1, 0), blurSize);
   let c01 = load_dof_blur_pixel(base + vec2i(0, 1), blurSize);
   let c11 = load_dof_blur_pixel(base + vec2i(1, 1), blurSize);
-  return mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y);
+  let w00 = (1.0 - f.x) * (1.0 - f.y);
+  let w10 = f.x * (1.0 - f.y);
+  let w01 = (1.0 - f.x) * f.y;
+  let w11 = f.x * f.y;
+  let occupancy = c00.a * w00 + c10.a * w10 + c01.a * w01 + c11.a * w11;
+  let weightedColor = c00.rgb * c00.a * w00 +
+    c10.rgb * c10.a * w10 +
+    c01.rgb * c01.a * w01 +
+    c11.rgb * c11.a * w11;
+  let fallback = mix(mix(c00.rgb, c10.rgb, f.x), mix(c01.rgb, c11.rgb, f.x), f.y);
+  return vec4f(resolve_weighted_dof_color(weightedColor, occupancy, fallback), clamp(occupancy, 0.0, 1.0));
 }
 
-fn load_dof_wide_blur(coord: vec2i, size: vec2u) -> vec3f {
+fn load_dof_wide_blur(coord: vec2i, size: vec2u) -> vec4f {
   return load_dof_wide_blur_bilinear(coord, size);
 }
 
@@ -356,8 +375,13 @@ fn dof_sample(coord: vec2i, size: vec2u, originDepth: f32, originCoc: f32, offse
   let depthDiff = abs(sampleDepth - originDepth);
   let depthWeight = 1.0 - ramp(0.025, 0.16, depthDiff);
   let blurWeight = clamp(max(originCoc, sampleCoc) / max(f32(clamp(settings.dofRadius, 1u, 128u)), 1.0), 0.05, 1.0);
-  let weight = max(0.0, depthWeight * blurWeight * max(sampleConfidence, 0.2));
+  let weight = max(0.0, depthWeight * blurWeight * sampleConfidence);
   return vec4f(load_rgb(sampleCoord, size) * weight, weight);
+}
+
+fn weighted_dof_sample(coord: vec2i, size: vec2u, originDepth: f32, originCoc: f32, offset: vec2i, sampleWeight: f32) -> vec4f {
+  let sample = dof_sample(coord, size, originDepth, originCoc, offset);
+  return vec4f(sample.rgb * sampleWeight, sample.a * sampleWeight);
 }
 
 fn depth_confidence_guided_dof(coord: vec2i, size: vec2u, color: vec3f) -> vec3f {
@@ -369,13 +393,21 @@ fn depth_confidence_guided_dof(coord: vec2i, size: vec2u, color: vec3f) -> vec3f
   let farLayer = layers.z;
   let enabledLayerWeight = layers.w;
   let maxRadius = f32(clamp(settings.dofRadius, 1u, 128u));
-  let originCoc = max(dof_circle_of_confusion(coord, size), enabledLayerWeight * maxRadius);
+  let midRadiusWeight = midLayer * 0.55;
+  let farRadiusWeight = farLayer * 0.9;
+  let nearRadiusWeight = nearLayer;
+  let layerRadiusWeight = max(max(nearRadiusWeight, midRadiusWeight), farRadiusWeight);
+  let originCoc = max(dof_circle_of_confusion(coord, size), layerRadiusWeight * maxRadius);
   if (originCoc < 0.35 || enabledLayerWeight <= 0.0) {
     return color;
   }
 
   let radius = i32(max(1.0, ceil(originCoc)));
-  let nearRadius = max(1, radius / 2);
+  let innerRadius = max(1, radius / 4);
+  let midRadius = max(1, radius / 2);
+  let outerWeight = 0.35;
+  let midWeight = 0.6;
+  let innerWeight = 0.85;
   var sum = vec3f(0.0);
   var weightSum = 0.0;
 
@@ -383,28 +415,41 @@ fn depth_confidence_guided_dof(coord: vec2i, size: vec2u, color: vec3f) -> vec3f
   sum += color * centerWeight;
   weightSum += centerWeight;
 
-  let north = dof_sample(coord, size, originDepth, originCoc, vec2i(0, -radius));
-  let south = dof_sample(coord, size, originDepth, originCoc, vec2i(0, radius));
-  let west = dof_sample(coord, size, originDepth, originCoc, vec2i(-radius, 0));
-  let east = dof_sample(coord, size, originDepth, originCoc, vec2i(radius, 0));
+  let north = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(0, -radius), outerWeight);
+  let south = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(0, radius), outerWeight);
+  let west = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(-radius, 0), outerWeight);
+  let east = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(radius, 0), outerWeight);
   sum += north.rgb + south.rgb + west.rgb + east.rgb;
   weightSum += north.a + south.a + west.a + east.a;
 
-  let nw = dof_sample(coord, size, originDepth, originCoc, vec2i(-radius, -radius));
-  let ne = dof_sample(coord, size, originDepth, originCoc, vec2i(radius, -radius));
-  let sw = dof_sample(coord, size, originDepth, originCoc, vec2i(-radius, radius));
-  let se = dof_sample(coord, size, originDepth, originCoc, vec2i(radius, radius));
+  let nw = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(-radius, -radius), outerWeight);
+  let ne = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(radius, -radius), outerWeight);
+  let sw = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(-radius, radius), outerWeight);
+  let se = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(radius, radius), outerWeight);
   sum += nw.rgb + ne.rgb + sw.rgb + se.rgb;
   weightSum += nw.a + ne.a + sw.a + se.a;
 
-  if (configured_sample_count() >= 12u) {
-    let n = dof_sample(coord, size, originDepth, originCoc, vec2i(0, -nearRadius));
-    let s = dof_sample(coord, size, originDepth, originCoc, vec2i(0, nearRadius));
-    let w = dof_sample(coord, size, originDepth, originCoc, vec2i(-nearRadius, 0));
-    let e = dof_sample(coord, size, originDepth, originCoc, vec2i(nearRadius, 0));
-    sum += n.rgb + s.rgb + w.rgb + e.rgb;
-    weightSum += n.a + s.a + w.a + e.a;
-  }
+  let midN = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(0, -midRadius), midWeight);
+  let midS = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(0, midRadius), midWeight);
+  let midW = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(-midRadius, 0), midWeight);
+  let midE = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(midRadius, 0), midWeight);
+  let midNw = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(-midRadius, -midRadius), midWeight);
+  let midNe = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(midRadius, -midRadius), midWeight);
+  let midSw = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(-midRadius, midRadius), midWeight);
+  let midSe = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(midRadius, midRadius), midWeight);
+  sum += midN.rgb + midS.rgb + midW.rgb + midE.rgb + midNw.rgb + midNe.rgb + midSw.rgb + midSe.rgb;
+  weightSum += midN.a + midS.a + midW.a + midE.a + midNw.a + midNe.a + midSw.a + midSe.a;
+
+  let innerN = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(0, -innerRadius), innerWeight);
+  let innerS = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(0, innerRadius), innerWeight);
+  let innerW = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(-innerRadius, 0), innerWeight);
+  let innerE = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(innerRadius, 0), innerWeight);
+  let innerNw = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(-innerRadius, -innerRadius), innerWeight);
+  let innerNe = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(innerRadius, -innerRadius), innerWeight);
+  let innerSw = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(-innerRadius, innerRadius), innerWeight);
+  let innerSe = weighted_dof_sample(coord, size, originDepth, originCoc, vec2i(innerRadius, innerRadius), innerWeight);
+  sum += innerN.rgb + innerS.rgb + innerW.rgb + innerE.rgb + innerNw.rgb + innerNe.rgb + innerSw.rgb + innerSe.rgb;
+  weightSum += innerN.a + innerS.a + innerW.a + innerE.a + innerNw.a + innerNe.a + innerSw.a + innerSe.a;
 
   let useLocalBlur = settings.dofLocalEnabled != 0u;
   let useWideBlur = settings.dofWideEnabled != 0u;
@@ -413,17 +458,17 @@ fn depth_confidence_guided_dof(coord: vec2i, size: vec2u, color: vec3f) -> vec3f
   }
 
   let localBlurred = sum / max(weightSum, 0.0001);
-  let wideBlurred = load_dof_wide_blur(coord, size);
+  let wideBlur = load_dof_wide_blur(coord, size);
+  let wideBlurred = wideBlur.rgb;
   let wideBlurWeight = ramp(8.0, max(f32(clamp(settings.dofRadius, 1u, 128u)) * 0.85, 8.5), originCoc);
-  let signedLayerWeight = max(nearLayer, farLayer);
+  let nearWideWeight = clamp(wideBlurWeight * nearLayer * wideBlur.a, 0.0, 1.0);
   var blurred = color;
   if (useLocalBlur && useWideBlur) {
-    let localWideBlurred = mix(localBlurred, wideBlurred, wideBlurWeight);
-    blurred = mix(localWideBlurred, wideBlurred, signedLayerWeight);
+    blurred = mix(localBlurred, wideBlurred, nearWideWeight);
   } else if (useLocalBlur) {
     blurred = localBlurred;
   } else {
-    blurred = wideBlurred;
+    blurred = mix(color, wideBlurred, nearWideWeight);
   }
   let dofBlend = clamp(max(originCoc / max(maxRadius, 1.0), enabledLayerWeight), 0.0, 1.0);
   return mix(color, blurred, dofBlend);
@@ -439,32 +484,43 @@ fn dof_downsample(@builtin(global_invocation_id) globalId: vec3u) {
   let inputSize = textureDimensions(postProcessInput);
   let coord = vec2i(globalId.xy);
   let sourceCoord = coord * 2;
-  let c0 = load_rgb(sourceCoord, inputSize);
-  let c1 = load_rgb(sourceCoord + vec2i(1, 0), inputSize);
-  let c2 = load_rgb(sourceCoord + vec2i(0, 1), inputSize);
-  let c3 = load_rgb(sourceCoord + vec2i(1, 1), inputSize);
-  let averaged = (c0 + c1 + c2 + c3) * 0.25;
-  textureStore(postProcessOutput, coord, vec4f(averaged, 1.0));
+  let t0 = dof_downsample_tap(sourceCoord, inputSize);
+  let t1 = dof_downsample_tap(sourceCoord + vec2i(1, 0), inputSize);
+  let t2 = dof_downsample_tap(sourceCoord + vec2i(0, 1), inputSize);
+  let t3 = dof_downsample_tap(sourceCoord + vec2i(1, 1), inputSize);
+  let tapSum = t0 + t1 + t2 + t3;
+  let occupancy = clamp(tapSum.a * 0.25, 0.0, 1.0);
+  let downsampled = vec4f(resolve_weighted_dof_color(tapSum.rgb, tapSum.a, load_rgb(sourceCoord, inputSize)), occupancy);
+  textureStore(postProcessOutput, coord, vec4f(downsampled.rgb, downsampled.a));
+}
+
+fn dof_downsample_tap(sampleCoord: vec2i, inputSize: vec2u) -> vec4f {
+  let confidence = clamp(load_aux(sampleCoord, inputSize).g, 0.0, 1.0);
+  return vec4f(load_rgb(sampleCoord, inputSize) * confidence, confidence);
 }
 
 fn dof_blur_radius() -> i32 {
   return max(1, i32(ceil(f32(clamp(settings.dofRadius, 1u, 128u)) * 0.5)));
 }
 
-fn dof_blur_sample(coord: vec2i, size: vec2u, axis: vec2i) -> vec3f {
+fn dof_blur_sample(coord: vec2i, size: vec2u, axis: vec2i) -> vec4f {
   let radius = dof_blur_radius();
   let sigma = max(f32(radius) * 0.42, 1.0);
   var sum = vec3f(0.0);
+  var occupancySum = 0.0;
   var weightSum = 0.0;
   for (var tap = -POST_PROCESS_DOF_BLUR_HALF_TAPS; tap <= POST_PROCESS_DOF_BLUR_HALF_TAPS; tap = tap + 1) {
     let tapT = f32(tap) / f32(POST_PROCESS_DOF_BLUR_HALF_TAPS);
     let sampleOffset = i32(round(tapT * f32(radius)));
     let normalizedOffset = f32(sampleOffset) / sigma;
     let weight = exp(-0.5 * normalizedOffset * normalizedOffset);
-    sum += load_rgb(coord + axis * sampleOffset, size) * weight;
+    let sample = textureLoad(postProcessInput, clamp_coord(coord + axis * sampleOffset, size), 0);
+    sum += sample.rgb * sample.a * weight;
+    occupancySum += sample.a * weight;
     weightSum += weight;
   }
-  return sum / max(weightSum, 0.0001);
+  let occupancy = clamp(occupancySum / max(weightSum, 0.0001), 0.0, 1.0);
+  return vec4f(resolve_weighted_dof_color(sum, occupancySum, vec3f(0.0)), occupancy);
 }
 
 fn dof_blur(axis: vec2i, globalId: vec3u) {
@@ -475,7 +531,7 @@ fn dof_blur(axis: vec2i, globalId: vec3u) {
 
   let coord = vec2i(globalId.xy);
   let blurred = dof_blur_sample(coord, outputSize, axis);
-  textureStore(postProcessOutput, coord, vec4f(max(blurred, vec3f(0.0)), 1.0));
+  textureStore(postProcessOutput, coord, vec4f(max(blurred.rgb, vec3f(0.0)), blurred.a));
 }
 
 @compute @workgroup_size(8, 8, 1)
@@ -537,7 +593,8 @@ fn fxaa_cas_post_process(@builtin(global_invocation_id) globalId: vec3u) {
     settings.debugView == DEBUG_VIEW_DOF_BLUR_V_ONLY ||
     settings.debugView == DEBUG_VIEW_DOF_BLUR_HV
   ) {
-    textureStore(postProcessOutput, coord, vec4f(max(load_dof_wide_blur(coord, outputSize), vec3f(0.0)), source.a));
+    let wideDebug = load_dof_wide_blur(coord, outputSize);
+    textureStore(postProcessOutput, coord, vec4f(max(wideDebug.rgb, vec3f(0.0)), source.a));
   } else {
     textureStore(postProcessOutput, coord, vec4f(finalColor, source.a));
   }
