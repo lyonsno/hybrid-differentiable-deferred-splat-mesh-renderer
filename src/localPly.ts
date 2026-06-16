@@ -62,7 +62,13 @@ export function decodeLocalPlySplatPayload(
   const hasByteColor = fields.has("red") && fields.has("green") && fields.has("blue");
   const hasScales = fields.has("scale_0") && fields.has("scale_1") && fields.has("scale_2");
   const hasRotations = fields.has("rot_0") && fields.has("rot_1") && fields.has("rot_2") && fields.has("rot_3");
+  const hasNormals = fields.has("nx") && fields.has("ny") && fields.has("nz");
+  const hasRoughness = fields.has("roughness");
+  const hasMetallic = fields.has("metallic");
   const shLayout = discoverPlyShLayout(fields);
+  const normals = hasNormals ? new Float32Array(count * 3) : undefined;
+  const roughness = hasRoughness ? new Float32Array(count) : undefined;
+  const metalness = hasMetallic ? new Float32Array(count) : undefined;
   const shCoefficients =
     shLayout === undefined
       ? undefined
@@ -133,6 +139,17 @@ export function decodeLocalPlySplatPayload(
     } else {
       rotations[quatBase] = 1;
     }
+    if (hasNormals && normals !== undefined) {
+      normals[vecBase] = readProperty(view, rowOffset, fields.get("nx")!);
+      normals[vecBase + 1] = readProperty(view, rowOffset, fields.get("ny")!);
+      normals[vecBase + 2] = readProperty(view, rowOffset, fields.get("nz")!);
+    }
+    if (hasRoughness && roughness !== undefined) {
+      roughness[row] = readProperty(view, rowOffset, fields.get("roughness")!);
+    }
+    if (hasMetallic && metalness !== undefined) {
+      metalness[row] = readProperty(view, rowOffset, fields.get("metallic")!);
+    }
     if (shLayout !== undefined && shCoefficients !== undefined) {
       writePlyShRow(view, rowOffset, shLayout, shCoefficients, row);
     }
@@ -159,6 +176,9 @@ export function decodeLocalPlySplatPayload(
             layout: "splat_coeff_rgb",
             coefficients: shCoefficients,
           },
+    normals,
+    roughness,
+    metalness,
     originalIds,
     bounds,
     layout: FIRST_SMOKE_SPLAT_LAYOUT,

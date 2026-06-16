@@ -1,18 +1,19 @@
 // Project all visible splats into a packed projection cache.
-// One thread per splat. Writes 8 u32 per splat:
+// One thread per splat. Writes 9 u32 per splat:
 //   [0] centerPx.x (f32)
 //   [1] centerPx.y (f32)
 //   [2] inverseCov2d.x (f32)
 //   [3] inverseCov2d.y (f32)
 //   [4] inverseCov2d.z (f32)
 //   [5] pack2x16float(roughness, metalness) — per-splat PBR material
-//   [6] pack2x16float(opacity, 0)
+//   [6] pack2x16float(radius, sourceOpacity)
 //   [7] tileBounds packed as u8x4 (minTileX, minTileY, maxTileX, maxTileY)
+//   [8] oct-encoded normal as r32uint (pack2x16float of octahedral xy)
 //
 // Invisible splats (behind camera, zero radius) get sentinel values so
 // downstream passes can skip them cheaply.
 
-const PROJ_STRIDE = 8u;
+const PROJ_STRIDE = 9u;
 const COMPACT_FOOTPRINT_SIGMA_RADIUS = 3.0;
 const COMPACT_FOOTPRINT_EPSILON = 0.000000001;
 const MIN_SPLAT_CLIP_W = 0.0001;
@@ -38,6 +39,7 @@ struct FrameUniforms {
 @group(0) @binding(7) var<storage, read_write> depthBuffer: array<u32>;
 @group(0) @binding(8) var<storage, read> roughnessData: array<f32>;
 @group(0) @binding(9) var<storage, read> metalnessData: array<f32>;
+@group(0) @binding(10) var<storage, read> normalData: array<f32>; // per-splat nx,ny,nz (stride 3) or empty
 
 // --- Projection math (same as composite shader) ---
 
@@ -170,4 +172,16 @@ fn project_splats(@builtin(global_invocation_id) globalId: vec3u) {
   // Pack tile bounds as 4 bytes (supports up to 255 tiles per axis)
   projCache[base + 7u] = (minTileX & 0xFFu) | ((minTileY & 0xFFu) << 8u)
                         | ((maxTileX & 0xFFu) << 16u) | ((maxTileY & 0xFFu) << 24u);
+
+  // Per-splat normal: use baked normal data if available, else covariance-derived
+  var splatNormal = normal; // covariance-derived default
+  let normalBase = splatId * 3u;
+  if (normalBase + 2u < arrayLength(&normalData)) {
+    let baked = vec3f(normalData[normalBase], normalData[normalBase + 1u], normalData[normalBase + 2u]);
+    let bakedLen = length(baked);
+    if (bakedLen > 0.001) {
+      splatNormal = baked / bakedLen;
+    }
+  }
+  projCache[base + 8u] = pack2x16float(octEncode(splatNormal));
 }

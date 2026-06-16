@@ -171,6 +171,7 @@ interface ActiveSplatScene {
     frameUniformData: Float32Array;
     lastSortedViewProj: Float32Array | null;
     hasSortedRefs: boolean;
+    hasPerSplatNormals: boolean;
   };
 }
 
@@ -779,6 +780,7 @@ async function main() {
         scaleBuffer: buffers.scaleBuffer,
         rotationBuffer: buffers.rotationBuffer,
         opacityBuffer: buffers.opacityBuffer,
+        normalBuffer: buffers.normalBuffer,
         roughnessBuffer: buffers.roughnessBuffer,
         metalnessBuffer: buffers.metalnessBuffer,
         sortedIndexBuffer,
@@ -816,6 +818,7 @@ async function main() {
         frameUniformData: new Float32Array(TILE_SPLAT_FRAME_UNIFORM_BYTES / 4),
         lastSortedViewProj: null,
         hasSortedRefs: false,
+        hasPerSplatNormals: attributes.normals !== undefined,
       },
     };
     exposeMeshSplatSmokeEvidence(
@@ -914,16 +917,18 @@ async function main() {
       encodeCompositeOnly(encoder, cc.resources, cc.bindGroups);
     }
 
-    // Screen-space normal reconstruction + deferred lighting
+    // Screen-space normal reconstruction (skipped when per-splat normals are available) + deferred lighting
     const vpInv = mat4Inverse(viewProj);
     if (vpInv) {
-      screenSpaceNormals.encode(
-        encoder,
-        cc.gbufferDepthView,
-        cc.gbufferNormalTexture,
-        [cc.resources.plan.viewportWidth, cc.resources.plan.viewportHeight],
-        vpInv,
-      );
+      if (!cc.hasPerSplatNormals) {
+        screenSpaceNormals.encode(
+          encoder,
+          cc.gbufferDepthView,
+          cc.gbufferNormalTexture,
+          [cc.resources.plan.viewportWidth, cc.resources.plan.viewportHeight],
+          vpInv,
+        );
+      }
       deferredLighting.encode(
         encoder,
         cc.outputView,

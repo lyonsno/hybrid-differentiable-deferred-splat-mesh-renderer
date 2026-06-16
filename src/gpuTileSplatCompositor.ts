@@ -12,6 +12,7 @@ import prefixSumShader from "./shaders/gpu_prefix_sum.wgsl?raw";
 // Frame uniforms: viewProj(64) + viewport(8) + tileSizePx(4) + debugMode(4) +
 //   tileGrid(8) + splatCount(4) + totalTileRefs(4) = 96
 export const TILE_SPLAT_FRAME_UNIFORM_BYTES = 96;
+const PROJ_STRIDE_U32 = 9; // Must match PROJ_STRIDE in gpu_project_splats.wgsl
 const TILE_ENTRY_BYTES = 4; // 1 u32 per tile entry (sortRank)
 
 // Morton (Z-order) encoding for 2D coordinates — matches WGSL mortonEncode2D.
@@ -173,6 +174,7 @@ export function createTileSplatCompositor(
       { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },           // depthBuffer (write)
       { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // roughness
       { binding: 9, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // metalness
+      { binding: 10, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // normals
     ],
   });
 
@@ -435,10 +437,9 @@ export function createTileSplatCompositor(
   });
 
   // Buffers
-  const PROJ_CACHE_U32_STRIDE = 8;
   const projCacheBuffer = device.createBuffer({
     label: "proj_cache",
-    size: Math.max(16, plan.splatCount * PROJ_CACHE_U32_STRIDE * 4),
+    size: Math.max(16, plan.splatCount * PROJ_STRIDE_U32 * 4),
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
   });
 
@@ -665,6 +666,7 @@ export function createTileSplatBindGroups(
     scaleBuffer: GPUBuffer;
     rotationBuffer: GPUBuffer;
     opacityBuffer: GPUBuffer;
+    normalBuffer?: GPUBuffer;
     roughnessBuffer?: GPUBuffer;
     metalnessBuffer?: GPUBuffer;
     sortedIndexBuffer: GPUBuffer;
@@ -686,6 +688,12 @@ export function createTileSplatBindGroups(
   };
   const roughnessBuffer = splatBuffers.roughnessBuffer ?? defaultMaterialBuffer("default_roughness", 0.75);
   const metalnessBuffer = splatBuffers.metalnessBuffer ?? defaultMaterialBuffer("default_metalness", 0.0);
+  // Empty normal buffer (0 bytes) signals the shader to use covariance-derived normals
+  const normalBuffer = splatBuffers.normalBuffer ?? device.createBuffer({
+    label: "default_empty_normals",
+    size: 16, // minimum buffer size, arrayLength will be < splatCount*3
+    usage: GPUBufferUsage.STORAGE,
+  });
 
   // Project pass: reads raw splat data, writes projection cache
   const projectBindGroup = device.createBindGroup({
@@ -702,6 +710,7 @@ export function createTileSplatBindGroups(
       { binding: 7, resource: { buffer: resources.depthBuffer } },
       { binding: 8, resource: { buffer: roughnessBuffer } },
       { binding: 9, resource: { buffer: metalnessBuffer } },
+      { binding: 10, resource: { buffer: normalBuffer } },
     ],
   });
 

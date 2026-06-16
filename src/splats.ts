@@ -45,6 +45,7 @@ export interface SplatAttributes {
   scales: Float32Array;
   rotations: Float32Array;
   sh?: SplatSphericalHarmonics;
+  normals?: Float32Array;
   roughness?: Float32Array;
   metalness?: Float32Array;
   originalIds: Uint32Array;
@@ -67,6 +68,7 @@ export interface SplatGpuBuffers {
   opacityBuffer: GPUBuffer;
   scaleBuffer: GPUBuffer;
   rotationBuffer: GPUBuffer;
+  normalBuffer?: GPUBuffer;
   roughnessBuffer?: GPUBuffer;
   metalnessBuffer?: GPUBuffer;
   originalIdBuffer: GPUBuffer;
@@ -396,6 +398,9 @@ export function uploadSplatAttributeBuffers(
       attributes.rotations,
       "first_smoke_splat_rotations"
     ),
+    normalBuffer: attributes.normals
+      ? createMappedStorageBuffer(device, attributes.normals, "first_smoke_splat_normals")
+      : undefined,
     roughnessBuffer: attributes.roughness
       ? createMappedStorageBuffer(device, attributes.roughness, "first_smoke_splat_roughness")
       : undefined,
