@@ -702,10 +702,13 @@ export function createTileSplatBindGroups(
   };
   const roughnessBuffer = splatBuffers.roughnessBuffer ?? defaultMaterialBuffer("default_roughness", 0.75);
   const metalnessBuffer = splatBuffers.metalnessBuffer ?? defaultMaterialBuffer("default_metalness", 0.0);
-  // Empty normal buffer (0 bytes) signals the shader to use covariance-derived normals
+  // Empty normal buffer signals the shader to use covariance-derived normals.
+  // 16 bytes = 4 floats → arrayLength(&normalData) = 4, so only splatId=0 passes
+  // the bounds check (normalBase+2 = 2 < 4), reads zeros, and falls back via the
+  // bakedLen > 0.001 guard. All other splats skip the baked-normal path entirely.
   const normalBuffer = splatBuffers.normalBuffer ?? device.createBuffer({
     label: "default_empty_normals",
-    size: 16, // minimum buffer size, arrayLength will be < splatCount*3
+    size: 16,
     usage: GPUBufferUsage.STORAGE,
   });
 
