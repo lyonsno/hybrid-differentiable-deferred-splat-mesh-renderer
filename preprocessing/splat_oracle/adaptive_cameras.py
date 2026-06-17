@@ -120,9 +120,9 @@ def generate_candidate_cameras(
     forward = np.cross(right, up)
     forward = forward / (np.linalg.norm(forward) + 1e-8)
 
-    # Elevation angles: biased toward eye-level / slightly above
-    # -10° (slightly below eye level) to +50° (elevated three-quarter)
-    # More samples near 10-30° (the sweet spot for phone photos)
+    # Elevation angles: uniform from -10° to +50°. The phone-photo
+    # sweet spot (10-30°) is enforced by scoring in filter_and_score_cameras,
+    # not by candidate density here.
     elevations_deg = np.linspace(-10, 50, n_elevation)
 
     # Distance multipliers: closer and further from scene
@@ -236,17 +236,19 @@ def estimate_frame_fill(
     else:
         vis_opacity = np.ones(in_frame.sum(), dtype=np.float32)
 
-    # Accumulate into low-res grid
+    # Accumulate into low-res grid — splat each disc into cells it covers
     grid = np.zeros((grid_size, grid_size), dtype=np.float32)
-    gx = np.clip((sx[in_frame] * grid_size).astype(int), 0, grid_size - 1)
-    gy = np.clip((sy[in_frame] * grid_size).astype(int), 0, grid_size - 1)
+    cx = sx[in_frame] * grid_size
+    cy = sy[in_frame] * grid_size
+    # Radius in grid cells (clamped to avoid huge fills)
+    r_cells = np.clip(screen_radius_norm * grid_size, 0.5, grid_size / 2)
 
-    # Each splat contributes opacity weighted by its screen coverage
-    # Larger splats (closer) contribute more
-    coverage_weight = np.clip(screen_radius_norm * grid_size, 0.1, 4.0)
-    contribution = vis_opacity * coverage_weight
-
-    np.add.at(grid, (gy, gx), contribution)
+    for i in range(len(cx)):
+        x0 = max(int(cx[i] - r_cells[i]), 0)
+        x1 = min(int(cx[i] + r_cells[i]) + 1, grid_size)
+        y0 = max(int(cy[i] - r_cells[i]), 0)
+        y1 = min(int(cy[i] + r_cells[i]) + 1, grid_size)
+        grid[y0:y1, x0:x1] += vis_opacity[i]
 
     # Fraction of cells with meaningful coverage
     covered_cells = (grid > 0.1).sum()

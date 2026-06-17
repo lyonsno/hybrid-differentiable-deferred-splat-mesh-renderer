@@ -164,11 +164,14 @@ class CoverageTracker:
         # Cosine similarity with all bin directions
         cos_all = dirs @ self.bin_dirs.T  # (M, G)
 
-        # Coverage metric: (cos + 1) / 2, masked by whether the bin has
-        # any observations. Zero for unobserved bins.
+        # Coverage metric: max(cos, 0), masked by whether the bin has
+        # any observations. Zero for unobserved bins. Using clamped
+        # cosine rather than (cos+1)/2 to preserve dynamic range —
+        # the remapped version saturates too early (floor of 0.80 at
+        # 25% observed bins, making greedy selection ineffective).
         counts = self.coverage_counts[visible_ids]  # (M, G)
         observed = (counts > 0).astype(np.float32)
-        coverage_metric = ((cos_all + 1.0) / 2.0) * observed
+        coverage_metric = np.maximum(cos_all, 0.0) * observed
 
         # Max coverage per Gaussian — high means "already well covered from
         # a similar direction", low means "new direction"
