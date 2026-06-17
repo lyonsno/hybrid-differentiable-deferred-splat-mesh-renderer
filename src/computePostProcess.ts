@@ -281,6 +281,7 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
       });
 
       // Quarter-res bind groups: downsample half→quarter, then H/V blur at quarter-res
+      // Binding 5 must not conflict with the write target in the same pass
       const quarterDownsampleBindGroup = device.createBindGroup({
         label: "compute_dof_quarter_downsample_bg",
         layout: bindGroupLayout,
@@ -290,7 +291,7 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
           { binding: 2, resource: { buffer: settingsBuffer } },
           { binding: 3, resource: inputAuxView },
           { binding: 4, resource: dofLowResView },
-          { binding: 5, resource: dofQuarterResView },
+          { binding: 5, resource: dofQuarterScratchView },
         ],
       });
       const quarterHorizontalBlurBindGroup = device.createBindGroup({
@@ -302,7 +303,7 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
           { binding: 2, resource: { buffer: settingsBuffer } },
           { binding: 3, resource: inputAuxView },
           { binding: 4, resource: dofQuarterResView },
-          { binding: 5, resource: dofQuarterResView },
+          { binding: 5, resource: dofLowResView },
         ],
       });
       const quarterVerticalBlurBindGroup = device.createBindGroup({
@@ -314,7 +315,7 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
           { binding: 2, resource: { buffer: settingsBuffer } },
           { binding: 3, resource: inputAuxView },
           { binding: 4, resource: dofQuarterScratchView },
-          { binding: 5, resource: dofQuarterResView },
+          { binding: 5, resource: dofLowResView },
         ],
       });
 
