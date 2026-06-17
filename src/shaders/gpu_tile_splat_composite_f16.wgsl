@@ -226,33 +226,35 @@ fn composite(
   let gbNrm11 = octEncode(normalize(gbNrmWeighted3 + vec3f(0.0, 0.0001, 0.0)));
 
   // Write results — promote to f32 for textureStore
-  let bgColor = vec3<f16>(0.02h, 0.02h, 0.04h);
+  // debugMode bit 0: transparent background (for overlay compositing)
+  let transparentBg = (bitcast<u32>(frame.debugMode) & 1u) != 0u;
+  let bgColor = select(vec3<f16>(0.02h, 0.02h, 0.04h), vec3<f16>(0.0h), transparentBg);
   let outputSize = textureDimensions(outputColor);
 
   if (basePixel.x < outputSize.x && basePixel.y < outputSize.y) {
     let px = vec2i(basePixel);
-    textureStore(outputColor, px, vec4f(vec3f(c00 + T.x * bgColor), 1.0));
+    textureStore(outputColor, px, vec4f(vec3f(c00 + T.x * bgColor), 1.0 - f32(T.x)));
     textureStore(outputDepth, px, vec4f(gbDepth.x, 0.0, 0.0, 0.0));
     textureStore(outputNormal, px, vec4u(pack2x16float(gbNrm00), 0u, 0u, 0u));
     textureStore(outputMaterial, px, vec4u(pack2x16float(gbMat00), 0u, 0u, 0u));
   }
   if (basePixel.x + 1u < outputSize.x && basePixel.y < outputSize.y) {
     let px = vec2i(vec2u(basePixel.x + 1u, basePixel.y));
-    textureStore(outputColor, px, vec4f(vec3f(c10 + T.y * bgColor), 1.0));
+    textureStore(outputColor, px, vec4f(vec3f(c10 + T.y * bgColor), 1.0 - f32(T.y)));
     textureStore(outputDepth, px, vec4f(gbDepth.y, 0.0, 0.0, 0.0));
     textureStore(outputNormal, px, vec4u(pack2x16float(gbNrm10), 0u, 0u, 0u));
     textureStore(outputMaterial, px, vec4u(pack2x16float(gbMat10), 0u, 0u, 0u));
   }
   if (basePixel.x < outputSize.x && basePixel.y + 1u < outputSize.y) {
     let px = vec2i(vec2u(basePixel.x, basePixel.y + 1u));
-    textureStore(outputColor, px, vec4f(vec3f(c01 + T.z * bgColor), 1.0));
+    textureStore(outputColor, px, vec4f(vec3f(c01 + T.z * bgColor), 1.0 - f32(T.z)));
     textureStore(outputDepth, px, vec4f(gbDepth.z, 0.0, 0.0, 0.0));
     textureStore(outputNormal, px, vec4u(pack2x16float(gbNrm01), 0u, 0u, 0u));
     textureStore(outputMaterial, px, vec4u(pack2x16float(gbMat01), 0u, 0u, 0u));
   }
   if (basePixel.x + 1u < outputSize.x && basePixel.y + 1u < outputSize.y) {
     let px = vec2i(vec2u(basePixel.x + 1u, basePixel.y + 1u));
-    textureStore(outputColor, px, vec4f(vec3f(c11 + T.w * bgColor), 1.0));
+    textureStore(outputColor, px, vec4f(vec3f(c11 + T.w * bgColor), 1.0 - f32(T.w)));
     textureStore(outputDepth, px, vec4f(gbDepth.w, 0.0, 0.0, 0.0));
     textureStore(outputNormal, px, vec4u(pack2x16float(gbNrm11), 0u, 0u, 0u));
     textureStore(outputMaterial, px, vec4u(pack2x16float(gbMat11), 0u, 0u, 0u));

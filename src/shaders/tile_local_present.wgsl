@@ -23,5 +23,5 @@ fn vs(@builtin(vertex_index) vertexIndex: u32) -> VertexOut {
 @fragment
 fn fs(in: VertexOut) -> @location(0) vec4f {
   let color = textureSample(tileTexture, tileSampler, in.uv);
-  return vec4f(color.rgb, 1.0);
+  return color;
 }

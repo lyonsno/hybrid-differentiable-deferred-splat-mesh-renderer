@@ -72,6 +72,8 @@ export interface RenderFrameParams {
   lightDirection: [number, number, number];
   lightIntensity: number;
   ambientIntensity: number;
+  /** When true, compositor writes transparent background for overlay compositing. */
+  transparentBackground?: boolean;
 }
 
 export interface SplatRenderer {
@@ -711,7 +713,9 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
       const cc = internal.computeCompositor;
 
       // Upload frame uniforms
-      writeTileSplatFrameUniforms(cc.frameUniformData, params.viewProj, cc.resources.plan);
+      writeTileSplatFrameUniforms(cc.frameUniformData, params.viewProj, cc.resources.plan, {
+        transparentBackground: params.transparentBackground,
+      });
       device.queue.writeBuffer(cc.resources.frameUniformBuffer, 0, cc.frameUniformData);
 
       // Full compositor pipeline or composite-only

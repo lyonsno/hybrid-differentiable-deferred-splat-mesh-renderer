@@ -639,17 +639,28 @@ export function createTileSplatCompositor(
   };
 }
 
+export interface TileSplatFrameUniformOptions {
+  /** Bit 0: transparent background (for overlay compositing). */
+  transparentBackground?: boolean;
+}
+
 export function writeTileSplatFrameUniforms(
   target: Float32Array,
   viewProj: Float32Array,
   plan: TileSplatCompositorPlan,
+  options?: TileSplatFrameUniformOptions,
 ): void {
   target.set(viewProj, 0);
   target[16] = plan.viewportWidth;
   target[17] = plan.viewportHeight;
   target[18] = plan.tileSizePx;
-  target[19] = 0; // debugMode
+  // debugMode as bitfield: bit 0 = transparent background
   const u32View = new Uint32Array(target.buffer, target.byteOffset, target.length);
+  let debugBits = 0;
+  if (options?.transparentBackground) debugBits |= 1;
+  u32View[19] = debugBits;
+  // Reinterpret as float for the uniform buffer (shader reads via bitcast)
+  target[19] = new Float32Array(new Uint32Array([debugBits]).buffer)[0];
   u32View[20] = plan.tileColumns;
   u32View[21] = plan.tileRows;
   u32View[22] = plan.splatCount;
