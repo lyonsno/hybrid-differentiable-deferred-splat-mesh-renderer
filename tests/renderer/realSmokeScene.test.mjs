@@ -435,7 +435,9 @@ test("alpha density compensation accounts for coverage across every overlapped t
 });
 
 test("renderer updates the uploaded opacity buffer with alpha density compensation", () => {
-  const source = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+  const rendererSource = readFileSync(new URL("../../src/splatRenderer.ts", import.meta.url), "utf8");
+  const source = mainSource + "\n" + rendererSource;
 
   assert.match(source, /writeAlphaDensityCompensatedOpacities/);
   assert.match(source, /queue\.writeBuffer\(buffers\.opacityBuffer/);

@@ -6,17 +6,18 @@ import test from "node:test";
 // It's compiled by the test:renderer tsc step into node_modules/.cache/.
 // For source-reading tests we use the raw TS source.
 const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+const rendererSource = readFileSync(new URL("../../src/splatRenderer.ts", import.meta.url), "utf8");
 const compositorSource = readFileSync(new URL("../../src/gpuTileSplatCompositor.ts", import.meta.url), "utf8");
 
-function destroySplatSceneSource() {
-  const match = mainSource.match(/function destroySplatScene\(scene: ActiveSplatScene \| null\): void \{[\s\S]*?\n\}/);
-  assert.ok(match, "destroySplatScene must remain visible to lifecycle tests");
+function destroySceneInternalSource() {
+  const match = rendererSource.match(/function destroySceneInternal\(scene: SplatScene\): void \{[\s\S]*?\n\}/);
+  assert.ok(match, "destroySceneInternal must remain visible to lifecycle tests");
   return match[0];
 }
 
 test("compute compositor state records all GPU textures that require destruction", () => {
-  const activeSceneMatch = mainSource.match(/interface ActiveSplatScene \{[\s\S]*?\n\}/);
-  assert.ok(activeSceneMatch, "ActiveSplatScene must remain visible to lifecycle tests");
+  const activeSceneMatch = rendererSource.match(/interface ActiveSceneInternal \{[\s\S]*?\n\}/);
+  assert.ok(activeSceneMatch, "ActiveSceneInternal must remain visible to lifecycle tests");
   const activeScene = activeSceneMatch[0];
 
   assert.match(activeScene, /gbufferDepthTexture: GPUTexture;/);
@@ -26,18 +27,18 @@ test("compute compositor state records all GPU textures that require destruction
   assert.match(activeScene, /hasSortedRefs: boolean;/);
 });
 
-test("destroySplatScene releases compute compositor resources and textures", () => {
-  const destroySource = destroySplatSceneSource();
+test("destroySceneInternal releases compute compositor resources and textures", () => {
+  const destroySource = destroySceneInternalSource();
 
-  assert.match(destroySource, /scene\.computeCompositor\.resources\.destroy\(\);/);
-  assert.match(destroySource, /scene\.computeCompositor\.outputTexture\.destroy\(\);/);
-  assert.match(destroySource, /scene\.computeCompositor\.gbufferDepthTexture\.destroy\(\);/);
-  assert.match(destroySource, /scene\.computeCompositor\.gbufferNormalTexture\.destroy\(\);/);
-  assert.match(destroySource, /scene\.computeCompositor\.litTexture\.destroy\(\);/);
+  assert.match(destroySource, /cc\.resources\.destroy\(\);/);
+  assert.match(destroySource, /cc\.outputTexture\.destroy\(\);/);
+  assert.match(destroySource, /cc\.gbufferDepthTexture\.destroy\(\);/);
+  assert.match(destroySource, /cc\.gbufferNormalTexture\.destroy\(\);/);
+  assert.match(destroySource, /cc\.litTexture\.destroy\(\);/);
 });
 
-test("destroySplatScene releases optional PBR material and normal buffers", () => {
-  const destroySource = destroySplatSceneSource();
+test("destroySceneInternal releases optional PBR material and normal buffers", () => {
+  const destroySource = destroySceneInternalSource();
 
   assert.match(destroySource, /scene\.buffers\.normalBuffer\?\.destroy\(\)/);
   assert.match(destroySource, /scene\.buffers\.roughnessBuffer\?\.destroy\(\)/);
