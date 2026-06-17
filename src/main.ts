@@ -46,9 +46,11 @@ import {
   finishFrameTiming,
   formatFrameTimingOverlay,
   exposeOperatorWitnessFrameTimings,
+  exposeOperatorWitnessFrameState,
   type SplatScene,
   type SplatRenderer,
 } from "./splatRenderer.js";
+import { shouldRefreshAlphaDensity } from "./alphaDensityRefresh.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -57,6 +59,7 @@ import {
 const statsEl = document.getElementById("stats")!;
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 const SORT_BACKEND = "gpu-bitonic-cpu-depth-keys";
+const ALPHA_DENSITY_SETTLE_MS = 200;
 
 // Light control state -- L key cycles modes, arrow keys adjust angle in fixed mode
 type LightMode = "camera" | "fixed" | "overhead" | "rim";
@@ -395,25 +398,40 @@ async function main() {
       });
     }
 
+    // Resize compute compositor textures if viewport changed
+    activeScene = renderer.resizeViewport(scene, width, height);
+    const resizedScene = activeScene;
+
     // Upload uniforms
     const view = getViewMatrix(cam);
     const proj = getProjectionMatrix(cam, aspect);
     const viewProj = composeFirstSmokeViewProjection(proj, view);
 
+    // Alpha-density refresh (settled view)
+    const alphaDensityRefreshed = shouldRefreshAlphaDensity(
+      renderer.alphaDensityState(resizedScene).refreshState,
+      view, width, height, now, ALPHA_DENSITY_SETTLE_MS,
+    );
+    if (alphaDensityRefreshed) {
+      timeFrameStage(frameTiming, "alpha-density-refresh", () => {
+        renderer.refreshAlphaDensity(resizedScene, viewProj, width, height, ALPHA_DENSITY_MODE);
+      });
+    }
+
     const encoder = gpu.device.createCommandEncoder();
 
     // GPU sort
-    const gpuSortRefreshed = renderer.shouldRefreshSort(scene, view, now);
+    const gpuSortRefreshed = renderer.shouldRefreshSort(resizedScene, view, now);
     if (gpuSortRefreshed) {
       timeFrameStage(frameTiming, "gpu-sort-refresh", () => {
-        renderer.encodeSort(scene, encoder, view);
+        renderer.encodeSort(resizedScene, encoder, view);
       });
     }
-    const pendingGpuSort = renderer.sortRefreshPending(scene, view);
+    const pendingGpuSort = renderer.sortRefreshPending(resizedScene, view);
 
     // Render splats (compositor + screen-space normals + deferred lighting)
     const cameraPosition = new Float32Array(cam.position);
-    renderer.renderFrame(scene, {
+    renderer.renderFrame(resizedScene, {
       viewProj,
       viewMatrix: view,
       cameraPosition,
@@ -452,15 +470,15 @@ async function main() {
 
     // G-buffer debug views or final lit/color output
     if (gbufferViewMode === "depth") {
-      renderer.gbufferDebugPresenter.drawDepth(renderPass, scene.gbufferDepthView);
+      renderer.gbufferDebugPresenter.drawDepth(renderPass, resizedScene.gbufferDepthView);
     } else if (gbufferViewMode === "normal") {
-      renderer.gbufferDebugPresenter.drawNormal(renderPass, scene.gbufferDepthView, scene.gbufferNormalView, scene.gbufferMaterialView);
+      renderer.gbufferDebugPresenter.drawNormal(renderPass, resizedScene.gbufferDepthView, resizedScene.gbufferNormalView, resizedScene.gbufferMaterialView);
     } else if (gbufferViewMode === "roughness") {
-      renderer.gbufferDebugPresenter.drawRoughness(renderPass, scene.gbufferDepthView, scene.gbufferNormalView, scene.gbufferMaterialView);
+      renderer.gbufferDebugPresenter.drawRoughness(renderPass, resizedScene.gbufferDepthView, resizedScene.gbufferNormalView, resizedScene.gbufferMaterialView);
     } else if (gbufferViewMode === "lit") {
-      renderer.presentTexture(renderPass, scene.litView);
+      renderer.presentTexture(renderPass, resizedScene.litView);
     } else {
-      renderer.presentTexture(renderPass, scene.outputView);
+      renderer.presentTexture(renderPass, resizedScene.outputView);
     }
     renderPass.end();
 
@@ -477,10 +495,17 @@ async function main() {
       readTimestamps(ts).then((t) => { gpuTimings = t; });
     }
 
+    // Expose frame state to operator witness
+    exposeOperatorWitnessFrameState({
+      frameSerial,
+      witnessView: operatorWitnessViewMode,
+      revision: operatorWitnessRevision,
+    });
+
     // ---- Stats overlay ----
-    const alphaSummary = renderer.alphaDensityState(scene).summary;
+    const alphaSummary = renderer.alphaDensityState(resizedScene).summary;
     const lightLabel = LIGHT_MODES[lightModeIndex] + (LIGHT_MODES[lightModeIndex] === "fixed" ? ` az:${fixedLightAzimuth.toFixed(1)} el:${fixedLightElevation.toFixed(1)}` : "");
-    let statsText = `${width}x${height} | ${displayFps} fps | ${scene.count.toLocaleString()} splats | light: ${lightLabel} (${lightIntensity.toFixed(1)}) amb:${ambientIntensity.toFixed(2)} | view: ${gbufferViewMode}`;
+    let statsText = `${width}x${height} | ${displayFps} fps | ${resizedScene.count.toLocaleString()} splats | light: ${lightLabel} (${lightIntensity.toFixed(1)}) amb:${ambientIntensity.toFixed(2)} | view: ${gbufferViewMode}`;
     const frameTimingOverlay = formatFrameTimingOverlay(frameTiming);
     statsText += ` | ${frameTimingOverlay}`;
     if (gpuTimings.size > 0) {
@@ -494,7 +519,7 @@ async function main() {
     if (shouldContinueRendering({
       activeInput,
       pendingGpuSort,
-      pendingAlphaDensity: renderer.alphaDensityState(scene).refreshState.needsRefresh,
+      pendingAlphaDensity: renderer.alphaDensityState(resizedScene).refreshState.needsRefresh,
     })) {
       requestFrame();
     }
