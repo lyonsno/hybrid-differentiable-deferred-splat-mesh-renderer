@@ -108,8 +108,19 @@ export function planTileSplatCompositor(input: {
   const tileCount = tileColumns * tileRows;
   // Morton-indexed arrays must span the full Morton range
   const mortonTileCount = mortonEncode2D(tileColumns - 1, tileRows - 1) + 1;
-  const avgRefsPerTile = input.averageRefsPerTile ?? 256;
-  const maxTotalTileRefs = Math.max(tileCount * avgRefsPerTile, splatCount * 8);
+  // Tile ref budget: must accommodate close-up views where splats cover many
+  // tiles. The actual count depends on the view (camera distance/angle), not
+  // just splat count, so any fixed multiplier is a heuristic. We use the max
+  // of two heuristics:
+  //   - splatCount * 48: handles close-up views where avg splat covers ~48 tiles
+  //   - tileCount * 512: handles dense scenes with many splats per tile
+  // Hard cap: the reorder and radix-init passes dispatch ceil(N/256) workgroups,
+  // and WebGPU limits dispatch to 65535 per dimension → max 65535*256 = 16,776,960.
+  const MAX_DISPATCH_SAFE_REFS = 65535 * 256;
+  const maxTotalTileRefs = Math.min(
+    Math.max(tileCount * 512, splatCount * 48),
+    MAX_DISPATCH_SAFE_REFS,
+  );
   return { viewportWidth, viewportHeight, tileSizePx, tileColumns, tileRows, tileCount, mortonTileCount, splatCount, maxTotalTileRefs };
 }
 

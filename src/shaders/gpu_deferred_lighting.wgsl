@@ -27,6 +27,17 @@ struct Params {
 
 const PI = 3.14159265359;
 
+// sRGB ↔ linear conversions
+fn srgbToLinear(c: vec3f) -> vec3f {
+  // Approximate: pow(c, 2.2). Exact piecewise would check < 0.04045 but
+  // the difference is negligible for our use case.
+  return pow(max(c, vec3f(0.0)), vec3f(2.2));
+}
+
+fn linearToSrgb(c: vec3f) -> vec3f {
+  return pow(max(c, vec3f(0.0)), vec3f(1.0 / 2.2));
+}
+
 fn octDecode(oct: vec2f) -> vec3f {
   var n = vec3f(oct.x, oct.y, 1.0 - abs(oct.x) - abs(oct.y));
   if (n.z < 0.0) {
@@ -75,14 +86,17 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let size = vec2i(textureDimensions(colorTexture));
   if (px.x >= size.x || px.y >= size.y) { return; }
 
-  let albedo = textureLoad(colorTexture, px, 0).rgb;
+  let albedoSrgb = textureLoad(colorTexture, px, 0).rgb;
   let depth = textureLoad(depthTexture, px, 0).r;
 
   // Background: pass through
   if (depth >= 0.9999) {
-    textureStore(outputLit, px, vec4f(albedo, 1.0));
+    textureStore(outputLit, px, vec4f(albedoSrgb, 1.0));
     return;
   }
+
+  // Linearize albedo for physically correct BRDF math
+  let albedo = srgbToLinear(albedoSrgb);
 
   let packedNormal = textureLoad(normalTexture, px, 0).r;
   let N = octDecode(unpack2x16float(packedNormal));
@@ -121,8 +135,9 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let ambient = params.ambientColor * albedo;
   let color = ambient + Lo;
 
-  // Simple Reinhard tonemap
-  let mapped = color / (color + vec3f(1.0));
+  // Reinhard tonemap in linear space, then convert back to sRGB for display
+  let tonemapped = color / (color + vec3f(1.0));
+  let mapped = linearToSrgb(tonemapped);
 
   textureStore(outputLit, px, vec4f(mapped, 1.0));
 }

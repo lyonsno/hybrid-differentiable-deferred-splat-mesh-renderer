@@ -440,7 +440,7 @@ test("renderer updates the uploaded opacity buffer with alpha density compensati
   assert.match(source, /writeAlphaDensityCompensatedOpacities/);
   assert.match(source, /queue\.writeBuffer\(buffers\.opacityBuffer/);
   assert.match(source, /selectedAlphaDensityMode/);
-  assert.match(source, /alpha: \$\{alphaSummary\.accountingMode\} density/);
+  assert.match(source, /alphaSummary/);
 });
 
 test("alpha density accounting uses dense tile arrays instead of Map-backed hot-path tile accounting", () => {

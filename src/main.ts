@@ -111,6 +111,15 @@ const SORT_BACKEND = "gpu-bitonic-cpu-depth-keys";
 const GPU_SORT_SETTLE_MS = 160;
 const ALPHA_DENSITY_SETTLE_MS = 160;
 
+// Light control state — L key cycles modes, arrow keys adjust angle in fixed mode
+type LightMode = "camera" | "fixed" | "overhead" | "rim";
+const LIGHT_MODES: LightMode[] = ["camera", "fixed", "overhead", "rim"];
+let lightModeIndex = 0;
+let fixedLightAzimuth = 0.8;  // radians
+let fixedLightElevation = 0.6; // radians
+let lightIntensity = 3.0;
+let ambientIntensity = 0.12;
+
 // ---------------------------------------------------------------------------
 // URL param helpers
 // ---------------------------------------------------------------------------
@@ -484,6 +493,20 @@ async function main() {
       gbufferViewMode = modes[(idx + 1) % modes.length];
       console.log(`G-buffer view: ${gbufferViewMode}`);
     }
+    if (e.key === "l" || e.key === "L") {
+      lightModeIndex = (lightModeIndex + 1) % LIGHT_MODES.length;
+      console.log(`Light mode: ${LIGHT_MODES[lightModeIndex]}`);
+      requestFrame();
+    }
+    // Arrow keys adjust fixed light angle, +/- adjust intensity
+    if (e.key === "ArrowLeft") { fixedLightAzimuth -= 0.15; requestFrame(); }
+    if (e.key === "ArrowRight") { fixedLightAzimuth += 0.15; requestFrame(); }
+    if (e.key === "ArrowUp") { fixedLightElevation = Math.min(fixedLightElevation + 0.1, Math.PI / 2 - 0.05); requestFrame(); }
+    if (e.key === "ArrowDown") { fixedLightElevation = Math.max(fixedLightElevation - 0.1, -Math.PI / 2 + 0.05); requestFrame(); }
+    if (e.key === "+" || e.key === "=") { lightIntensity = Math.min(lightIntensity + 0.5, 10.0); requestFrame(); }
+    if (e.key === "-" || e.key === "_") { lightIntensity = Math.max(lightIntensity - 0.5, 0.5); requestFrame(); }
+    if (e.key === "[") { ambientIntensity = Math.max(ambientIntensity - 0.03, 0.0); requestFrame(); }
+    if (e.key === "]") { ambientIntensity = Math.min(ambientIntensity + 0.03, 0.5); requestFrame(); }
   });
 
   // ---- Screen-space normal reconstruction compute pass ----
@@ -588,14 +611,37 @@ async function main() {
         const params = new Float32Array(36);
         params[0] = viewport[0];
         params[1] = viewport[1];
-        params[2] = 0.65; // roughness
-        params[3] = 0.0;  // metallic (dielectric)
+        params[2] = 0.65; // roughness (fallback, G-buffer material overrides)
+        params[3] = 0.0;  // metallic (fallback)
         params.set(viewProjInverse, 4);
         params[20] = cameraPos[0]; params[21] = cameraPos[1]; params[22] = cameraPos[2];
-        params[24] = -0.4; params[25] = -0.7; params[26] = -0.6; // lightDir
-        params[28] = 1.0; params[29] = 0.95; params[30] = 0.9; // lightColor
-        params[31] = 2.5; // lightIntensity
-        params[32] = 0.15; params[33] = 0.15; params[34] = 0.18; // ambientColor
+
+        // Compute light direction based on current mode
+        const mode = LIGHT_MODES[lightModeIndex];
+        let lx: number, ly: number, lz: number;
+        if (mode === "camera") {
+          // Light from camera direction (headlamp)
+          lx = -cameraPos[0]; ly = -cameraPos[1]; lz = -cameraPos[2];
+          const len = Math.sqrt(lx * lx + ly * ly + lz * lz) || 1;
+          lx /= len; ly /= len; lz /= len;
+        } else if (mode === "overhead") {
+          lx = 0; ly = -1; lz = 0;
+        } else if (mode === "rim") {
+          // Light from behind camera but elevated
+          lx = cameraPos[0]; ly = -0.5; lz = cameraPos[2];
+          const len = Math.sqrt(lx * lx + ly * ly + lz * lz) || 1;
+          lx /= len; ly /= len; lz /= len;
+        } else {
+          // Fixed: spherical coordinates
+          const ce = Math.cos(fixedLightElevation);
+          lx = Math.cos(fixedLightAzimuth) * ce;
+          ly = -Math.sin(fixedLightElevation);
+          lz = Math.sin(fixedLightAzimuth) * ce;
+        }
+        params[24] = lx; params[25] = ly; params[26] = lz;
+        params[28] = 1.0; params[29] = 0.95; params[30] = 0.9; // lightColor (warm white)
+        params[31] = lightIntensity;
+        params[32] = ambientIntensity; params[33] = ambientIntensity; params[34] = ambientIntensity * 1.1; // ambient (slightly blue)
         gpu.device.queue.writeBuffer(paramsBuffer, 0, params);
         const bg = gpu.device.createBindGroup({
           layout: bgl,
@@ -997,7 +1043,8 @@ async function main() {
 
     // ---- Stats overlay ----
     const alphaSummary = scene.alphaDensityState.summary;
-    let statsText = `${width}x${height} | ${displayFps} fps | ${scene.count.toLocaleString()} real Scaniverse splats | renderer: compute | sort: ${SORT_BACKEND} | alpha: ${alphaSummary.accountingMode} density ${alphaSummary.compensatedSplatCount.toLocaleString()} splats/${alphaSummary.hotTileCount} tiles`;
+    const lightLabel = LIGHT_MODES[lightModeIndex] + (LIGHT_MODES[lightModeIndex] === "fixed" ? ` az:${fixedLightAzimuth.toFixed(1)} el:${fixedLightElevation.toFixed(1)}` : "");
+    let statsText = `${width}x${height} | ${displayFps} fps | ${scene.count.toLocaleString()} splats | light: ${lightLabel} (${lightIntensity.toFixed(1)}) amb:${ambientIntensity.toFixed(2)} | view: ${gbufferViewMode}`;
     const frameTimingOverlay = formatFrameTimingOverlay(frameTiming);
     statsText += ` | ${frameTimingOverlay}`;
     if (gpuTimings.size > 0) {
