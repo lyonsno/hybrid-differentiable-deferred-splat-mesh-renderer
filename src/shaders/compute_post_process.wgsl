@@ -248,7 +248,10 @@ fn dof_max_radius() -> f32 {
   return f32(clamp(settings.dofRadius, 1u, 128u));
 }
 
-fn dof_circle_of_confusion(coord: vec2i, size: vec2u) -> f32 {
+// Shared near/far CoC computation. Returns vec4f:
+//   x = gated near CoC (0..maxR), y = gated far CoC (0..maxR),
+//   z = near distance (0..1), w = far distance (0..1)
+fn dof_layer_coc(coord: vec2i, size: vec2u) -> vec4f {
   let aux = load_aux(coord, size);
   let depth = clamp(aux.r, 0.0, 1.0);
   let coverageConfidence = clamp(aux.g, 0.0, 1.0);
@@ -258,63 +261,39 @@ fn dof_circle_of_confusion(coord: vec2i, size: vec2u) -> f32 {
   let aperture = clamp(settings.dofStrength, 0.0, 4.0);
   let maxR = dof_max_radius();
 
-  // Near CoC: ramps from 0 at focusDepth to maxR at nearPlane
   let nearDistance = 1.0 - smooth_ramp(nearPlane, focusDepth, depth);
-  let nearCoc = nearDistance * aperture * maxR * clamp(settings.dofNearBlur, 0.0, 1.0);
-
-  // Far CoC: ramps from 0 at focusDepth to maxR at farPlane
+  let nearCoc = nearDistance * aperture * maxR * clamp(settings.dofNearBlur, 0.0, 1.0) * coverageConfidence;
   let farDistance = smooth_ramp(focusDepth, farPlane, depth);
-  let farCoc = farDistance * aperture * maxR * clamp(settings.dofFarBlur, 0.0, 1.0);
+  let farCoc = farDistance * aperture * maxR * clamp(settings.dofFarBlur, 0.0, 1.0) * coverageConfidence;
 
-  // Enable gating
   let nearGated = select(0.0, nearCoc, settings.dofNearEnabled != 0u);
   let farGated = select(0.0, farCoc, settings.dofFarEnabled != 0u);
 
-  return clamp(max(nearGated, farGated) * coverageConfidence, 0.0, maxR);
+  return vec4f(clamp(nearGated, 0.0, maxR), clamp(farGated, 0.0, maxR), nearDistance, farDistance);
+}
+
+fn dof_circle_of_confusion(coord: vec2i, size: vec2u) -> f32 {
+  let layers = dof_layer_coc(coord, size);
+  return max(layers.x, layers.y);
 }
 
 fn dof_signed_coc(coord: vec2i, size: vec2u) -> f32 {
-  // Positive = near (foreground), negative = far (background)
-  let aux = load_aux(coord, size);
-  let depth = clamp(aux.r, 0.0, 1.0);
-  let coverageConfidence = clamp(aux.g, 0.0, 1.0);
-  let focusDepth = clamp(settings.dofFocusDepth, 0.0, 1.0);
-  let nearPlane = clamp(settings.dofNearPlaneDepth, 0.0, focusDepth);
-  let farPlane = clamp(settings.dofFarPlaneDepth, focusDepth, 1.0);
-  let aperture = clamp(settings.dofStrength, 0.0, 4.0);
+  let layers = dof_layer_coc(coord, size);
   let maxR = dof_max_radius();
-
-  let nearDistance = 1.0 - smooth_ramp(nearPlane, focusDepth, depth);
-  let nearCoc = nearDistance * aperture * maxR * clamp(settings.dofNearBlur, 0.0, 1.0);
-  let farDistance = smooth_ramp(focusDepth, farPlane, depth);
-  let farCoc = farDistance * aperture * maxR * clamp(settings.dofFarBlur, 0.0, 1.0);
-
-  let nearGated = select(0.0, nearCoc, settings.dofNearEnabled != 0u);
-  let farGated = select(0.0, farCoc, settings.dofFarEnabled != 0u);
-
-  // Near wins if both active, sign differentiates
-  if (nearGated >= farGated) {
-    return clamp(nearGated * coverageConfidence, 0.0, maxR);
+  if (layers.x >= layers.y) {
+    return clamp(layers.x, 0.0, maxR);
   }
-  return clamp(-farGated * coverageConfidence, -maxR, 0.0);
+  return clamp(-layers.y, -maxR, 0.0);
 }
 
 fn dof_near_weight(coord: vec2i, size: vec2u) -> f32 {
-  let aux = load_aux(coord, size);
-  let depth = clamp(aux.r, 0.0, 1.0);
-  let focusDepth = clamp(settings.dofFocusDepth, 0.0, 1.0);
-  let nearPlane = clamp(settings.dofNearPlaneDepth, 0.0, focusDepth);
-  let nearDistance = 1.0 - smooth_ramp(nearPlane, focusDepth, depth);
-  return select(0.0, nearDistance, settings.dofNearEnabled != 0u);
+  let layers = dof_layer_coc(coord, size);
+  return layers.z;
 }
 
 fn dof_far_weight(coord: vec2i, size: vec2u) -> f32 {
-  let aux = load_aux(coord, size);
-  let depth = clamp(aux.r, 0.0, 1.0);
-  let focusDepth = clamp(settings.dofFocusDepth, 0.0, 1.0);
-  let farPlane = clamp(settings.dofFarPlaneDepth, focusDepth, 1.0);
-  let farDistance = smooth_ramp(focusDepth, farPlane, depth);
-  return select(0.0, farDistance, settings.dofFarEnabled != 0u);
+  let layers = dof_layer_coc(coord, size);
+  return layers.w;
 }
 
 fn dof_debug_mask(mask: f32) -> f32 {
@@ -466,14 +445,16 @@ fn dof_blur_sample_dynamic(coord: vec2i, size: vec2u, axis: vec2i) -> vec4f {
     if (abs(baseSampleOffset) > pixelRadius) {
       continue;
     }
-    // Sparse outer taps: stride 2 beyond sparseThreshold, weight compensates
+    // Sparse outer taps: skip odd offsets beyond sparseThreshold, weight
+    // compensates for the skipped neighbors
     let inOuter = abs(baseSampleOffset) > sparseThreshold;
-    let stride = select(1, 2, inOuter);
-    let sampleOffset = select(baseSampleOffset, (baseSampleOffset / 2) * 2, inOuter);
-    let strideCompensation = f32(stride);
-    let normalizedOffset = f32(sampleOffset) / sigma;
+    if (inOuter && (baseSampleOffset & 1) != 0) {
+      continue;
+    }
+    let strideCompensation = select(1.0, 2.0, inOuter);
+    let normalizedOffset = f32(baseSampleOffset) / sigma;
     let weight = exp(-0.5 * normalizedOffset * normalizedOffset) * strideCompensation;
-    let sample = textureLoad(postProcessInput, clamp_coord(coord + axis * sampleOffset, size), 0);
+    let sample = textureLoad(postProcessInput, clamp_coord(coord + axis * baseSampleOffset, size), 0);
     sum += sample.rgb * sample.a * weight;
     occupancySum += sample.a * weight;
     weightSum += weight;
@@ -547,12 +528,13 @@ fn dof_quarter_blur_sample_dynamic(coord: vec2i, size: vec2u, axis: vec2i) -> ve
       continue;
     }
     let inOuter = abs(baseSampleOffset) > sparseThreshold;
-    let stride = select(1, 2, inOuter);
-    let sampleOffset = select(baseSampleOffset, (baseSampleOffset / 2) * 2, inOuter);
-    let strideCompensation = f32(stride);
-    let normalizedOffset = f32(sampleOffset) / sigma;
+    if (inOuter && (baseSampleOffset & 1) != 0) {
+      continue;
+    }
+    let strideCompensation = select(1.0, 2.0, inOuter);
+    let normalizedOffset = f32(baseSampleOffset) / sigma;
     let weight = exp(-0.5 * normalizedOffset * normalizedOffset) * strideCompensation;
-    let sample = textureLoad(postProcessInput, clamp_coord(coord + axis * sampleOffset, size), 0);
+    let sample = textureLoad(postProcessInput, clamp_coord(coord + axis * baseSampleOffset, size), 0);
     sum += sample.rgb * sample.a * weight;
     occupancySum += sample.a * weight;
     weightSum += weight;

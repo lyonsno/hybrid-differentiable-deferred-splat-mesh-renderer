@@ -289,10 +289,13 @@ test("compute renderer exposes two-layer near/far DOF with dynamic kernel radius
   assert.match(postProcessShader, /DEBUG_VIEW_DOF_BLUR_H/);
   assert.match(postProcessShader, /DEBUG_VIEW_DOF_BLUR_V_ONLY/);
   assert.match(postProcessShader, /DEBUG_VIEW_DOF_BLUR_HV/);
+  assert.match(postProcessShader, /fn dof_layer_coc/);
   assert.match(postProcessShader, /fn dof_circle_of_confusion/);
   assert.match(postProcessShader, /fn dof_signed_coc/);
   assert.match(postProcessShader, /fn dof_near_weight/);
   assert.match(postProcessShader, /fn dof_far_weight/);
+  // All CoC functions share dof_layer_coc — no independent ramp re-derivation
+  assert.match(postProcessShader, /dof_layer_coc\(coord,\s*size\)/);
   assert.match(postProcessShader, /POST_PROCESS_DOF_DEBUG_MASK_GAMMA\s*=\s*0\.5/);
   assert.match(postProcessShader, /clamp\(settings\.dofRadius,\s*1u,\s*128u\)/);
   assert.match(postProcessShader, /fn dof_debug_mask/);
