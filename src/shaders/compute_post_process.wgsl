@@ -601,10 +601,22 @@ fn fxaa_cas_post_process(@builtin(global_invocation_id) globalId: vec3u) {
   }
 
   let fxaaMask = fxaa_edge_mask(coord, outputSize);
-  let fxaaColor = select(source.rgb, fxaa_filter(coord, outputSize), settings.fxaaEnabled != 0u);
-  let casMask = select(0.0, cas_strength_mask(coord, outputSize, fxaaColor), settings.casEnabled != 0u);
-  let casColor = select(fxaaColor, cas_sharpen(coord, outputSize, fxaaColor), settings.casEnabled != 0u);
-  let dofColor = select(casColor, depth_confidence_guided_dof(coord, outputSize, casColor), settings.dofEnabled != 0u);
+  var fxaaColor = source.rgb;
+  if (settings.fxaaEnabled != 0u) {
+    fxaaColor = fxaa_filter(coord, outputSize);
+  }
+
+  var casMask = 0.0;
+  var casColor = fxaaColor;
+  if (settings.casEnabled != 0u) {
+    casMask = cas_strength_mask(coord, outputSize, fxaaColor);
+    casColor = cas_sharpen(coord, outputSize, fxaaColor);
+  }
+
+  var dofColor = casColor;
+  if (settings.dofEnabled != 0u) {
+    dofColor = depth_confidence_guided_dof(coord, outputSize, casColor);
+  }
   let finalColor = max(dofColor, vec3f(0.0));
   let aux = load_aux(coord, outputSize);
   let cocValue = dof_circle_of_confusion(coord, outputSize);

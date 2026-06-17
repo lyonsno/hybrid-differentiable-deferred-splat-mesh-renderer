@@ -91,3 +91,19 @@ test("aperture-based DOF with dynamic kernel, quarter-res, and depth linearizati
   assert.match(postProcessSource, /createPostProcessDofQuarterTexture/);
   assert.match(postProcessSource, /Math\.ceil\(width \/ 4\)/);
 });
+
+test("post-process shader avoids Panopticon eager-call regressions", () => {
+  const shader = readFileSync(new URL("../../src/shaders/compute_post_process.wgsl", import.meta.url), "utf8");
+
+  assert.doesNotMatch(shader, /@tests\/renderer\/computePostProcess\.test\.mjs/);
+  assert.doesNotMatch(shader, /select\([^;]*fxaa_filter\(/s);
+  assert.doesNotMatch(shader, /select\([^;]*cas_sharpen\(/s);
+  assert.doesNotMatch(shader, /select\([^;]*depth_confidence_guided_dof\(/s);
+
+  const halfResRadius = shader.match(/fn dof_blur_radius_for_pixel[\s\S]*?^}/m)?.[0] ?? "";
+  const quarterResRadius = shader.match(/fn dof_quarter_blur_radius_for_pixel[\s\S]*?^}/m)?.[0] ?? "";
+  assert.match(halfResRadius, /textureLoad\(postProcessAux/);
+  assert.match(quarterResRadius, /textureLoad\(postProcessAux/);
+  assert.doesNotMatch(halfResRadius, /load_aux\(/);
+  assert.doesNotMatch(quarterResRadius, /load_aux\(/);
+});
