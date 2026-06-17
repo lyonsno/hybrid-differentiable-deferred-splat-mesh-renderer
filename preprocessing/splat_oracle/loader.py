@@ -24,6 +24,7 @@ class SplatCloud:
     sh_degree: int = 0
 
     # Preprocessing outputs (populated later)
+    normals: np.ndarray | None = None  # (N, 3) float32 — world-space unit normals
     material_class: np.ndarray | None = None  # (N,) int32 — semantic class index
     material_confidence: np.ndarray | None = None  # (N,) float32
     albedo: np.ndarray | None = None  # (N, 3) float32
