@@ -365,25 +365,32 @@ fn load_dof_wide_blur(coord: vec2i, size: vec2u) -> vec4f {
 
 // Dynamic-radius DOF composite: uses CoC to pick blur result, not blend-with-sharp
 // Near field uses quarter-res blur for substantially wider blur; far uses half-res.
+// Near-field silhouette expansion: even in-focus pixels receive blur when the
+// half-res blurred occupancy indicates a nearby foreground object's halo.
 fn depth_confidence_guided_dof(coord: vec2i, size: vec2u, color: vec3f) -> vec3f {
   let coc = dof_circle_of_confusion(coord, size);
-  if (coc < 0.5) {
-    return color;
-  }
-
   let maxR = dof_max_radius();
   let nearWeight = dof_near_weight(coord, size);
 
-  // Load half-res blur (used for far field and as fallback)
+  // Load half-res blur — its alpha carries dilated near-field influence
   let halfBlur = load_dof_wide_blur(coord, size);
-  // Load quarter-res blur (used for near field large blur)
   let quarterBlur = load_dof_quarter_blur_bilinear(coord, size);
 
+  // Near-field silhouette expansion: the blurred texture's alpha naturally
+  // spreads beyond the geometric edge of foreground objects. Use it to
+  // let near-field blur bleed over in-focus content behind foreground objects.
+  let nearHaloInfluence = max(halfBlur.a, quarterBlur.a);
+  let nearHaloBleed = clamp(nearHaloInfluence * (1.0 - nearWeight), 0.0, 1.0);
+  let effectiveCoc = max(coc, nearHaloBleed * maxR * 0.5);
+
+  if (effectiveCoc < 0.5) {
+    return color;
+  }
+
   // Near field with large CoC uses quarter-res; far field uses half-res
-  // Blend between half and quarter based on near weight and CoC magnitude
   let quarterBlendStart = maxR * 0.15;
   let quarterBlendEnd = maxR * 0.4;
-  let quarterAmount = nearWeight * smooth_ramp(quarterBlendStart, quarterBlendEnd, coc);
+  let quarterAmount = nearWeight * smooth_ramp(quarterBlendStart, quarterBlendEnd, effectiveCoc);
   let blurColor = select(
     halfBlur.rgb,
     mix(halfBlur.rgb, quarterBlur.rgb, quarterAmount),
@@ -391,14 +398,19 @@ fn depth_confidence_guided_dof(coord: vec2i, size: vec2u, color: vec3f) -> vec3f
   );
   let blurOccupancy = mix(halfBlur.a, max(halfBlur.a, quarterBlur.a), quarterAmount);
 
-  // Transition from sharp to blurred driven by CoC
+  // Transition from sharp to blurred driven by effective CoC
   let transitionStart = 2.0;
   let transitionEnd = max(8.0, maxR * 0.15);
-  let blurAmount = smooth_ramp(transitionStart, transitionEnd, coc);
+  let blurAmount = smooth_ramp(transitionStart, transitionEnd, effectiveCoc);
+
+  // For silhouette expansion, scale by the halo influence so the bleed
+  // is strongest right at the foreground edge and fades smoothly
+  let haloScale = select(1.0, nearHaloInfluence, coc < 0.5);
+  let finalBlurAmount = blurAmount * haloScale;
 
   let blurred = select(color, blurColor, blurOccupancy > 0.01);
 
-  return mix(color, blurred, blurAmount);
+  return mix(color, blurred, finalBlurAmount);
 }
 
 // --- Downsample pass: writes CoC into alpha for dynamic-radius blur ---

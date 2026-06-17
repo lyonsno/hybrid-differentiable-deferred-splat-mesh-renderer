@@ -325,8 +325,13 @@ test("compute renderer exposes two-layer near/far DOF with dynamic kernel radius
   assert.match(postProcessShader, /POST_PROCESS_DOF_BLUR_MAX_TAPS\s*=\s*17i/);
   assert.match(postProcessShader, /POST_PROCESS_DOF_BLUR_MAX_HALF_TAPS\s*=\s*8i/);
   // No blend-with-sharp: uses smooth_ramp transition, not mix(sharp, blurred, cocNormalized)
-  assert.match(postProcessShader, /smooth_ramp\(transitionStart,\s*transitionEnd,\s*coc\)/);
+  assert.match(postProcessShader, /smooth_ramp\(transitionStart,\s*transitionEnd,\s*effectiveCoc\)/);
   assert.doesNotMatch(postProcessShader, /mix\(color,\s*blurred,\s*dofBlend\)/);
+  // Near-field silhouette expansion: halo bleeds over in-focus content
+  assert.match(postProcessShader, /nearHaloInfluence/);
+  assert.match(postProcessShader, /nearHaloBleed/);
+  assert.match(postProcessShader, /effectiveCoc/);
+  assert.match(postProcessShader, /haloScale/);
   assert.match(postProcessShader, /settings\.debugView == DEBUG_VIEW_DOF_DOWNSAMPLE/);
   assert.match(postProcessShader, /settings\.debugView == DEBUG_VIEW_DOF_BLUR_V_ONLY/);
 });
