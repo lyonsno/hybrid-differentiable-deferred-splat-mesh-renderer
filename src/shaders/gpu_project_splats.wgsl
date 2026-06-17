@@ -148,11 +148,14 @@ fn project_splats(@builtin(global_invocation_id) globalId: vec3u) {
   let inverseCov2d = vec3f(covYY * detInv, -covXY * detInv, covXX * detInv);
   let sourceOpacity = clamp(opacities[splatId], 0.0, 0.99);
 
-  // Compute tile bounds
+  // Compute tile bounds, capped to MAX_TILE_SPAN per axis to prevent tile-ref
+  // buffer overflow on close-up splats. The Gaussian is negligible beyond ~8
+  // tiles (128px at 16px tiles) from center anyway.
   let tileSize = max(frame.tileSizePx, 1.0);
   let maxTile = max(frame.tileGrid, vec2u(1u)) - vec2u(1u);
-  let minPx = max(centerPx - vec2f(radius), vec2f(0.0));
-  let maxPx = min(centerPx + vec2f(radius), frame.viewport);
+  let clampedRadius = min(radius, tileSize * 8.0); // cap footprint to 8 tiles from center
+  let minPx = max(centerPx - vec2f(clampedRadius), vec2f(0.0));
+  let maxPx = min(centerPx + vec2f(clampedRadius), frame.viewport);
   let minTileX = min(u32(floor(minPx.x / tileSize)), maxTile.x);
   let minTileY = min(u32(floor(minPx.y / tileSize)), maxTile.y);
   let maxTileX = min(u32(floor(max((maxPx.x - COMPACT_FOOTPRINT_EPSILON) / tileSize, 0.0))), maxTile.x);

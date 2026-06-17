@@ -101,6 +101,7 @@ export function planTileSplatCompositor(input: {
   tileSizePx: number;
   splatCount: number;
   averageRefsPerTile?: number;
+  tileEntryMultiplier?: number;
 }): TileSplatCompositorPlan {
   const { viewportWidth, viewportHeight, tileSizePx, splatCount } = input;
   const tileColumns = Math.ceil(viewportWidth / tileSizePx);
@@ -108,17 +109,19 @@ export function planTileSplatCompositor(input: {
   const tileCount = tileColumns * tileRows;
   // Morton-indexed arrays must span the full Morton range
   const mortonTileCount = mortonEncode2D(tileColumns - 1, tileRows - 1) + 1;
-  // Tile ref budget: must accommodate close-up views where splats cover many
-  // tiles. The actual count depends on the view (camera distance/angle), not
-  // just splat count, so any fixed multiplier is a heuristic. We use the max
-  // of two heuristics:
-  //   - splatCount * 48: handles close-up views where avg splat covers ~48 tiles
-  //   - tileCount * 512: handles dense scenes with many splats per tile
-  // Hard cap: the reorder and radix-init passes dispatch ceil(N/256) workgroups,
-  // and WebGPU limits dispatch to 65535 per dimension → max 65535*256 = 16,776,960.
+  // Tile ref budget. Sized by a per-splat multiplier that grows dynamically
+  // via async GPU readback (see PlayCanvas's approach). Start modest and let
+  // the readback feedback loop grow the budget if needed. The first frame may
+  // overflow silently — the readback catches it and resizes for frame 2.
+  // Hard cap: reorder/radix-init dispatch ceil(N/256) workgroups, WebGPU max
+  // is 65535 per dimension → max 65535*256 = 16,776,960 refs.
   const MAX_DISPATCH_SAFE_REFS = 65535 * 256;
+  // With the 8-tile-radius cap in the projection shader, each splat touches
+  // at most ~256 tiles. A multiplier of 16 handles views where most splats
+  // are close up. Capped by WebGPU dispatch limits.
+  const tileEntryMultiplier = input.tileEntryMultiplier ?? 16;
   const maxTotalTileRefs = Math.min(
-    Math.max(tileCount * 512, splatCount * 48),
+    Math.ceil(splatCount * tileEntryMultiplier),
     MAX_DISPATCH_SAFE_REFS,
   );
   return { viewportWidth, viewportHeight, tileSizePx, tileColumns, tileRows, tileCount, mortonTileCount, splatCount, maxTotalTileRefs };
