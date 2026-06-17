@@ -2,6 +2,7 @@
 @group(0) @binding(1) var postProcessOutput: texture_storage_2d<rgba16float, write>;
 @group(0) @binding(3) var postProcessAux: texture_2d<f32>;
 @group(0) @binding(4) var postProcessDofBlur: texture_2d<f32>;
+@group(0) @binding(5) var postProcessDofQuarterBlur: texture_2d<f32>;
 
 struct PostProcessSettings {
   enabled: u32,
@@ -363,6 +364,7 @@ fn load_dof_wide_blur(coord: vec2i, size: vec2u) -> vec4f {
 }
 
 // Dynamic-radius DOF composite: uses CoC to pick blur result, not blend-with-sharp
+// Near field uses quarter-res blur for substantially wider blur; far uses half-res.
 fn depth_confidence_guided_dof(coord: vec2i, size: vec2u, color: vec3f) -> vec3f {
   let coc = dof_circle_of_confusion(coord, size);
   if (coc < 0.5) {
@@ -370,24 +372,31 @@ fn depth_confidence_guided_dof(coord: vec2i, size: vec2u, color: vec3f) -> vec3f
   }
 
   let maxR = dof_max_radius();
-  let cocNormalized = clamp(coc / max(maxR, 1.0), 0.0, 1.0);
+  let nearWeight = dof_near_weight(coord, size);
 
-  // Load the wide (half-res separable Gaussian) blur result
-  let wideBlur = load_dof_wide_blur(coord, size);
-  let wideColor = wideBlur.rgb;
-  let wideOccupancy = wideBlur.a;
+  // Load half-res blur (used for far field and as fallback)
+  let halfBlur = load_dof_wide_blur(coord, size);
+  // Load quarter-res blur (used for near field large blur)
+  let quarterBlur = load_dof_quarter_blur_bilinear(coord, size);
 
-  // The wide blur IS the DOF result for this pixel.
-  // CoC controls the transition from sharp to blurred — not by blending,
-  // but by ramping from the sharp image at coc≈0 to the fully blurred
-  // image at coc >= transition threshold. The transition is narrow so
-  // there's no ghosting/double-image at intermediate values.
+  // Near field with large CoC uses quarter-res; far field uses half-res
+  // Blend between half and quarter based on near weight and CoC magnitude
+  let quarterBlendStart = maxR * 0.15;
+  let quarterBlendEnd = maxR * 0.4;
+  let quarterAmount = nearWeight * smooth_ramp(quarterBlendStart, quarterBlendEnd, coc);
+  let blurColor = select(
+    halfBlur.rgb,
+    mix(halfBlur.rgb, quarterBlur.rgb, quarterAmount),
+    quarterBlur.a > 0.01
+  );
+  let blurOccupancy = mix(halfBlur.a, max(halfBlur.a, quarterBlur.a), quarterAmount);
+
+  // Transition from sharp to blurred driven by CoC
   let transitionStart = 2.0;
   let transitionEnd = max(8.0, maxR * 0.15);
   let blurAmount = smooth_ramp(transitionStart, transitionEnd, coc);
 
-  // Use wide blur when available (occupancy > 0), fall back to color
-  let blurred = select(color, wideColor, wideOccupancy > 0.01);
+  let blurred = select(color, blurColor, blurOccupancy > 0.01);
 
   return mix(color, blurred, blurAmount);
 }
@@ -436,16 +445,22 @@ fn dof_blur_radius_for_pixel(coord: vec2i, size: vec2u) -> i32 {
 fn dof_blur_sample_dynamic(coord: vec2i, size: vec2u, axis: vec2i) -> vec4f {
   let pixelRadius = dof_blur_radius_for_pixel(coord, size);
   let sigma = max(f32(pixelRadius) * 0.42, 1.0);
+  let sparseThreshold = max(pixelRadius / 2, 1);
   var sum = vec3f(0.0);
   var occupancySum = 0.0;
   var weightSum = 0.0;
   for (var tap = -POST_PROCESS_DOF_BLUR_MAX_HALF_TAPS; tap <= POST_PROCESS_DOF_BLUR_MAX_HALF_TAPS; tap = tap + 1) {
-    let sampleOffset = i32(round(f32(tap) * f32(pixelRadius) / f32(POST_PROCESS_DOF_BLUR_MAX_HALF_TAPS)));
-    if (abs(sampleOffset) > pixelRadius) {
+    let baseSampleOffset = i32(round(f32(tap) * f32(pixelRadius) / f32(POST_PROCESS_DOF_BLUR_MAX_HALF_TAPS)));
+    if (abs(baseSampleOffset) > pixelRadius) {
       continue;
     }
+    // Sparse outer taps: stride 2 beyond sparseThreshold, weight compensates
+    let inOuter = abs(baseSampleOffset) > sparseThreshold;
+    let stride = select(1, 2, inOuter);
+    let sampleOffset = select(baseSampleOffset, (baseSampleOffset / 2) * 2, inOuter);
+    let strideCompensation = f32(stride);
     let normalizedOffset = f32(sampleOffset) / sigma;
-    let weight = exp(-0.5 * normalizedOffset * normalizedOffset);
+    let weight = exp(-0.5 * normalizedOffset * normalizedOffset) * strideCompensation;
     let sample = textureLoad(postProcessInput, clamp_coord(coord + axis * sampleOffset, size), 0);
     sum += sample.rgb * sample.a * weight;
     occupancySum += sample.a * weight;
@@ -474,6 +489,104 @@ fn dof_blur_horizontal(@builtin(global_invocation_id) globalId: vec3u) {
 @compute @workgroup_size(8, 8, 1)
 fn dof_blur_vertical(@builtin(global_invocation_id) globalId: vec3u) {
   dof_blur_dynamic(vec2i(0, 1), globalId);
+}
+
+// --- Quarter-res near-field blur path ---
+
+@compute @workgroup_size(8, 8, 1)
+fn dof_quarter_downsample(@builtin(global_invocation_id) globalId: vec3u) {
+  let outputSize = textureDimensions(postProcessOutput);
+  if (globalId.x >= outputSize.x || globalId.y >= outputSize.y) {
+    return;
+  }
+
+  let inputSize = textureDimensions(postProcessInput);
+  let coord = vec2i(globalId.xy);
+  let sourceCoord = coord * 2;
+  let c00 = textureLoad(postProcessInput, clamp_coord(sourceCoord, inputSize), 0);
+  let c10 = textureLoad(postProcessInput, clamp_coord(sourceCoord + vec2i(1, 0), inputSize), 0);
+  let c01 = textureLoad(postProcessInput, clamp_coord(sourceCoord + vec2i(0, 1), inputSize), 0);
+  let c11 = textureLoad(postProcessInput, clamp_coord(sourceCoord + vec2i(1, 1), inputSize), 0);
+  let totalOccupancy = c00.a + c10.a + c01.a + c11.a;
+  let weightedRgb = c00.rgb * c00.a + c10.rgb * c10.a + c01.rgb * c01.a + c11.rgb * c11.a;
+  let occupancy = clamp(totalOccupancy * 0.25, 0.0, 1.0);
+  let resolved = resolve_weighted_dof_color(weightedRgb, totalOccupancy, c00.rgb);
+  textureStore(postProcessOutput, coord, vec4f(resolved, occupancy));
+}
+
+fn dof_quarter_blur_radius_for_pixel(coord: vec2i, size: vec2u) -> i32 {
+  let inputSize = textureDimensions(postProcessAux);
+  let fullCoord = coord * 4;
+  let coc = abs(dof_signed_coc(fullCoord, inputSize));
+  let quarterResCoc = coc * 0.25;
+  return clamp(i32(ceil(quarterResCoc)), 1, i32(POST_PROCESS_DOF_BLUR_MAX_HALF_TAPS));
+}
+
+fn dof_quarter_blur_sample_dynamic(coord: vec2i, size: vec2u, axis: vec2i) -> vec4f {
+  let pixelRadius = dof_quarter_blur_radius_for_pixel(coord, size);
+  let sigma = max(f32(pixelRadius) * 0.42, 1.0);
+  let sparseThreshold = max(pixelRadius / 2, 1);
+  var sum = vec3f(0.0);
+  var occupancySum = 0.0;
+  var weightSum = 0.0;
+  for (var tap = -POST_PROCESS_DOF_BLUR_MAX_HALF_TAPS; tap <= POST_PROCESS_DOF_BLUR_MAX_HALF_TAPS; tap = tap + 1) {
+    let baseSampleOffset = i32(round(f32(tap) * f32(pixelRadius) / f32(POST_PROCESS_DOF_BLUR_MAX_HALF_TAPS)));
+    if (abs(baseSampleOffset) > pixelRadius) {
+      continue;
+    }
+    let inOuter = abs(baseSampleOffset) > sparseThreshold;
+    let stride = select(1, 2, inOuter);
+    let sampleOffset = select(baseSampleOffset, (baseSampleOffset / 2) * 2, inOuter);
+    let strideCompensation = f32(stride);
+    let normalizedOffset = f32(sampleOffset) / sigma;
+    let weight = exp(-0.5 * normalizedOffset * normalizedOffset) * strideCompensation;
+    let sample = textureLoad(postProcessInput, clamp_coord(coord + axis * sampleOffset, size), 0);
+    sum += sample.rgb * sample.a * weight;
+    occupancySum += sample.a * weight;
+    weightSum += weight;
+  }
+  let occupancy = clamp(occupancySum / max(weightSum, 0.0001), 0.0, 1.0);
+  return vec4f(resolve_weighted_dof_color(sum, occupancySum, vec3f(0.0)), occupancy);
+}
+
+fn dof_quarter_blur_dynamic(axis: vec2i, globalId: vec3u) {
+  let outputSize = textureDimensions(postProcessOutput);
+  if (globalId.x >= outputSize.x || globalId.y >= outputSize.y) {
+    return;
+  }
+  let coord = vec2i(globalId.xy);
+  let blurred = dof_quarter_blur_sample_dynamic(coord, outputSize, axis);
+  textureStore(postProcessOutput, coord, vec4f(max(blurred.rgb, vec3f(0.0)), blurred.a));
+}
+
+@compute @workgroup_size(8, 8, 1)
+fn dof_quarter_blur_horizontal(@builtin(global_invocation_id) globalId: vec3u) {
+  dof_quarter_blur_dynamic(vec2i(1, 0), globalId);
+}
+
+@compute @workgroup_size(8, 8, 1)
+fn dof_quarter_blur_vertical(@builtin(global_invocation_id) globalId: vec3u) {
+  dof_quarter_blur_dynamic(vec2i(0, 1), globalId);
+}
+
+fn load_dof_quarter_blur_bilinear(coord: vec2i, size: vec2u) -> vec4f {
+  let blurSize = textureDimensions(postProcessDofQuarterBlur);
+  let blurUv = ((vec2f(coord) + vec2f(0.5)) / vec2f(size)) * vec2f(blurSize) - vec2f(0.5);
+  let base = vec2i(floor(blurUv));
+  let f = fract(blurUv);
+  let c00 = textureLoad(postProcessDofQuarterBlur, clamp_coord(base, blurSize), 0);
+  let c10 = textureLoad(postProcessDofQuarterBlur, clamp_coord(base + vec2i(1, 0), blurSize), 0);
+  let c01 = textureLoad(postProcessDofQuarterBlur, clamp_coord(base + vec2i(0, 1), blurSize), 0);
+  let c11 = textureLoad(postProcessDofQuarterBlur, clamp_coord(base + vec2i(1, 1), blurSize), 0);
+  let w00 = (1.0 - f.x) * (1.0 - f.y);
+  let w10 = f.x * (1.0 - f.y);
+  let w01 = (1.0 - f.x) * f.y;
+  let w11 = f.x * f.y;
+  let occupancy = c00.a * w00 + c10.a * w10 + c01.a * w01 + c11.a * w11;
+  let weightedColor = c00.rgb * c00.a * w00 + c10.rgb * c10.a * w10 +
+    c01.rgb * c01.a * w01 + c11.rgb * c11.a * w11;
+  let fallback = mix(mix(c00.rgb, c10.rgb, f.x), mix(c01.rgb, c11.rgb, f.x), f.y);
+  return vec4f(resolve_weighted_dof_color(weightedColor, occupancy, fallback), clamp(occupancy, 0.0, 1.0));
 }
 
 // --- Final composite pass ---

@@ -172,6 +172,7 @@ import {
   POST_PROCESS_MAX_DOF_STRENGTH,
   createFxaaCasPostProcess,
   createPostProcessDofTexture,
+  createPostProcessDofQuarterTexture,
   createPostProcessOutputTexture,
   type FxaaCasPostProcess,
   type FxaaCasDebugView,
@@ -341,6 +342,10 @@ interface ActiveSplatScene {
     dofLowResView: GPUTextureView;
     dofBlurScratchTexture: GPUTexture;
     dofBlurScratchView: GPUTextureView;
+    dofQuarterResTexture: GPUTexture;
+    dofQuarterResView: GPUTextureView;
+    dofQuarterScratchTexture: GPUTexture;
+    dofQuarterScratchView: GPUTextureView;
     temporalHistoryTextures: [GPUTexture, GPUTexture];
     temporalHistoryViews: [GPUTextureView, GPUTextureView];
     temporalHistoryReadIndex: 0 | 1;
@@ -2263,6 +2268,8 @@ async function main() {
         cc.postProcessedView,
         cc.dofLowResView,
         cc.dofBlurScratchView,
+        cc.dofQuarterResView,
+        cc.dofQuarterScratchView,
         width,
         height
       );
@@ -9667,6 +9674,18 @@ function createComputeCompositorState(
     viewportHeight,
     "compute_compositor_dof_blur_scratch"
   );
+  const dofQuarterResTexture = createPostProcessDofQuarterTexture(
+    device,
+    viewportWidth,
+    viewportHeight,
+    "compute_compositor_dof_quarter_res"
+  );
+  const dofQuarterScratchTexture = createPostProcessDofQuarterTexture(
+    device,
+    viewportWidth,
+    viewportHeight,
+    "compute_compositor_dof_quarter_scratch"
+  );
   const temporalHistoryTextures: [GPUTexture, GPUTexture] = [
     createTemporalResolveTexture(device, viewportWidth, viewportHeight, "temporal_resolve_history_a"),
     createTemporalResolveTexture(device, viewportWidth, viewportHeight, "temporal_resolve_history_b"),
@@ -9693,6 +9712,10 @@ function createComputeCompositorState(
     dofLowResView: dofLowResTexture.createView(),
     dofBlurScratchTexture,
     dofBlurScratchView: dofBlurScratchTexture.createView(),
+    dofQuarterResTexture,
+    dofQuarterResView: dofQuarterResTexture.createView(),
+    dofQuarterScratchTexture,
+    dofQuarterScratchView: dofQuarterScratchTexture.createView(),
     temporalHistoryTextures,
     temporalHistoryViews: [
       temporalHistoryTextures[0].createView(),
@@ -9753,6 +9776,8 @@ function destroyComputeCompositorState(state: ActiveSplatScene["computeComposito
   state.postProcessedTexture.destroy();
   state.dofLowResTexture.destroy();
   state.dofBlurScratchTexture.destroy();
+  state.dofQuarterResTexture.destroy();
+  state.dofQuarterScratchTexture.destroy();
   state.temporalHistoryTextures[0].destroy();
   state.temporalHistoryTextures[1].destroy();
 }

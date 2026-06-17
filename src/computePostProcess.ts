@@ -61,6 +61,9 @@ export interface FxaaCasPostProcess {
   readonly dofDownsamplePipeline: GPUComputePipeline;
   readonly dofBlurHorizontalPipeline: GPUComputePipeline;
   readonly dofBlurVerticalPipeline: GPUComputePipeline;
+  readonly dofQuarterDownsamplePipeline: GPUComputePipeline;
+  readonly dofQuarterBlurHorizontalPipeline: GPUComputePipeline;
+  readonly dofQuarterBlurVerticalPipeline: GPUComputePipeline;
   readonly bindGroupLayout: GPUBindGroupLayout;
   readonly settingsBuffer: GPUBuffer;
   writeSettings(queue: GPUQueue, settings: FxaaCasPostProcessSettings): void;
@@ -71,6 +74,8 @@ export interface FxaaCasPostProcess {
     outputView: GPUTextureView,
     dofLowResView: GPUTextureView,
     dofBlurScratchView: GPUTextureView,
+    dofQuarterResView: GPUTextureView,
+    dofQuarterScratchView: GPUTextureView,
     width: number,
     height: number
   ): void;
@@ -109,6 +114,11 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
         visibility: GPUShaderStage.COMPUTE,
         texture: { sampleType: "unfilterable-float" },
       },
+      {
+        binding: 5,
+        visibility: GPUShaderStage.COMPUTE,
+        texture: { sampleType: "unfilterable-float" },
+      },
     ],
   });
   const settingsBuffer = device.createBuffer({
@@ -135,56 +145,34 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
     dofNearBlur: 1,
     dofFarBlur: 1,
   };
-  const pipeline = device.createComputePipeline({
-    label: "compute_fxaa_cas_post_process",
-    layout: device.createPipelineLayout({
-      label: "compute_fxaa_cas_post_process_layout",
-      bindGroupLayouts: [bindGroupLayout],
-    }),
-    compute: {
-      module: shaderModule,
-      entryPoint: "fxaa_cas_post_process",
-    },
-  });
-  const dofDownsamplePipeline = device.createComputePipeline({
-    label: "compute_dof_downsample",
-    layout: device.createPipelineLayout({
-      label: "compute_dof_downsample_layout",
-      bindGroupLayouts: [bindGroupLayout],
-    }),
-    compute: {
-      module: shaderModule,
-      entryPoint: "dof_downsample",
-    },
-  });
-  const dofBlurHorizontalPipeline = device.createComputePipeline({
-    label: "compute_dof_blur_horizontal",
-    layout: device.createPipelineLayout({
-      label: "compute_dof_blur_horizontal_layout",
-      bindGroupLayouts: [bindGroupLayout],
-    }),
-    compute: {
-      module: shaderModule,
-      entryPoint: "dof_blur_horizontal",
-    },
-  });
-  const dofBlurVerticalPipeline = device.createComputePipeline({
-    label: "compute_dof_blur_vertical",
-    layout: device.createPipelineLayout({
-      label: "compute_dof_blur_vertical_layout",
-      bindGroupLayouts: [bindGroupLayout],
-    }),
-    compute: {
-      module: shaderModule,
-      entryPoint: "dof_blur_vertical",
-    },
-  });
+
+  function makePipeline(label: string, entryPoint: string): GPUComputePipeline {
+    return device.createComputePipeline({
+      label,
+      layout: device.createPipelineLayout({
+        label: label + "_layout",
+        bindGroupLayouts: [bindGroupLayout],
+      }),
+      compute: { module: shaderModule, entryPoint },
+    });
+  }
+
+  const pipeline = makePipeline("compute_fxaa_cas_post_process", "fxaa_cas_post_process");
+  const dofDownsamplePipeline = makePipeline("compute_dof_downsample", "dof_downsample");
+  const dofBlurHorizontalPipeline = makePipeline("compute_dof_blur_horizontal", "dof_blur_horizontal");
+  const dofBlurVerticalPipeline = makePipeline("compute_dof_blur_vertical", "dof_blur_vertical");
+  const dofQuarterDownsamplePipeline = makePipeline("compute_dof_quarter_downsample", "dof_quarter_downsample");
+  const dofQuarterBlurHorizontalPipeline = makePipeline("compute_dof_quarter_blur_horizontal", "dof_quarter_blur_horizontal");
+  const dofQuarterBlurVerticalPipeline = makePipeline("compute_dof_quarter_blur_vertical", "dof_quarter_blur_vertical");
 
   return {
     pipeline,
     dofDownsamplePipeline,
     dofBlurHorizontalPipeline,
     dofBlurVerticalPipeline,
+    dofQuarterDownsamplePipeline,
+    dofQuarterBlurHorizontalPipeline,
+    dofQuarterBlurVerticalPipeline,
     bindGroupLayout,
     settingsBuffer,
     writeSettings(queue: GPUQueue, settings: FxaaCasPostProcessSettings): void {
@@ -218,11 +206,15 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
       outputView: GPUTextureView,
       dofLowResView: GPUTextureView,
       dofBlurScratchView: GPUTextureView,
+      dofQuarterResView: GPUTextureView,
+      dofQuarterScratchView: GPUTextureView,
       width: number,
       height: number
     ): void {
       const lowResWidth = Math.ceil(width / 2);
       const lowResHeight = Math.ceil(height / 2);
+      const quarterResWidth = Math.ceil(width / 4);
+      const quarterResHeight = Math.ceil(height / 4);
       const debugView = lastSettings.debugView;
       const debugDofDownsample = debugView === "dof-downsample";
       const debugDofBlurH = debugView === "dof-blur-h";
@@ -233,7 +225,12 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
       const shouldRunHorizontalBlur = shouldRunWidePass && !debugDofDownsample && !debugDofBlurVOnly;
       const shouldRunVerticalOnlyBlur = debugDofBlurVOnly;
       const shouldRunVerticalBlur = shouldRunWidePass && !debugDofDownsample && !debugDofBlurH && !debugDofBlurVOnly;
+      const shouldRunQuarterPass = shouldRunWidePass && lastSettings.dofNearEnabled;
       const finalDofBlurView = debugDofBlurH || debugDofBlurVOnly ? dofBlurScratchView : dofLowResView;
+
+      // Placeholder view for bind groups that need binding 5 but don't use quarter-res
+      const placeholderQuarterView = dofQuarterResView;
+
       const downsampleBindGroup = device.createBindGroup({
         label: "compute_dof_downsample_bg",
         layout: bindGroupLayout,
@@ -243,6 +240,7 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
           { binding: 2, resource: { buffer: settingsBuffer } },
           { binding: 3, resource: inputAuxView },
           { binding: 4, resource: inputView },
+          { binding: 5, resource: placeholderQuarterView },
         ],
       });
       const horizontalBlurBindGroup = device.createBindGroup({
@@ -254,6 +252,7 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
           { binding: 2, resource: { buffer: settingsBuffer } },
           { binding: 3, resource: inputAuxView },
           { binding: 4, resource: dofLowResView },
+          { binding: 5, resource: placeholderQuarterView },
         ],
       });
       const verticalBlurBindGroup = device.createBindGroup({
@@ -265,6 +264,7 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
           { binding: 2, resource: { buffer: settingsBuffer } },
           { binding: 3, resource: inputAuxView },
           { binding: 4, resource: dofBlurScratchView },
+          { binding: 5, resource: placeholderQuarterView },
         ],
       });
       const verticalOnlyBlurBindGroup = device.createBindGroup({
@@ -276,8 +276,48 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
           { binding: 2, resource: { buffer: settingsBuffer } },
           { binding: 3, resource: inputAuxView },
           { binding: 4, resource: dofLowResView },
+          { binding: 5, resource: placeholderQuarterView },
         ],
       });
+
+      // Quarter-res bind groups: downsample half→quarter, then H/V blur at quarter-res
+      const quarterDownsampleBindGroup = device.createBindGroup({
+        label: "compute_dof_quarter_downsample_bg",
+        layout: bindGroupLayout,
+        entries: [
+          { binding: 0, resource: dofLowResView },
+          { binding: 1, resource: dofQuarterResView },
+          { binding: 2, resource: { buffer: settingsBuffer } },
+          { binding: 3, resource: inputAuxView },
+          { binding: 4, resource: dofLowResView },
+          { binding: 5, resource: dofQuarterResView },
+        ],
+      });
+      const quarterHorizontalBlurBindGroup = device.createBindGroup({
+        label: "compute_dof_quarter_blur_horizontal_bg",
+        layout: bindGroupLayout,
+        entries: [
+          { binding: 0, resource: dofQuarterResView },
+          { binding: 1, resource: dofQuarterScratchView },
+          { binding: 2, resource: { buffer: settingsBuffer } },
+          { binding: 3, resource: inputAuxView },
+          { binding: 4, resource: dofQuarterResView },
+          { binding: 5, resource: dofQuarterResView },
+        ],
+      });
+      const quarterVerticalBlurBindGroup = device.createBindGroup({
+        label: "compute_dof_quarter_blur_vertical_bg",
+        layout: bindGroupLayout,
+        entries: [
+          { binding: 0, resource: dofQuarterScratchView },
+          { binding: 1, resource: dofQuarterResView },
+          { binding: 2, resource: { buffer: settingsBuffer } },
+          { binding: 3, resource: inputAuxView },
+          { binding: 4, resource: dofQuarterScratchView },
+          { binding: 5, resource: dofQuarterResView },
+        ],
+      });
+
       const bindGroup = device.createBindGroup({
         label: "compute_fxaa_cas_post_process_bg",
         layout: bindGroupLayout,
@@ -287,8 +327,11 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
           { binding: 2, resource: { buffer: settingsBuffer } },
           { binding: 3, resource: inputAuxView },
           { binding: 4, resource: finalDofBlurView },
+          { binding: 5, resource: dofQuarterResView },
         ],
       });
+
+      // Half-res blur passes
       if (shouldRunWidePass) {
         const downsamplePass = encoder.beginComputePass({ label: "compute_dof_downsample" });
         downsamplePass.setPipeline(dofDownsamplePipeline);
@@ -322,6 +365,27 @@ export function createFxaaCasPostProcess(device: GPUDevice): FxaaCasPostProcess 
         verticalBlurPass.setBindGroup(0, verticalBlurBindGroup);
         verticalBlurPass.dispatchWorkgroups(Math.ceil(lowResWidth / 8), Math.ceil(lowResHeight / 8));
         verticalBlurPass.end();
+      }
+
+      // Quarter-res near-field blur passes
+      if (shouldRunQuarterPass) {
+        const qDownPass = encoder.beginComputePass({ label: "compute_dof_quarter_downsample" });
+        qDownPass.setPipeline(dofQuarterDownsamplePipeline);
+        qDownPass.setBindGroup(0, quarterDownsampleBindGroup);
+        qDownPass.dispatchWorkgroups(Math.ceil(quarterResWidth / 8), Math.ceil(quarterResHeight / 8));
+        qDownPass.end();
+
+        const qHPass = encoder.beginComputePass({ label: "compute_dof_quarter_blur_horizontal" });
+        qHPass.setPipeline(dofQuarterBlurHorizontalPipeline);
+        qHPass.setBindGroup(0, quarterHorizontalBlurBindGroup);
+        qHPass.dispatchWorkgroups(Math.ceil(quarterResWidth / 8), Math.ceil(quarterResHeight / 8));
+        qHPass.end();
+
+        const qVPass = encoder.beginComputePass({ label: "compute_dof_quarter_blur_vertical" });
+        qVPass.setPipeline(dofQuarterBlurVerticalPipeline);
+        qVPass.setBindGroup(0, quarterVerticalBlurBindGroup);
+        qVPass.dispatchWorkgroups(Math.ceil(quarterResWidth / 8), Math.ceil(quarterResHeight / 8));
+        qVPass.end();
       }
 
       const pass = encoder.beginComputePass({ label: "compute_fxaa_cas_post_process" });
@@ -359,6 +423,20 @@ export function createPostProcessDofTexture(
   return device.createTexture({
     label,
     size: [Math.ceil(width / 2), Math.ceil(height / 2)],
+    format: "rgba16float",
+    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+  });
+}
+
+export function createPostProcessDofQuarterTexture(
+  device: GPUDevice,
+  width: number,
+  height: number,
+  label = "compute_compositor_dof_quarter_res"
+): GPUTexture {
+  return device.createTexture({
+    label,
+    size: [Math.ceil(width / 4), Math.ceil(height / 4)],
     format: "rgba16float",
     usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
   });

@@ -12,7 +12,7 @@ test("compute renderer runs FXAA and CAS on an rgba16float texture before presen
   assert.match(mainSource, /postProcessedView:\s*GPUTextureView/);
   assert.match(mainSource, /label:\s*"compute_compositor_output"[\s\S]*format:\s*"rgba16float"[\s\S]*GPUTextureUsage\.STORAGE_BINDING \| GPUTextureUsage\.TEXTURE_BINDING/);
   assert.match(mainSource, /createPostProcessOutputTexture\([\s\S]*"compute_compositor_post_process_output"/);
-  assert.match(mainSource, /postProcess\.encode\(\s*activeEncoder,\s*cc\.outputView,\s*cc\.auxView,\s*cc\.postProcessedView,\s*cc\.dofLowResView,\s*cc\.dofBlurScratchView,\s*width,\s*height\s*\)/);
+  assert.match(mainSource, /postProcess\.encode\(\s*activeEncoder,\s*cc\.outputView,\s*cc\.auxView,\s*cc\.postProcessedView,\s*cc\.dofLowResView,\s*cc\.dofBlurScratchView,\s*cc\.dofQuarterResView,\s*cc\.dofQuarterScratchView,\s*width,\s*height\s*\)/);
   assert.match(mainSource, /tileLocalPresenter\.draw\(renderPass,\s*computePresentView \?\? scene\.computeCompositor\.postProcessedView\)/);
   assert.doesNotMatch(mainSource, /tileLocalPresenter\.draw\(renderPass,\s*scene\.computeCompositor\.outputView\)/);
 
@@ -175,7 +175,13 @@ test("compute renderer exposes two-layer near/far DOF with dynamic kernel radius
   assert.match(mainSource, /createPostProcessDofTexture\([\s\S]*"compute_compositor_dof_low_res"/);
   assert.match(mainSource, /createPostProcessDofTexture\([\s\S]*"compute_compositor_dof_blur_scratch"/);
   assert.match(mainSource, /computeAuxTexture/);
-  assert.match(mainSource, /cc\.postProcess\.encode\(\s*activeEncoder,\s*cc\.outputView,\s*cc\.auxView,\s*cc\.postProcessedView,\s*cc\.dofLowResView,\s*cc\.dofBlurScratchView/);
+  assert.match(mainSource, /cc\.postProcess\.encode\(\s*activeEncoder,\s*cc\.outputView,\s*cc\.auxView,\s*cc\.postProcessedView,\s*cc\.dofLowResView,\s*cc\.dofBlurScratchView,\s*cc\.dofQuarterResView,\s*cc\.dofQuarterScratchView/);
+  assert.match(mainSource, /dofQuarterResTexture:\s*GPUTexture/);
+  assert.match(mainSource, /dofQuarterResView:\s*GPUTextureView/);
+  assert.match(mainSource, /dofQuarterScratchTexture:\s*GPUTexture/);
+  assert.match(mainSource, /dofQuarterScratchView:\s*GPUTextureView/);
+  assert.match(mainSource, /createPostProcessDofQuarterTexture\([\s\S]*"compute_compositor_dof_quarter_res"/);
+  assert.match(mainSource, /createPostProcessDofQuarterTexture\([\s\S]*"compute_compositor_dof_quarter_scratch"/);
   assert.match(mainSource, /postProcessDofFocusFromPercent/);
   assert.match(mainSource, /POST_PROCESS_DOF_PLANE_PERCENT_MIN\s*=\s*90/);
   assert.match(mainSource, /POST_PROCESS_DOF_PLANE_PERCENT_MAX\s*=\s*100/);
@@ -237,10 +243,17 @@ test("compute renderer exposes two-layer near/far DOF with dynamic kernel radius
   assert.match(postProcessSource, /dofBlurHorizontalPipeline:\s*GPUComputePipeline/);
   assert.match(postProcessSource, /dofBlurVerticalPipeline:\s*GPUComputePipeline/);
   assert.match(postProcessSource, /createPostProcessDofTexture/);
+  assert.match(postProcessSource, /createPostProcessDofQuarterTexture/);
   assert.match(postProcessSource, /Math\.ceil\(width \/ 2\)/);
-  assert.match(postProcessSource, /entryPoint:\s*"dof_downsample"/);
-  assert.match(postProcessSource, /entryPoint:\s*"dof_blur_horizontal"/);
-  assert.match(postProcessSource, /entryPoint:\s*"dof_blur_vertical"/);
+  assert.match(postProcessSource, /Math\.ceil\(width \/ 4\)/);
+  assert.match(postProcessSource, /"dof_downsample"/);
+  assert.match(postProcessSource, /"dof_blur_horizontal"/);
+  assert.match(postProcessSource, /"dof_blur_vertical"/);
+  assert.match(postProcessSource, /dofQuarterDownsamplePipeline/);
+  assert.match(postProcessSource, /dofQuarterBlurHorizontalPipeline/);
+  assert.match(postProcessSource, /dofQuarterBlurVerticalPipeline/);
+  assert.match(postProcessSource, /dofQuarterResView:\s*GPUTextureView/);
+  assert.match(postProcessSource, /dofQuarterScratchView:\s*GPUTextureView/);
   assert.match(postProcessSource, /dispatchWorkgroups\(\s*Math\.ceil\(Math\.ceil\(width \/ 2\) \/ 8\)/);
   assert.match(postProcessSource, /binding:\s*3[\s\S]*texture:\s*\{\s*sampleType:\s*"unfilterable-float"\s*\}/);
   assert.match(postProcessSource, /binding:\s*4[\s\S]*texture:\s*\{\s*sampleType:\s*"unfilterable-float"\s*\}/);
@@ -296,9 +309,19 @@ test("compute renderer exposes two-layer near/far DOF with dynamic kernel radius
   assert.match(postProcessShader, /fn dof_downsample/);
   assert.match(postProcessShader, /fn dof_blur_horizontal/);
   assert.match(postProcessShader, /fn dof_blur_vertical/);
-  // Dynamic kernel: per-pixel radius function and dynamic blur sample
+  // Dynamic kernel: per-pixel radius function and dynamic blur sample with sparse outer taps
   assert.match(postProcessShader, /fn dof_blur_radius_for_pixel/);
   assert.match(postProcessShader, /fn dof_blur_sample_dynamic/);
+  assert.match(postProcessShader, /sparseThreshold/);
+  assert.match(postProcessShader, /strideCompensation/);
+  // Quarter-res near-field blur path
+  assert.match(postProcessShader, /postProcessDofQuarterBlur/);
+  assert.match(postProcessShader, /fn dof_quarter_downsample/);
+  assert.match(postProcessShader, /fn dof_quarter_blur_horizontal/);
+  assert.match(postProcessShader, /fn dof_quarter_blur_vertical/);
+  assert.match(postProcessShader, /fn dof_quarter_blur_radius_for_pixel/);
+  assert.match(postProcessShader, /fn load_dof_quarter_blur_bilinear/);
+  assert.match(postProcessShader, /quarterBlur/);
   assert.match(postProcessShader, /POST_PROCESS_DOF_BLUR_MAX_TAPS\s*=\s*17i/);
   assert.match(postProcessShader, /POST_PROCESS_DOF_BLUR_MAX_HALF_TAPS\s*=\s*8i/);
   // No blend-with-sharp: uses smooth_ramp transition, not mix(sharp, blurred, cocNormalized)
