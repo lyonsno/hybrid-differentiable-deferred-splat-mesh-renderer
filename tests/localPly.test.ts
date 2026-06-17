@@ -93,6 +93,72 @@ test("rejects dropped files that are not supported PLY splats", () => {
   );
 });
 
+test("decodes PLY with per-splat normals, roughness, and metallic attributes", () => {
+  const bytes = binaryPlyFixture([
+    {
+      position: [1, 2, 3],
+      dc: [0, 0, 0],
+      opacity: 0,
+      scales: [0, 0, 0],
+      rotation: [1, 0, 0, 0],
+      normal: [0, 1, 0],
+      roughness: 0.3,
+      metallic: 0.9,
+    },
+    {
+      position: [4, 5, 6],
+      dc: [1, 1, 1],
+      opacity: 0,
+      scales: [0, 0, 0],
+      rotation: [1, 0, 0, 0],
+      normal: [0.577, 0.577, 0.577],
+      roughness: 0.8,
+      metallic: 0.0,
+    },
+  ]);
+
+  const decoded = decodeLocalPlySplatPayload("baked.ply", bytes);
+
+  assert.equal(decoded.count, 2);
+  assert.ok(decoded.normals, "normals should be present");
+  assert.ok(decoded.roughness, "roughness should be present");
+  assert.ok(decoded.metalness, "metalness should be present");
+
+  // Check normals
+  const normals = Array.from(decoded.normals!);
+  assert.equal(normals.length, 6);
+  assert.ok(Math.abs(normals[0] - 0) < 0.001);
+  assert.ok(Math.abs(normals[1] - 1) < 0.001);
+  assert.ok(Math.abs(normals[2] - 0) < 0.001);
+  assert.ok(Math.abs(normals[3] - 0.577) < 0.001);
+  assert.ok(Math.abs(normals[4] - 0.577) < 0.001);
+  assert.ok(Math.abs(normals[5] - 0.577) < 0.001);
+
+  // Check materials
+  assert.ok(Math.abs(decoded.roughness![0] - 0.3) < 0.001);
+  assert.ok(Math.abs(decoded.roughness![1] - 0.8) < 0.001);
+  assert.ok(Math.abs(decoded.metalness![0] - 0.9) < 0.001);
+  assert.ok(Math.abs(decoded.metalness![1] - 0.0) < 0.001);
+});
+
+test("PLY without normals/roughness/metallic returns undefined for those fields", () => {
+  const bytes = binaryPlyFixture([
+    {
+      position: [1, 2, 3],
+      dc: [0, 0, 0],
+      opacity: 0,
+      scales: [0, 0, 0],
+      rotation: [1, 0, 0, 0],
+    },
+  ]);
+
+  const decoded = decodeLocalPlySplatPayload("basic.ply", bytes);
+
+  assert.equal(decoded.normals, undefined);
+  assert.equal(decoded.roughness, undefined);
+  assert.equal(decoded.metalness, undefined);
+});
+
 interface PlyFixtureRow {
   position: [number, number, number];
   dc: [number, number, number];
@@ -100,10 +166,16 @@ interface PlyFixtureRow {
   scales: [number, number, number];
   rotation: [number, number, number, number];
   shRest?: number[];
+  normal?: [number, number, number];
+  roughness?: number;
+  metallic?: number;
 }
 
 function binaryPlyFixture(rows: PlyFixtureRow[]): ArrayBuffer {
   const hasShRest = rows.some((row) => row.shRest !== undefined);
+  const hasNormals = rows.some((row) => row.normal !== undefined);
+  const hasRoughness = rows.some((row) => row.roughness !== undefined);
+  const hasMetallic = rows.some((row) => row.metallic !== undefined);
   const properties = [
     "x",
     "y",
@@ -124,6 +196,15 @@ function binaryPlyFixture(rows: PlyFixtureRow[]): ArrayBuffer {
     for (let index = 0; index < 9; index++) {
       properties.push(`f_rest_${index}`);
     }
+  }
+  if (hasNormals) {
+    properties.push("nx", "ny", "nz");
+  }
+  if (hasRoughness) {
+    properties.push("roughness");
+  }
+  if (hasMetallic) {
+    properties.push("metallic");
   }
   const header = [
     "ply",
@@ -146,6 +227,9 @@ function binaryPlyFixture(rows: PlyFixtureRow[]): ArrayBuffer {
       ...row.scales,
       ...row.rotation,
       ...(hasShRest ? requireShRest(row) : []),
+      ...(hasNormals ? (row.normal ?? [0, 0, 0]) : []),
+      ...(hasRoughness ? [row.roughness ?? 0.5] : []),
+      ...(hasMetallic ? [row.metallic ?? 0.0] : []),
     ];
     values.forEach((value, valueIndex) => {
       view.setFloat32(rowIndex * rowStride + valueIndex * 4, value, true);

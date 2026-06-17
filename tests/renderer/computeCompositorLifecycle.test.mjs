@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
+// Import planTileSplatCompositor for budget sizing tests.
+// It's compiled by the test:renderer tsc step into node_modules/.cache/.
+// For source-reading tests we use the raw TS source.
 const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
+const compositorSource = readFileSync(new URL("../../src/gpuTileSplatCompositor.ts", import.meta.url), "utf8");
 
 function destroySplatSceneSource() {
   const match = mainSource.match(/function destroySplatScene\(scene: ActiveSplatScene \| null\): void \{[\s\S]*?\n\}/);
@@ -30,4 +34,46 @@ test("destroySplatScene releases compute compositor resources and textures", () 
   assert.match(destroySource, /scene\.computeCompositor\.gbufferDepthTexture\.destroy\(\);/);
   assert.match(destroySource, /scene\.computeCompositor\.gbufferNormalTexture\.destroy\(\);/);
   assert.match(destroySource, /scene\.computeCompositor\.litTexture\.destroy\(\);/);
+});
+
+test("destroySplatScene releases optional PBR material and normal buffers", () => {
+  const destroySource = destroySplatSceneSource();
+
+  assert.match(destroySource, /scene\.buffers\.normalBuffer\?\.destroy\(\)/);
+  assert.match(destroySource, /scene\.buffers\.roughnessBuffer\?\.destroy\(\)/);
+  assert.match(destroySource, /scene\.buffers\.metalnessBuffer\?\.destroy\(\)/);
+});
+
+test("tile ref budget never exceeds WebGPU dispatch limit", () => {
+  // The reorder and radix-init passes dispatch ceil(maxTotalTileRefs / 256)
+  // workgroups. WebGPU max is 65535 per dimension.
+  const MAX_DISPATCH_SAFE = 65535 * 256;
+
+  // Extract the budget formula from source
+  assert.match(compositorSource, /MAX_DISPATCH_SAFE_REFS = 65535 \* 256/);
+  assert.match(compositorSource, /Math\.min\(/);
+  assert.match(compositorSource, /MAX_DISPATCH_SAFE_REFS/);
+
+  // Verify the shader caps tile footprint per splat
+  const projSource = readFileSync(new URL("../../src/shaders/gpu_project_splats.wgsl", import.meta.url), "utf8");
+  assert.match(projSource, /clampedRadius = min\(radius, tileSize \* 8\.0\)/,
+    "projection shader must cap splat tile footprint to prevent unbounded tile-ref growth");
+  assert.match(projSource, /PROJ_STRIDE = 9u/,
+    "projection cache stride must be 9 to include per-splat normal slot");
+});
+
+test("projection cache stride matches between project and composite shaders", () => {
+  const projSource = readFileSync(new URL("../../src/shaders/gpu_project_splats.wgsl", import.meta.url), "utf8");
+  const compSource = readFileSync(new URL("../../src/shaders/gpu_tile_splat_composite.wgsl", import.meta.url), "utf8");
+  const f16Source = readFileSync(new URL("../../src/shaders/gpu_tile_splat_composite_f16.wgsl", import.meta.url), "utf8");
+
+  const projStride = projSource.match(/const PROJ_STRIDE = (\d+)u;/);
+  const compStride = compSource.match(/const PROJ_STRIDE = (\d+)u;/);
+  const f16Stride = f16Source.match(/const PROJ_STRIDE = (\d+)u;/);
+
+  assert.ok(projStride, "project shader must declare PROJ_STRIDE");
+  assert.ok(compStride, "composite shader must declare PROJ_STRIDE");
+  assert.ok(f16Stride, "f16 composite shader must declare PROJ_STRIDE");
+  assert.equal(projStride[1], compStride[1], "PROJ_STRIDE mismatch between project and composite shaders");
+  assert.equal(projStride[1], f16Stride[1], "PROJ_STRIDE mismatch between project and f16 composite shaders");
 });
