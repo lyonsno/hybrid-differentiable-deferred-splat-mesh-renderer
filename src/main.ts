@@ -45,7 +45,6 @@ import {
 } from "./realSmokeScene.js";
 import {
   createAlphaDensityRefreshState,
-  shouldRefreshAlphaDensity,
   type AlphaDensityRefreshState,
 } from "./alphaDensityRefresh.js";
 import { captureViewDepthKey, viewDepthKeyChanged } from "./splatSort.js";
@@ -109,7 +108,6 @@ const statsEl = document.getElementById("stats")!;
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 const SORT_BACKEND = "gpu-bitonic-cpu-depth-keys";
 const GPU_SORT_SETTLE_MS = 160;
-const ALPHA_DENSITY_SETTLE_MS = 160;
 
 // Light control state — L key cycles modes, arrow keys adjust angle in fixed mode
 type LightMode = "camera" | "fixed" | "overhead" | "rim";
@@ -334,6 +332,9 @@ function destroySplatScene(scene: ActiveSplatScene | null): void {
   scene.buffers.opacityBuffer.destroy();
   scene.buffers.scaleBuffer.destroy();
   scene.buffers.rotationBuffer.destroy();
+  scene.buffers.normalBuffer?.destroy();
+  scene.buffers.roughnessBuffer?.destroy();
+  scene.buffers.metalnessBuffer?.destroy();
   scene.buffers.originalIdBuffer.destroy();
   scene.gpuSort.keyBuffer.destroy();
   scene.sortedIndexBuffer.destroy();
