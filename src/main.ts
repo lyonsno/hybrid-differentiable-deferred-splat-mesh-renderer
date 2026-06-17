@@ -184,6 +184,8 @@ interface ActiveSplatScene {
   };
 }
 
+type ComputeCompositorState = ActiveSplatScene["computeCompositor"];
+
 interface AlphaDensityState {
   refreshState: AlphaDensityRefreshState;
   summary: AlphaDensityCompensationSummary;
@@ -259,6 +261,22 @@ function exposeOperatorWitnessFrameTimings(frameTimings: FrameTimingSummary): vo
   }
 }
 
+function exposeOperatorWitnessFrameState(state: {
+  frameSerial: number;
+  witnessView: RealScaniverseWitnessViewMode;
+  revision: number;
+}): void {
+  const runtimeWindow = window as unknown as {
+    __MESH_SPLAT_SMOKE__?: { operatorWitness?: Record<string, unknown> };
+  };
+  const operatorWitness = runtimeWindow.__MESH_SPLAT_SMOKE__?.operatorWitness;
+  if (operatorWitness) {
+    operatorWitness.frameSerial = state.frameSerial;
+    operatorWitness.witnessView = state.witnessView;
+    operatorWitness.revision = state.revision;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Sort settle
 // ---------------------------------------------------------------------------
@@ -292,6 +310,119 @@ function shouldRefreshGpuSort(state: SortSettleState, viewMatrix: Float32Array, 
 
 function gpuSortRefreshPending(state: SortSettleState, viewMatrix: Float32Array): boolean {
   return state.needsSort || viewDepthKeyChanged(state.lastSortedViewDepthKey, viewMatrix);
+}
+
+function createComputeCompositorState(
+  gpu: GPU,
+  attributes: SplatAttributes,
+  buffers: SplatGpuBuffers,
+  sortedIndexBuffer: GPUBuffer,
+  viewportWidth: number,
+  viewportHeight: number,
+): ComputeCompositorState {
+  const computePlan = planTileSplatCompositor({
+    viewportWidth,
+    viewportHeight,
+    tileSizePx: 16,
+    splatCount: attributes.count,
+  });
+  const computeResources = createTileSplatCompositor(gpu.device, computePlan, { f16: gpu.f16Supported });
+  const computeOutputTexture = gpu.device.createTexture({
+    label: "compute_compositor_output",
+    size: [viewportWidth, viewportHeight],
+    format: "rgba16float",
+    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+  });
+  const gbufferDepthTexture = gpu.device.createTexture({
+    label: "gbuffer_depth",
+    size: [viewportWidth, viewportHeight],
+    format: "r32float",
+    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+  });
+  const gbufferNormalTexture = gpu.device.createTexture({
+    label: "gbuffer_normal",
+    size: [viewportWidth, viewportHeight],
+    format: "r32uint",
+    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+  });
+  const gbufferMaterialTexture = gpu.device.createTexture({
+    label: "gbuffer_material",
+    size: [viewportWidth, viewportHeight],
+    format: "r32uint",
+    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+  });
+  const litTexture = gpu.device.createTexture({
+    label: "deferred_lit_output",
+    size: [viewportWidth, viewportHeight],
+    format: "rgba16float",
+    usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+  });
+  const computeBindGroups = createTileSplatBindGroups(
+    gpu.device,
+    computeResources,
+    {
+      positionBuffer: buffers.positionBuffer,
+      colorBuffer: buffers.colorBuffer,
+      scaleBuffer: buffers.scaleBuffer,
+      rotationBuffer: buffers.rotationBuffer,
+      opacityBuffer: buffers.opacityBuffer,
+      normalBuffer: buffers.normalBuffer,
+      roughnessBuffer: buffers.roughnessBuffer,
+      metalnessBuffer: buffers.metalnessBuffer,
+      sortedIndexBuffer,
+    },
+    computeOutputTexture,
+    { depth: gbufferDepthTexture, normal: gbufferNormalTexture, material: gbufferMaterialTexture },
+  );
+
+  return {
+    resources: computeResources,
+    bindGroups: computeBindGroups,
+    outputTexture: computeOutputTexture,
+    outputView: computeOutputTexture.createView(),
+    gbufferDepthTexture,
+    gbufferDepthView: gbufferDepthTexture.createView(),
+    gbufferNormalTexture,
+    gbufferNormalView: gbufferNormalTexture.createView(),
+    gbufferMaterialTexture,
+    gbufferMaterialView: gbufferMaterialTexture.createView(),
+    litTexture,
+    litView: litTexture.createView(),
+    frameUniformData: new Float32Array(TILE_SPLAT_FRAME_UNIFORM_BYTES / 4),
+    lastSortedViewProj: null,
+    hasSortedRefs: false,
+    hasPerSplatNormals: attributes.normals !== undefined,
+  };
+}
+
+function destroyComputeCompositorState(computeCompositor: ComputeCompositorState): void {
+  computeCompositor.resources.destroy();
+  computeCompositor.outputTexture.destroy();
+  computeCompositor.gbufferDepthTexture.destroy();
+  computeCompositor.gbufferNormalTexture.destroy();
+  computeCompositor.gbufferMaterialTexture.destroy();
+  computeCompositor.litTexture.destroy();
+}
+
+function resizeComputeCompositorForViewport(
+  scene: ActiveSplatScene,
+  gpu: GPU,
+  width: number,
+  height: number,
+): void {
+  const plan = scene.computeCompositor.resources.plan;
+  if (plan.viewportWidth === width && plan.viewportHeight === height) {
+    return;
+  }
+  destroyComputeCompositorState(scene.computeCompositor);
+  scene.computeCompositor = createComputeCompositorState(
+    gpu,
+    scene.attributes,
+    scene.buffers,
+    scene.sortedIndexBuffer,
+    width,
+    height,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -780,59 +911,13 @@ async function main() {
     const sortedIndexBuffer = gpuSort.indexBuffer;
 
     // ---- Create compute compositor ----
-    const computePlan = planTileSplatCompositor({
-      viewportWidth: initialViewportWidth,
-      viewportHeight: initialViewportHeight,
-      tileSizePx: 16,
-      splatCount: attributes.count,
-    });
-    const computeResources = createTileSplatCompositor(gpu.device, computePlan, { f16: gpu.f16Supported });
-    const computeOutputTexture = gpu.device.createTexture({
-      label: "compute_compositor_output",
-      size: [initialViewportWidth, initialViewportHeight],
-      format: "rgba16float",
-      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
-    });
-    const gbufferDepthTexture = gpu.device.createTexture({
-      label: "gbuffer_depth",
-      size: [initialViewportWidth, initialViewportHeight],
-      format: "r32float",
-      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
-    });
-    const gbufferNormalTexture = gpu.device.createTexture({
-      label: "gbuffer_normal",
-      size: [initialViewportWidth, initialViewportHeight],
-      format: "r32uint",
-      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
-    });
-    const gbufferMaterialTexture = gpu.device.createTexture({
-      label: "gbuffer_material",
-      size: [initialViewportWidth, initialViewportHeight],
-      format: "r32uint",
-      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
-    });
-    const litTexture = gpu.device.createTexture({
-      label: "deferred_lit_output",
-      size: [initialViewportWidth, initialViewportHeight],
-      format: "rgba16float",
-      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
-    });
-    const computeBindGroups = createTileSplatBindGroups(
-      gpu.device,
-      computeResources,
-      {
-        positionBuffer: buffers.positionBuffer,
-        colorBuffer: buffers.colorBuffer,
-        scaleBuffer: buffers.scaleBuffer,
-        rotationBuffer: buffers.rotationBuffer,
-        opacityBuffer: buffers.opacityBuffer,
-        normalBuffer: buffers.normalBuffer,
-        roughnessBuffer: buffers.roughnessBuffer,
-        metalnessBuffer: buffers.metalnessBuffer,
-        sortedIndexBuffer,
-      },
-      computeOutputTexture,
-      { depth: gbufferDepthTexture, normal: gbufferNormalTexture, material: gbufferMaterialTexture },
+    const computeCompositor = createComputeCompositorState(
+      gpu,
+      attributes,
+      buffers,
+      sortedIndexBuffer,
+      initialViewportWidth,
+      initialViewportHeight,
     );
 
     activeScene = {
@@ -848,24 +933,7 @@ async function main() {
       },
       count: attributes.count,
       assetPath: sceneAssetPath,
-      computeCompositor: {
-        resources: computeResources,
-        bindGroups: computeBindGroups,
-        outputTexture: computeOutputTexture,
-        outputView: computeOutputTexture.createView(),
-        gbufferDepthTexture,
-        gbufferDepthView: gbufferDepthTexture.createView(),
-        gbufferNormalTexture,
-        gbufferNormalView: gbufferNormalTexture.createView(),
-        gbufferMaterialTexture,
-        gbufferMaterialView: gbufferMaterialTexture.createView(),
-        litTexture,
-        litView: litTexture.createView(),
-        frameUniformData: new Float32Array(TILE_SPLAT_FRAME_UNIFORM_BYTES / 4),
-        lastSortedViewProj: null,
-        hasSortedRefs: false,
-        hasPerSplatNormals: attributes.normals !== undefined,
-      },
+      computeCompositor,
     };
     exposeMeshSplatSmokeEvidence(
       createMeshSplatSmokeEvidence(attributes, attributes.count, sceneAssetPath, SORT_BACKEND),
@@ -931,11 +999,36 @@ async function main() {
         usage: GPUTextureUsage.RENDER_ATTACHMENT,
       });
     }
+    resizeComputeCompositorForViewport(scene, gpu, width, height);
 
     // Upload uniforms
     const view = getViewMatrix(cam);
     const proj = getProjectionMatrix(cam, aspect);
     const viewProj = composeFirstSmokeViewProjection(proj, view);
+
+    const alphaDensityRefreshed = shouldRefreshAlphaDensity(
+      scene.alphaDensityState.refreshState,
+      view,
+      width,
+      height,
+      now,
+      ALPHA_DENSITY_SETTLE_MS,
+    );
+    if (alphaDensityRefreshed) {
+      timeFrameStage(frameTiming, "alpha-density-refresh", () => {
+        scene.alphaDensityState.summary = writeAlphaDensityCompensatedOpacities(
+          scene.effectiveOpacities,
+          scene.attributes,
+          viewProj,
+          width,
+          height,
+          REAL_SCANIVERSE_SPLAT_SCALE,
+          REAL_SCANIVERSE_MIN_RADIUS_PX,
+          ALPHA_DENSITY_MODE,
+        );
+        gpu.device.queue.writeBuffer(scene.buffers.opacityBuffer, 0, scene.effectiveOpacities);
+      });
+    }
 
     const encoder = gpu.device.createCommandEncoder();
 
@@ -1053,6 +1146,11 @@ async function main() {
       }
     }
     statsEl.textContent = statsText;
+    exposeOperatorWitnessFrameState({
+      frameSerial,
+      witnessView: operatorWitnessViewMode,
+      revision: operatorWitnessRevision,
+    });
     exposeOperatorWitnessFrameTimings(finishFrameTiming(frameTiming));
 
     if (shouldContinueRendering({
