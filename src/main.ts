@@ -66,6 +66,15 @@ import {
   type TileSplatCompositorBindGroups,
 } from "./gpuTileSplatCompositor.js";
 import { createTileLocalTexturePresenter } from "./tileLocalTexturePresenter.js";
+import {
+  createFxaaCasPostProcess,
+  createPostProcessOutputTexture,
+  createPostProcessDofTexture,
+  createPostProcessDofQuarterTexture,
+  type FxaaCasPostProcess,
+  type FxaaCasDebugView,
+  type FxaaCasPostProcessSettings,
+} from "./computePostProcess.js";
 import gbufferDebugPresentShader from "./shaders/gbuffer_debug_present.wgsl?raw";
 import screenSpaceNormalsShader from "./shaders/gpu_screen_space_normals.wgsl?raw";
 import deferredLightingShader from "./shaders/gpu_deferred_lighting.wgsl?raw";
@@ -175,6 +184,18 @@ interface ActiveSplatScene {
     gbufferMaterialView: GPUTextureView;
     litTexture: GPUTexture;
     litView: GPUTextureView;
+    auxView: GPUTextureView;  // G-buffer depth view, used as DOF depth source
+    postProcess: FxaaCasPostProcess;
+    postProcessedTexture: GPUTexture;
+    postProcessedView: GPUTextureView;
+    dofLowResTexture: GPUTexture;
+    dofLowResView: GPUTextureView;
+    dofBlurScratchTexture: GPUTexture;
+    dofBlurScratchView: GPUTextureView;
+    dofQuarterResTexture: GPUTexture;
+    dofQuarterResView: GPUTextureView;
+    dofQuarterScratchTexture: GPUTexture;
+    dofQuarterScratchView: GPUTextureView;
     frameUniformData: Float32Array;
     lastSortedViewProj: Float32Array | null;
     hasSortedRefs: boolean;
@@ -327,6 +348,12 @@ function destroySplatScene(scene: ActiveSplatScene | null): void {
   scene.computeCompositor.gbufferNormalTexture.destroy();
   scene.computeCompositor.gbufferMaterialTexture.destroy();
   scene.computeCompositor.litTexture.destroy();
+  scene.computeCompositor.postProcess.settingsBuffer.destroy();
+  scene.computeCompositor.postProcessedTexture.destroy();
+  scene.computeCompositor.dofLowResTexture.destroy();
+  scene.computeCompositor.dofBlurScratchTexture.destroy();
+  scene.computeCompositor.dofQuarterResTexture.destroy();
+  scene.computeCompositor.dofQuarterScratchTexture.destroy();
   scene.buffers.positionBuffer.destroy();
   scene.buffers.colorBuffer.destroy();
   scene.buffers.opacityBuffer.destroy();
@@ -486,13 +513,86 @@ async function main() {
 
   // ---- G-buffer view mode: cycle with 'G' key ----
   type GBufferViewMode = "color" | "depth" | "normal" | "roughness" | "lit";
-  let gbufferViewMode: GBufferViewMode = "color";
+  let gbufferViewMode: GBufferViewMode = "lit";
+
+  // DOF controls — live from HTML panel
+  const ppDofEnabled = document.getElementById("pp-dof-enabled") as HTMLInputElement | null;
+  const ppDofFocus = document.getElementById("pp-dof-focus") as HTMLInputElement | null;
+  const ppDofFocusVal = document.getElementById("pp-dof-focus-val") as HTMLOutputElement | null;
+  const ppDofAperture = document.getElementById("pp-dof-aperture") as HTMLInputElement | null;
+  const ppDofApertureVal = document.getElementById("pp-dof-aperture-val") as HTMLOutputElement | null;
+  const ppDofRadius = document.getElementById("pp-dof-radius") as HTMLSelectElement | null;
+  const ppDebugView = document.getElementById("pp-debug-view") as HTMLSelectElement | null;
+
+  // Linearize NDC depth to [0,1] normalized linear depth
+  function linearizeDepth(ndcDepth: number): number {
+    const n = cam.near;
+    const f = cam.far;
+    const z = (n * f) / (f - ndcDepth * (f - n));
+    return Math.max(0, Math.min(1, (z - n) / (f - n)));
+  }
+
+  // Center-pixel autofocus: read depth at screen center, one frame behind
+  let autoFocusDepthLinear = 0.5;
+  const autoFocusReadbackBuffer = gpu.device.createBuffer({
+    label: "dof_autofocus_readback",
+    size: 256,
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+  });
+  let autoFocusMapping = false;
+
+  // Near/far plane sliders are relative to the autofocus depth.
+  // Slider 0 = at focus, slider 100 = maximum separation from focus.
+  function readDofSettings(): FxaaCasPostProcessSettings {
+    const debugView = (ppDebugView?.value ?? "final") as FxaaCasDebugView;
+    const focusOffset = (Number(ppDofFocus?.value ?? 50) - 50) / 100 * 0.3;
+    const focusDepth = Math.max(0.001, Math.min(0.999, autoFocusDepthLinear + focusOffset));
+    const aperture = Number(ppDofAperture?.value ?? 50) / 100;
+
+    return {
+      enabled: true,
+      fxaaEnabled: true,
+      casEnabled: true,
+      sampleRadius: 2,
+      sampleCount: 8,
+      casSharpness: 0.525,
+      debugView,
+      dofEnabled: ppDofEnabled?.checked ?? true,
+      dofFocusDepth: focusDepth,
+      dofAperture: aperture,
+      dofRadius: parseInt(ppDofRadius?.value ?? "96", 10),
+      cameraNear: cam.near,
+      cameraFar: cam.far,
+    };
+  }
+
+  function updateDofLabels(): void {
+    if (ppDofFocus && ppDofFocusVal) {
+      const offset = Number(ppDofFocus.value) - 50;
+      ppDofFocusVal.value = (offset >= 0 ? "+" : "") + offset.toFixed(0);
+    }
+    if (ppDofAperture && ppDofApertureVal) {
+      ppDofApertureVal.value = Number(ppDofAperture.value).toFixed(0) + "%";
+    }
+  }
+
+  const ppUpdate = () => { updateDofLabels(); requestFrame(); };
+  ppDofEnabled?.addEventListener("change", ppUpdate);
+  for (const el of [ppDofFocus, ppDofAperture]) el?.addEventListener("input", ppUpdate);
+  ppDofRadius?.addEventListener("change", ppUpdate);
+  ppDebugView?.addEventListener("change", ppUpdate);
+  updateDofLabels();
+
   window.addEventListener("keydown", (e) => {
     if (e.key === "g" || e.key === "G") {
       const modes: GBufferViewMode[] = ["color", "depth", "normal", "roughness", "lit"];
       const idx = modes.indexOf(gbufferViewMode);
       gbufferViewMode = modes[(idx + 1) % modes.length];
       console.log(`G-buffer view: ${gbufferViewMode}`);
+    }
+    if (e.key === "d" || e.key === "D") {
+      if (ppDofEnabled) ppDofEnabled.checked = !ppDofEnabled.checked;
+      requestFrame();
     }
     if (e.key === "l" || e.key === "L") {
       lightModeIndex = (lightModeIndex + 1) % LIGHT_MODES.length;
@@ -798,7 +898,7 @@ async function main() {
       label: "gbuffer_depth",
       size: [initialViewportWidth, initialViewportHeight],
       format: "r32float",
-      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
     });
     const gbufferNormalTexture = gpu.device.createTexture({
       label: "gbuffer_normal",
@@ -818,6 +918,21 @@ async function main() {
       format: "rgba16float",
       usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
     });
+    const postProcessedTexture = createPostProcessOutputTexture(
+      gpu.device, initialViewportWidth, initialViewportHeight, "compute_compositor_post_process_output"
+    );
+    const dofLowResTexture = createPostProcessDofTexture(
+      gpu.device, initialViewportWidth, initialViewportHeight, "compute_compositor_dof_low_res"
+    );
+    const dofBlurScratchTexture = createPostProcessDofTexture(
+      gpu.device, initialViewportWidth, initialViewportHeight, "compute_compositor_dof_blur_scratch"
+    );
+    const dofQuarterResTexture = createPostProcessDofQuarterTexture(
+      gpu.device, initialViewportWidth, initialViewportHeight, "compute_compositor_dof_quarter_res"
+    );
+    const dofQuarterScratchTexture = createPostProcessDofQuarterTexture(
+      gpu.device, initialViewportWidth, initialViewportHeight, "compute_compositor_dof_quarter_scratch"
+    );
     const computeBindGroups = createTileSplatBindGroups(
       gpu.device,
       computeResources,
@@ -862,6 +977,18 @@ async function main() {
         gbufferMaterialView: gbufferMaterialTexture.createView(),
         litTexture,
         litView: litTexture.createView(),
+        auxView: gbufferDepthTexture.createView(),
+        postProcess: createFxaaCasPostProcess(gpu.device),
+        postProcessedTexture,
+        postProcessedView: postProcessedTexture.createView(),
+        dofLowResTexture,
+        dofLowResView: dofLowResTexture.createView(),
+        dofBlurScratchTexture,
+        dofBlurScratchView: dofBlurScratchTexture.createView(),
+        dofQuarterResTexture,
+        dofQuarterResView: dofQuarterResTexture.createView(),
+        dofQuarterScratchTexture,
+        dofQuarterScratchView: dofQuarterScratchTexture.createView(),
         frameUniformData: new Float32Array(TILE_SPLAT_FRAME_UNIFORM_BYTES / 4),
         lastSortedViewProj: null,
         hasSortedRefs: false,
@@ -989,6 +1116,22 @@ async function main() {
       );
     }
 
+    // ---- Post-process (FXAA + CAS + DOF) on lit output ----
+    const postProcessSettings = readDofSettings();
+    cc.postProcess.writeSettings(gpu.device.queue, postProcessSettings);
+    cc.postProcess.encode(
+      encoder,
+      cc.litView,
+      cc.auxView,
+      cc.postProcessedView,
+      cc.dofLowResView,
+      cc.dofBlurScratchView,
+      cc.dofQuarterResView,
+      cc.dofQuarterScratchView,
+      cc.resources.plan.viewportWidth,
+      cc.resources.plan.viewportHeight,
+    );
+
     // ---- Present to screen ----
     const textureView = gpu.context.getCurrentTexture().createView();
     const writeTimestamps = ts && !ts.mapping;
@@ -1023,7 +1166,7 @@ async function main() {
     } else if (gbufferViewMode === "roughness") {
       gbufferDebugPresenter.drawRoughness(renderPass, cc.gbufferDepthView, cc.gbufferNormalView, cc.gbufferMaterialView);
     } else if (gbufferViewMode === "lit") {
-      texturePresenter.draw(renderPass, cc.litView);
+      texturePresenter.draw(renderPass, cc.postProcessedView);
     } else {
       texturePresenter.draw(renderPass, cc.outputView);
     }
@@ -1033,9 +1176,34 @@ async function main() {
       resolveTimestamps(encoder, ts);
     }
 
+    // Autofocus: copy center pixel of G-buffer depth to readback buffer
+    if (!autoFocusMapping) {
+      const cx = Math.floor(cc.resources.plan.viewportWidth / 2);
+      const cy = Math.floor(cc.resources.plan.viewportHeight / 2);
+      encoder.copyTextureToBuffer(
+        { texture: cc.gbufferDepthTexture, origin: [cx, cy, 0] },
+        { buffer: autoFocusReadbackBuffer, bytesPerRow: 256 },
+        [1, 1, 1],
+      );
+    }
+
     timeFrameStage(frameTiming, "queue-submit", () => {
       gpu.device.queue.submit([encoder.finish()]);
     });
+
+    // Autofocus readback (async, one frame behind)
+    if (!autoFocusMapping) {
+      autoFocusMapping = true;
+      autoFocusReadbackBuffer.mapAsync(GPUMapMode.READ).then(() => {
+        const data = new Float32Array(autoFocusReadbackBuffer.getMappedRange(0, 4));
+        const ndcDepth = data[0];
+        if (Number.isFinite(ndcDepth) && ndcDepth > 0 && ndcDepth < 1) {
+          autoFocusDepthLinear = linearizeDepth(ndcDepth);
+        }
+        autoFocusReadbackBuffer.unmap();
+        autoFocusMapping = false;
+      }).catch(() => { autoFocusMapping = false; });
+    }
 
     // Read GPU timings (async, one frame behind)
     if (writeTimestamps) {

@@ -21,11 +21,91 @@
       pointer-events: none;
       z-index: 10;
     }
+    #postprocess-controls {
+      position: fixed;
+      right: 8px;
+      top: 8px;
+      color: #eee;
+      font: 11px/1.6 monospace;
+      background: rgba(0,0,0,0.75);
+      padding: 6px 10px;
+      border-radius: 4px;
+      z-index: 10;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    #postprocess-controls label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    #postprocess-controls input[type="range"] {
+      width: 80px;
+    }
+    #postprocess-controls output {
+      min-width: 36px;
+      text-align: right;
+    }
+    #postprocess-controls summary {
+      cursor: pointer;
+      user-select: none;
+    }
   </style>
 </head>
 <body>
   <canvas id="canvas"></canvas>
   <div id="stats"></div>
+  <details id="postprocess-controls" open data-visual-smoke-ignore>
+    <summary>Post FX</summary>
+    <label>
+      <span>DOF</span>
+      <input id="pp-dof-enabled" type="checkbox" checked />
+    </label>
+    <label>
+      <span>Focus offset</span>
+      <span>
+        <input id="pp-dof-focus" type="range" min="0" max="100" step="1" value="50" />
+        <output id="pp-dof-focus-val">+0</output>
+      </span>
+    </label>
+    <label>
+      <span>Aperture</span>
+      <span>
+        <input id="pp-dof-aperture" type="range" min="0" max="100" step="1" value="50" />
+        <output id="pp-dof-aperture-val">50%</output>
+      </span>
+    </label>
+    <label>
+      <span>Radius</span>
+      <select id="pp-dof-radius">
+        <option value="16">16 px</option>
+        <option value="32">32 px</option>
+        <option value="64">64 px</option>
+        <option value="96" selected>96 px</option>
+        <option value="128">128 px</option>
+      </select>
+    </label>
+    <label>
+      <span>View</span>
+      <select id="pp-debug-view">
+        <option value="final" selected>Final</option>
+        <option value="dof-mask">DOF mask</option>
+        <option value="dof-layers">DOF layers</option>
+        <option value="dof-near-mask">DOF near</option>
+        <option value="dof-far-mask">DOF far</option>
+        <option value="dof-downsample">DOF downsample</option>
+        <option value="dof-blur-h">DOF blur H</option>
+        <option value="dof-blur-v-only">DOF blur V only</option>
+        <option value="dof-blur-hv">DOF blur HV</option>
+        <option value="depth">Depth</option>
+        <option value="confidence">Confidence</option>
+        <option value="fxaa-mask">FXAA mask</option>
+        <option value="cas-mask">CAS mask</option>
+        <option value="difference">Difference</option>
+      </select>
+    </label>
+  </details>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
