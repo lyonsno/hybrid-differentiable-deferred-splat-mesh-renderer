@@ -172,18 +172,27 @@ def generate_candidate_cameras(
 def estimate_frame_fill(
     camera: Camera,
     positions: np.ndarray,
+    scales: np.ndarray | None = None,
+    opacities: np.ndarray | None = None,
+    grid_size: int = 32,
 ) -> float:
-    """Estimate what fraction of the frame would be filled with scene content.
+    """Estimate what fraction of the frame would be filled with opaque scene content.
 
-    Projects all splat positions to screen space and measures the
-    bounding box coverage. Fast approximate metric — no rendering needed.
+    Projects each splat as a screen-space disc weighted by opacity and
+    accumulates into a low-res coverage grid. This gives a much better
+    estimate than bounding-box-of-projected-points because it accounts
+    for splat size, depth, and opacity.
 
     Args:
         camera: Camera to evaluate.
         positions: (N, 3) Gaussian positions.
+        scales: (N, 3) log-scale per axis. If None, treats splats as points.
+        opacities: (N,) opacity in [0, 1]. If None, assumes 1.0.
+        grid_size: Resolution of the coverage grid (32 = fast, 64 = precise).
 
     Returns:
-        fill: float in [0, 1] — fraction of frame filled by projected content.
+        fill: float in [0, 1] — fraction of grid cells with accumulated
+            opacity > 0.1 (i.e., meaningfully covered).
     """
     N = positions.shape[0]
     ones = np.ones((N, 1), dtype=np.float32)
@@ -198,31 +207,52 @@ def estimate_frame_fill(
     if visible.sum() < 10:
         return 0.0
 
-    ndc = clip[visible, :3] / w[visible, None]
+    ndc_x = clip[visible, 0] / w[visible]
+    ndc_y = clip[visible, 1] / w[visible]
+    depth = w[visible]
 
     # Screen space [0, 1]
-    sx = ndc[:, 0] * 0.5 + 0.5
-    sy = 1.0 - (ndc[:, 1] * 0.5 + 0.5)
+    sx = ndc_x * 0.5 + 0.5
+    sy = 1.0 - (ndc_y * 0.5 + 0.5)
 
-    # Only count points actually in frame
-    in_frame = (sx >= 0) & (sx <= 1) & (sy >= 0) & (sy <= 1)
+    # Only count splats in frame
+    in_frame = (sx >= 0) & (sx < 1) & (sy >= 0) & (sy < 1)
     if in_frame.sum() < 5:
         return 0.0
 
-    sx_in = sx[in_frame]
-    sy_in = sy[in_frame]
+    # Compute screen-space radius for each visible splat
+    if scales is not None:
+        vis_scales = scales[np.where(visible)[0][in_frame]]
+        world_radius = np.exp(vis_scales).max(axis=1)  # max axis
+        focal_y = camera.proj_matrix[1, 1] * camera.height / 2
+        screen_radius = world_radius * focal_y / np.maximum(depth[in_frame], 0.01)
+        # Normalize to [0, 1] grid coordinates
+        screen_radius_norm = screen_radius / camera.height
+    else:
+        screen_radius_norm = np.full(in_frame.sum(), 1.0 / grid_size)
 
-    # Bounding box of projected points
-    x_range = sx_in.max() - sx_in.min()
-    y_range = sy_in.max() - sy_in.min()
-    bbox_fill = x_range * y_range
+    if opacities is not None:
+        vis_opacity = opacities[np.where(visible)[0][in_frame]]
+    else:
+        vis_opacity = np.ones(in_frame.sum(), dtype=np.float32)
 
-    # Also consider point density — a bbox that's mostly empty is bad
-    # Use the count of in-frame points relative to total as a density signal
-    density = in_frame.sum() / max(visible.sum(), 1)
+    # Accumulate into low-res grid
+    grid = np.zeros((grid_size, grid_size), dtype=np.float32)
+    gx = np.clip((sx[in_frame] * grid_size).astype(int), 0, grid_size - 1)
+    gy = np.clip((sy[in_frame] * grid_size).astype(int), 0, grid_size - 1)
 
-    # Combined: bbox coverage × density, capped at 1
-    return float(min(bbox_fill * density, 1.0))
+    # Each splat contributes opacity weighted by its screen coverage
+    # Larger splats (closer) contribute more
+    coverage_weight = np.clip(screen_radius_norm * grid_size, 0.1, 4.0)
+    contribution = vis_opacity * coverage_weight
+
+    np.add.at(grid, (gy, gx), contribution)
+
+    # Fraction of cells with meaningful coverage
+    covered_cells = (grid > 0.1).sum()
+    total_cells = grid_size * grid_size
+
+    return float(covered_cells / total_cells)
 
 
 def filter_and_score_cameras(
@@ -264,8 +294,8 @@ def filter_and_score_cameras(
             rejected_occupancy += 1
             continue
 
-        # Frame fill
-        fill = estimate_frame_fill(cam, cloud.positions)
+        # Frame fill (weighted by depth/opacity/scale)
+        fill = estimate_frame_fill(cam, cloud.positions, cloud.scales, cloud.opacities)
         if fill < min_frame_fill:
             rejected_fill += 1
             continue
