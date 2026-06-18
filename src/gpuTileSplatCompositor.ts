@@ -92,6 +92,8 @@ export interface TileSplatCompositorResources {
   readonly indirectDispatchBuffer: GPUBuffer;
   readonly prefixParamsBuffer: GPUBuffer;
   readonly radixSort: RadixSortResources;
+  readonly countersBuffer: GPUBuffer;
+  readonly countersReadbackBuffer: GPUBuffer;
   destroy(): void;
 }
 
@@ -216,6 +218,7 @@ export function createTileSplatCompositor(
       { binding: 5, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "r32float" } }, // G-buffer depth
       { binding: 6, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "r32uint" } }, // G-buffer normal (oct, pack2x16float)
       { binding: 7, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "r32uint" } }, // G-buffer material (pack2x16float roughness, metalness)
+      { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // overflow + written counters
     ],
   });
 
@@ -492,6 +495,20 @@ export function createTileSplatCompositor(
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
   });
 
+  // Counters: [0] = overflow count, [1] = total refs written
+  // COPY_SRC for async readback, COPY_DST to clear each frame
+  const countersBuffer = device.createBuffer({
+    label: "tile_ref_counters",
+    size: 16, // 4 u32s (min alignment)
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+  });
+  // Readback buffer for async CPU access
+  const countersReadbackBuffer = device.createBuffer({
+    label: "tile_ref_counters_readback",
+    size: 16,
+    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+  });
+
   const prefixBlockSumsBuffer = device.createBuffer({
     label: "tile_prefix_block_sums",
     size: Math.max(16, Math.ceil(plan.mortonTileCount / 256) * 4),
@@ -613,6 +630,8 @@ export function createTileSplatCompositor(
     largeTileOverflowBasesBuffer, chunkRangesBuffer, totalChunksBuffer, indirectDispatchBuffer,
     prefixParamsBuffer,
     radixSort,
+    countersBuffer,
+    countersReadbackBuffer,
     destroy() {
       projCacheBuffer.destroy();
       depthBuffer.destroy();
@@ -635,6 +654,8 @@ export function createTileSplatCompositor(
       chunkRangesBuffer.destroy();
       totalChunksBuffer.destroy();
       indirectDispatchBuffer.destroy();
+      countersBuffer.destroy();
+      countersReadbackBuffer.destroy();
       radixSort.destroy();
     },
   };
@@ -666,6 +687,27 @@ export function writeTileSplatFrameUniforms(
   u32View[21] = plan.tileRows;
   u32View[22] = plan.splatCount;
   u32View[23] = plan.maxTotalTileRefs;
+}
+
+/** Result from async counter readback. */
+export interface TileRefCounterReadback {
+  overflowCount: number;
+  refsWritten: number;
+}
+
+/**
+ * Schedule async readback of tile-ref counters. Returns a promise that
+ * resolves with overflow + written counts after the GPU finishes.
+ * Non-blocking — call after queue.submit, consume result on a later frame.
+ */
+export async function readTileRefCounters(
+  resources: TileSplatCompositorResources,
+): Promise<TileRefCounterReadback> {
+  const buf = resources.countersReadbackBuffer;
+  await buf.mapAsync(GPUMapMode.READ);
+  const data = new Uint32Array(buf.getMappedRange().slice(0));
+  buf.unmap();
+  return { overflowCount: data[0], refsWritten: data[1] };
 }
 
 export interface TileSplatCompositorBindGroups {
@@ -767,6 +809,7 @@ export function createTileSplatBindGroups(
       { binding: 5, resource: gbufferTextures.depth.createView() },
       { binding: 6, resource: gbufferTextures.normal.createView() },
       { binding: 7, resource: gbufferTextures.material.createView() },
+      { binding: 8, resource: { buffer: resources.countersBuffer } },
     ],
   });
 
@@ -932,6 +975,9 @@ export function encodeFullComputeCompositorPipeline(
     pass.end();
   }
 
+  // Clear overflow/written counters for this frame
+  encoder.clearBuffer(resources.countersBuffer);
+
   // Pass 1: Count tile refs per splat (reads from projection cache)
   encoder.clearBuffer(resources.tileCountBuffer);
   {
@@ -984,6 +1030,9 @@ export function encodeFullComputeCompositorPipeline(
     pass.dispatchWorkgroups(Math.ceil(plan.splatCount / 256));
     pass.end();
   }
+
+  // Copy counters to readback buffer (async CPU access for budget adaptation)
+  encoder.copyBufferToBuffer(resources.countersBuffer, 0, resources.countersReadbackBuffer, 0, 16);
 
   // Pass 4: Global radix sort
   encodeRadixSort(encoder, resources.radixSort);

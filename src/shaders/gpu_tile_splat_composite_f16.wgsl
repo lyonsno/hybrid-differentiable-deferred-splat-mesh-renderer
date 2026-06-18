@@ -44,6 +44,7 @@ const PROJ_STRIDE = 9u;
 @group(1) @binding(5) var outputDepth: texture_storage_2d<r32float, write>;
 @group(1) @binding(6) var outputNormal: texture_storage_2d<r32uint, write>;
 @group(1) @binding(7) var outputMaterial: texture_storage_2d<r32uint, write>;
+@group(1) @binding(8) var<storage, read_write> counters: array<atomic<u32>>;
 
 const BATCH_SIZE = 64u;
 const ALPHA_THRESHOLD: f16 = 1.0h / 255.0h;

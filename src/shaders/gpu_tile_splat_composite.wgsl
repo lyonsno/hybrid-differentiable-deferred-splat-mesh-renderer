@@ -55,6 +55,8 @@ const PROJ_STRIDE = 9u;
 @group(1) @binding(5) var outputDepth: texture_storage_2d<r32float, write>;
 @group(1) @binding(6) var outputNormal: texture_storage_2d<r32uint, write>;
 @group(1) @binding(7) var outputMaterial: texture_storage_2d<r32uint, write>;
+// counters[0] = overflow count (refs that didn't fit), counters[1] = total refs written
+@group(1) @binding(8) var<storage, read_write> counters: array<atomic<u32>>;
 
 // --- Pass 1: Count (reads tile bounds from projection cache) ---
 @compute @workgroup_size(256)
@@ -112,6 +114,9 @@ fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
 
         // Sort key: Morton tile ID only. Per-tile depth sort handles ordering.
         radixKeys[linearIdx] = tileId;
+        atomicAdd(&counters[1], 1u); // total refs written
+      } else {
+        atomicAdd(&counters[0], 1u); // overflow
       }
     }
   }

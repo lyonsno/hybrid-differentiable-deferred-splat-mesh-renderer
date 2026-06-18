@@ -22,6 +22,7 @@ import {
   encodeFullComputeCompositorPipeline,
   encodeCompositeOnly,
   TILE_SPLAT_FRAME_UNIFORM_BYTES,
+  readTileRefCounters,
   type TileSplatCompositorResources,
   type TileSplatCompositorBindGroups,
 } from "./gpuTileSplatCompositor.js";
@@ -272,12 +273,19 @@ export function exposeOperatorWitnessFrameState(state: {
 // Internal scene state (not part of the public SplatScene interface)
 // ---------------------------------------------------------------------------
 
+const INITIAL_TILE_ENTRY_MULTIPLIER = 2.5;
+const ENTRY_HEADROOM_MULTIPLIER = 2.0;
+const BUDGET_SHRINK_THRESHOLD_FRAMES = 200;
+
 interface ActiveSceneInternal {
   sortedIndexBuffer: GPUBuffer;
   gpuSort: GpuSortPrototype;
   sortState: SortSettleState;
   effectiveOpacities: Float32Array;
   alphaDensityState: AlphaDensityState;
+  tileEntryMultiplier: number;
+  budgetShrinkFrameCount: number;
+  pendingReadback: boolean;
   computeCompositor: {
     resources: TileSplatCompositorResources;
     bindGroups: TileSplatCompositorBindGroups;
@@ -605,6 +613,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
         viewportHeight,
         tileSizePx: 16,
         splatCount: attributes.count,
+        tileEntryMultiplier: INITIAL_TILE_ENTRY_MULTIPLIER,
       });
       const computeResources = createTileSplatCompositor(device, computePlan, { f16: f16Supported });
       const computeOutputTexture = device.createTexture({
@@ -666,6 +675,9 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
           refreshState: createAlphaDensityRefreshState(initialViewMatrix, viewportWidth, viewportHeight),
           summary: alphaDensitySummary,
         },
+        tileEntryMultiplier: INITIAL_TILE_ENTRY_MULTIPLIER,
+        budgetShrinkFrameCount: 0,
+        pendingReadback: false,
         computeCompositor: {
           resources: computeResources,
           bindGroups: computeBindGroups,
@@ -755,6 +767,51 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
           params.ambientIntensity,
         );
       }
+
+      // Schedule async readback of tile-ref counters for budget adaptation.
+      // Non-blocking — result consumed on a future frame via checkBudgetGrowth.
+      if (!internal.pendingReadback) {
+        internal.pendingReadback = true;
+        readTileRefCounters(cc.resources).then((result) => {
+          internal.pendingReadback = false;
+          const { overflowCount, refsWritten } = result;
+          const totalNeeded = refsWritten + overflowCount;
+          const splatCount = scene.count;
+
+          if (overflowCount > 0 && splatCount > 0) {
+            // Grow: ensure multiplier covers actual demand with headroom
+            const needed = (totalNeeded / splatCount) * ENTRY_HEADROOM_MULTIPLIER;
+            if (needed > internal.tileEntryMultiplier) {
+              internal.tileEntryMultiplier = needed;
+              internal.budgetShrinkFrameCount = 0;
+              // Signal that compositor needs rebuild — resizeViewport will
+              // detect the plan mismatch on next frame since we force a size change
+              const plan = cc.resources.plan;
+              // Force rebuild by invalidating the plan dimensions
+              (plan as { viewportWidth: number }).viewportWidth = -1;
+            }
+          } else if (splatCount > 0 && refsWritten > 0) {
+            // Shrink check: if usage is consistently below 50% capacity
+            const utilization = refsWritten / cc.resources.plan.maxTotalTileRefs;
+            if (utilization < 0.5) {
+              internal.budgetShrinkFrameCount++;
+              if (internal.budgetShrinkFrameCount >= BUDGET_SHRINK_THRESHOLD_FRAMES) {
+                const target = Math.max(
+                  INITIAL_TILE_ENTRY_MULTIPLIER,
+                  (refsWritten / splatCount) * ENTRY_HEADROOM_MULTIPLIER,
+                );
+                internal.tileEntryMultiplier = Math.max(target, internal.tileEntryMultiplier * 0.9);
+                internal.budgetShrinkFrameCount = 0;
+                (cc.resources.plan as { viewportWidth: number }).viewportWidth = -1;
+              }
+            } else {
+              internal.budgetShrinkFrameCount = 0;
+            }
+          }
+        }).catch(() => {
+          internal.pendingReadback = false;
+        });
+      }
     },
 
     presentTexture(renderPass: GPURenderPassEncoder, textureView: GPUTextureView): void {
@@ -785,6 +842,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
         viewportHeight: height,
         tileSizePx: 16,
         splatCount: scene.count,
+        tileEntryMultiplier: internal.tileEntryMultiplier,
       });
       const computeResources = createTileSplatCompositor(device, computePlan, { f16: f16Supported });
       const computeOutputTexture = device.createTexture({
