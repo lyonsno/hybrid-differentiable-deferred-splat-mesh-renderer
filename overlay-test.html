@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="data:," />
+  <title>Splat Overlay P0 Test</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+
+    #viewport {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Checkerboard background to prove transparency */
+    #background {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background-image:
+        linear-gradient(45deg, #444 25%, transparent 25%),
+        linear-gradient(-45deg, #444 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #444 75%),
+        linear-gradient(-45deg, transparent 75%, #444 75%);
+      background-size: 40px 40px;
+      background-position: 0 0, 0 20px, 20px -20px, -20px 0px;
+      background-color: #222;
+    }
+
+    #info {
+      position: fixed;
+      top: 8px; left: 8px;
+      color: #0f0;
+      font: 13px/1.4 monospace;
+      background: rgba(0,0,0,0.7);
+      padding: 8px 12px;
+      border-radius: 4px;
+      pointer-events: none;
+      z-index: 20;
+      white-space: pre;
+    }
+
+    #dropzone {
+      position: fixed;
+      bottom: 16px; left: 50%;
+      transform: translateX(-50%);
+      color: #aaa;
+      font: 14px/1.4 sans-serif;
+      background: rgba(0,0,0,0.7);
+      padding: 10px 20px;
+      border-radius: 6px;
+      border: 2px dashed #555;
+      z-index: 20;
+      text-align: center;
+    }
+    #dropzone.dragover {
+      border-color: #0f0;
+      color: #0f0;
+    }
+  </style>
+</head>
+<body>
+  <div id="viewport">
+    <div id="background"></div>
+    <!-- Splat overlay canvas will be inserted here by createSplatOverlay -->
+  </div>
+  <div id="info">Initializing WebGPU...</div>
+  <div id="dropzone">Drop a .ply file here, or loading default scene</div>
+  <script type="module" src="/src/overlayTest.ts"></script>
+</body>
+</html>

@@ -13,7 +13,7 @@ import {
   type SplatScene,
 } from "./splatRenderer.js";
 import { decodeLocalPlySplatPayload } from "./localPly.js";
-import { type SplatAttributes } from "./splats.js";
+import { fetchFirstSmokeSplatPayload, type SplatAttributes } from "./splats.js";
 import { type AlphaDensityAccountingMode } from "./realSmokeScene.js";
 import { shouldRefreshAlphaDensity } from "./alphaDensityRefresh.js";
 
@@ -30,6 +30,10 @@ export interface SplatOverlayHandle {
   ): void;
   /** Load a PLY splat file from a URL or ArrayBuffer. */
   loadPly(source: string | ArrayBuffer, fileName?: string): Promise<void>;
+  /** Load from our JSON manifest format (sidecar binary). */
+  loadManifest(url: string): Promise<void>;
+  /** Load pre-decoded SplatAttributes directly. */
+  loadAttributes(attributes: SplatAttributes): void;
   /** Start the render loop (synced to host requestAnimationFrame). */
   start(): void;
   /** Stop rendering. */
@@ -38,6 +42,8 @@ export interface SplatOverlayHandle {
   destroy(): void;
   /** The overlay canvas element (for CSS positioning by host). */
   readonly canvas: HTMLCanvasElement;
+  /** Current scene (null if nothing loaded). */
+  readonly scene: SplatScene | null;
 }
 
 export interface SplatOverlayOptions {
@@ -64,6 +70,18 @@ function multiplyMat4(a: Float32Array, b: Float32Array): Float32Array {
     }
   }
   return out;
+}
+
+// Y-flip to match WebGPU clip space convention used by the splat compositor
+const VERTICAL_FLIP = new Float32Array([
+  1, 0, 0, 0,
+  0, -1, 0, 0,
+  0, 0, 1, 0,
+  0, 0, 0, 1,
+]);
+
+function composeViewProj(proj: Float32Array, view: Float32Array): Float32Array {
+  return multiplyMat4(VERTICAL_FLIP, multiplyMat4(proj, view));
 }
 
 function cameraFollowLightDir(pos: Float32Array): [number, number, number] {
@@ -131,8 +149,24 @@ export async function createSplatOverlay(
   ) {
     currentView.set(viewMatrix);
     currentProj.set(projectionMatrix);
-    currentViewProj = multiplyMat4(projectionMatrix, viewMatrix) as Float32Array<ArrayBuffer>;
+    currentViewProj = composeViewProj(projectionMatrix, viewMatrix) as Float32Array<ArrayBuffer>;
     currentCameraPos.set(cameraPosition);
+  }
+
+  function initScene(attributes: SplatAttributes) {
+    if (scene) {
+      renderer.destroyScene(scene);
+      scene = null;
+    }
+    const { width, height } = resizeCanvas(gpu);
+    const initView = currentView[0] === 0
+      ? new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])
+      : currentView;
+    const initProj = currentProj[0] === 0
+      ? new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1, -1, 0, 0, -0.02, 0])
+      : currentProj;
+    const initViewProj = multiplyMat4(initProj, initView);
+    scene = renderer.loadScene(attributes, alphaDensityMode, initView, initViewProj, width, height);
   }
 
   async function loadPly(source: string | ArrayBuffer, fileName?: string) {
@@ -146,34 +180,16 @@ export async function createSplatOverlay(
       bytes = source;
       fileName = fileName ?? "scene.ply";
     }
+    initScene(decodeLocalPlySplatPayload(fileName, bytes));
+  }
 
-    const attributes = decodeLocalPlySplatPayload(fileName, bytes);
+  async function loadManifest(url: string) {
+    const attributes = await fetchFirstSmokeSplatPayload(url);
+    initScene(attributes);
+  }
 
-    // Destroy previous scene
-    if (scene) {
-      renderer.destroyScene(scene);
-      scene = null;
-    }
-
-    const { width, height } = resizeCanvas(gpu);
-
-    // Initial camera — identity if host hasn't set matrices yet
-    const initView = currentView[0] === 0
-      ? new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])
-      : currentView;
-    const initProj = currentProj[0] === 0
-      ? new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1, -1, 0, 0, -0.02, 0])
-      : currentProj;
-    const initViewProj = multiplyMat4(initProj, initView);
-
-    scene = renderer.loadScene(
-      attributes,
-      alphaDensityMode,
-      initView,
-      initViewProj,
-      width,
-      height,
-    );
+  function loadAttributes(attributes: SplatAttributes) {
+    initScene(attributes);
   }
 
   function frame() {
@@ -277,9 +293,12 @@ export async function createSplatOverlay(
   return {
     setCameraMatrices,
     loadPly,
+    loadManifest,
+    loadAttributes,
     start,
     stop,
     destroy,
     canvas,
+    get scene() { return scene; },
   };
 }
