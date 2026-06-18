@@ -313,7 +313,6 @@ export function encodeRadixSortInit(
 export function encodeRadixSort(
   encoder: GPUCommandEncoder,
   resources: RadixSortResources,
-  indirect?: { buffer: GPUBuffer; offset: number },
 ): void {
   const { numSortWorkgroups, numPrefixWorkgroups } = resources;
 
@@ -327,18 +326,10 @@ export function encodeRadixSort(
     const histPass = encoder.beginComputePass({ label: `radix_histogram_${passIdx}` });
     histPass.setPipeline(resources.histogramPipeline);
     histPass.setBindGroup(0, sortBindGroup);
-    if (indirect) {
-      histPass.dispatchWorkgroupsIndirect(indirect.buffer, indirect.offset);
-    } else {
-      histPass.dispatchWorkgroups(numSortWorkgroups);
-    }
+    histPass.dispatchWorkgroups(numSortWorkgroups);
     histPass.end();
 
     // 3. Prefix sum over histogram (in-place scan)
-    // Prefix sum size depends on histogram buckets × workgroups, not element count.
-    // With indirect dispatch the actual workgroup count may be smaller than
-    // numSortWorkgroups, so the histogram is partially filled. The prefix sum
-    // still needs to scan the full histogram layout to produce correct offsets.
     const scanPass = encoder.beginComputePass({ label: `radix_prefix_scan_${passIdx}` });
     scanPass.setPipeline(resources.prefixScanPipeline);
     scanPass.setBindGroup(0, prefixBindGroup);
@@ -357,11 +348,7 @@ export function encodeRadixSort(
     const scatterPass = encoder.beginComputePass({ label: `radix_scatter_${passIdx}` });
     scatterPass.setPipeline(resources.scatterPipeline);
     scatterPass.setBindGroup(0, sortBindGroup);
-    if (indirect) {
-      scatterPass.dispatchWorkgroupsIndirect(indirect.buffer, indirect.offset);
-    } else {
-      scatterPass.dispatchWorkgroups(numSortWorkgroups);
-    }
+    scatterPass.dispatchWorkgroups(numSortWorkgroups);
     scatterPass.end();
   }
 }

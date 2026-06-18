@@ -11,7 +11,7 @@ import {
   positionCameraFromTarget,
 } from "./camera.js";
 import { handleDoubleClickPivot } from "./clickToPivot.js";
-import { loadDroppedSplatFile, decodeLocalPlySplatPayload } from "./localPly.js";
+import { loadDroppedSplatFile } from "./localPly.js";
 import {
   createRenderDemandState,
   markRenderFrameFinished,
@@ -46,11 +46,9 @@ import {
   finishFrameTiming,
   formatFrameTimingOverlay,
   exposeOperatorWitnessFrameTimings,
-  exposeOperatorWitnessFrameState,
   type SplatScene,
   type SplatRenderer,
 } from "./splatRenderer.js";
-import { shouldRefreshAlphaDensity } from "./alphaDensityRefresh.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -59,7 +57,6 @@ import { shouldRefreshAlphaDensity } from "./alphaDensityRefresh.js";
 const statsEl = document.getElementById("stats")!;
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 const SORT_BACKEND = "gpu-bitonic-cpu-depth-keys";
-const ALPHA_DENSITY_SETTLE_MS = 200;
 
 // Light control state -- L key cycles modes, arrow keys adjust angle in fixed mode
 type LightMode = "camera" | "fixed" | "overhead" | "rim";
@@ -352,14 +349,7 @@ async function main() {
   }
 
   // ---- Initial load ----
-  if (assetPath.endsWith(".ply")) {
-    statsEl.textContent = `Loading PLY: ${assetPath}...`;
-    const resp = await fetch(assetPath);
-    if (!resp.ok) throw new Error(`Failed to fetch PLY: ${resp.status} ${resp.statusText}`);
-    await replaceSplatScene(decodeLocalPlySplatPayload(assetPath, await resp.arrayBuffer()), assetPath);
-  } else {
-    await replaceSplatScene(await fetchFirstSmokeSplatPayload(assetPath), assetPath);
-  }
+  await replaceSplatScene(await fetchFirstSmokeSplatPayload(assetPath), assetPath);
 
   bindDroppedSplatLoading(canvas, async (file) => {
     statsEl.textContent = `Loading ${file.name}...`;
@@ -405,40 +395,25 @@ async function main() {
       });
     }
 
-    // Resize compute compositor textures if viewport changed
-    activeScene = renderer.resizeViewport(scene, width, height);
-    const resizedScene = activeScene;
-
     // Upload uniforms
     const view = getViewMatrix(cam);
     const proj = getProjectionMatrix(cam, aspect);
     const viewProj = composeFirstSmokeViewProjection(proj, view);
 
-    // Alpha-density refresh (settled view)
-    const alphaDensityRefreshed = shouldRefreshAlphaDensity(
-      renderer.alphaDensityState(resizedScene).refreshState,
-      view, width, height, now, ALPHA_DENSITY_SETTLE_MS,
-    );
-    if (alphaDensityRefreshed) {
-      timeFrameStage(frameTiming, "alpha-density-refresh", () => {
-        renderer.refreshAlphaDensity(resizedScene, viewProj, width, height, ALPHA_DENSITY_MODE);
-      });
-    }
-
     const encoder = gpu.device.createCommandEncoder();
 
     // GPU sort
-    const gpuSortRefreshed = renderer.shouldRefreshSort(resizedScene, view, now);
+    const gpuSortRefreshed = renderer.shouldRefreshSort(scene, view, now);
     if (gpuSortRefreshed) {
       timeFrameStage(frameTiming, "gpu-sort-refresh", () => {
-        renderer.encodeSort(resizedScene, encoder, view);
+        renderer.encodeSort(scene, encoder, view);
       });
     }
-    const pendingGpuSort = renderer.sortRefreshPending(resizedScene, view);
+    const pendingGpuSort = renderer.sortRefreshPending(scene, view);
 
     // Render splats (compositor + screen-space normals + deferred lighting)
     const cameraPosition = new Float32Array(cam.position);
-    renderer.renderFrame(resizedScene, {
+    renderer.renderFrame(scene, {
       viewProj,
       viewMatrix: view,
       cameraPosition,
@@ -477,15 +452,15 @@ async function main() {
 
     // G-buffer debug views or final lit/color output
     if (gbufferViewMode === "depth") {
-      renderer.gbufferDebugPresenter.drawDepth(renderPass, resizedScene.gbufferDepthView);
+      renderer.gbufferDebugPresenter.drawDepth(renderPass, scene.gbufferDepthView);
     } else if (gbufferViewMode === "normal") {
-      renderer.gbufferDebugPresenter.drawNormal(renderPass, resizedScene.gbufferDepthView, resizedScene.gbufferNormalView, resizedScene.gbufferMaterialView);
+      renderer.gbufferDebugPresenter.drawNormal(renderPass, scene.gbufferDepthView, scene.gbufferNormalView, scene.gbufferMaterialView);
     } else if (gbufferViewMode === "roughness") {
-      renderer.gbufferDebugPresenter.drawRoughness(renderPass, resizedScene.gbufferDepthView, resizedScene.gbufferNormalView, resizedScene.gbufferMaterialView);
+      renderer.gbufferDebugPresenter.drawRoughness(renderPass, scene.gbufferDepthView, scene.gbufferNormalView, scene.gbufferMaterialView);
     } else if (gbufferViewMode === "lit") {
-      renderer.presentTexture(renderPass, resizedScene.litView);
+      renderer.presentTexture(renderPass, scene.litView);
     } else {
-      renderer.presentTexture(renderPass, resizedScene.outputView);
+      renderer.presentTexture(renderPass, scene.outputView);
     }
     renderPass.end();
 
@@ -497,25 +472,15 @@ async function main() {
       gpu.device.queue.submit([encoder.finish()]);
     });
 
-    // Tile-ref budget readback disabled — mapAsync causes GPU pipeline stalls.
-    // Budget is sized generously at init; occasional overflow is accepted.
-
     // Read GPU timings (async, one frame behind)
     if (writeTimestamps) {
       readTimestamps(ts).then((t) => { gpuTimings = t; });
     }
 
-    // Expose frame state to operator witness
-    exposeOperatorWitnessFrameState({
-      frameSerial,
-      witnessView: operatorWitnessViewMode,
-      revision: operatorWitnessRevision,
-    });
-
     // ---- Stats overlay ----
-    const alphaSummary = renderer.alphaDensityState(resizedScene).summary;
+    const alphaSummary = renderer.alphaDensityState(scene).summary;
     const lightLabel = LIGHT_MODES[lightModeIndex] + (LIGHT_MODES[lightModeIndex] === "fixed" ? ` az:${fixedLightAzimuth.toFixed(1)} el:${fixedLightElevation.toFixed(1)}` : "");
-    let statsText = `${width}x${height} | ${displayFps} fps | ${resizedScene.count.toLocaleString()} splats | light: ${lightLabel} (${lightIntensity.toFixed(1)}) amb:${ambientIntensity.toFixed(2)} | view: ${gbufferViewMode}`;
+    let statsText = `${width}x${height} | ${displayFps} fps | ${scene.count.toLocaleString()} splats | light: ${lightLabel} (${lightIntensity.toFixed(1)}) amb:${ambientIntensity.toFixed(2)} | view: ${gbufferViewMode}`;
     const frameTimingOverlay = formatFrameTimingOverlay(frameTiming);
     statsText += ` | ${frameTimingOverlay}`;
     if (gpuTimings.size > 0) {
@@ -523,25 +488,19 @@ async function main() {
         statsText += ` | ${label}: ${ms.toFixed(2)}ms`;
       }
     }
-    // Tile budget telemetry from witness surface
-    const witnessBudget = (window as unknown as {
-      __MESH_SPLAT_SMOKE__?: { operatorWitness?: { tileBudget?: { multiplier: number; refsWritten: number; overflowCount: number; utilization: number } } };
-    }).__MESH_SPLAT_SMOKE__?.operatorWitness?.tileBudget;
-    if (witnessBudget) {
-      statsText += ` | budget: ${witnessBudget.multiplier.toFixed(1)}x ${(witnessBudget.utilization * 100).toFixed(0)}% util`;
-      if (witnessBudget.overflowCount > 0) {
-        statsText += ` OVERFLOW:${witnessBudget.overflowCount}`;
-      }
-    }
     statsEl.textContent = statsText;
     exposeOperatorWitnessFrameTimings(finishFrameTiming(frameTiming));
 
-    // Always schedule next frame — continuous rendering like PlayCanvas.
-    // Eliminates restart latency when camera starts moving after idle.
-    requestAnimationFrame(frame);
+    if (shouldContinueRendering({
+      activeInput,
+      pendingGpuSort,
+      pendingAlphaDensity: renderer.alphaDensityState(scene).refreshState.needsRefresh,
+    })) {
+      requestFrame();
+    }
   }
 
-  requestAnimationFrame(frame);
+  requestFrame();
 }
 
 main().catch((err) => {

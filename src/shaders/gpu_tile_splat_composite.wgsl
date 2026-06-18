@@ -55,8 +55,6 @@ const PROJ_STRIDE = 9u;
 @group(1) @binding(5) var outputDepth: texture_storage_2d<r32float, write>;
 @group(1) @binding(6) var outputNormal: texture_storage_2d<r32uint, write>;
 @group(1) @binding(7) var outputMaterial: texture_storage_2d<r32uint, write>;
-// counters[0] = overflow count (refs that didn't fit), counters[1] = total refs written
-@group(1) @binding(8) var<storage, read_write> counters: array<atomic<u32>>;
 
 // --- Pass 1: Count (reads tile bounds from projection cache) ---
 @compute @workgroup_size(256)
@@ -80,10 +78,11 @@ fn count_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
   }
 }
 
-// --- Pass 3: Place entries (scatter-free binning) ---
-// Writes tile entries directly at prefix-summed offsets. No global sort needed —
-// entries are already grouped by tile because each tile's range is contiguous
-// in the prefix-summed offset space.
+// --- Pass 3: Scatter (reads from projection cache) ---
+// Writes ref data into tileRefs AND sort keys for global radix sort.
+// Values buffer is pre-initialized with identity by radix sort init pass.
+
+@group(2) @binding(0) var<storage, read_write> radixKeys: array<u32>;
 
 @compute @workgroup_size(256)
 fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
@@ -94,6 +93,7 @@ fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
   let packed = projCache[cacheBase + 7u];
   if (packed == 0xFFFFFFFFu) { return; } // invisible sentinel
 
+  // Read tile bounds from cache
   let minTileX = packed & 0xFFu;
   let minTileY = (packed >> 8u) & 0xFFu;
   let maxTileX = (packed >> 16u) & 0xFFu;
@@ -106,10 +106,12 @@ fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
       let baseOffset = tileOffsets[tileId];
       let linearIdx = baseOffset + slot;
       if (linearIdx < frame.totalTileRefs) {
+        // Tile entry: just the sortRank (projection cache index).
+        // The per-tile sort and compositor read projected data from projCache.
         tileEntries[linearIdx] = sortRank;
-        atomicAdd(&counters[1], 1u);
-      } else {
-        atomicAdd(&counters[0], 1u);
+
+        // Sort key: Morton tile ID only. Per-tile depth sort handles ordering.
+        radixKeys[linearIdx] = tileId;
       }
     }
   }
@@ -313,35 +315,33 @@ fn composite(
   let gbNrm11 = octEncode(normalize(gbNrmWeighted3 + vec3f(0.0, 0.0001, 0.0)));
 
   // Write results for the 2x2 pixel quad
-  // debugMode bit 0: transparent background (for overlay compositing)
-  let transparentBg = (bitcast<u32>(frame.debugMode) & 1u) != 0u;
-  let bgColor = select(vec3f(0.02, 0.02, 0.04), vec3f(0.0), transparentBg);
+  let bgColor = vec3f(0.02, 0.02, 0.04);
   let outputSize = textureDimensions(outputColor);
 
   if (basePixel.x < outputSize.x && basePixel.y < outputSize.y) {
     let px = vec2i(basePixel);
-    textureStore(outputColor, px, vec4f(c00 + T.x * bgColor, 1.0 - T.x));
+    textureStore(outputColor, px, vec4f(c00 + T.x * bgColor, 1.0));
     textureStore(outputDepth, px, vec4f(gbDepth.x, 0.0, 0.0, 0.0));
     textureStore(outputNormal, px, vec4u(pack2x16float(gbNrm00), 0u, 0u, 0u));
     textureStore(outputMaterial, px, vec4u(pack2x16float(gbMat00), 0u, 0u, 0u));
   }
   if (basePixel.x + 1u < outputSize.x && basePixel.y < outputSize.y) {
     let px = vec2i(vec2u(basePixel.x + 1u, basePixel.y));
-    textureStore(outputColor, px, vec4f(c10 + T.y * bgColor, 1.0 - T.y));
+    textureStore(outputColor, px, vec4f(c10 + T.y * bgColor, 1.0));
     textureStore(outputDepth, px, vec4f(gbDepth.y, 0.0, 0.0, 0.0));
     textureStore(outputNormal, px, vec4u(pack2x16float(gbNrm10), 0u, 0u, 0u));
     textureStore(outputMaterial, px, vec4u(pack2x16float(gbMat10), 0u, 0u, 0u));
   }
   if (basePixel.x < outputSize.x && basePixel.y + 1u < outputSize.y) {
     let px = vec2i(vec2u(basePixel.x, basePixel.y + 1u));
-    textureStore(outputColor, px, vec4f(c01 + T.z * bgColor, 1.0 - T.z));
+    textureStore(outputColor, px, vec4f(c01 + T.z * bgColor, 1.0));
     textureStore(outputDepth, px, vec4f(gbDepth.z, 0.0, 0.0, 0.0));
     textureStore(outputNormal, px, vec4u(pack2x16float(gbNrm01), 0u, 0u, 0u));
     textureStore(outputMaterial, px, vec4u(pack2x16float(gbMat01), 0u, 0u, 0u));
   }
   if (basePixel.x + 1u < outputSize.x && basePixel.y + 1u < outputSize.y) {
     let px = vec2i(vec2u(basePixel.x + 1u, basePixel.y + 1u));
-    textureStore(outputColor, px, vec4f(c11 + T.w * bgColor, 1.0 - T.w));
+    textureStore(outputColor, px, vec4f(c11 + T.w * bgColor, 1.0));
     textureStore(outputDepth, px, vec4f(gbDepth.w, 0.0, 0.0, 0.0));
     textureStore(outputNormal, px, vec4u(pack2x16float(gbNrm11), 0u, 0u, 0u));
     textureStore(outputMaterial, px, vec4u(pack2x16float(gbMat11), 0u, 0u, 0u));

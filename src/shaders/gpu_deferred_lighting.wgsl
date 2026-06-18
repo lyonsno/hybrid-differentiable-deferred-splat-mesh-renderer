@@ -86,14 +86,12 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let size = vec2i(textureDimensions(colorTexture));
   if (px.x >= size.x || px.y >= size.y) { return; }
 
-  let colorSample = textureLoad(colorTexture, px, 0);
-  let albedoSrgb = colorSample.rgb;
-  let splatAlpha = colorSample.a;
+  let albedoSrgb = textureLoad(colorTexture, px, 0).rgb;
   let depth = textureLoad(depthTexture, px, 0).r;
 
-  // Background: pass through (preserve alpha for overlay transparency)
+  // Background: pass through
   if (depth >= 0.9999) {
-    textureStore(outputLit, px, vec4f(albedoSrgb, splatAlpha));
+    textureStore(outputLit, px, vec4f(albedoSrgb, 1.0));
     return;
   }
 
@@ -141,5 +139,5 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let tonemapped = color / (color + vec3f(1.0));
   let mapped = linearToSrgb(tonemapped);
 
-  textureStore(outputLit, px, vec4f(mapped, splatAlpha));
+  textureStore(outputLit, px, vec4f(mapped, 1.0));
 }

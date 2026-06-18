@@ -72,8 +72,6 @@ export interface RenderFrameParams {
   lightDirection: [number, number, number];
   lightIntensity: number;
   ambientIntensity: number;
-  /** When true, compositor writes transparent background for overlay compositing. */
-  transparentBackground?: boolean;
 }
 
 export interface SplatRenderer {
@@ -91,11 +89,6 @@ export interface SplatRenderer {
   renderFrame(scene: SplatScene, params: RenderFrameParams, encoder: GPUCommandEncoder): void;
   presentTexture(renderPass: GPURenderPassEncoder, textureView: GPUTextureView): void;
   readonly gbufferDebugPresenter: GBufferDebugPresenter;
-  resizeViewport(scene: SplatScene, width: number, height: number): SplatScene;
-  refreshAlphaDensity(
-    scene: SplatScene, viewProj: Float32Array, width: number, height: number,
-    alphaDensityMode: AlphaDensityAccountingMode,
-  ): void;
   destroyScene(scene: SplatScene): void;
   readonly alphaDensityState: (scene: SplatScene) => AlphaDensityState;
 }
@@ -145,7 +138,7 @@ export function roundRuntimeMetric(value: number): number {
 // Constants
 // ---------------------------------------------------------------------------
 
-export const GPU_SORT_SETTLE_MS = 0;
+export const GPU_SORT_SETTLE_MS = 160;
 
 // ---------------------------------------------------------------------------
 // Sort settle state
@@ -252,48 +245,9 @@ export function exposeOperatorWitnessFrameTimings(frameTimings: FrameTimingSumma
   }
 }
 
-export interface TileBudgetTelemetry {
-  multiplier: number;
-  budget: number;
-  refsWritten: number;
-  overflowCount: number;
-  utilization: number;
-}
-
-export function exposeTileBudgetTelemetry(telemetry: TileBudgetTelemetry): void {
-  const runtimeWindow = window as unknown as {
-    __MESH_SPLAT_SMOKE__?: { operatorWitness?: Record<string, unknown> };
-  };
-  const operatorWitness = runtimeWindow.__MESH_SPLAT_SMOKE__?.operatorWitness;
-  if (operatorWitness) {
-    operatorWitness.tileBudget = telemetry;
-  }
-}
-
-export function exposeOperatorWitnessFrameState(state: {
-  frameSerial: number;
-  witnessView: string;
-  revision: number;
-}): void {
-  const runtimeWindow = window as unknown as {
-    __MESH_SPLAT_SMOKE__?: { operatorWitness?: Record<string, unknown> };
-  };
-  const operatorWitness = runtimeWindow.__MESH_SPLAT_SMOKE__?.operatorWitness;
-  if (operatorWitness) {
-    operatorWitness.frameSerial = state.frameSerial;
-    operatorWitness.witnessView = state.witnessView;
-    operatorWitness.revision = state.revision;
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Internal scene state (not part of the public SplatScene interface)
 // ---------------------------------------------------------------------------
-
-// Fixed tile-ref budget. Telemetry showed 41× peak demand at pathological
-// close-up on 94K splats at Retina resolution. 48× gives headroom.
-// No dynamic readback — mapAsync causes GPU pipeline stalls.
-const TILE_ENTRY_MULTIPLIER = 48;
 
 interface ActiveSceneInternal {
   sortedIndexBuffer: GPUBuffer;
@@ -628,7 +582,6 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
         viewportHeight,
         tileSizePx: 16,
         splatCount: attributes.count,
-        tileEntryMultiplier: TILE_ENTRY_MULTIPLIER,
       });
       const computeResources = createTileSplatCompositor(device, computePlan, { f16: f16Supported });
       const computeOutputTexture = device.createTexture({
@@ -737,9 +690,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
       const cc = internal.computeCompositor;
 
       // Upload frame uniforms
-      writeTileSplatFrameUniforms(cc.frameUniformData, params.viewProj, cc.resources.plan, {
-        transparentBackground: params.transparentBackground,
-      });
+      writeTileSplatFrameUniforms(cc.frameUniformData, params.viewProj, cc.resources.plan);
       device.queue.writeBuffer(cc.resources.frameUniformBuffer, 0, cc.frameUniformData);
 
       // Full compositor pipeline or composite-only
@@ -779,7 +730,6 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
           params.ambientIntensity,
         );
       }
-
     },
 
     presentTexture(renderPass: GPURenderPassEncoder, textureView: GPUTextureView): void {
@@ -788,122 +738,6 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
 
     get gbufferDebugPresenter(): GBufferDebugPresenter {
       return gbufferDebug;
-    },
-
-    resizeViewport(scene: SplatScene, width: number, height: number): SplatScene {
-      const internal = scene._internal;
-      const cc = internal.computeCompositor;
-      if (cc.resources.plan.viewportWidth === width && cc.resources.plan.viewportHeight === height) {
-        return scene;
-      }
-      // Destroy old compositor textures
-      cc.resources.destroy();
-      cc.outputTexture.destroy();
-      cc.gbufferDepthTexture.destroy();
-      cc.gbufferNormalTexture.destroy();
-      cc.gbufferMaterialTexture.destroy();
-      cc.litTexture.destroy();
-
-      // Recreate at new size
-      const computePlan = planTileSplatCompositor({
-        viewportWidth: width,
-        viewportHeight: height,
-        tileSizePx: 16,
-        splatCount: scene.count,
-        tileEntryMultiplier: TILE_ENTRY_MULTIPLIER,
-      });
-      const computeResources = createTileSplatCompositor(device, computePlan, { f16: f16Supported });
-      const computeOutputTexture = device.createTexture({
-        label: "compute_compositor_output",
-        size: [width, height],
-        format: "rgba16float",
-        usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
-      });
-      const gbufferDepthTexture = device.createTexture({
-        label: "gbuffer_depth",
-        size: [width, height],
-        format: "r32float",
-        usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
-      });
-      const gbufferNormalTexture = device.createTexture({
-        label: "gbuffer_normal",
-        size: [width, height],
-        format: "r32uint",
-        usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
-      });
-      const gbufferMaterialTexture = device.createTexture({
-        label: "gbuffer_material",
-        size: [width, height],
-        format: "r32uint",
-        usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
-      });
-      const litTexture = device.createTexture({
-        label: "deferred_lit_output",
-        size: [width, height],
-        format: "rgba16float",
-        usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
-      });
-      const computeBindGroups = createTileSplatBindGroups(
-        device,
-        computeResources,
-        {
-          positionBuffer: scene.buffers.positionBuffer,
-          colorBuffer: scene.buffers.colorBuffer,
-          scaleBuffer: scene.buffers.scaleBuffer,
-          rotationBuffer: scene.buffers.rotationBuffer,
-          opacityBuffer: scene.buffers.opacityBuffer,
-          normalBuffer: scene.buffers.normalBuffer,
-          roughnessBuffer: scene.buffers.roughnessBuffer,
-          metalnessBuffer: scene.buffers.metalnessBuffer,
-          sortedIndexBuffer: internal.sortedIndexBuffer,
-        },
-        computeOutputTexture,
-        { depth: gbufferDepthTexture, normal: gbufferNormalTexture, material: gbufferMaterialTexture },
-      );
-
-      internal.computeCompositor = {
-        resources: computeResources,
-        bindGroups: computeBindGroups,
-        outputTexture: computeOutputTexture,
-        gbufferDepthTexture,
-        gbufferNormalTexture,
-        gbufferMaterialTexture,
-        litTexture,
-        frameUniformData: new Float32Array(TILE_SPLAT_FRAME_UNIFORM_BYTES / 4),
-        lastSortedViewProj: null,
-        hasSortedRefs: false,
-      };
-
-      return {
-        attributes: scene.attributes,
-        buffers: scene.buffers,
-        count: scene.count,
-        hasPerSplatNormals: scene.hasPerSplatNormals,
-        outputView: computeOutputTexture.createView(),
-        litView: litTexture.createView(),
-        gbufferDepthView: gbufferDepthTexture.createView(),
-        gbufferNormalView: gbufferNormalTexture.createView(),
-        gbufferMaterialView: gbufferMaterialTexture.createView(),
-        _internal: internal,
-      };
-    },
-
-    refreshAlphaDensity(
-      scene: SplatScene, viewProj: Float32Array, width: number, height: number,
-      alphaDensityMode: AlphaDensityAccountingMode,
-    ): void {
-      const internal = scene._internal;
-      internal.alphaDensityState.summary = writeAlphaDensityCompensatedOpacities(
-        internal.effectiveOpacities,
-        scene.attributes,
-        viewProj,
-        width,
-        height,
-        REAL_SCANIVERSE_SPLAT_SCALE,
-        REAL_SCANIVERSE_MIN_RADIUS_PX,
-        alphaDensityMode,
-      );
-      device.queue.writeBuffer(scene.buffers.opacityBuffer, 0, internal.effectiveOpacities);
     },
 
     destroyScene(scene: SplatScene): void {
