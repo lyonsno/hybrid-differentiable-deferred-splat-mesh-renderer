@@ -11,7 +11,7 @@ import {
   positionCameraFromTarget,
 } from "./camera.js";
 import { handleDoubleClickPivot } from "./clickToPivot.js";
-import { loadDroppedSplatFile } from "./localPly.js";
+import { loadDroppedSplatFile, decodeLocalPlySplatPayload } from "./localPly.js";
 import {
   createRenderDemandState,
   markRenderFrameFinished,
@@ -352,7 +352,14 @@ async function main() {
   }
 
   // ---- Initial load ----
-  await replaceSplatScene(await fetchFirstSmokeSplatPayload(assetPath), assetPath);
+  if (assetPath.endsWith(".ply")) {
+    statsEl.textContent = `Loading PLY: ${assetPath}...`;
+    const resp = await fetch(assetPath);
+    if (!resp.ok) throw new Error(`Failed to fetch PLY: ${resp.status} ${resp.statusText}`);
+    await replaceSplatScene(decodeLocalPlySplatPayload(assetPath, await resp.arrayBuffer()), assetPath);
+  } else {
+    await replaceSplatScene(await fetchFirstSmokeSplatPayload(assetPath), assetPath);
+  }
 
   bindDroppedSplatLoading(canvas, async (file) => {
     statsEl.textContent = `Loading ${file.name}...`;
@@ -490,6 +497,9 @@ async function main() {
       gpu.device.queue.submit([encoder.finish()]);
     });
 
+    // Schedule async tile-ref counter readback for budget adaptation (must be after submit)
+    renderer.scheduleReadback(resizedScene);
+
     // Read GPU timings (async, one frame behind)
     if (writeTimestamps) {
       readTimestamps(ts).then((t) => { gpuTimings = t; });
@@ -511,6 +521,16 @@ async function main() {
     if (gpuTimings.size > 0) {
       for (const [label, ms] of gpuTimings) {
         statsText += ` | ${label}: ${ms.toFixed(2)}ms`;
+      }
+    }
+    // Tile budget telemetry from witness surface
+    const witnessBudget = (window as unknown as {
+      __MESH_SPLAT_SMOKE__?: { operatorWitness?: { tileBudget?: { multiplier: number; refsWritten: number; overflowCount: number; utilization: number } } };
+    }).__MESH_SPLAT_SMOKE__?.operatorWitness?.tileBudget;
+    if (witnessBudget) {
+      statsText += ` | budget: ${witnessBudget.multiplier.toFixed(1)}x ${(witnessBudget.utilization * 100).toFixed(0)}% util`;
+      if (witnessBudget.overflowCount > 0) {
+        statsText += ` OVERFLOW:${witnessBudget.overflowCount}`;
       }
     }
     statsEl.textContent = statsText;

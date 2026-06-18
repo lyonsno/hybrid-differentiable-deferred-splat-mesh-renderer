@@ -92,6 +92,8 @@ export interface SplatRenderer {
   renderFrame(scene: SplatScene, params: RenderFrameParams, encoder: GPUCommandEncoder): void;
   presentTexture(renderPass: GPURenderPassEncoder, textureView: GPUTextureView): void;
   readonly gbufferDebugPresenter: GBufferDebugPresenter;
+  /** Call after queue.submit to schedule async counter readback for budget adaptation. */
+  scheduleReadback(scene: SplatScene): void;
   resizeViewport(scene: SplatScene, width: number, height: number): SplatScene;
   refreshAlphaDensity(
     scene: SplatScene, viewProj: Float32Array, width: number, height: number,
@@ -253,6 +255,32 @@ export function exposeOperatorWitnessFrameTimings(frameTimings: FrameTimingSumma
   }
 }
 
+export interface TileBudgetTelemetry {
+  multiplier: number;
+  budget: number;
+  refsWritten: number;
+  overflowCount: number;
+  utilization: number;
+}
+
+export function exposeTileBudgetTelemetry(telemetry: TileBudgetTelemetry): void {
+  const runtimeWindow = window as unknown as {
+    __MESH_SPLAT_SMOKE__?: { operatorWitness?: Record<string, unknown> };
+  };
+  const operatorWitness = runtimeWindow.__MESH_SPLAT_SMOKE__?.operatorWitness;
+  if (operatorWitness) {
+    operatorWitness.tileBudget = telemetry;
+  }
+  // Post to local telemetry sink (fire-and-forget)
+  try {
+    fetch("/api/telemetry", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ts: Date.now(), ...telemetry }),
+    }).catch(() => {});
+  } catch { /* dev server may not be running */ }
+}
+
 export function exposeOperatorWitnessFrameState(state: {
   frameSerial: number;
   witnessView: string;
@@ -275,6 +303,7 @@ export function exposeOperatorWitnessFrameState(state: {
 
 const INITIAL_TILE_ENTRY_MULTIPLIER = 2.5;
 const ENTRY_HEADROOM_MULTIPLIER = 2.0;
+const MAX_TILE_ENTRY_MULTIPLIER = 64; // Hard cap — beyond this, accept tearing
 const BUDGET_SHRINK_THRESHOLD_FRAMES = 200;
 
 interface ActiveSceneInternal {
@@ -286,6 +315,7 @@ interface ActiveSceneInternal {
   tileEntryMultiplier: number;
   budgetShrinkFrameCount: number;
   pendingReadback: boolean;
+  needsBudgetRebuild: boolean;
   computeCompositor: {
     resources: TileSplatCompositorResources;
     bindGroups: TileSplatCompositorBindGroups;
@@ -678,6 +708,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
         tileEntryMultiplier: INITIAL_TILE_ENTRY_MULTIPLIER,
         budgetShrinkFrameCount: 0,
         pendingReadback: false,
+        needsBudgetRebuild: false,
         computeCompositor: {
           resources: computeResources,
           bindGroups: computeBindGroups,
@@ -768,54 +799,70 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
         );
       }
 
-      // Schedule async readback of tile-ref counters for budget adaptation.
-      // Non-blocking — result consumed on a future frame via checkBudgetGrowth.
+      // Encode copy of counters to readback buffer (only when not already pending)
       if (!internal.pendingReadback) {
-        internal.pendingReadback = true;
-        readTileRefCounters(cc.resources).then((result) => {
-          internal.pendingReadback = false;
-          const { overflowCount, refsWritten } = result;
-          const totalNeeded = refsWritten + overflowCount;
-          const splatCount = scene.count;
-
-          if (overflowCount > 0 && splatCount > 0) {
-            // Grow: ensure multiplier covers actual demand with headroom
-            const needed = (totalNeeded / splatCount) * ENTRY_HEADROOM_MULTIPLIER;
-            if (needed > internal.tileEntryMultiplier) {
-              internal.tileEntryMultiplier = needed;
-              internal.budgetShrinkFrameCount = 0;
-              // Signal that compositor needs rebuild — resizeViewport will
-              // detect the plan mismatch on next frame since we force a size change
-              const plan = cc.resources.plan;
-              // Force rebuild by invalidating the plan dimensions
-              (plan as { viewportWidth: number }).viewportWidth = -1;
-            }
-          } else if (splatCount > 0 && refsWritten > 0) {
-            // Shrink check: if usage is consistently below 50% capacity
-            const utilization = refsWritten / cc.resources.plan.maxTotalTileRefs;
-            if (utilization < 0.5) {
-              internal.budgetShrinkFrameCount++;
-              if (internal.budgetShrinkFrameCount >= BUDGET_SHRINK_THRESHOLD_FRAMES) {
-                const target = Math.max(
-                  INITIAL_TILE_ENTRY_MULTIPLIER,
-                  (refsWritten / splatCount) * ENTRY_HEADROOM_MULTIPLIER,
-                );
-                internal.tileEntryMultiplier = Math.max(target, internal.tileEntryMultiplier * 0.9);
-                internal.budgetShrinkFrameCount = 0;
-                (cc.resources.plan as { viewportWidth: number }).viewportWidth = -1;
-              }
-            } else {
-              internal.budgetShrinkFrameCount = 0;
-            }
-          }
-        }).catch(() => {
-          internal.pendingReadback = false;
-        });
+        encoder.copyBufferToBuffer(cc.resources.countersBuffer, 0, cc.resources.countersReadbackBuffer, 0, 16);
       }
     },
 
     presentTexture(renderPass: GPURenderPassEncoder, textureView: GPUTextureView): void {
       texturePresenter.draw(renderPass, textureView);
+    },
+
+    scheduleReadback(scene: SplatScene): void {
+      const internal = scene._internal;
+      const cc = internal.computeCompositor;
+      if (internal.pendingReadback) return;
+
+      internal.pendingReadback = true;
+      readTileRefCounters(cc.resources).then((result) => {
+        internal.pendingReadback = false;
+        const { overflowCount, refsWritten } = result;
+        const totalNeeded = refsWritten + overflowCount;
+        const splatCount = scene.count;
+
+        // Expose telemetry to smoke harness
+        exposeTileBudgetTelemetry({
+          multiplier: internal.tileEntryMultiplier,
+          budget: cc.resources.plan.maxTotalTileRefs,
+          refsWritten,
+          overflowCount,
+          utilization: cc.resources.plan.maxTotalTileRefs > 0
+            ? refsWritten / cc.resources.plan.maxTotalTileRefs
+            : 0,
+        });
+
+        if (overflowCount > 0 && splatCount > 0) {
+          const needed = Math.min(
+            (totalNeeded / splatCount) * ENTRY_HEADROOM_MULTIPLIER,
+            MAX_TILE_ENTRY_MULTIPLIER,
+          );
+          if (needed > internal.tileEntryMultiplier) {
+            console.log(`[tile-budget] overflow: ${overflowCount} refs dropped, growing ${internal.tileEntryMultiplier.toFixed(1)}x → ${needed.toFixed(1)}x (${totalNeeded} needed, ${cc.resources.plan.maxTotalTileRefs} budget)`);
+            internal.tileEntryMultiplier = needed;
+            internal.budgetShrinkFrameCount = 0;
+            internal.needsBudgetRebuild = true;
+          }
+        } else if (splatCount > 0 && refsWritten > 0) {
+          const utilization = refsWritten / cc.resources.plan.maxTotalTileRefs;
+          if (utilization < 0.5) {
+            internal.budgetShrinkFrameCount++;
+            if (internal.budgetShrinkFrameCount >= BUDGET_SHRINK_THRESHOLD_FRAMES) {
+              const target = Math.max(
+                INITIAL_TILE_ENTRY_MULTIPLIER,
+                (refsWritten / splatCount) * ENTRY_HEADROOM_MULTIPLIER,
+              );
+              internal.tileEntryMultiplier = Math.max(target, internal.tileEntryMultiplier * 0.9);
+              internal.budgetShrinkFrameCount = 0;
+              internal.needsBudgetRebuild = true;
+            }
+          } else {
+            internal.budgetShrinkFrameCount = 0;
+          }
+        }
+      }).catch(() => {
+        internal.pendingReadback = false;
+      });
     },
 
     get gbufferDebugPresenter(): GBufferDebugPresenter {
@@ -825,9 +872,11 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
     resizeViewport(scene: SplatScene, width: number, height: number): SplatScene {
       const internal = scene._internal;
       const cc = internal.computeCompositor;
-      if (cc.resources.plan.viewportWidth === width && cc.resources.plan.viewportHeight === height) {
+      const sameSize = cc.resources.plan.viewportWidth === width && cc.resources.plan.viewportHeight === height;
+      if (sameSize && !internal.needsBudgetRebuild) {
         return scene;
       }
+      internal.needsBudgetRebuild = false;
       // Destroy old compositor textures
       cc.resources.destroy();
       cc.outputTexture.destroy();

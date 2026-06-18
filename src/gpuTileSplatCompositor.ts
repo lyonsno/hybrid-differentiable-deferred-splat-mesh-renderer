@@ -916,6 +916,7 @@ export function createTileSplatBindGroups(
       { binding: 5, resource: gbufferTextures.depth.createView() },
       { binding: 6, resource: gbufferTextures.normal.createView() },
       { binding: 7, resource: gbufferTextures.material.createView() },
+      { binding: 8, resource: { buffer: resources.countersBuffer } },
     ],
   });
 
@@ -1030,9 +1031,6 @@ export function encodeFullComputeCompositorPipeline(
     pass.dispatchWorkgroups(Math.ceil(plan.splatCount / 256));
     pass.end();
   }
-
-  // Copy counters to readback buffer (async CPU access for budget adaptation)
-  encoder.copyBufferToBuffer(resources.countersBuffer, 0, resources.countersReadbackBuffer, 0, 16);
 
   // Pass 4: Global radix sort
   encodeRadixSort(encoder, resources.radixSort);

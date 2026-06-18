@@ -48,6 +48,11 @@ export async function initGPU(canvas: HTMLCanvasElement): Promise<GPU> {
     }
   });
 
+  // Log all WebGPU validation errors to console
+  device.addEventListener("uncapturederror", (event: GPUUncapturedErrorEvent) => {
+    console.error("WebGPU validation error:", event.error.message);
+  });
+
   const context = canvas.getContext("webgpu");
   if (!context) {
     throw new Error("Failed to get WebGPU context");

@@ -261,6 +261,7 @@ export async function createSplatOverlay(
     renderPass.end();
 
     gpu.device.queue.submit([encoder.finish()]);
+    renderer.scheduleReadback(scene);
 
     animFrameId = requestAnimationFrame(frame);
   }
