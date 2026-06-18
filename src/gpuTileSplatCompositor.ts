@@ -117,8 +117,9 @@ export function planTileSplatCompositor(input: {
   // is 65535 per dimension → max 65535*256 = 16,776,960 refs.
   const MAX_DISPATCH_SAFE_REFS = 65535 * 256;
   // With the 8-tile-radius cap in the projection shader, each splat touches
-  // at most ~256 tiles. A multiplier of 16 handles views where most splats
-  // are close up. Capped by WebGPU dispatch limits.
+  // at most ~256 tiles. Budget starts modest and grows dynamically via GPU
+  // readback when overflow is detected. This avoids paying sort/reorder
+  // cost for empty buffer space while handling pathological close-up views.
   const tileEntryMultiplier = input.tileEntryMultiplier ?? 16;
   const maxTotalTileRefs = Math.min(
     Math.ceil(splatCount * tileEntryMultiplier),
