@@ -497,8 +497,8 @@ async function main() {
       gpu.device.queue.submit([encoder.finish()]);
     });
 
-    // Schedule async tile-ref counter readback for budget adaptation (must be after submit)
-    renderer.scheduleReadback(resizedScene);
+    // Tile-ref budget readback disabled — mapAsync causes GPU pipeline stalls.
+    // Budget is sized generously at init; occasional overflow is accepted.
 
     // Read GPU timings (async, one frame behind)
     if (writeTimestamps) {
