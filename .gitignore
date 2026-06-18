@@ -23,3 +23,4 @@ smoke-reports/final-color-contributor-anchor-witness-0527/*.png
 smoke-reports/final-color-contributor-anchor-witness-0527/report.md
 smoke-reports/final-color-contributor-anchor-witness-0527-*/
 uv.lock
+.telemetry/
