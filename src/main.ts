@@ -536,16 +536,12 @@ async function main() {
     statsEl.textContent = statsText;
     exposeOperatorWitnessFrameTimings(finishFrameTiming(frameTiming));
 
-    if (shouldContinueRendering({
-      activeInput,
-      pendingGpuSort,
-      pendingAlphaDensity: renderer.alphaDensityState(resizedScene).refreshState.needsRefresh,
-    })) {
-      requestFrame();
-    }
+    // Always schedule next frame — continuous rendering like PlayCanvas.
+    // Eliminates restart latency when camera starts moving after idle.
+    requestAnimationFrame(frame);
   }
 
-  requestFrame();
+  requestAnimationFrame(frame);
 }
 
 main().catch((err) => {

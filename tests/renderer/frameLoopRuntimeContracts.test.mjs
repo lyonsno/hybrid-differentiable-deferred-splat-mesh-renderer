@@ -7,7 +7,10 @@ const rendererSource = readFileSync(new URL("../../src/splatRenderer.ts", import
 
 function frameLoopSource() {
   const start = mainSource.indexOf("async function frame()");
-  const end = mainSource.indexOf("\n  requestFrame();\n}", start);
+  // Find end of frame function — look for requestAnimationFrame near end
+  let end = mainSource.indexOf("requestAnimationFrame(frame);\n  }", start);
+  if (end === -1) end = mainSource.indexOf("requestFrame();\n}", start);
+  if (end !== -1) end += 40; // include the line
   assert.notEqual(start, -1, "frame loop must remain visible to renderer contract tests");
   assert.notEqual(end, -1, "frame loop end must remain visible to renderer contract tests");
   return mainSource.slice(start, end);

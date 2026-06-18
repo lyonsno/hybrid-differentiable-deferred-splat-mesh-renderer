@@ -148,7 +148,7 @@ export function roundRuntimeMetric(value: number): number {
 // Constants
 // ---------------------------------------------------------------------------
 
-export const GPU_SORT_SETTLE_MS = 160;
+export const GPU_SORT_SETTLE_MS = 0;
 
 // ---------------------------------------------------------------------------
 // Sort settle state
