@@ -80,11 +80,10 @@ fn count_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
   }
 }
 
-// --- Pass 3: Scatter (reads from projection cache) ---
-// Writes ref data into tileRefs AND sort keys for global radix sort.
-// Values buffer is pre-initialized with identity by radix sort init pass.
-
-@group(2) @binding(0) var<storage, read_write> radixKeys: array<u32>;
+// --- Pass 3: Place entries (scatter-free binning) ---
+// Writes tile entries directly at prefix-summed offsets. No global sort needed —
+// entries are already grouped by tile because each tile's range is contiguous
+// in the prefix-summed offset space.
 
 @compute @workgroup_size(256)
 fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
@@ -95,7 +94,6 @@ fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
   let packed = projCache[cacheBase + 7u];
   if (packed == 0xFFFFFFFFu) { return; } // invisible sentinel
 
-  // Read tile bounds from cache
   let minTileX = packed & 0xFFu;
   let minTileY = (packed >> 8u) & 0xFFu;
   let maxTileX = (packed >> 16u) & 0xFFu;
@@ -108,15 +106,10 @@ fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
       let baseOffset = tileOffsets[tileId];
       let linearIdx = baseOffset + slot;
       if (linearIdx < frame.totalTileRefs) {
-        // Tile entry: just the sortRank (projection cache index).
-        // The per-tile sort and compositor read projected data from projCache.
         tileEntries[linearIdx] = sortRank;
-
-        // Sort key: Morton tile ID only. Per-tile depth sort handles ordering.
-        radixKeys[linearIdx] = tileId;
-        atomicAdd(&counters[1], 1u); // total refs written
+        atomicAdd(&counters[1], 1u);
       } else {
-        atomicAdd(&counters[0], 1u); // overflow
+        atomicAdd(&counters[0], 1u);
       }
     }
   }

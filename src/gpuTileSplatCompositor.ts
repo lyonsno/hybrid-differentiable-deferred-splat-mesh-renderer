@@ -5,8 +5,6 @@ import tileClassifyShader from "./shaders/gpu_tile_classify.wgsl?raw";
 import tileDepthSortShader from "./shaders/gpu_tile_depth_sort.wgsl?raw";
 import tileBucketSortShader from "./shaders/gpu_tile_bucket_sort.wgsl?raw";
 import tileChunkSortShader from "./shaders/gpu_tile_chunk_sort.wgsl?raw";
-import reorderRefsShader from "./shaders/gpu_reorder_refs.wgsl?raw";
-import { createRadixSort, encodeRadixSortInit, encodeRadixSort, type RadixSortResources } from "./gpuRadixSort.js";
 import prefixSumShader from "./shaders/gpu_prefix_sum.wgsl?raw";
 import writeSortIndirectShader from "./shaders/gpu_write_sort_indirect.wgsl?raw";
 
@@ -50,7 +48,6 @@ export interface TileSplatCompositorResources {
   readonly projectPipeline: GPUComputePipeline;
   readonly countPipeline: GPUComputePipeline;
   readonly scatterPipeline: GPUComputePipeline;
-  readonly reorderPipeline: GPUComputePipeline;
   readonly classifyPipeline: GPUComputePipeline;
   readonly tileDepthSortPipeline: GPUComputePipeline;
   readonly bucketSortPipeline: GPUComputePipeline;
@@ -64,8 +61,6 @@ export interface TileSplatCompositorResources {
   readonly projectBindGroupLayout: GPUBindGroupLayout;
   readonly splatBindGroupLayout: GPUBindGroupLayout;
   readonly tileBindGroupLayout: GPUBindGroupLayout;
-  readonly sortKeyBindGroupLayout: GPUBindGroupLayout;
-  readonly reorderBindGroupLayout: GPUBindGroupLayout;
   readonly classifyBindGroupLayout: GPUBindGroupLayout;
   readonly tileDepthSortBindGroupLayout: GPUBindGroupLayout;
   readonly bucketSortBindGroupLayout: GPUBindGroupLayout;
@@ -77,10 +72,8 @@ export interface TileSplatCompositorResources {
   readonly tileCountBuffer: GPUBuffer;
   readonly tileOffsetBuffer: GPUBuffer;
   readonly tileRefBuffer: GPUBuffer;
-  readonly tileRefSortedBuffer: GPUBuffer;
   readonly frameUniformBuffer: GPUBuffer;
   readonly prefixBlockSumsBuffer: GPUBuffer;
-  readonly reorderParamsBuffer: GPUBuffer;
   readonly tileDepthSortParamsBuffer: GPUBuffer;
   readonly classifyParamsBuffer: GPUBuffer;
   readonly bucketSortParamsBuffer: GPUBuffer;
@@ -93,7 +86,6 @@ export interface TileSplatCompositorResources {
   readonly totalChunksBuffer: GPUBuffer;
   readonly indirectDispatchBuffer: GPUBuffer;
   readonly prefixParamsBuffer: GPUBuffer;
-  readonly radixSort: RadixSortResources;
   readonly countersBuffer: GPUBuffer;
   readonly countersReadbackBuffer: GPUBuffer;
   readonly sortIndirectBuffer: GPUBuffer;
@@ -171,11 +163,6 @@ export function createTileSplatCompositor(
     code: tileChunkSortShader,
   });
 
-  const reorderModule = device.createShaderModule({
-    label: "reorder_refs_shader",
-    code: reorderRefsShader,
-  });
-
   const prefixSumModule = device.createShaderModule({
     label: "tile_prefix_sum_shader",
     code: prefixSumShader,
@@ -223,26 +210,6 @@ export function createTileSplatCompositor(
       { binding: 6, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "r32uint" } }, // G-buffer normal (oct, pack2x16float)
       { binding: 7, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "r32uint" } }, // G-buffer material (pack2x16float roughness, metalness)
       { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // overflow + written counters
-    ],
-  });
-
-  // @group(2) for scatter: just the radix sort key buffer (1 storage)
-  // Total: 6 + 3 + 1 = 10 storage buffers — at the limit
-  const sortKeyBindGroupLayout = device.createBindGroupLayout({
-    label: "tile_splat_sort_key_bgl",
-    entries: [
-      { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
-    ],
-  });
-
-  // Reorder has its own layout (standalone, no splat data needed)
-  const reorderBindGroupLayout = device.createBindGroupLayout({
-    label: "reorder_refs_bgl",
-    entries: [
-      { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
-      { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
-      { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } },
-      { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
     ],
   });
 
@@ -332,16 +299,6 @@ export function createTileSplatCompositor(
     bindGroupLayouts: [splatBindGroupLayout, tileBindGroupLayout],
   });
 
-  const threeGroupLayout = device.createPipelineLayout({
-    label: "tile_splat_3group_pl",
-    bindGroupLayouts: [splatBindGroupLayout, tileBindGroupLayout, sortKeyBindGroupLayout],
-  });
-
-  const reorderLayout = device.createPipelineLayout({
-    label: "reorder_refs_pl",
-    bindGroupLayouts: [reorderBindGroupLayout],
-  });
-
   const classifyLayout = device.createPipelineLayout({
     label: "classify_pl",
     bindGroupLayouts: [classifyBindGroupLayout],
@@ -387,14 +344,8 @@ export function createTileSplatCompositor(
 
   const scatterPipeline = device.createComputePipeline({
     label: "tile_splat_scatter",
-    layout: threeGroupLayout,
+    layout: twoGroupLayout,
     compute: { module: shaderModule, entryPoint: "scatter_tile_refs" },
-  });
-
-  const reorderPipeline = device.createComputePipeline({
-    label: "reorder_refs",
-    layout: reorderLayout,
-    compute: { module: reorderModule, entryPoint: "reorder_refs" },
   });
 
   const classifyPipeline = device.createComputePipeline({
@@ -506,12 +457,6 @@ export function createTileSplatCompositor(
     size: entryBufSize,
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
   });
-  const tileRefSortedBuffer = device.createBuffer({
-    label: "tile_entries_sorted",
-    size: entryBufSize,
-    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-  });
-
   const depthBuffer = device.createBuffer({
     label: "depth_buffer",
     size: Math.max(16, plan.splatCount * 4),
@@ -649,33 +594,20 @@ export function createTileSplatCompositor(
   device.queue.writeBuffer(chunkSortParamsBuffer, 0,
     new Uint32Array([MAX_CHUNKS, 0, 0, 0]));
 
-  // Reorder params — pre-written, static
-  const reorderParamsBuffer = device.createBuffer({
-    label: "reorder_params",
-    size: 16,
-    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-  });
-  device.queue.writeBuffer(reorderParamsBuffer, 0,
-    new Uint32Array([plan.maxTotalTileRefs, 1, 0, 0])); // stride=1: 1 u32 per tile entry
-
-  // Radix sort resources
-  const radixSort = createRadixSort(device, plan.maxTotalTileRefs);
-
   return {
     plan,
-    projectPipeline, countPipeline, scatterPipeline, reorderPipeline,
+    projectPipeline, countPipeline, scatterPipeline,
     classifyPipeline, tileDepthSortPipeline, bucketSortPipeline, chunkSortPipeline, writeChunkIndirectPipeline, writeSortIndirectPipeline, compositePipeline,
     prefixScanPipeline, prefixScanBlockSumsPipeline, prefixPropagatePipeline,
-    projectBindGroupLayout, splatBindGroupLayout, tileBindGroupLayout, sortKeyBindGroupLayout,
-    reorderBindGroupLayout, classifyBindGroupLayout, tileDepthSortBindGroupLayout,
+    projectBindGroupLayout, splatBindGroupLayout, tileBindGroupLayout,
+    classifyBindGroupLayout, tileDepthSortBindGroupLayout,
     bucketSortBindGroupLayout, chunkSortBindGroupLayout, writeChunkIndirectBindGroupLayout, prefixBindGroupLayout,
-    projCacheBuffer, depthBuffer, tileCountBuffer, tileOffsetBuffer, tileRefBuffer, tileRefSortedBuffer,
-    frameUniformBuffer, prefixBlockSumsBuffer, reorderParamsBuffer, tileDepthSortParamsBuffer,
+    projCacheBuffer, depthBuffer, tileCountBuffer, tileOffsetBuffer, tileRefBuffer,
+    frameUniformBuffer, prefixBlockSumsBuffer, tileDepthSortParamsBuffer,
     classifyParamsBuffer, bucketSortParamsBuffer, chunkSortParamsBuffer,
     smallTileListBuffer, largeTileListBuffer, tileListCountsBuffer,
     largeTileOverflowBasesBuffer, chunkRangesBuffer, totalChunksBuffer, indirectDispatchBuffer,
     prefixParamsBuffer,
-    radixSort,
     countersBuffer,
     countersReadbackBuffer,
     sortIndirectBuffer,
@@ -687,10 +619,8 @@ export function createTileSplatCompositor(
       tileCountBuffer.destroy();
       tileOffsetBuffer.destroy();
       tileRefBuffer.destroy();
-      tileRefSortedBuffer.destroy();
       prefixBlockSumsBuffer.destroy();
       prefixParamsBuffer.destroy();
-      reorderParamsBuffer.destroy();
       tileDepthSortParamsBuffer.destroy();
       classifyParamsBuffer.destroy();
       bucketSortParamsBuffer.destroy();
@@ -706,7 +636,6 @@ export function createTileSplatCompositor(
       countersReadbackBuffer.destroy();
       sortIndirectBuffer.destroy();
       sortIndirectMaxElementsBuffer.destroy();
-      radixSort.destroy();
     },
   };
 }
@@ -764,8 +693,6 @@ export interface TileSplatCompositorBindGroups {
   readonly projectBindGroup: GPUBindGroup;
   readonly splatBindGroup: GPUBindGroup;
   readonly tileBindGroup: GPUBindGroup;
-  readonly sortKeyBindGroup: GPUBindGroup;
-  readonly reorderBindGroup: GPUBindGroup;
   readonly classifyBindGroup: GPUBindGroup;
   readonly tileDepthSortBindGroup: GPUBindGroup;
   readonly bucketSortBindGroup: GPUBindGroup;
@@ -863,27 +790,6 @@ export function createTileSplatBindGroups(
     ],
   });
 
-  // Scatter only writes radix sort keys
-  const sortKeyBindGroup = device.createBindGroup({
-    label: "tile_splat_sort_key_bg",
-    layout: resources.sortKeyBindGroupLayout,
-    entries: [
-      { binding: 0, resource: { buffer: resources.radixSort.keyBuffers[0] } },
-    ],
-  });
-
-  // Reorder: standalone bind group
-  const reorderBindGroup = device.createBindGroup({
-    label: "reorder_refs_bg",
-    layout: resources.reorderBindGroupLayout,
-    entries: [
-      { binding: 0, resource: { buffer: resources.reorderParamsBuffer } },
-      { binding: 1, resource: { buffer: resources.radixSort.valueBuffers[0] } },
-      { binding: 2, resource: { buffer: resources.tileRefBuffer } },
-      { binding: 3, resource: { buffer: resources.tileRefSortedBuffer } },
-    ],
-  });
-
   // Classify tiles into small/large lists
   const classifyBindGroup = device.createBindGroup({
     label: "classify_bg",
@@ -904,7 +810,7 @@ export function createTileSplatBindGroups(
     label: "tile_depth_sort_bg",
     layout: resources.tileDepthSortBindGroupLayout,
     entries: [
-      { binding: 0, resource: { buffer: resources.tileRefSortedBuffer } }, // tileEntries
+      { binding: 0, resource: { buffer: resources.tileRefBuffer } }, // tileEntries
       { binding: 1, resource: { buffer: resources.tileCountBuffer } },
       { binding: 2, resource: { buffer: resources.depthBuffer } },
       { binding: 3, resource: { buffer: resources.smallTileListBuffer } },
@@ -919,7 +825,7 @@ export function createTileSplatBindGroups(
     layout: resources.bucketSortBindGroupLayout,
     entries: [
       { binding: 0, resource: { buffer: resources.bucketSortParamsBuffer } },
-      { binding: 1, resource: { buffer: resources.tileRefSortedBuffer } }, // tileEntries
+      { binding: 1, resource: { buffer: resources.tileRefBuffer } }, // tileEntries
       { binding: 2, resource: { buffer: resources.largeTileOverflowBasesBuffer } },
       { binding: 3, resource: { buffer: resources.tileCountBuffer } },
       { binding: 4, resource: { buffer: resources.depthBuffer } },
@@ -937,7 +843,7 @@ export function createTileSplatBindGroups(
     layout: resources.chunkSortBindGroupLayout,
     entries: [
       { binding: 0, resource: { buffer: resources.chunkSortParamsBuffer } },
-      { binding: 1, resource: { buffer: resources.tileRefSortedBuffer } }, // tileEntries
+      { binding: 1, resource: { buffer: resources.tileRefBuffer } }, // tileEntries
       { binding: 2, resource: { buffer: resources.depthBuffer } },
       { binding: 3, resource: { buffer: resources.chunkRangesBuffer } },
       { binding: 4, resource: { buffer: resources.totalChunksBuffer } },
@@ -953,14 +859,14 @@ export function createTileSplatBindGroups(
     ],
   });
 
-  // For composite: same tile layout but binding 2 points to sorted entries
+  // For composite/classify/sort: tile entries are already grouped by scatter-free binning
   const sortedTileBindGroup = device.createBindGroup({
     label: "tile_splat_sorted_tile_bg",
     layout: resources.tileBindGroupLayout,
     entries: [
       { binding: 0, resource: { buffer: resources.tileCountBuffer } },
       { binding: 1, resource: { buffer: resources.tileOffsetBuffer } },
-      { binding: 2, resource: { buffer: resources.tileRefSortedBuffer } },
+      { binding: 2, resource: { buffer: resources.tileRefBuffer } },
       { binding: 3, resource: outputTexture.createView() },
       { binding: 4, resource: { buffer: resources.depthBuffer } },
       { binding: 5, resource: gbufferTextures.depth.createView() },
@@ -982,7 +888,7 @@ export function createTileSplatBindGroups(
     ],
   });
 
-  return { projectBindGroup, splatBindGroup, tileBindGroup, sortKeyBindGroup, reorderBindGroup, classifyBindGroup, tileDepthSortBindGroup, bucketSortBindGroup, chunkSortBindGroup, writeChunkIndirectBindGroup, sortedTileBindGroup, prefixBindGroup };
+  return { projectBindGroup, splatBindGroup, tileBindGroup, classifyBindGroup, tileDepthSortBindGroup, bucketSortBindGroup, chunkSortBindGroup, writeChunkIndirectBindGroup, sortedTileBindGroup, prefixBindGroup };
 }
 
 /**
@@ -1067,46 +973,22 @@ export function encodeFullComputeCompositorPipeline(
     }
   }
 
-  // Pass 2.5: Init radix sort keys (0xFFFFFFFF sentinel) and values (identity)
-  encodeRadixSortInit(encoder, resources.radixSort);
-
-  // Pass 3: Scatter tile refs + write radix sort keys
+  // Pass 3: Place tile entries at prefix-summed offsets
   encoder.clearBuffer(resources.tileCountBuffer);
   {
-    const pass = encoder.beginComputePass({ label: "tile_scatter" });
+    const pass = encoder.beginComputePass({ label: "tile_place_entries" });
     pass.setPipeline(resources.scatterPipeline);
     pass.setBindGroup(0, bindGroups.splatBindGroup);
     pass.setBindGroup(1, bindGroups.tileBindGroup);
-    pass.setBindGroup(2, bindGroups.sortKeyBindGroup);
     pass.dispatchWorkgroups(Math.ceil(plan.splatCount / 256));
     pass.end();
   }
 
-  // Pass 3.5: Write indirect dispatch args for sort/reorder based on actual ref count
-  {
-    const pass = encoder.beginComputePass({ label: "write_sort_indirect" });
-    pass.setPipeline(resources.writeSortIndirectPipeline);
-    pass.setBindGroup(0, resources.writeSortIndirectBindGroup);
-    pass.dispatchWorkgroups(1);
-    pass.end();
-  }
+  // Scatter-free binning: tile entries are already correctly grouped in
+  // tileRefBuffer by the scatter pass (prefix-summed offsets guarantee
+  // contiguous per-tile ranges). No global radix sort needed.
 
-  // Pass 4: Global radix sort (indirect — sized by actual ref count)
-  encodeRadixSort(encoder, resources.radixSort, {
-    buffer: resources.sortIndirectBuffer,
-    offset: 0, // radix sort workgroups at slots [0..2]
-  });
-
-  // Pass 5: Reorder ref records by sorted permutation (indirect)
-  {
-    const pass = encoder.beginComputePass({ label: "tile_reorder" });
-    pass.setPipeline(resources.reorderPipeline);
-    pass.setBindGroup(0, bindGroups.reorderBindGroup);
-    pass.dispatchWorkgroupsIndirect(resources.sortIndirectBuffer, 3 * 4); // reorder at slots [3..5]
-    pass.end();
-  }
-
-  // Pass 5.5a: Classify tiles into small/large lists
+  // Pass 4: Classify tiles into small/large lists
   {
     encoder.clearBuffer(resources.tileListCountsBuffer);
     encoder.clearBuffer(resources.totalChunksBuffer);
