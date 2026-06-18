@@ -8,6 +8,7 @@ import tileChunkSortShader from "./shaders/gpu_tile_chunk_sort.wgsl?raw";
 import reorderRefsShader from "./shaders/gpu_reorder_refs.wgsl?raw";
 import { createRadixSort, encodeRadixSortInit, encodeRadixSort, type RadixSortResources } from "./gpuRadixSort.js";
 import prefixSumShader from "./shaders/gpu_prefix_sum.wgsl?raw";
+import writeSortIndirectShader from "./shaders/gpu_write_sort_indirect.wgsl?raw";
 
 // Frame uniforms: viewProj(64) + viewport(8) + tileSizePx(4) + debugMode(4) +
 //   tileGrid(8) + splatCount(4) + totalTileRefs(4) = 96
@@ -55,6 +56,7 @@ export interface TileSplatCompositorResources {
   readonly bucketSortPipeline: GPUComputePipeline;
   readonly chunkSortPipeline: GPUComputePipeline;
   readonly writeChunkIndirectPipeline: GPUComputePipeline;
+  readonly writeSortIndirectPipeline: GPUComputePipeline;
   readonly compositePipeline: GPUComputePipeline;
   readonly prefixScanPipeline: GPUComputePipeline;
   readonly prefixScanBlockSumsPipeline: GPUComputePipeline;
@@ -94,6 +96,8 @@ export interface TileSplatCompositorResources {
   readonly radixSort: RadixSortResources;
   readonly countersBuffer: GPUBuffer;
   readonly countersReadbackBuffer: GPUBuffer;
+  readonly sortIndirectBuffer: GPUBuffer;
+  readonly writeSortIndirectBindGroup: GPUBindGroup;
   destroy(): void;
 }
 
@@ -423,6 +427,25 @@ export function createTileSplatCompositor(
     compute: { module: chunkSortModule, entryPoint: "write_chunk_indirect" },
   });
 
+  // Write-sort-indirect: reads counters, writes dispatch args for sort/reorder
+  const writeSortIndirectModule = device.createShaderModule({
+    label: "write_sort_indirect_shader",
+    code: writeSortIndirectShader,
+  });
+  const writeSortIndirectBgl = device.createBindGroupLayout({
+    label: "write_sort_indirect_bgl",
+    entries: [
+      { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // counters
+      { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } }, // indirectArgs
+      { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } }, // maxElements
+    ],
+  });
+  const writeSortIndirectPipeline = device.createComputePipeline({
+    label: "write_sort_indirect",
+    layout: device.createPipelineLayout({ bindGroupLayouts: [writeSortIndirectBgl] }),
+    compute: { module: writeSortIndirectModule, entryPoint: "main" },
+  });
+
   const compositeModule = useF16
     ? device.createShaderModule({
         label: "tile_splat_composite_f16_shader",
@@ -507,6 +530,29 @@ export function createTileSplatCompositor(
     label: "tile_ref_counters_readback",
     size: 16,
     usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+  });
+
+  // Sort indirect dispatch buffer: 10 u32s (3 for radix sort, 3 for reorder, 3 for init, 1 for actual count)
+  const sortIndirectBuffer = device.createBuffer({
+    label: "sort_indirect_dispatch",
+    size: 10 * 4,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST,
+  });
+  // Uniform for maxElements
+  const sortIndirectMaxElementsBuffer = device.createBuffer({
+    label: "sort_indirect_max_elements",
+    size: 4,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  });
+  device.queue.writeBuffer(sortIndirectMaxElementsBuffer, 0, new Uint32Array([plan.maxTotalTileRefs]));
+  const writeSortIndirectBindGroup = device.createBindGroup({
+    label: "write_sort_indirect_bg",
+    layout: writeSortIndirectBgl,
+    entries: [
+      { binding: 0, resource: { buffer: countersBuffer } },
+      { binding: 1, resource: { buffer: sortIndirectBuffer } },
+      { binding: 2, resource: { buffer: sortIndirectMaxElementsBuffer } },
+    ],
   });
 
   const prefixBlockSumsBuffer = device.createBuffer({
@@ -618,7 +664,7 @@ export function createTileSplatCompositor(
   return {
     plan,
     projectPipeline, countPipeline, scatterPipeline, reorderPipeline,
-    classifyPipeline, tileDepthSortPipeline, bucketSortPipeline, chunkSortPipeline, writeChunkIndirectPipeline, compositePipeline,
+    classifyPipeline, tileDepthSortPipeline, bucketSortPipeline, chunkSortPipeline, writeChunkIndirectPipeline, writeSortIndirectPipeline, compositePipeline,
     prefixScanPipeline, prefixScanBlockSumsPipeline, prefixPropagatePipeline,
     projectBindGroupLayout, splatBindGroupLayout, tileBindGroupLayout, sortKeyBindGroupLayout,
     reorderBindGroupLayout, classifyBindGroupLayout, tileDepthSortBindGroupLayout,
@@ -632,6 +678,8 @@ export function createTileSplatCompositor(
     radixSort,
     countersBuffer,
     countersReadbackBuffer,
+    sortIndirectBuffer,
+    writeSortIndirectBindGroup,
     destroy() {
       projCacheBuffer.destroy();
       depthBuffer.destroy();
@@ -656,6 +704,8 @@ export function createTileSplatCompositor(
       indirectDispatchBuffer.destroy();
       countersBuffer.destroy();
       countersReadbackBuffer.destroy();
+      sortIndirectBuffer.destroy();
+      sortIndirectMaxElementsBuffer.destroy();
       radixSort.destroy();
     },
   };
@@ -1032,15 +1082,27 @@ export function encodeFullComputeCompositorPipeline(
     pass.end();
   }
 
-  // Pass 4: Global radix sort
-  encodeRadixSort(encoder, resources.radixSort);
+  // Pass 3.5: Write indirect dispatch args for sort/reorder based on actual ref count
+  {
+    const pass = encoder.beginComputePass({ label: "write_sort_indirect" });
+    pass.setPipeline(resources.writeSortIndirectPipeline);
+    pass.setBindGroup(0, resources.writeSortIndirectBindGroup);
+    pass.dispatchWorkgroups(1);
+    pass.end();
+  }
 
-  // Pass 5: Reorder ref records by sorted permutation
+  // Pass 4: Global radix sort (indirect — sized by actual ref count)
+  encodeRadixSort(encoder, resources.radixSort, {
+    buffer: resources.sortIndirectBuffer,
+    offset: 0, // radix sort workgroups at slots [0..2]
+  });
+
+  // Pass 5: Reorder ref records by sorted permutation (indirect)
   {
     const pass = encoder.beginComputePass({ label: "tile_reorder" });
     pass.setPipeline(resources.reorderPipeline);
     pass.setBindGroup(0, bindGroups.reorderBindGroup);
-    pass.dispatchWorkgroups(Math.ceil(plan.maxTotalTileRefs / 256));
+    pass.dispatchWorkgroupsIndirect(resources.sortIndirectBuffer, 3 * 4); // reorder at slots [3..5]
     pass.end();
   }
 
