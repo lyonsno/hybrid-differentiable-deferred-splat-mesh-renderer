@@ -20,6 +20,7 @@ const COMPACT_FOOTPRINT_SIGMA_RADIUS = 3.0;
 const COMPACT_FOOTPRINT_EPSILON = 0.000000001;
 const MIN_SPLAT_CLIP_W = 0.0001;
 const COV_LOW_PASS = 0.3;
+const LARGE_SPLAT_TILE_THRESHOLD = 16u;
 
 // Morton (Z-order) encoding for 2D tile coordinates.
 // Interleaves bits of x and y so spatially adjacent tiles have adjacent codes.
@@ -98,6 +99,11 @@ fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
   let minTileY = (packed >> 8u) & 0xFFu;
   let maxTileX = (packed >> 16u) & 0xFFu;
   let maxTileY = (packed >> 24u) & 0xFFu;
+
+  // Skip large splats — handled by cooperative large-splat scatter pass
+  let spanX = maxTileX - minTileX + 1u;
+  let spanY = maxTileY - minTileY + 1u;
+  if (spanX * spanY > LARGE_SPLAT_TILE_THRESHOLD) { return; }
 
   for (var tileY = minTileY; tileY <= maxTileY; tileY++) {
     for (var tileX = minTileX; tileX <= maxTileX; tileX++) {

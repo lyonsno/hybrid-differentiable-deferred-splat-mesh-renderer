@@ -40,6 +40,10 @@ struct FrameUniforms {
 @group(0) @binding(8) var<storage, read> roughnessData: array<f32>;
 @group(0) @binding(9) var<storage, read> metalnessData: array<f32>;
 @group(0) @binding(10) var<storage, read> normalData: array<f32>; // per-splat nx,ny,nz (stride 3) or empty
+@group(0) @binding(11) var<storage, read_write> largeSplatList: array<u32>;
+@group(0) @binding(12) var<storage, read_write> largeSplatCount: array<atomic<u32>>;
+
+const LARGE_SPLAT_TILE_THRESHOLD = 16u; // splats touching >16 tiles get cooperative scatter
 
 // --- Projection math (same as composite shader) ---
 
@@ -173,8 +177,17 @@ fn project_splats(@builtin(global_invocation_id) globalId: vec3u) {
   projCache[base + 6u] = pack2x16float(vec2f(radius, sourceOpacity));
   depthBuffer[sortRank] = bitcast<u32>(depthNdc); // separate depth buffer for per-tile sort
   // Pack tile bounds as 4 bytes (supports up to 255 tiles per axis)
-  projCache[base + 7u] = (minTileX & 0xFFu) | ((minTileY & 0xFFu) << 8u)
+  let tileBoundsPacked = (minTileX & 0xFFu) | ((minTileY & 0xFFu) << 8u)
                         | ((maxTileX & 0xFFu) << 16u) | ((maxTileY & 0xFFu) << 24u);
+  projCache[base + 7u] = tileBoundsPacked;
+
+  // Classify large splats for cooperative scatter
+  let spanX = maxTileX - minTileX + 1u;
+  let spanY = maxTileY - minTileY + 1u;
+  if (spanX * spanY > LARGE_SPLAT_TILE_THRESHOLD) {
+    let idx = atomicAdd(&largeSplatCount[0], 1u);
+    largeSplatList[idx] = sortRank;
+  }
 
   // Per-splat normal: use baked normal data if available, else covariance-derived
   var splatNormal = normal; // covariance-derived default
