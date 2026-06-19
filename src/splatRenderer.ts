@@ -653,16 +653,18 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
       const buffers = uploadSplatAttributeBuffers(device, attributes);
       const effectiveOpacities = new Float32Array(attributes.count);
 
-      const alphaDensitySummary = writeAlphaDensityCompensatedOpacities(
-        effectiveOpacities,
-        attributes,
-        initialViewProj,
-        viewportWidth,
-        viewportHeight,
-        REAL_SCANIVERSE_SPLAT_SCALE,
-        REAL_SCANIVERSE_MIN_RADIUS_PX,
-        alphaDensityMode,
-      );
+      // Use raw opacities — no alpha density compensation.
+      // Alpha density comp was over-reducing opacity in dense foliage, causing
+      // coverage gaps vs PlayCanvas (which doesn't do this compensation).
+      for (let i = 0; i < attributes.count; i++) {
+        effectiveOpacities[i] = Math.min(Math.max(attributes.opacities[i], 0), 1);
+      }
+      const alphaDensitySummary = {
+        tileCount: 0, hotTileCount: 0, alphaMassCap: 0,
+        maxTileAlphaMass: 0, meanTileAlphaMass: 0,
+        compensatedSplatCount: 0, minCompensationExponent: 1,
+        accountingMode: alphaDensityMode,
+      };
       device.queue.writeBuffer(buffers.opacityBuffer, 0, effectiveOpacities);
       const sortedIndexBuffer = gpuSort.indexBuffer;
 
