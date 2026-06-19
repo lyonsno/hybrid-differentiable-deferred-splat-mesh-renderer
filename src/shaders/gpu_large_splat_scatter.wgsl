@@ -42,7 +42,7 @@ const WG_SIZE = 64u;
 @group(1) @binding(2) var<storage, read_write> tileEntries: array<u32>;
 
 @group(2) @binding(0) var<storage, read> largeSplatList: array<u32>;
-@group(2) @binding(1) var<storage, read> largeSplatCount: array<atomic<u32>>;
+@group(2) @binding(1) var<storage, read> largeSplatCount: array<u32>;
 
 @compute @workgroup_size(64)
 fn main(
@@ -50,7 +50,7 @@ fn main(
   @builtin(local_invocation_index) localIdx: u32,
 ) {
   let largeSplatIdx = wid.x;
-  if (largeSplatIdx >= atomicLoad(&largeSplatCount[0])) { return; }
+  if (largeSplatIdx >= largeSplatCount[0]) { return; }
 
   let sortRank = largeSplatList[largeSplatIdx];
   let cacheBase = sortRank * PROJ_STRIDE;

@@ -614,7 +614,7 @@ export function createTileSplatCompositor(
   const largeSplatCountBuffer = device.createBuffer({
     label: "large_splat_count",
     size: 16,
-    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
   });
   // Indirect dispatch args for large splat scatter (x=largeSplatCount, y=1, z=1)
   const largeSplatIndirectBuffer = device.createBuffer({
