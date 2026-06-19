@@ -54,6 +54,8 @@ export interface SplatScene {
   readonly buffers: SplatGpuBuffers;
   readonly count: number;
   readonly hasPerSplatNormals: boolean;
+  readonly splatScale: number;
+  readonly shDegree: number;
   readonly outputView: GPUTextureView;
   readonly litView: GPUTextureView;
   readonly gbufferDepthView: GPUTextureView;
@@ -254,6 +256,7 @@ interface ActiveSceneInternal {
   gpuSort: GpuSortPrototype;
   sortState: SortSettleState;
   effectiveOpacities: Float32Array;
+  shColorBuffer: Float32Array;
   alphaDensityState: AlphaDensityState;
   computeCompositor: {
     resources: TileSplatCompositorResources;
@@ -539,6 +542,92 @@ function destroySceneInternal(scene: SplatScene): void {
 }
 
 // ---------------------------------------------------------------------------
+// CPU SH evaluation
+// ---------------------------------------------------------------------------
+
+// Real SH basis constants (matches 3DGS reference implementation)
+const SH_C1 = 0.4886025119029199;
+const SH_C2_0 = 1.0925484305920792;
+const SH_C2_1 = 1.0925484305920792;
+const SH_C2_2 = 0.31539156525252005;
+const SH_C2_3 = 1.0925484305920792;
+const SH_C2_4 = 0.5462742152960396;
+const SH_C3_0 = 0.5900435899266435;
+const SH_C3_1 = 2.890611442640554;
+const SH_C3_2 = 0.4570457994644658;
+const SH_C3_3 = 0.3731763325901154;
+const SH_C3_4 = 0.4570457994644658;
+const SH_C3_5 = 1.445305721320277;
+const SH_C3_6 = 0.5900435899266435;
+
+function evaluateSHColors(
+  output: Float32Array,
+  positions: Float32Array,
+  dcColors: Float32Array,
+  shCoefficients: Float32Array,
+  coefficientCount: number,
+  count: number,
+  cameraPos: Float32Array | readonly number[],
+): void {
+  const camX = cameraPos[0], camY = cameraPos[1], camZ = cameraPos[2];
+  const stride = coefficientCount * 3; // floats per splat in SH buffer
+  // Coefficients are stored as [c0_r, c0_g, c0_b, c1_r, c1_g, c1_b, ...]
+  // Degree 1: coefficients 0-2 (3 basis functions)
+  // Degree 2: coefficients 3-7 (5 basis functions)
+  // Degree 3: coefficients 8-14 (7 basis functions)
+  const hasDeg2 = coefficientCount >= 8;
+  const hasDeg3 = coefficientCount >= 15;
+
+  for (let i = 0; i < count; i++) {
+    const p = i * 3;
+    // View direction: camera - splatPos, normalized
+    let x = camX - positions[p];
+    let y = camY - positions[p + 1];
+    let z = camZ - positions[p + 2];
+    const invLen = 1 / (Math.sqrt(x * x + y * y + z * z) || 1);
+    x *= invLen; y *= invLen; z *= invLen;
+
+    const b = i * stride;
+    // Degree 1: Y_1^{-1}=y, Y_1^0=z, Y_1^1=x
+    let sr = SH_C1 * (shCoefficients[b + 0] * y + shCoefficients[b + 3] * z + shCoefficients[b + 6] * x);
+    let sg = SH_C1 * (shCoefficients[b + 1] * y + shCoefficients[b + 4] * z + shCoefficients[b + 7] * x);
+    let sb = SH_C1 * (shCoefficients[b + 2] * y + shCoefficients[b + 5] * z + shCoefficients[b + 8] * x);
+
+    if (hasDeg2) {
+      // Degree 2 basis: xy, yz, (2zz-xx-yy), xz, (xx-yy)
+      const xx = x * x, yy = y * y, zz = z * z, xy = x * y, yz = y * z, xz = x * z;
+      const b2_0 = SH_C2_0 * xy;
+      const b2_1 = SH_C2_1 * yz;
+      const b2_2 = SH_C2_2 * (2 * zz - xx - yy);
+      const b2_3 = SH_C2_3 * xz;
+      const b2_4 = SH_C2_4 * (xx - yy);
+      sr += shCoefficients[b +  9] * b2_0 + shCoefficients[b + 12] * b2_1 + shCoefficients[b + 15] * b2_2 + shCoefficients[b + 18] * b2_3 + shCoefficients[b + 21] * b2_4;
+      sg += shCoefficients[b + 10] * b2_0 + shCoefficients[b + 13] * b2_1 + shCoefficients[b + 16] * b2_2 + shCoefficients[b + 19] * b2_3 + shCoefficients[b + 22] * b2_4;
+      sb += shCoefficients[b + 11] * b2_0 + shCoefficients[b + 14] * b2_1 + shCoefficients[b + 17] * b2_2 + shCoefficients[b + 20] * b2_3 + shCoefficients[b + 23] * b2_4;
+    }
+
+    if (hasDeg3) {
+      // Degree 3 basis functions
+      const xx = x * x, yy = y * y, zz = z * z;
+      const b3_0 = SH_C3_0 * y * (3 * xx - yy);
+      const b3_1 = SH_C3_1 * x * y * z;
+      const b3_2 = SH_C3_2 * y * (4 * zz - xx - yy);
+      const b3_3 = SH_C3_3 * z * (2 * zz - 3 * xx - 3 * yy);
+      const b3_4 = SH_C3_4 * x * (4 * zz - xx - yy);
+      const b3_5 = SH_C3_5 * z * (xx - yy);
+      const b3_6 = SH_C3_6 * x * (xx - 3 * yy);
+      sr += shCoefficients[b + 24] * b3_0 + shCoefficients[b + 27] * b3_1 + shCoefficients[b + 30] * b3_2 + shCoefficients[b + 33] * b3_3 + shCoefficients[b + 36] * b3_4 + shCoefficients[b + 39] * b3_5 + shCoefficients[b + 42] * b3_6;
+      sg += shCoefficients[b + 25] * b3_0 + shCoefficients[b + 28] * b3_1 + shCoefficients[b + 31] * b3_2 + shCoefficients[b + 34] * b3_3 + shCoefficients[b + 37] * b3_4 + shCoefficients[b + 40] * b3_5 + shCoefficients[b + 43] * b3_6;
+      sb += shCoefficients[b + 26] * b3_0 + shCoefficients[b + 29] * b3_1 + shCoefficients[b + 32] * b3_2 + shCoefficients[b + 35] * b3_3 + shCoefficients[b + 38] * b3_4 + shCoefficients[b + 41] * b3_5 + shCoefficients[b + 44] * b3_6;
+    }
+
+    output[p]     = Math.max(0, Math.min(1, dcColors[p]     + sr));
+    output[p + 1] = Math.max(0, Math.min(1, dcColors[p + 1] + sg));
+    output[p + 2] = Math.max(0, Math.min(1, dcColors[p + 2] + sb));
+  }
+}
+
+// ---------------------------------------------------------------------------
 // createSplatRenderer
 // ---------------------------------------------------------------------------
 
@@ -639,6 +728,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
         gpuSort,
         sortState,
         effectiveOpacities,
+        shColorBuffer: new Float32Array(attributes.count * 3),
         alphaDensityState: {
           refreshState: createAlphaDensityRefreshState(initialViewMatrix, viewportWidth, viewportHeight),
           summary: alphaDensitySummary,
@@ -662,6 +752,8 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
         buffers,
         count: attributes.count,
         hasPerSplatNormals,
+        splatScale: attributes.splatScale ?? 1.0,
+        shDegree: buffers.shDegree,
         outputView: computeOutputTexture.createView(),
         litView: litTexture.createView(),
         gbufferDepthView: gbufferDepthTexture.createView(),
@@ -689,8 +781,22 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
       const internal = scene._internal;
       const cc = internal.computeCompositor;
 
+      // Evaluate SH view-dependent colors on CPU and upload
+      if (scene.shDegree >= 1 && scene.attributes.sh) {
+        evaluateSHColors(
+          internal.shColorBuffer,
+          scene.attributes.positions,
+          scene.attributes.colors,
+          scene.attributes.sh.coefficients,
+          scene.attributes.sh.coefficientCount,
+          scene.count,
+          params.cameraPosition,
+        );
+        device.queue.writeBuffer(scene.buffers.colorBuffer, 0, internal.shColorBuffer);
+      }
+
       // Upload frame uniforms
-      writeTileSplatFrameUniforms(cc.frameUniformData, params.viewProj, cc.resources.plan);
+      writeTileSplatFrameUniforms(cc.frameUniformData, params.viewProj, cc.resources.plan, scene.splatScale, scene.shDegree, params.cameraPosition);
       device.queue.writeBuffer(cc.resources.frameUniformBuffer, 0, cc.frameUniformData);
 
       // Full compositor pipeline or composite-only

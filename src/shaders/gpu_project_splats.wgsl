@@ -20,13 +20,18 @@ const MIN_SPLAT_CLIP_W = 0.0001;
 const COV_LOW_PASS = 0.3;
 
 struct FrameUniforms {
-  viewProj: mat4x4f,
-  viewport: vec2f,
-  tileSizePx: f32,
-  debugMode: f32,
-  tileGrid: vec2u,
-  splatCount: u32,
-  totalTileRefs: u32,
+  viewProj: mat4x4f,       // offset 0,  size 64
+  viewport: vec2f,          // offset 64, size 8
+  tileSizePx: f32,          // offset 72, size 4
+  debugMode: f32,           // offset 76, size 4
+  tileGrid: vec2u,          // offset 80, size 8
+  splatCount: u32,          // offset 88, size 4
+  totalTileRefs: u32,       // offset 92, size 4
+  splatScale: f32,          // offset 96, size 4
+  shDegree: u32,            // offset 100, size 4
+  _pad0: vec2u,             // offset 104, size 8 (pad to align cameraPos at 112)
+  cameraPos: vec3f,         // offset 112, size 12 (align 16)
+  _pad1: f32,               // offset 124, size 4 → struct size 128
 };
 
 @group(0) @binding(0) var<uniform> frame: FrameUniforms;
@@ -108,7 +113,7 @@ fn project_splats(@builtin(global_invocation_id) globalId: vec3u) {
   let quatBase = splatId * 4u;
   let scaleLog = vec3f(scales[vecBase], scales[vecBase + 1u], scales[vecBase + 2u]);
   let rotation = vec4f(rotations[quatBase], rotations[quatBase + 1u], rotations[quatBase + 2u], rotations[quatBase + 3u]);
-  let scale = exp(scaleLog);
+  let scale = exp(scaleLog) * frame.splatScale;
   let axis0 = rotateAxis(rotation, vec3f(1.0, 0.0, 0.0)) * scale.x;
   let axis1 = rotateAxis(rotation, vec3f(0.0, 1.0, 0.0)) * scale.y;
   let axis2 = rotateAxis(rotation, vec3f(0.0, 0.0, 1.0)) * scale.z;

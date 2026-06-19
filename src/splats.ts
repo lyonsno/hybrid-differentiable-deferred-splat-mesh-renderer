@@ -51,6 +51,10 @@ export interface SplatAttributes {
   originalIds: Uint32Array;
   bounds: SplatBounds;
   layout: FirstSmokeSplatLayout;
+  /** GPU-side scale multiplier for splat radii. Defaults to 1.0 for
+   *  assets whose exp(scale) values produce correct screen-space footprints.
+   *  Auto-detected for raw PLY files where scales may need amplification. */
+  splatScale?: number;
 }
 
 export interface SplatSphericalHarmonics {
@@ -71,6 +75,7 @@ export interface SplatGpuBuffers {
   normalBuffer?: GPUBuffer;
   roughnessBuffer?: GPUBuffer;
   metalnessBuffer?: GPUBuffer;
+  shDegree: number;
   originalIdBuffer: GPUBuffer;
   bounds: SplatBounds;
   layout: FirstSmokeSplatLayout;
@@ -407,6 +412,7 @@ export function uploadSplatAttributeBuffers(
     metalnessBuffer: attributes.metalness
       ? createMappedStorageBuffer(device, attributes.metalness, "first_smoke_splat_metalness")
       : undefined,
+    shDegree: attributes.sh?.degree ?? 0,
     originalIdBuffer: createMappedStorageBuffer(
       device,
       attributes.originalIds,

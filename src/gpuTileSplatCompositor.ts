@@ -12,8 +12,9 @@ import largeSplatScatterShader from "./shaders/gpu_large_splat_scatter.wgsl?raw"
 import classifyLargeSplatsShader from "./shaders/gpu_classify_large_splats.wgsl?raw";
 
 // Frame uniforms: viewProj(64) + viewport(8) + tileSizePx(4) + debugMode(4) +
-//   tileGrid(8) + splatCount(4) + totalTileRefs(4) = 96
-export const TILE_SPLAT_FRAME_UNIFORM_BYTES = 96;
+//   tileGrid(8) + splatCount(4) + totalTileRefs(4) + splatScale(4) + shDegree(4) +
+//   pad(8) + cameraPos(12) + pad(4) = 128
+export const TILE_SPLAT_FRAME_UNIFORM_BYTES = 128;
 const PROJ_STRIDE_U32 = 9; // Must match PROJ_STRIDE in gpu_project_splats.wgsl
 const TILE_ENTRY_BYTES = 4; // 1 u32 per tile entry (sortRank)
 
@@ -730,6 +731,9 @@ export function writeTileSplatFrameUniforms(
   target: Float32Array,
   viewProj: Float32Array,
   plan: TileSplatCompositorPlan,
+  splatScale = 1.0,
+  shDegree = 0,
+  cameraPos?: Float32Array | readonly number[],
 ): void {
   target.set(viewProj, 0);
   target[16] = plan.viewportWidth;
@@ -741,6 +745,15 @@ export function writeTileSplatFrameUniforms(
   u32View[21] = plan.tileRows;
   u32View[22] = plan.splatCount;
   u32View[23] = plan.maxTotalTileRefs;
+  target[24] = splatScale;
+  u32View[25] = shDegree;
+  // u32View[26..27] = padding
+  // cameraPos at offset 112 = float index 28
+  if (cameraPos) {
+    target[28] = cameraPos[0];
+    target[29] = cameraPos[1];
+    target[30] = cameraPos[2];
+  }
 }
 
 export interface TileSplatCompositorBindGroups {

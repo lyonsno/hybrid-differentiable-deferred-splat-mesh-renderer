@@ -11,7 +11,7 @@ import {
   positionCameraFromTarget,
 } from "./camera.js";
 import { handleDoubleClickPivot } from "./clickToPivot.js";
-import { loadDroppedSplatFile } from "./localPly.js";
+import { loadDroppedSplatFile, decodeLocalPlySplatPayload } from "./localPly.js";
 import {
   createRenderDemandState,
   markRenderFrameFinished,
@@ -90,6 +90,14 @@ function selectedRealScaniverseWitnessViewMode(): RealScaniverseWitnessViewMode 
   return "default";
 }
 
+function selectedSplatScale(): number | undefined {
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get("splatScale");
+  if (raw === null) return undefined;
+  const val = Number(raw);
+  return Number.isFinite(val) && val > 0 ? val : undefined;
+}
+
 function normalizeOperatorWitnessViewMode(mode: string): RealScaniverseWitnessViewMode {
   if (mode === "dessert-close" || mode === "dessert-porous-close") {
     return mode;
@@ -101,11 +109,14 @@ function normalizeOperatorWitnessViewMode(mode: string): RealScaniverseWitnessVi
 // Light direction computation
 // ---------------------------------------------------------------------------
 
-function computeLightDirection(cameraPos: Float32Array): [number, number, number] {
+function computeLightDirection(cameraPos: Float32Array, cameraTarget: readonly number[]): [number, number, number] {
   const mode = LIGHT_MODES[lightModeIndex];
   let lx: number, ly: number, lz: number;
   if (mode === "camera") {
-    lx = -cameraPos[0]; ly = -cameraPos[1]; lz = -cameraPos[2];
+    // Light points from camera toward the orbit target, not toward the origin
+    lx = cameraTarget[0] - cameraPos[0];
+    ly = cameraTarget[1] - cameraPos[1];
+    lz = cameraTarget[2] - cameraPos[2];
     const len = Math.sqrt(lx * lx + ly * ly + lz * lz) || 1;
     lx /= len; ly /= len; lz /= len;
   } else if (mode === "overhead") {
@@ -168,7 +179,12 @@ async function main() {
   // Expose camera control for harvest view capture
   (window as unknown as Record<string, unknown>).__MESH_SPLAT_SET_CAMERA__ = (params: {
     azimuth?: number; elevation?: number; distance?: number;
+    target?: [number, number, number];
   }) => {
+    if (params.target !== undefined) {
+      cam.target = [...params.target];
+      cam.panOffset = [0, 0, 0];
+    }
     if (params.azimuth !== undefined) cam.azimuth = params.azimuth;
     if (params.elevation !== undefined) cam.elevation = params.elevation;
     if (params.distance !== undefined) cam.distance = params.distance;
@@ -349,7 +365,19 @@ async function main() {
   }
 
   // ---- Initial load ----
-  await replaceSplatScene(await fetchFirstSmokeSplatPayload(assetPath), assetPath);
+  const urlSplatScale = selectedSplatScale();
+  async function fetchSplatAttributes(path: string): Promise<SplatAttributes> {
+    if (path.toLowerCase().endsWith(".ply")) {
+      const response = await fetch(path);
+      if (!response.ok) throw new Error(`Failed to fetch PLY: ${response.status} ${response.statusText}`);
+      const attrs = decodeLocalPlySplatPayload(path, await response.arrayBuffer());
+      // URL param overrides auto-detected scale
+      if (urlSplatScale !== undefined) attrs.splatScale = urlSplatScale;
+      return attrs;
+    }
+    return fetchFirstSmokeSplatPayload(path);
+  }
+  await replaceSplatScene(await fetchSplatAttributes(assetPath), assetPath);
 
   bindDroppedSplatLoading(canvas, async (file) => {
     statsEl.textContent = `Loading ${file.name}...`;
@@ -419,7 +447,7 @@ async function main() {
       cameraPosition,
       viewportWidth: width,
       viewportHeight: height,
-      lightDirection: computeLightDirection(cameraPosition),
+      lightDirection: computeLightDirection(cameraPosition, cam.target),
       lightIntensity,
       ambientIntensity,
     }, encoder);

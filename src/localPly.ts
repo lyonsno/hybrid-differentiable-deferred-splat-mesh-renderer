@@ -156,7 +156,13 @@ export function decodeLocalPlySplatPayload(
     originalIds[row] = row;
   }
 
-  const bounds = boundsFromExtents(minX, minY, minZ, maxX, maxY, maxZ);
+  // Use percentile-based bounds (P5-P95) for framing to exclude outlier
+  // splats that inflate the bounding sphere. Falls back to min/max for
+  // small counts where percentiles aren't meaningful.
+  const bounds = count > 100
+    ? percentileBounds(positions, count, 0.05)
+    : boundsFromExtents(minX, minY, minZ, maxX, maxY, maxZ);
+
   return {
     count,
     sourceKind: "scaniverse_ply",
@@ -408,3 +414,30 @@ function sigmoid(value: number): number {
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
+
+function percentileBounds(
+  positions: Float32Array,
+  count: number,
+  trimFraction: number,
+): SplatBounds {
+  // Sample positions for sorting (full sort of 1M+ is expensive)
+  const sampleCount = Math.min(count, 50000);
+  const step = count / sampleCount;
+  const xs = new Float32Array(sampleCount);
+  const ys = new Float32Array(sampleCount);
+  const zs = new Float32Array(sampleCount);
+  for (let i = 0; i < sampleCount; i++) {
+    const base = Math.floor(i * step) * 3;
+    xs[i] = positions[base];
+    ys[i] = positions[base + 1];
+    zs[i] = positions[base + 2];
+  }
+  xs.sort();
+  ys.sort();
+  zs.sort();
+
+  const lo = Math.floor(sampleCount * trimFraction);
+  const hi = Math.min(Math.floor(sampleCount * (1 - trimFraction)), sampleCount - 1);
+  return boundsFromExtents(xs[lo], ys[lo], zs[lo], xs[hi], ys[hi], zs[hi]);
+}
+

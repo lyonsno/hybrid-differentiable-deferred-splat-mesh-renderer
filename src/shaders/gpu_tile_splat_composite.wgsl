@@ -13,6 +13,11 @@ struct FrameUniforms {
   tileGrid: vec2u,
   splatCount: u32,
   totalTileRefs: u32,
+  splatScale: f32,
+  shDegree: u32,
+  _pad0: vec2u,
+  cameraPos: vec3f,
+  _pad1: f32,
 };
 
 const TRANSMITTANCE_CUTOFF = 0.001;
