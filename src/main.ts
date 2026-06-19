@@ -32,7 +32,6 @@ import {
   REAL_SCANIVERSE_MIN_RADIUS_PX,
   REAL_SCANIVERSE_NEAR_FADE_END_NDC,
   REAL_SCANIVERSE_NEAR_FADE_START_NDC,
-  type AlphaDensityAccountingMode,
   type RealScaniverseWitnessViewMode,
 } from "./realSmokeScene.js";
 import {
@@ -73,12 +72,14 @@ let ambientIntensity = 0.12;
 
 function selectedSplatAssetPath(): string {
   const params = new URLSearchParams(window.location.search);
-  return params.get("splat") ?? REAL_SCANIVERSE_SMOKE_ASSET_PATH;
-}
-
-function selectedAlphaDensityMode(): AlphaDensityAccountingMode {
-  const params = new URLSearchParams(window.location.search);
-  return params.get("alpha-density") === "center-tile" ? "center-tile" : "coverage-aware";
+  const splat = params.get("splat");
+  if (splat === null) return REAL_SCANIVERSE_SMOKE_ASSET_PATH;
+  // Restrict to same-origin paths — reject absolute URLs to prevent SSRF
+  if (/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(splat)) {
+    console.warn("?splat= must be a relative path, not an absolute URL");
+    return REAL_SCANIVERSE_SMOKE_ASSET_PATH;
+  }
+  return splat;
 }
 
 function selectedRealScaniverseWitnessViewMode(): RealScaniverseWitnessViewMode {
@@ -162,7 +163,6 @@ function bindDroppedSplatLoading(
 // main()
 // ---------------------------------------------------------------------------
 
-const ALPHA_DENSITY_MODE = selectedAlphaDensityMode();
 const REAL_SCANIVERSE_WITNESS_VIEW = selectedRealScaniverseWitnessViewMode();
 
 async function main() {
@@ -210,11 +210,11 @@ async function main() {
   const ts = createTimestamps(gpu.device, gpu.timestampsSupported);
 
   // ---- G-buffer view mode: cycle with 'G' key ----
-  type GBufferViewMode = "color" | "depth" | "normal" | "roughness" | "lit";
+  type GBufferViewMode = "color" | "normal" | "roughness" | "metalness" | "lit";
   let gbufferViewMode: GBufferViewMode = "color";
   window.addEventListener("keydown", (e) => {
     if (e.key === "g" || e.key === "G") {
-      const modes: GBufferViewMode[] = ["color", "depth", "normal", "roughness", "lit"];
+      const modes: GBufferViewMode[] = ["color", "normal", "roughness", "metalness", "lit"];
       const idx = modes.indexOf(gbufferViewMode);
       gbufferViewMode = modes[(idx + 1) % modes.length];
       console.log(`G-buffer view: ${gbufferViewMode}`);
@@ -337,7 +337,6 @@ async function main() {
 
     activeScene = renderer.loadScene(
       attributes,
-      ALPHA_DENSITY_MODE,
       initialView,
       initialViewProj,
       initialViewportWidth,
@@ -428,6 +427,19 @@ async function main() {
     const proj = getProjectionMatrix(cam, aspect);
     const viewProj = composeFirstSmokeViewProjection(proj, view);
 
+    // Expose camera matrices for headless screenshot baking pipeline
+    (window as unknown as Record<string, unknown>).__MESH_SPLAT_CAMERA_STATE__ = {
+      viewMatrix: Array.from(view),
+      projectionMatrix: Array.from(proj),
+      viewportWidth: width,
+      viewportHeight: height,
+      cameraPosition: Array.from(cam.position),
+      cameraTarget: Array.from(cam.target),
+      distance: cam.distance,
+      azimuth: cam.azimuth,
+      elevation: cam.elevation,
+    };
+
     const encoder = gpu.device.createCommandEncoder();
 
     // GPU sort
@@ -479,12 +491,12 @@ async function main() {
     }
 
     // G-buffer debug views or final lit/color output
-    if (gbufferViewMode === "depth") {
-      renderer.gbufferDebugPresenter.drawDepth(renderPass, scene.gbufferDepthView);
-    } else if (gbufferViewMode === "normal") {
+    if (gbufferViewMode === "normal") {
       renderer.gbufferDebugPresenter.drawNormal(renderPass, scene.gbufferDepthView, scene.gbufferNormalView, scene.gbufferMaterialView);
     } else if (gbufferViewMode === "roughness") {
       renderer.gbufferDebugPresenter.drawRoughness(renderPass, scene.gbufferDepthView, scene.gbufferNormalView, scene.gbufferMaterialView);
+    } else if (gbufferViewMode === "metalness") {
+      renderer.gbufferDebugPresenter.drawMetalness(renderPass, scene.gbufferDepthView, scene.gbufferNormalView, scene.gbufferMaterialView);
     } else if (gbufferViewMode === "lit") {
       renderer.presentTexture(renderPass, scene.litView);
     } else {

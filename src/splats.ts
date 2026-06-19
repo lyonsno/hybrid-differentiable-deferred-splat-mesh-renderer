@@ -68,13 +68,12 @@ export interface SplatSphericalHarmonics {
 export interface SplatGpuBuffers {
   count: number;
   positionBuffer: GPUBuffer;
-  colorBuffer: GPUBuffer;
   opacityBuffer: GPUBuffer;
   scaleBuffer: GPUBuffer;
   rotationBuffer: GPUBuffer;
+  materialBuffer: GPUBuffer;  // pack2x16float(roughness, metalness) per splat
   normalBuffer?: GPUBuffer;
-  roughnessBuffer?: GPUBuffer;
-  metalnessBuffer?: GPUBuffer;
+  shDataBuffer: GPUBuffer;    // DC colors (3 floats/splat) + SH coefficients
   shDegree: number;
   originalIdBuffer: GPUBuffer;
   bounds: SplatBounds;
@@ -383,11 +382,6 @@ export function uploadSplatAttributeBuffers(
       attributes.positions,
       "first_smoke_splat_positions"
     ),
-    colorBuffer: createMappedStorageBuffer(
-      device,
-      attributes.colors,
-      "first_smoke_splat_colors"
-    ),
     opacityBuffer: createMappedStorageBuffer(
       device,
       attributes.opacities,
@@ -403,15 +397,19 @@ export function uploadSplatAttributeBuffers(
       attributes.rotations,
       "first_smoke_splat_rotations"
     ),
+    materialBuffer: createMappedStorageBuffer(
+      device,
+      packMaterialBuffer(attributes.count, attributes.roughness, attributes.metalness),
+      "first_smoke_splat_materials"
+    ),
     normalBuffer: attributes.normals
       ? createMappedStorageBuffer(device, attributes.normals, "first_smoke_splat_normals")
       : undefined,
-    roughnessBuffer: attributes.roughness
-      ? createMappedStorageBuffer(device, attributes.roughness, "first_smoke_splat_roughness")
-      : undefined,
-    metalnessBuffer: attributes.metalness
-      ? createMappedStorageBuffer(device, attributes.metalness, "first_smoke_splat_metalness")
-      : undefined,
+    shDataBuffer: createMappedStorageBuffer(
+      device,
+      packShDataBuffer(attributes.colors, attributes.sh),
+      "first_smoke_splat_sh_data"
+    ),
     shDegree: attributes.sh?.degree ?? 0,
     originalIdBuffer: createMappedStorageBuffer(
       device,
@@ -421,6 +419,58 @@ export function uploadSplatAttributeBuffers(
     bounds: attributes.bounds,
     layout: attributes.layout,
   };
+}
+
+/** Convert f32 to f16 (IEEE 754 half-precision), returned as u16. */
+function f32ToF16(value: number): number {
+  const f32 = new Float32Array(1);
+  const u32 = new Uint32Array(f32.buffer);
+  f32[0] = value;
+  const bits = u32[0];
+  const sign = (bits >>> 16) & 0x8000;
+  const exp = ((bits >>> 23) & 0xFF) - 127 + 15;
+  const frac = bits & 0x7FFFFF;
+  if (exp <= 0) return sign; // underflow → zero
+  if (exp >= 31) return sign | 0x7C00; // overflow → inf
+  return sign | (exp << 10) | (frac >>> 13);
+}
+
+/** Pack roughness + metalness into u32 array matching WGSL pack2x16float layout. */
+function packMaterialBuffer(count: number, roughness?: Float32Array, metalness?: Float32Array): Uint32Array {
+  const out = new Uint32Array(count);
+  const defaultRoughness = 0.75;
+  const defaultMetalness = 0.0;
+  for (let i = 0; i < count; i++) {
+    const r = roughness ? roughness[i] : defaultRoughness;
+    const m = metalness ? metalness[i] : defaultMetalness;
+    out[i] = f32ToF16(r) | (f32ToF16(m) << 16);
+  }
+  return out;
+}
+
+/** Pack DC colors + SH coefficients into a single f32 array for GPU consumption.
+ *  Layout per splat: [dc_r, dc_g, dc_b, sh_coeff_0_r, sh_coeff_0_g, sh_coeff_0_b, ...] */
+function packShDataBuffer(dcColors: Float32Array, sh?: SplatSphericalHarmonics): Float32Array {
+  const count = dcColors.length / 3;
+  const shCoeffCount = sh ? sh.coefficientCount : 0;
+  const stride = 3 + shCoeffCount * 3; // DC (3) + SH coefficients
+  const out = new Float32Array(count * stride);
+  const shCoeffs = sh?.coefficients;
+  const shStride = shCoeffCount * 3;
+  for (let i = 0; i < count; i++) {
+    const outBase = i * stride;
+    const dcBase = i * 3;
+    out[outBase] = dcColors[dcBase];
+    out[outBase + 1] = dcColors[dcBase + 1];
+    out[outBase + 2] = dcColors[dcBase + 2];
+    if (shCoeffs) {
+      const shBase = i * shStride;
+      for (let j = 0; j < shStride; j++) {
+        out[outBase + 3 + j] = shCoeffs[shBase + j];
+      }
+    }
+  }
+  return out;
 }
 
 function decodeRowSplatAttributes(

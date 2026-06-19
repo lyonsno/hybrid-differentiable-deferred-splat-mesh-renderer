@@ -36,10 +36,9 @@ fn mortonEncode2D(x: u32, y: u32) -> u32 {
 
 @group(0) @binding(0) var<uniform> frame: FrameUniforms;
 @group(0) @binding(1) var<storage, read> projCache: array<u32>;
-@group(0) @binding(2) var<storage, read> colors: array<f32>;
-@group(0) @binding(3) var<storage, read> sortedIndices: array<u32>;
+@group(0) @binding(2) var<storage, read> sortedIndices: array<u32>;
 
-const PROJ_STRIDE = 9u;
+const PROJ_STRIDE = 11u;
 
 @group(1) @binding(0) var<storage, read_write> tileCounts: array<atomic<u32>>;
 @group(1) @binding(1) var<storage, read_write> tileOffsets: array<u32>;
@@ -139,12 +138,10 @@ fn composite(
       let radiusOpacity = unpack2x16float(projCache[cacheBase + 6u]);
       let opacity = radiusOpacity.y;
 
-      let splatId = sortedIndices[sortRank];
-      let colorBase = splatId * 3u;
-      shColor[localIdx] = vec4<f16>(
-        f16(colors[colorBase]), f16(colors[colorBase + 1u]), f16(colors[colorBase + 2u]),
-        f16(opacity),
-      );
+      // Read SH-evaluated color from projection cache
+      let colorRG = unpack2x16float(projCache[cacheBase + 9u]);
+      let colorB = unpack2x16float(projCache[cacheBase + 10u]).x;
+      shColor[localIdx] = vec4<f16>(f16(colorRG.x), f16(colorRG.y), f16(colorB), f16(opacity));
       shMaterial[localIdx] = unpack2x16float(projCache[cacheBase + 5u]); // (roughness, metalness)
       shNormal[localIdx] = octDecode(unpack2x16float(projCache[cacheBase + 8u])); // per-splat normal
       shDepth[localIdx] = bitcast<f32>(depthBuffer[sortRank]);

@@ -15,7 +15,7 @@ import classifyLargeSplatsShader from "./shaders/gpu_classify_large_splats.wgsl?
 //   tileGrid(8) + splatCount(4) + totalTileRefs(4) + splatScale(4) + shDegree(4) +
 //   pad(8) + cameraPos(12) + pad(4) = 128
 export const TILE_SPLAT_FRAME_UNIFORM_BYTES = 128;
-const PROJ_STRIDE_U32 = 9; // Must match PROJ_STRIDE in gpu_project_splats.wgsl
+const PROJ_STRIDE_U32 = 11; // Must match PROJ_STRIDE in gpu_project_splats.wgsl
 const TILE_ENTRY_BYTES = 4; // 1 u32 per tile entry (sortRank)
 
 // Morton (Z-order) encoding for 2D coordinates — matches WGSL mortonEncode2D.
@@ -65,7 +65,6 @@ export interface TileSplatCompositorResources {
   readonly projectBindGroupLayout: GPUBindGroupLayout;
   readonly splatBindGroupLayout: GPUBindGroupLayout;
   readonly tileBindGroupLayout: GPUBindGroupLayout;
-  readonly sortKeyBindGroupLayout: GPUBindGroupLayout;
   readonly reorderBindGroupLayout: GPUBindGroupLayout;
   readonly classifyBindGroupLayout: GPUBindGroupLayout;
   readonly tileDepthSortBindGroupLayout: GPUBindGroupLayout;
@@ -95,6 +94,7 @@ export interface TileSplatCompositorResources {
   readonly indirectDispatchBuffer: GPUBuffer;
   readonly prefixParamsBuffer: GPUBuffer;
   readonly classifyLargeSplatsPipeline: GPUComputePipeline;
+  readonly writeLargeSplatIndirectPipeline: GPUComputePipeline;
   readonly classifyLargeSplatsBindGroupLayout: GPUBindGroupLayout;
   readonly largeSplatScatterPipeline: GPUComputePipeline;
   readonly largeSplatScatterBindGroupLayout: GPUBindGroupLayout;
@@ -196,20 +196,19 @@ export function createTileSplatCompositor(
       { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // sortedIndices
       { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },           // projCache (write)
       { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },           // depthBuffer (write)
-      { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // roughness
-      { binding: 9, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // metalness
-      { binding: 10, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // normals
+      { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // materialData (packed roughness+metalness)
+      { binding: 9, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // normals
+      { binding: 10, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // shData (DC colors + SH coefficients)
     ],
   });
 
-  // @group(0) for count/scatter/composite: frame uniforms + projCache + colors + sortedIndices
+  // @group(0) for count/scatter/composite: frame uniforms + projCache + sortedIndices
   const splatBindGroupLayout = device.createBindGroupLayout({
     label: "tile_splat_splat_bgl",
     entries: [
       { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
       { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // projCache
-      { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // colors
-      { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // sortedIndices
+      { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // sortedIndices
     ],
   });
 
@@ -228,14 +227,6 @@ export function createTileSplatCompositor(
     ],
   });
 
-  // @group(2) for scatter: just the radix sort key buffer (1 storage)
-  // Total: 6 + 3 + 1 = 10 storage buffers — at the limit
-  const sortKeyBindGroupLayout = device.createBindGroupLayout({
-    label: "tile_splat_sort_key_bgl",
-    entries: [
-      { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
-    ],
-  });
 
   // Reorder has its own layout (standalone, no splat data needed)
   const reorderBindGroupLayout = device.createBindGroupLayout({
@@ -334,10 +325,6 @@ export function createTileSplatCompositor(
     bindGroupLayouts: [splatBindGroupLayout, tileBindGroupLayout],
   });
 
-  const threeGroupLayout = device.createPipelineLayout({
-    label: "tile_splat_3group_pl",
-    bindGroupLayouts: [splatBindGroupLayout, tileBindGroupLayout, sortKeyBindGroupLayout],
-  });
 
   const reorderLayout = device.createPipelineLayout({
     label: "reorder_refs_pl",
@@ -389,7 +376,7 @@ export function createTileSplatCompositor(
 
   const scatterPipeline = device.createComputePipeline({
     label: "tile_splat_scatter",
-    layout: threeGroupLayout,
+    layout: twoGroupLayout,
     compute: { module: shaderModule, entryPoint: "scatter_tile_refs" },
   });
 
@@ -461,12 +448,13 @@ export function createTileSplatCompositor(
   });
 
   // Classify large splats: runs after projection, before scatter.
-  // @group(1) needs read_write for atomic append.
+  // @group(1) needs read_write for atomic append + indirect dispatch write.
   const classifyLargeSplatsBindGroupLayout = device.createBindGroupLayout({
     label: "classify_large_splats_bgl",
     entries: [
       { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },           // largeSplatList (rw)
       { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },           // largeSplatCount (rw, atomic)
+      { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },           // largeSplatIndirect (rw)
     ],
   });
 
@@ -484,6 +472,17 @@ export function createTileSplatCompositor(
     label: "classify_large_splats",
     layout: classifyLargeSplatsLayout,
     compute: { module: classifyLargeSplatsModule, entryPoint: "classify_large_splats" },
+  });
+
+  const writeLargeSplatIndirectLayout = device.createPipelineLayout({
+    label: "write_large_splat_indirect_pl",
+    bindGroupLayouts: [splatBindGroupLayout, classifyLargeSplatsBindGroupLayout],
+  });
+
+  const writeLargeSplatIndirectPipeline = device.createComputePipeline({
+    label: "write_large_splat_indirect",
+    layout: writeLargeSplatIndirectLayout,
+    compute: { module: classifyLargeSplatsModule, entryPoint: "write_large_splat_indirect" },
   });
 
   // Large splat scatter: @group(2) reads the classified list (read-only).
@@ -629,9 +628,10 @@ export function createTileSplatCompositor(
   });
 
   // Large splat list (worst case: all splats are large)
+  const maxLargeSplats = Math.min(plan.splatCount, 65535); // WebGPU dispatch limit
   const largeSplatListBuffer = device.createBuffer({
     label: "large_splat_list",
-    size: Math.max(16, plan.splatCount * 4),
+    size: Math.max(16, maxLargeSplats * 4),
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
   });
   // Atomic counter for large splats
@@ -646,8 +646,7 @@ export function createTileSplatCompositor(
     size: 12,
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
   });
-  // Pre-write y=1, z=1 — x gets copied from largeSplatCount each frame
-  device.queue.writeBuffer(largeSplatIndirectBuffer, 0, new Uint32Array([0, 1, 1]));
+  // GPU shader writes all 3 dispatch args each frame (clamped to 65535)
 
   // Bucket sort params
   const bucketSortParamsBuffer = device.createBuffer({
@@ -684,7 +683,7 @@ export function createTileSplatCompositor(
     projectPipeline, countPipeline, scatterPipeline, reorderPipeline,
     classifyPipeline, tileDepthSortPipeline, bucketSortPipeline, chunkSortPipeline, writeChunkIndirectPipeline, compositePipeline,
     prefixScanPipeline, prefixScanBlockSumsPipeline, prefixPropagatePipeline,
-    projectBindGroupLayout, splatBindGroupLayout, tileBindGroupLayout, sortKeyBindGroupLayout,
+    projectBindGroupLayout, splatBindGroupLayout, tileBindGroupLayout,
     reorderBindGroupLayout, classifyBindGroupLayout, tileDepthSortBindGroupLayout,
     bucketSortBindGroupLayout, chunkSortBindGroupLayout, writeChunkIndirectBindGroupLayout, prefixBindGroupLayout,
     projCacheBuffer, depthBuffer, tileCountBuffer, tileOffsetBuffer, tileRefBuffer, tileRefSortedBuffer,
@@ -693,7 +692,7 @@ export function createTileSplatCompositor(
     smallTileListBuffer, largeTileListBuffer, tileListCountsBuffer,
     largeTileOverflowBasesBuffer, chunkRangesBuffer, totalChunksBuffer, indirectDispatchBuffer,
     prefixParamsBuffer,
-    classifyLargeSplatsPipeline, classifyLargeSplatsBindGroupLayout,
+    classifyLargeSplatsPipeline, writeLargeSplatIndirectPipeline, classifyLargeSplatsBindGroupLayout,
     largeSplatScatterPipeline, largeSplatScatterBindGroupLayout,
     largeSplatListBuffer, largeSplatCountBuffer, largeSplatIndirectBuffer,
     radixSort,
@@ -760,7 +759,6 @@ export interface TileSplatCompositorBindGroups {
   readonly projectBindGroup: GPUBindGroup;
   readonly splatBindGroup: GPUBindGroup;
   readonly tileBindGroup: GPUBindGroup;
-  readonly sortKeyBindGroup: GPUBindGroup;
   readonly reorderBindGroup: GPUBindGroup;
   readonly classifyBindGroup: GPUBindGroup;
   readonly tileDepthSortBindGroup: GPUBindGroup;
@@ -778,43 +776,25 @@ export function createTileSplatBindGroups(
   resources: TileSplatCompositorResources,
   splatBuffers: {
     positionBuffer: GPUBuffer;
-    colorBuffer: GPUBuffer;
     scaleBuffer: GPUBuffer;
     rotationBuffer: GPUBuffer;
     opacityBuffer: GPUBuffer;
+    materialBuffer: GPUBuffer;
     normalBuffer?: GPUBuffer;
-    roughnessBuffer?: GPUBuffer;
-    metalnessBuffer?: GPUBuffer;
+    shDataBuffer: GPUBuffer;
     sortedIndexBuffer: GPUBuffer;
   },
   outputTexture: GPUTexture,
   gbufferTextures: { depth: GPUTexture; normal: GPUTexture; material: GPUTexture },
 ): TileSplatCompositorBindGroups {
-  // Default material buffer (all 0.75 roughness / 0.0 metalness) for when no material data exists
-  const defaultMaterialBuffer = (label: string, defaultValue: number) => {
-    const buf = device.createBuffer({
-      label,
-      size: Math.max(16, resources.plan.splatCount * 4),
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-    });
-    const data = new Float32Array(resources.plan.splatCount);
-    data.fill(defaultValue);
-    device.queue.writeBuffer(buf, 0, data);
-    return buf;
-  };
-  const roughnessBuffer = splatBuffers.roughnessBuffer ?? defaultMaterialBuffer("default_roughness", 0.75);
-  const metalnessBuffer = splatBuffers.metalnessBuffer ?? defaultMaterialBuffer("default_metalness", 0.0);
   // Empty normal buffer signals the shader to use covariance-derived normals.
-  // 16 bytes = 4 floats → arrayLength(&normalData) = 4, so only splatId=0 passes
-  // the bounds check (normalBase+2 = 2 < 4), reads zeros, and falls back via the
-  // bakedLen > 0.001 guard. All other splats skip the baked-normal path entirely.
   const normalBuffer = splatBuffers.normalBuffer ?? device.createBuffer({
     label: "default_empty_normals",
     size: 16,
     usage: GPUBufferUsage.STORAGE,
   });
 
-  // Project pass: reads raw splat data, writes projection cache
+  // Project pass: reads raw splat data + SH, writes projection cache
   const projectBindGroup = device.createBindGroup({
     label: "project_splats_bg",
     layout: resources.projectBindGroupLayout,
@@ -827,21 +807,20 @@ export function createTileSplatBindGroups(
       { binding: 5, resource: { buffer: splatBuffers.sortedIndexBuffer } },
       { binding: 6, resource: { buffer: resources.projCacheBuffer } },
       { binding: 7, resource: { buffer: resources.depthBuffer } },
-      { binding: 8, resource: { buffer: roughnessBuffer } },
-      { binding: 9, resource: { buffer: metalnessBuffer } },
-      { binding: 10, resource: { buffer: normalBuffer } },
+      { binding: 8, resource: { buffer: splatBuffers.materialBuffer } },
+      { binding: 9, resource: { buffer: normalBuffer } },
+      { binding: 10, resource: { buffer: splatBuffers.shDataBuffer } },
     ],
   });
 
-  // Count/scatter/composite: reads from projection cache + colors
+  // Count/scatter/composite: reads from projection cache
   const splatBindGroup = device.createBindGroup({
     label: "tile_splat_splat_bg",
     layout: resources.splatBindGroupLayout,
     entries: [
       { binding: 0, resource: { buffer: resources.frameUniformBuffer } },
       { binding: 1, resource: { buffer: resources.projCacheBuffer } },
-      { binding: 2, resource: { buffer: splatBuffers.colorBuffer } },
-      { binding: 3, resource: { buffer: splatBuffers.sortedIndexBuffer } },
+      { binding: 2, resource: { buffer: splatBuffers.sortedIndexBuffer } },
     ],
   });
 
@@ -857,15 +836,6 @@ export function createTileSplatBindGroups(
       { binding: 5, resource: gbufferTextures.depth.createView() },
       { binding: 6, resource: gbufferTextures.normal.createView() },
       { binding: 7, resource: gbufferTextures.material.createView() },
-    ],
-  });
-
-  // Scatter only writes radix sort keys
-  const sortKeyBindGroup = device.createBindGroup({
-    label: "tile_splat_sort_key_bg",
-    layout: resources.sortKeyBindGroupLayout,
-    entries: [
-      { binding: 0, resource: { buffer: resources.radixSort.keyBuffers[0] } },
     ],
   });
 
@@ -987,6 +957,7 @@ export function createTileSplatBindGroups(
     entries: [
       { binding: 0, resource: { buffer: resources.largeSplatListBuffer } },
       { binding: 1, resource: { buffer: resources.largeSplatCountBuffer } },
+      { binding: 2, resource: { buffer: resources.largeSplatIndirectBuffer } },
     ],
   });
 
@@ -1000,7 +971,7 @@ export function createTileSplatBindGroups(
     ],
   });
 
-  return { projectBindGroup, splatBindGroup, tileBindGroup, sortKeyBindGroup, reorderBindGroup, classifyBindGroup, tileDepthSortBindGroup, bucketSortBindGroup, chunkSortBindGroup, writeChunkIndirectBindGroup, sortedTileBindGroup, prefixBindGroup, classifyLargeSplatsBindGroup, largeSplatScatterBindGroup };
+  return { projectBindGroup, splatBindGroup, tileBindGroup, reorderBindGroup, classifyBindGroup, tileDepthSortBindGroup, bucketSortBindGroup, chunkSortBindGroup, writeChunkIndirectBindGroup, sortedTileBindGroup, prefixBindGroup, classifyLargeSplatsBindGroup, largeSplatScatterBindGroup };
 }
 
 /**
@@ -1103,18 +1074,20 @@ export function encodeFullComputeCompositorPipeline(
     pass.setPipeline(resources.scatterPipeline);
     pass.setBindGroup(0, bindGroups.splatBindGroup);
     pass.setBindGroup(1, bindGroups.tileBindGroup);
-    pass.setBindGroup(2, bindGroups.sortKeyBindGroup);
     pass.dispatchWorkgroups(Math.ceil(plan.splatCount / 256));
     pass.end();
   }
 
   // Pass 3b: Cooperative large splat scatter (>16 tiles, one workgroup per large splat)
-  // Copy largeSplatCount → indirect dispatch x, then dispatch indirectly
-  encoder.copyBufferToBuffer(
-    resources.largeSplatCountBuffer, 0,
-    resources.largeSplatIndirectBuffer, 0,
-    4,
-  );
+  // Write clamped large splat count to indirect dispatch buffer (caps at 65535)
+  {
+    const pass = encoder.beginComputePass({ label: "write_large_splat_indirect" });
+    pass.setPipeline(resources.writeLargeSplatIndirectPipeline);
+    pass.setBindGroup(0, bindGroups.splatBindGroup);
+    pass.setBindGroup(1, bindGroups.classifyLargeSplatsBindGroup);
+    pass.dispatchWorkgroups(1);
+    pass.end();
+  }
   {
     const pass = encoder.beginComputePass({ label: "tile_scatter_large" });
     pass.setPipeline(resources.largeSplatScatterPipeline);

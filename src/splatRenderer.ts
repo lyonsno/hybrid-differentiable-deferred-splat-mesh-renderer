@@ -31,7 +31,6 @@ import {
   REAL_SCANIVERSE_MIN_RADIUS_PX,
   writeAlphaDensityCompensatedOpacities,
   composeFirstSmokeViewProjection,
-  type AlphaDensityAccountingMode,
   type AlphaDensityCompensationSummary,
 } from "./realSmokeScene.js";
 import gbufferDebugPresentShader from "./shaders/gbuffer_debug_present.wgsl?raw";
@@ -79,7 +78,6 @@ export interface RenderFrameParams {
 export interface SplatRenderer {
   loadScene(
     attributes: SplatAttributes,
-    alphaDensityMode: AlphaDensityAccountingMode,
     initialViewMatrix: Float32Array,
     initialViewProj: Float32Array,
     viewportWidth: number,
@@ -99,6 +97,7 @@ export interface GBufferDebugPresenter {
   drawDepth(pass: GPURenderPassEncoder, depthView: GPUTextureView): void;
   drawNormal(pass: GPURenderPassEncoder, depthView: GPUTextureView, normalView: GPUTextureView, materialView: GPUTextureView): void;
   drawRoughness(pass: GPURenderPassEncoder, depthView: GPUTextureView, normalView: GPUTextureView, materialView: GPUTextureView): void;
+  drawMetalness(pass: GPURenderPassEncoder, depthView: GPUTextureView, normalView: GPUTextureView, materialView: GPUTextureView): void;
 }
 
 export interface AlphaDensityState {
@@ -256,7 +255,6 @@ interface ActiveSceneInternal {
   gpuSort: GpuSortPrototype;
   sortState: SortSettleState;
   effectiveOpacities: Float32Array;
-  shColorBuffer: Float32Array;
   alphaDensityState: AlphaDensityState;
   computeCompositor: {
     resources: TileSplatCompositorResources;
@@ -458,6 +456,14 @@ function createGBufferDebugPresenter(device: GPUDevice, format: GPUTextureFormat
     primitive: { topology: "triangle-list" },
     depthStencil,
   });
+  const metalnessPipeline = device.createRenderPipeline({
+    label: "gbuffer_debug_metalness_pipeline",
+    layout: device.createPipelineLayout({ bindGroupLayouts: [depthBgl, normalBgl] }),
+    vertex: { module: mod, entryPoint: "vs" },
+    fragment: { module: mod, entryPoint: "fs_metalness", targets: [{ format }] },
+    primitive: { topology: "triangle-list" },
+    depthStencil,
+  });
 
   return {
     drawDepth(pass: GPURenderPassEncoder, depthView: GPUTextureView) {
@@ -512,6 +518,26 @@ function createGBufferDebugPresenter(device: GPUDevice, format: GPUTextureFormat
       pass.setBindGroup(1, bg1);
       pass.draw(3);
     },
+    drawMetalness(pass: GPURenderPassEncoder, depthView: GPUTextureView, normalView: GPUTextureView, materialView: GPUTextureView) {
+      const bg0 = device.createBindGroup({
+        layout: depthBgl,
+        entries: [
+          { binding: 0, resource: sampler },
+          { binding: 1, resource: depthView },
+        ],
+      });
+      const bg1 = device.createBindGroup({
+        layout: normalBgl,
+        entries: [
+          { binding: 0, resource: normalView },
+          { binding: 1, resource: materialView },
+        ],
+      });
+      pass.setPipeline(metalnessPipeline);
+      pass.setBindGroup(0, bg0);
+      pass.setBindGroup(1, bg1);
+      pass.draw(3);
+    },
   };
 }
 
@@ -529,13 +555,12 @@ function destroySceneInternal(scene: SplatScene): void {
   cc.gbufferMaterialTexture.destroy();
   cc.litTexture.destroy();
   scene.buffers.positionBuffer.destroy();
-  scene.buffers.colorBuffer.destroy();
   scene.buffers.opacityBuffer.destroy();
   scene.buffers.scaleBuffer.destroy();
   scene.buffers.rotationBuffer.destroy();
+  scene.buffers.materialBuffer.destroy();
   scene.buffers.normalBuffer?.destroy();
-  scene.buffers.roughnessBuffer?.destroy();
-  scene.buffers.metalnessBuffer?.destroy();
+  scene.buffers.shDataBuffer.destroy();
   scene.buffers.originalIdBuffer.destroy();
   internal.gpuSort.keyBuffer.destroy();
   internal.sortedIndexBuffer.destroy();
@@ -642,7 +667,6 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
   return {
     loadScene(
       attributes: SplatAttributes,
-      alphaDensityMode: AlphaDensityAccountingMode,
       initialViewMatrix: Float32Array,
       initialViewProj: Float32Array,
       viewportWidth: number,
@@ -659,11 +683,19 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
       for (let i = 0; i < attributes.count; i++) {
         effectiveOpacities[i] = Math.min(Math.max(attributes.opacities[i], 0), 1);
       }
-      const alphaDensitySummary = {
-        tileCount: 0, hotTileCount: 0, alphaMassCap: 0,
-        maxTileAlphaMass: 0, meanTileAlphaMass: 0,
-        compensatedSplatCount: 0, minCompensationExponent: 1,
-        accountingMode: alphaDensityMode,
+      const alphaDensitySummary: AlphaDensityCompensationSummary = {
+        accountingMode: "coverage-aware",
+        tileSizePx: 16,
+        alphaMassCap: 0,
+        maxTileAlphaMass: 0,
+        maxTileSplatCount: 0,
+        hotTileCount: 0,
+        tileEntryCount: 0,
+        maxSplatCoveredTileCount: 0,
+        maxCenterTileDroppedCoverageFraction: 0,
+        sampleOriginalIds: [],
+        compensatedSplatCount: 0,
+        minCompensationExponent: 1,
       };
       device.queue.writeBuffer(buffers.opacityBuffer, 0, effectiveOpacities);
       const sortedIndexBuffer = gpuSort.indexBuffer;
@@ -710,13 +742,12 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
         computeResources,
         {
           positionBuffer: buffers.positionBuffer,
-          colorBuffer: buffers.colorBuffer,
           scaleBuffer: buffers.scaleBuffer,
           rotationBuffer: buffers.rotationBuffer,
           opacityBuffer: buffers.opacityBuffer,
+          materialBuffer: buffers.materialBuffer,
           normalBuffer: buffers.normalBuffer,
-          roughnessBuffer: buffers.roughnessBuffer,
-          metalnessBuffer: buffers.metalnessBuffer,
+          shDataBuffer: buffers.shDataBuffer,
           sortedIndexBuffer,
         },
         computeOutputTexture,
@@ -730,7 +761,6 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
         gpuSort,
         sortState,
         effectiveOpacities,
-        shColorBuffer: new Float32Array(attributes.count * 3),
         alphaDensityState: {
           refreshState: createAlphaDensityRefreshState(initialViewMatrix, viewportWidth, viewportHeight),
           summary: alphaDensitySummary,
@@ -783,21 +813,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
       const internal = scene._internal;
       const cc = internal.computeCompositor;
 
-      // Evaluate SH view-dependent colors on CPU and upload
-      if (scene.shDegree >= 1 && scene.attributes.sh) {
-        evaluateSHColors(
-          internal.shColorBuffer,
-          scene.attributes.positions,
-          scene.attributes.colors,
-          scene.attributes.sh.coefficients,
-          scene.attributes.sh.coefficientCount,
-          scene.count,
-          params.cameraPosition,
-        );
-        device.queue.writeBuffer(scene.buffers.colorBuffer, 0, internal.shColorBuffer);
-      }
-
-      // Upload frame uniforms
+      // Upload frame uniforms (SH evaluation happens on GPU in the projection shader)
       writeTileSplatFrameUniforms(cc.frameUniformData, params.viewProj, cc.resources.plan, scene.splatScale, scene.shDegree, params.cameraPosition);
       device.queue.writeBuffer(cc.resources.frameUniformBuffer, 0, cc.frameUniformData);
 

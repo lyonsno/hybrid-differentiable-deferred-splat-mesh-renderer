@@ -37,12 +37,12 @@ test("destroySceneInternal releases compute compositor resources and textures", 
   assert.match(destroySource, /cc\.litTexture\.destroy\(\);/);
 });
 
-test("destroySceneInternal releases optional PBR material and normal buffers", () => {
+test("destroySceneInternal releases material, normal, and SH buffers", () => {
   const destroySource = destroySceneInternalSource();
 
+  assert.match(destroySource, /scene\.buffers\.materialBuffer\.destroy\(\)/);
   assert.match(destroySource, /scene\.buffers\.normalBuffer\?\.destroy\(\)/);
-  assert.match(destroySource, /scene\.buffers\.roughnessBuffer\?\.destroy\(\)/);
-  assert.match(destroySource, /scene\.buffers\.metalnessBuffer\?\.destroy\(\)/);
+  assert.match(destroySource, /scene\.buffers\.shDataBuffer\.destroy\(\)/);
 });
 
 test("tile ref budget never exceeds WebGPU dispatch limit", () => {
@@ -59,8 +59,8 @@ test("tile ref budget never exceeds WebGPU dispatch limit", () => {
   const projSource = readFileSync(new URL("../../src/shaders/gpu_project_splats.wgsl", import.meta.url), "utf8");
   assert.match(projSource, /clampedRadius = min\(radius, tileSize \* 8\.0\)/,
     "projection shader must cap splat tile footprint to prevent unbounded tile-ref growth");
-  assert.match(projSource, /PROJ_STRIDE = 9u/,
-    "projection cache stride must be 9 to include per-splat normal slot");
+  assert.match(projSource, /PROJ_STRIDE = 11u/,
+    "projection cache stride must be 11 to include per-splat normal and color slots");
 });
 
 test("projection cache stride matches between project and composite shaders", () => {

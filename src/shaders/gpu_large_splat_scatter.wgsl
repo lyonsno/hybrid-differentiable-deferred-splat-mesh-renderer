@@ -13,6 +13,11 @@ struct FrameUniforms {
   tileGrid: vec2u,
   splatCount: u32,
   totalTileRefs: u32,
+  splatScale: f32,
+  shDegree: u32,
+  _pad0: vec2u,
+  cameraPos: vec3f,
+  _pad1: f32,
 };
 
 fn mortonEncode2D(x: u32, y: u32) -> u32 {
@@ -31,7 +36,7 @@ fn mortonEncode2D(x: u32, y: u32) -> u32 {
   return mx | (my << 1u);
 }
 
-const PROJ_STRIDE = 9u;
+const PROJ_STRIDE = 11u;
 const WG_SIZE = 64u;
 
 @group(0) @binding(0) var<uniform> frame: FrameUniforms;

@@ -48,10 +48,9 @@ fn mortonEncode2D(x: u32, y: u32) -> u32 {
 
 @group(0) @binding(0) var<uniform> frame: FrameUniforms;
 @group(0) @binding(1) var<storage, read> projCache: array<u32>;
-@group(0) @binding(2) var<storage, read> colors: array<f32>;
-@group(0) @binding(3) var<storage, read> sortedIndices: array<u32>;
+@group(0) @binding(2) var<storage, read> sortedIndices: array<u32>;
 
-const PROJ_STRIDE = 9u;
+const PROJ_STRIDE = 11u;
 
 @group(1) @binding(0) var<storage, read_write> tileCounts: array<atomic<u32>>;
 @group(1) @binding(1) var<storage, read_write> tileOffsets: array<u32>;
@@ -85,10 +84,7 @@ fn count_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
 }
 
 // --- Pass 3: Scatter (reads from projection cache) ---
-// Writes ref data into tileRefs AND sort keys for global radix sort.
-// Values buffer is pre-initialized with identity by radix sort init pass.
-
-@group(2) @binding(0) var<storage, read_write> radixKeys: array<u32>;
+// Writes tile refs at prefix-summed offsets. Per-tile depth sort handles ordering.
 
 @compute @workgroup_size(256)
 fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
@@ -99,7 +95,6 @@ fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
   let packed = projCache[cacheBase + 7u];
   if (packed == 0xFFFFFFFFu) { return; } // invisible sentinel
 
-  // Read tile bounds from cache
   let minTileX = packed & 0xFFu;
   let minTileY = (packed >> 8u) & 0xFFu;
   let maxTileX = (packed >> 16u) & 0xFFu;
@@ -117,12 +112,7 @@ fn scatter_tile_refs(@builtin(global_invocation_id) globalId: vec3u) {
       let baseOffset = tileOffsets[tileId];
       let linearIdx = baseOffset + slot;
       if (linearIdx < frame.totalTileRefs) {
-        // Tile entry: just the sortRank (projection cache index).
-        // The per-tile sort and compositor read projected data from projCache.
         tileEntries[linearIdx] = sortRank;
-
-        // Sort key: Morton tile ID only. Per-tile depth sort handles ordering.
-        radixKeys[linearIdx] = tileId;
       }
     }
   }
@@ -233,13 +223,10 @@ fn composite(
       let radiusOpacity = unpack2x16float(projCache[cacheBase + 6u]);
       let opacity = radiusOpacity.y;
 
-      // Resolve original splatId for color lookup
-      let splatId = sortedIndices[sortRank];
-      let colorBase = splatId * 3u;
-      shColor[localIdx] = vec4f(
-        colors[colorBase], colors[colorBase + 1u], colors[colorBase + 2u],
-        opacity,
-      );
+      // Read SH-evaluated color from projection cache
+      let colorRG = unpack2x16float(projCache[cacheBase + 9u]);
+      let colorB = unpack2x16float(projCache[cacheBase + 10u]).x;
+      shColor[localIdx] = vec4f(colorRG.x, colorRG.y, colorB, opacity);
       shMaterial[localIdx] = unpack2x16float(projCache[cacheBase + 5u]); // (roughness, metalness)
       shNormal[localIdx] = octDecode(unpack2x16float(projCache[cacheBase + 8u])); // per-splat normal
       shDepth[localIdx] = bitcast<f32>(depthBuffer[sortRank]);

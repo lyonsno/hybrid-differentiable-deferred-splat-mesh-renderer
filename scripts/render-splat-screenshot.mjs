@@ -165,6 +165,14 @@ async function main() {
   const buf = await canvas.screenshot({ type: "png" });
   await writeFile(path.resolve(outputPath), buf);
 
+  // Save camera state for the baking pipeline
+  const cameraState = await page.evaluate(() => window.__MESH_SPLAT_CAMERA_STATE__);
+  if (cameraState) {
+    const cameraPath = path.resolve(outputPath).replace(/\.png$/i, ".camera.json");
+    await writeFile(cameraPath, JSON.stringify(cameraState, null, 2));
+    console.log(`Camera: ${cameraPath}`);
+  }
+
   console.log(`Captured: ${outputPath} (${splatCount.toLocaleString()} splats, ${width}x${height})`);
 
   // Print console messages for diagnostics

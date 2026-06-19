@@ -1,5 +1,5 @@
 // Project all visible splats into a packed projection cache.
-// One thread per splat. Writes 9 u32 per splat:
+// One thread per splat. Writes 11 u32 per splat:
 //   [0] centerPx.x (f32)
 //   [1] centerPx.y (f32)
 //   [2] inverseCov2d.x (f32)
@@ -9,11 +9,13 @@
 //   [6] pack2x16float(radius, sourceOpacity)
 //   [7] tileBounds packed as u8x4 (minTileX, minTileY, maxTileX, maxTileY)
 //   [8] oct-encoded normal as r32uint (pack2x16float of octahedral xy)
+//   [9] pack2x16float(color.r, color.g) — SH-evaluated view-dependent color
+//  [10] pack2x16float(color.b, 0.0)
 //
 // Invisible splats (behind camera, zero radius) get sentinel values so
 // downstream passes can skip them cheaply.
 
-const PROJ_STRIDE = 9u;
+const PROJ_STRIDE = 11u;
 const COMPACT_FOOTPRINT_SIGMA_RADIUS = 3.0;
 const COMPACT_FOOTPRINT_EPSILON = 0.000000001;
 const MIN_SPLAT_CLIP_W = 0.0001;
@@ -42,9 +44,24 @@ struct FrameUniforms {
 @group(0) @binding(5) var<storage, read> sortedIndices: array<u32>;
 @group(0) @binding(6) var<storage, read_write> projCache: array<u32>;
 @group(0) @binding(7) var<storage, read_write> depthBuffer: array<u32>;
-@group(0) @binding(8) var<storage, read> roughnessData: array<f32>;
-@group(0) @binding(9) var<storage, read> metalnessData: array<f32>;
-@group(0) @binding(10) var<storage, read> normalData: array<f32>; // per-splat nx,ny,nz (stride 3) or empty
+@group(0) @binding(8) var<storage, read> materialData: array<u32>;  // pack2x16float(roughness, metalness) per splat
+@group(0) @binding(9) var<storage, read> normalData: array<f32>;  // per-splat nx,ny,nz (stride 3) or empty
+@group(0) @binding(10) var<storage, read> shData: array<f32>;     // per-splat: [dc_r, dc_g, dc_b, sh1_r, sh1_g, sh1_b, ...]
+
+// --- SH basis constants (3DGS reference) ---
+const SH_C1 = 0.4886025119029199;
+const SH_C2_0 = 1.0925484305920792;
+const SH_C2_1 = 1.0925484305920792;
+const SH_C2_2 = 0.31539156525252005;
+const SH_C2_3 = 1.0925484305920792;
+const SH_C2_4 = 0.5462742152960396;
+const SH_C3_0 = 0.5900435899266435;
+const SH_C3_1 = 2.890611442640554;
+const SH_C3_2 = 0.4570457994644658;
+const SH_C3_3 = 0.3731763325901154;
+const SH_C3_4 = 0.4570457994644658;
+const SH_C3_5 = 1.445305721320277;
+const SH_C3_6 = 0.5900435899266435;
 
 // --- Projection math (same as composite shader) ---
 
@@ -172,9 +189,7 @@ fn project_splats(@builtin(global_invocation_id) globalId: vec3u) {
   projCache[base + 2u] = bitcast<u32>(inverseCov2d.x);
   projCache[base + 3u] = bitcast<u32>(inverseCov2d.y);
   projCache[base + 4u] = bitcast<u32>(inverseCov2d.z);
-  let roughness = roughnessData[splatId];
-  let metalness = metalnessData[splatId];
-  projCache[base + 5u] = pack2x16float(vec2f(roughness, metalness)); // per-splat PBR material
+  projCache[base + 5u] = materialData[splatId]; // pack2x16float(roughness, metalness) — pass through
   projCache[base + 6u] = pack2x16float(vec2f(radius, sourceOpacity));
   depthBuffer[sortRank] = bitcast<u32>(depthNdc); // separate depth buffer for per-tile sort
   // Pack tile bounds as 4 bytes (supports up to 255 tiles per axis)
@@ -193,4 +208,63 @@ fn project_splats(@builtin(global_invocation_id) globalId: vec3u) {
     }
   }
   projCache[base + 8u] = pack2x16float(octEncode(splatNormal));
+
+  // SH-evaluated view-dependent color
+  let shStride = frame.shDegree * frame.shDegree * 3u; // coefficients per splat (excluding DC, which is the first 3 floats)
+  let shBase = splatId * (3u + shStride); // DC (3 floats) + SH coefficients
+  // DC color (degree 0)
+  var color = vec3f(shData[shBase], shData[shBase + 1u], shData[shBase + 2u]);
+
+  if (frame.shDegree >= 1u) {
+    // View direction: camera → splat center, normalized
+    let viewDir = normalize(frame.cameraPos - center);
+    let vx = viewDir.x;
+    let vy = viewDir.y;
+    let vz = viewDir.z;
+
+    let b1 = shBase + 3u; // degree 1 starts after DC
+    // Degree 1: Y_1^{-1}=y, Y_1^0=z, Y_1^1=x
+    // SH layout: [c0_r, c0_g, c0_b, c1_r, c1_g, c1_b, ...]
+    color += SH_C1 * vec3f(
+      shData[b1 + 0u] * vy + shData[b1 + 3u] * vz + shData[b1 + 6u] * vx,
+      shData[b1 + 1u] * vy + shData[b1 + 4u] * vz + shData[b1 + 7u] * vx,
+      shData[b1 + 2u] * vy + shData[b1 + 5u] * vz + shData[b1 + 8u] * vx,
+    );
+
+    if (frame.shDegree >= 2u) {
+      let xx = vx * vx; let yy = vy * vy; let zz = vz * vz;
+      let xy = vx * vy; let yz = vy * vz; let xz = vx * vz;
+      let b2_0 = SH_C2_0 * xy;
+      let b2_1 = SH_C2_1 * yz;
+      let b2_2 = SH_C2_2 * (2.0 * zz - xx - yy);
+      let b2_3 = SH_C2_3 * xz;
+      let b2_4 = SH_C2_4 * (xx - yy);
+      let b2 = b1 + 9u; // degree 2 starts after degree 1 (3 basis × 3 components)
+      color += vec3f(
+        shData[b2 +  0u] * b2_0 + shData[b2 +  3u] * b2_1 + shData[b2 +  6u] * b2_2 + shData[b2 +  9u] * b2_3 + shData[b2 + 12u] * b2_4,
+        shData[b2 +  1u] * b2_0 + shData[b2 +  4u] * b2_1 + shData[b2 +  7u] * b2_2 + shData[b2 + 10u] * b2_3 + shData[b2 + 13u] * b2_4,
+        shData[b2 +  2u] * b2_0 + shData[b2 +  5u] * b2_1 + shData[b2 +  8u] * b2_2 + shData[b2 + 11u] * b2_3 + shData[b2 + 14u] * b2_4,
+      );
+
+      if (frame.shDegree >= 3u) {
+        let b3_0 = SH_C3_0 * vy * (3.0 * xx - yy);
+        let b3_1 = SH_C3_1 * vx * vy * vz;
+        let b3_2 = SH_C3_2 * vy * (4.0 * zz - xx - yy);
+        let b3_3 = SH_C3_3 * vz * (2.0 * zz - 3.0 * xx - 3.0 * yy);
+        let b3_4 = SH_C3_4 * vx * (4.0 * zz - xx - yy);
+        let b3_5 = SH_C3_5 * vz * (xx - yy);
+        let b3_6 = SH_C3_6 * vx * (xx - 3.0 * yy);
+        let b3 = b2 + 15u; // degree 3 starts after degree 2 (5 basis × 3 components)
+        color += vec3f(
+          shData[b3 +  0u] * b3_0 + shData[b3 +  3u] * b3_1 + shData[b3 +  6u] * b3_2 + shData[b3 +  9u] * b3_3 + shData[b3 + 12u] * b3_4 + shData[b3 + 15u] * b3_5 + shData[b3 + 18u] * b3_6,
+          shData[b3 +  1u] * b3_0 + shData[b3 +  4u] * b3_1 + shData[b3 +  7u] * b3_2 + shData[b3 + 10u] * b3_3 + shData[b3 + 13u] * b3_4 + shData[b3 + 16u] * b3_5 + shData[b3 + 19u] * b3_6,
+          shData[b3 +  2u] * b3_0 + shData[b3 +  5u] * b3_1 + shData[b3 +  8u] * b3_2 + shData[b3 + 11u] * b3_3 + shData[b3 + 14u] * b3_4 + shData[b3 + 17u] * b3_5 + shData[b3 + 20u] * b3_6,
+        );
+      }
+    }
+  }
+
+  color = clamp(color, vec3f(0.0), vec3f(1.0));
+  projCache[base + 9u] = pack2x16float(color.rg);
+  projCache[base + 10u] = pack2x16float(vec2f(color.b, 0.0));
 }

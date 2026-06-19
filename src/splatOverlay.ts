@@ -14,7 +14,6 @@ import {
 import { createAlphaTexturePresenter } from "./tileLocalTexturePresenter.js";
 import { decodeLocalPlySplatPayload } from "./localPly.js";
 import { fetchFirstSmokeSplatPayload, type SplatAttributes } from "./splats.js";
-import { type AlphaDensityAccountingMode } from "./realSmokeScene.js";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -50,7 +49,6 @@ export interface SplatOverlayOptions {
   lightDirection?: [number, number, number];
   lightIntensity?: number;
   ambientIntensity?: number;
-  alphaDensityMode?: AlphaDensityAccountingMode;
 }
 
 // ---------------------------------------------------------------------------
@@ -127,10 +125,9 @@ export async function createSplatOverlay(
 
   const lightIntensity = options.lightIntensity ?? 3.0;
   const ambientIntensity = options.ambientIntensity ?? 0.12;
-  const alphaDensityMode: AlphaDensityAccountingMode = options.alphaDensityMode ?? "coverage-aware";
-
   // Mutable state
   let scene: SplatScene | null = null;
+  let lastAttributes: SplatAttributes | null = null;
   let running = false;
   let animFrameId = 0;
 
@@ -164,7 +161,8 @@ export async function createSplatOverlay(
       ? new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1, -1, 0, 0, -0.02, 0])
       : currentProj;
     const initViewProj = multiplyMat4(initProj, initView);
-    scene = renderer.loadScene(attributes, alphaDensityMode, initView, initViewProj, width, height);
+    scene = renderer.loadScene(attributes, initView, initViewProj, width, height);
+    lastAttributes = attributes;
   }
 
   async function loadPly(source: string | ArrayBuffer, fileName?: string) {
@@ -197,7 +195,14 @@ export async function createSplatOverlay(
     }
 
     const now = performance.now();
-    resizeCanvas(gpu);
+    const { width, height } = resizeCanvas(gpu);
+
+    // Recreate compositor resources when canvas size changes
+    const currentPlan = scene._internal.computeCompositor.resources.plan;
+    if (lastAttributes && (width !== currentPlan.viewportWidth || height !== currentPlan.viewportHeight)) {
+      initScene(lastAttributes);
+      if (!scene) return;
+    }
 
     const encoder = gpu.device.createCommandEncoder();
 

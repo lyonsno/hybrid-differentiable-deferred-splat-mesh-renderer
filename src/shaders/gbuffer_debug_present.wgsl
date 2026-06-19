@@ -54,7 +54,7 @@ fn fs_normal(in: VertexOut) -> @location(0) vec4f {
   return vec4f(normal * 0.5 + 0.5, 1.0);
 }
 
-// --- Roughness visualization ---
+// --- Roughness visualization (grayscale) ---
 @fragment
 fn fs_roughness(in: VertexOut) -> @location(0) vec4f {
   let texSize = textureDimensions(materialTexture);
@@ -62,7 +62,16 @@ fn fs_roughness(in: VertexOut) -> @location(0) vec4f {
   let packed = textureLoad(materialTexture, coord, 0).r;
   let mat = unpack2x16float(packed);
   let roughness = mat.x;
-  // Green = rough (matte), Red = smooth (shiny), Blue = metallic
+  return vec4f(roughness, roughness, roughness, 1.0);
+}
+
+// --- Metalness visualization (grayscale) ---
+@fragment
+fn fs_metalness(in: VertexOut) -> @location(0) vec4f {
+  let texSize = textureDimensions(materialTexture);
+  let coord = vec2i(in.uv * vec2f(f32(texSize.x), f32(texSize.y)));
+  let packed = textureLoad(materialTexture, coord, 0).r;
+  let mat = unpack2x16float(packed);
   let metalness = mat.y;
-  return vec4f(1.0 - roughness, roughness, metalness, 1.0);
+  return vec4f(metalness, metalness, metalness, 1.0);
 }

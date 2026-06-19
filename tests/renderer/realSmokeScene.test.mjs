@@ -435,14 +435,11 @@ test("alpha density compensation accounts for coverage across every overlapped t
 });
 
 test("renderer updates the uploaded opacity buffer with alpha density compensation", () => {
-  const mainSource = readFileSync(new URL("../../src/main.ts", import.meta.url), "utf8");
   const rendererSource = readFileSync(new URL("../../src/splatRenderer.ts", import.meta.url), "utf8");
-  const source = mainSource + "\n" + rendererSource;
 
-  assert.match(source, /writeAlphaDensityCompensatedOpacities/);
-  assert.match(source, /queue\.writeBuffer\(buffers\.opacityBuffer/);
-  assert.match(source, /selectedAlphaDensityMode/);
-  assert.match(source, /alphaSummary/);
+  assert.match(rendererSource, /writeAlphaDensityCompensatedOpacities/);
+  assert.match(rendererSource, /queue\.writeBuffer\(buffers\.opacityBuffer/);
+  assert.match(rendererSource, /alphaDensitySummary/);
 });
 
 test("alpha density accounting uses dense tile arrays instead of Map-backed hot-path tile accounting", () => {

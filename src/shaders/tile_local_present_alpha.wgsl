@@ -27,7 +27,7 @@ fn vs(@builtin(vertex_index) vertexIndex: u32) -> VertexOut {
 @fragment
 fn fs(in: VertexOut) -> @location(0) vec4f {
   let color = textureSample(tileTexture, tileSampler, in.uv);
-  // Premultiplied alpha: rgb already contains color * opacity from the
-  // deferred lighting pass. Output alpha = splat opacity for CSS compositing.
+  // Lit texture stores straight alpha (color, opacity). Premultiply here
+  // for CSS compositing over the host canvas.
   return vec4f(color.rgb * color.a, color.a);
 }
