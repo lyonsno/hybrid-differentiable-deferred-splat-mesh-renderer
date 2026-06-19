@@ -6,16 +6,15 @@
  * Owns its own WebGPU device/context — no shared command encoder.
  */
 
-import { initGPU, resizeCanvas, type GPU } from "./gpu.js";
+import { initGPU, resizeCanvas } from "./gpu.js";
 import {
   createSplatRenderer,
-  type SplatRenderer,
   type SplatScene,
 } from "./splatRenderer.js";
+import { createAlphaTexturePresenter } from "./tileLocalTexturePresenter.js";
 import { decodeLocalPlySplatPayload } from "./localPly.js";
 import { fetchFirstSmokeSplatPayload, type SplatAttributes } from "./splats.js";
 import { type AlphaDensityAccountingMode } from "./realSmokeScene.js";
-import { shouldRefreshAlphaDensity } from "./alphaDensityRefresh.js";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -93,8 +92,6 @@ function cameraFollowLightDir(pos: Float32Array): [number, number, number] {
 // Implementation
 // ---------------------------------------------------------------------------
 
-const ALPHA_DENSITY_SETTLE_MS = 200;
-
 export async function createSplatOverlay(
   container: HTMLElement,
   options: SplatOverlayOptions = {},
@@ -126,13 +123,14 @@ export async function createSplatOverlay(
     timestampsSupported: gpu.timestampsSupported,
   });
 
+  const alphaPresenter = createAlphaTexturePresenter(gpu.device, gpu.format);
+
   const lightIntensity = options.lightIntensity ?? 3.0;
   const ambientIntensity = options.ambientIntensity ?? 0.12;
   const alphaDensityMode: AlphaDensityAccountingMode = options.alphaDensityMode ?? "coverage-aware";
 
   // Mutable state
   let scene: SplatScene | null = null;
-  let depthTexture: GPUTexture | null = null;
   let running = false;
   let animFrameId = 0;
 
@@ -199,26 +197,7 @@ export async function createSplatOverlay(
     }
 
     const now = performance.now();
-    const { width, height } = resizeCanvas(gpu);
-
-    // Resize depth texture
-    if (!depthTexture || depthTexture.width !== width || depthTexture.height !== height) {
-      depthTexture?.destroy();
-      depthTexture = gpu.device.createTexture({
-        size: { width, height },
-        format: "depth32float",
-        usage: GPUTextureUsage.RENDER_ATTACHMENT,
-      });
-    }
-
-    // Resize compositor
-    scene = renderer.resizeViewport(scene, width, height);
-
-    // Alpha-density refresh
-    const adState = renderer.alphaDensityState(scene);
-    if (shouldRefreshAlphaDensity(adState.refreshState, currentView, width, height, now, ALPHA_DENSITY_SETTLE_MS)) {
-      renderer.refreshAlphaDensity(scene, currentViewProj, width, height, alphaDensityMode);
-    }
+    resizeCanvas(gpu);
 
     const encoder = gpu.device.createCommandEncoder();
 
@@ -227,21 +206,21 @@ export async function createSplatOverlay(
       renderer.encodeSort(scene, encoder, currentView);
     }
 
-    // Compute render
+    // Compute render (compositor + deferred lighting)
     const lightDir = options.lightDirection ?? cameraFollowLightDir(currentCameraPos);
+    const plan = scene._internal.computeCompositor.resources.plan;
     renderer.renderFrame(scene, {
       viewProj: currentViewProj,
       viewMatrix: currentView,
       cameraPosition: currentCameraPos,
-      viewportWidth: width,
-      viewportHeight: height,
+      viewportWidth: plan.viewportWidth,
+      viewportHeight: plan.viewportHeight,
       lightDirection: lightDir,
       lightIntensity,
       ambientIntensity,
-      transparentBackground: true,
     }, encoder);
 
-    // Present to overlay canvas
+    // Present to overlay canvas with premultiplied alpha
     const textureView = gpu.context.getCurrentTexture().createView();
     const renderPass = encoder.beginRenderPass({
       colorAttachments: [{
@@ -250,14 +229,8 @@ export async function createSplatOverlay(
         loadOp: "clear",
         storeOp: "store",
       }],
-      depthStencilAttachment: {
-        view: depthTexture.createView(),
-        depthClearValue: 1.0,
-        depthLoadOp: "clear",
-        depthStoreOp: "store",
-      },
     });
-    renderer.presentTexture(renderPass, scene.litView);
+    alphaPresenter.draw(renderPass, scene.litView);
     renderPass.end();
 
     gpu.device.queue.submit([encoder.finish()]);
@@ -285,7 +258,6 @@ export async function createSplatOverlay(
       renderer.destroyScene(scene);
       scene = null;
     }
-    depthTexture?.destroy();
     gpu.device.destroy();
     canvas.remove();
   }
