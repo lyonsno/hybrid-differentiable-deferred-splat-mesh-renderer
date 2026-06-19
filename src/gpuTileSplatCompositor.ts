@@ -795,11 +795,13 @@ export function createTileSplatBindGroups(
   });
 
   // Small tile depth sort (dispatched from smallTileList)
+  // Reads directly from tileRefBuffer — radix sort/reorder eliminated since
+  // scatter already places refs at correct prefix-summed tile offsets.
   const tileDepthSortBindGroup = device.createBindGroup({
     label: "tile_depth_sort_bg",
     layout: resources.tileDepthSortBindGroupLayout,
     entries: [
-      { binding: 0, resource: { buffer: resources.tileRefSortedBuffer } }, // tileEntries
+      { binding: 0, resource: { buffer: resources.tileRefBuffer } }, // tileEntries
       { binding: 1, resource: { buffer: resources.tileCountBuffer } },
       { binding: 2, resource: { buffer: resources.depthBuffer } },
       { binding: 3, resource: { buffer: resources.smallTileListBuffer } },
@@ -814,7 +816,7 @@ export function createTileSplatBindGroups(
     layout: resources.bucketSortBindGroupLayout,
     entries: [
       { binding: 0, resource: { buffer: resources.bucketSortParamsBuffer } },
-      { binding: 1, resource: { buffer: resources.tileRefSortedBuffer } }, // tileEntries
+      { binding: 1, resource: { buffer: resources.tileRefBuffer } }, // tileEntries
       { binding: 2, resource: { buffer: resources.largeTileOverflowBasesBuffer } },
       { binding: 3, resource: { buffer: resources.tileCountBuffer } },
       { binding: 4, resource: { buffer: resources.depthBuffer } },
@@ -832,7 +834,7 @@ export function createTileSplatBindGroups(
     layout: resources.chunkSortBindGroupLayout,
     entries: [
       { binding: 0, resource: { buffer: resources.chunkSortParamsBuffer } },
-      { binding: 1, resource: { buffer: resources.tileRefSortedBuffer } }, // tileEntries
+      { binding: 1, resource: { buffer: resources.tileRefBuffer } }, // tileEntries
       { binding: 2, resource: { buffer: resources.depthBuffer } },
       { binding: 3, resource: { buffer: resources.chunkRangesBuffer } },
       { binding: 4, resource: { buffer: resources.totalChunksBuffer } },
@@ -848,14 +850,14 @@ export function createTileSplatBindGroups(
     ],
   });
 
-  // For composite: same tile layout but binding 2 points to sorted entries
+  // For composite + per-tile sort: reads directly from scatter output
   const sortedTileBindGroup = device.createBindGroup({
     label: "tile_splat_sorted_tile_bg",
     layout: resources.tileBindGroupLayout,
     entries: [
       { binding: 0, resource: { buffer: resources.tileCountBuffer } },
       { binding: 1, resource: { buffer: resources.tileOffsetBuffer } },
-      { binding: 2, resource: { buffer: resources.tileRefSortedBuffer } },
+      { binding: 2, resource: { buffer: resources.tileRefBuffer } },
       { binding: 3, resource: outputTexture.createView() },
       { binding: 4, resource: { buffer: resources.depthBuffer } },
       { binding: 5, resource: gbufferTextures.depth.createView() },
@@ -900,9 +902,10 @@ export function encodeCompositeOnly(
 
 /**
  * Encode the full compute compositor pipeline:
- * project → count → GPU prefix sum → init sort → scatter (with sort keys) → radix sort → reorder → composite
+ * project → count → GPU prefix sum → scatter → classify → per-tile depth sort → composite
  *
  * All passes encoded into one command encoder — no CPU readback stalls.
+ * No global radix sort: scatter writes refs directly at prefix-summed tile offsets.
  */
 export function encodeFullComputeCompositorPipeline(
   encoder: GPUCommandEncoder,
@@ -958,10 +961,9 @@ export function encodeFullComputeCompositorPipeline(
     }
   }
 
-  // Pass 2.5: Init radix sort keys (0xFFFFFFFF sentinel) and values (identity)
-  encodeRadixSortInit(encoder, resources.radixSort);
-
-  // Pass 3: Scatter tile refs + write radix sort keys
+  // Pass 3: Scatter tile refs directly to prefix-summed offsets.
+  // No radix sort needed — scatter places refs at tileOffsets[tileId] + slot,
+  // so each tile's refs are already contiguous. Per-tile depth sort handles ordering.
   encoder.clearBuffer(resources.tileCountBuffer);
   {
     const pass = encoder.beginComputePass({ label: "tile_scatter" });
@@ -970,18 +972,6 @@ export function encodeFullComputeCompositorPipeline(
     pass.setBindGroup(1, bindGroups.tileBindGroup);
     pass.setBindGroup(2, bindGroups.sortKeyBindGroup);
     pass.dispatchWorkgroups(Math.ceil(plan.splatCount / 256));
-    pass.end();
-  }
-
-  // Pass 4: Global radix sort
-  encodeRadixSort(encoder, resources.radixSort);
-
-  // Pass 5: Reorder ref records by sorted permutation
-  {
-    const pass = encoder.beginComputePass({ label: "tile_reorder" });
-    pass.setPipeline(resources.reorderPipeline);
-    pass.setBindGroup(0, bindGroups.reorderBindGroup);
-    pass.dispatchWorkgroups(Math.ceil(plan.maxTotalTileRefs / 256));
     pass.end();
   }
 
