@@ -210,7 +210,8 @@ fn project_splats(@builtin(global_invocation_id) globalId: vec3u) {
   projCache[base + 8u] = pack2x16float(octEncode(splatNormal));
 
   // SH-evaluated view-dependent color
-  let shStride = frame.shDegree * frame.shDegree * 3u; // coefficients per splat (excluding DC, which is the first 3 floats)
+  let shCoeffCount = (frame.shDegree + 1u) * (frame.shDegree + 1u) - 1u;
+  let shStride = shCoeffCount * 3u; // floats per splat excluding DC
   let shBase = splatId * (3u + shStride); // DC (3 floats) + SH coefficients
   // DC color (degree 0)
   var color = vec3f(shData[shBase], shData[shBase + 1u], shData[shBase + 2u]);
