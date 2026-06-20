@@ -69,6 +69,26 @@ test("uses the full column-major view matrix instead of raw world z", () => {
   );
 });
 
+test("applies object model matrix before view-space depth sorting", () => {
+  const positions = new Float32Array([
+    0, 0, 0, // id 0: raw depth 0, model depth -6
+    0, 0, 2, // id 1: raw depth 2, model depth -4
+  ]);
+  const modelMatrix = new Float32Array([
+    1, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 0, 1, 0,
+    0, 0, -6, 1,
+  ]);
+
+  assert.equal(computeViewSpaceDepth(positions, 0, identityView, modelMatrix), -6);
+  assert.equal(computeViewSpaceDepth(positions, 1, identityView, modelMatrix), -4);
+  assert.deepEqual(
+    Array.from(sortSplatIdsBackToFront(positions, identityView, modelMatrix)),
+    [0, 1]
+  );
+});
+
 test("keeps equal-depth splats in original file-order id order", () => {
   const positions = new Float32Array([
     0, 0, -4, // id 0
