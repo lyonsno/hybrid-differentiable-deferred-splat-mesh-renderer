@@ -19,6 +19,31 @@ import { fetchFirstSmokeSplatPayload, type SplatAttributes } from "./splats.js";
 // Public types
 // ---------------------------------------------------------------------------
 
+/** Route capability facts for the overlay. All fields are explicit and immutable. */
+export interface SplatOverlayCapabilities {
+  readonly canvasMode: "dual-canvas-overlay";
+  readonly meshDepthOcclusion: false;
+  readonly sharedCanvasComposite: false;
+  readonly sharedCommandEncoder: false;
+}
+
+/** Source identity for the loaded splat asset. */
+export interface SplatSourceIdentity {
+  /** URL, path, or label for the loaded asset. */
+  readonly source: string;
+  /** Loading method used. */
+  readonly loadMethod: "ply-url" | "ply-arraybuffer" | "manifest" | "attributes";
+  /** Whether Kaminos sidecar corrections have been applied upstream. */
+  readonly correctionApplied: boolean;
+  /** Correction identity fields, if known (from Kaminos sidecar). */
+  readonly correctionIdentity?: {
+    readonly rotation?: readonly number[];
+    readonly axisFlips?: readonly boolean[];
+    readonly centroidOffset?: readonly number[];
+    readonly crop?: unknown;
+  };
+}
+
 export interface SplatOverlayHandle {
   /** Update camera matrices from host (call each frame before render). */
   setCameraMatrices(
@@ -26,6 +51,12 @@ export interface SplatOverlayHandle {
     projectionMatrix: Float32Array,
     cameraPosition: Float32Array,
   ): void;
+  /** Set the splat object's world transform (Kaminos scene object matrix). */
+  setModelMatrix(matrix: Float32Array): void;
+  /** Set viewport identity. If not called, uses the container's size. */
+  setViewport(width: number, height: number, devicePixelRatio?: number): void;
+  /** Mark that Kaminos sidecar corrections have been applied to the loaded asset. */
+  setCorrectionIdentity(correction: SplatSourceIdentity["correctionIdentity"]): void;
   /** Load a PLY splat file from a URL or ArrayBuffer. */
   loadPly(source: string | ArrayBuffer, fileName?: string): Promise<void>;
   /** Load from our JSON manifest format (sidecar binary). */
@@ -42,6 +73,10 @@ export interface SplatOverlayHandle {
   readonly canvas: HTMLCanvasElement;
   /** Current scene (null if nothing loaded). */
   readonly scene: SplatScene | null;
+  /** Route capability facts — always truthful, never claimed beyond what the overlay actually does. */
+  readonly capabilities: SplatOverlayCapabilities;
+  /** Source identity for the currently loaded splat asset. Null if nothing loaded. */
+  readonly sourceIdentity: SplatSourceIdentity | null;
 }
 
 export interface SplatOverlayOptions {
@@ -86,9 +121,18 @@ function cameraFollowLightDir(pos: Float32Array): [number, number, number] {
   return [-pos[0] / len, -pos[1] / len, -pos[2] / len];
 }
 
+const IDENTITY_MAT4 = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+
 // ---------------------------------------------------------------------------
 // Implementation
 // ---------------------------------------------------------------------------
+
+const CAPABILITIES: SplatOverlayCapabilities = Object.freeze({
+  canvasMode: "dual-canvas-overlay" as const,
+  meshDepthOcclusion: false as const,
+  sharedCanvasComposite: false as const,
+  sharedCommandEncoder: false as const,
+});
 
 export async function createSplatOverlay(
   container: HTMLElement,
@@ -128,6 +172,7 @@ export async function createSplatOverlay(
   // Mutable state
   let scene: SplatScene | null = null;
   let lastAttributes: SplatAttributes | null = null;
+  let sourceIdentity: SplatSourceIdentity | null = null;
   let running = false;
   let animFrameId = 0;
 
@@ -136,6 +181,11 @@ export async function createSplatOverlay(
   let currentProj = new Float32Array(16);
   let currentViewProj = new Float32Array(16);
   let currentCameraPos = new Float32Array(3);
+  // Model matrix (written by host via setModelMatrix) — not yet applied to rendering,
+  // stored for contract completeness and future objectWorldMatrix integration.
+  let _modelMatrix = new Float32Array(IDENTITY_MAT4);
+  // Viewport override
+  let _viewportOverride: { width: number; height: number; dpr: number } | null = null;
 
   function setCameraMatrices(
     viewMatrix: Float32Array,
@@ -148,6 +198,20 @@ export async function createSplatOverlay(
     currentCameraPos.set(cameraPosition);
   }
 
+  function setModelMatrix(matrix: Float32Array) {
+    _modelMatrix = new Float32Array(matrix);
+  }
+
+  function setViewport(width: number, height: number, devicePixelRatio = 1) {
+    _viewportOverride = { width, height, dpr: devicePixelRatio };
+  }
+
+  function setCorrectionIdentity(correction: SplatSourceIdentity["correctionIdentity"]) {
+    if (sourceIdentity) {
+      sourceIdentity = { ...sourceIdentity, correctionApplied: true, correctionIdentity: correction };
+    }
+  }
+
   function initScene(attributes: SplatAttributes) {
     if (scene) {
       renderer.destroyScene(scene);
@@ -155,7 +219,7 @@ export async function createSplatOverlay(
     }
     const { width, height } = resizeCanvas(gpu);
     const initView = currentView[0] === 0
-      ? new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])
+      ? new Float32Array(IDENTITY_MAT4)
       : currentView;
     const initProj = currentProj[0] === 0
       ? new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1, -1, 0, 0, -0.02, 0])
@@ -167,7 +231,8 @@ export async function createSplatOverlay(
 
   async function loadPly(source: string | ArrayBuffer, fileName?: string) {
     let bytes: ArrayBuffer;
-    if (typeof source === "string") {
+    const isUrl = typeof source === "string";
+    if (isUrl) {
       const resp = await fetch(source);
       if (!resp.ok) throw new Error(`Failed to fetch PLY: ${resp.status}`);
       bytes = await resp.arrayBuffer();
@@ -176,15 +241,30 @@ export async function createSplatOverlay(
       bytes = source;
       fileName = fileName ?? "scene.ply";
     }
+    sourceIdentity = {
+      source: isUrl ? source : fileName,
+      loadMethod: isUrl ? "ply-url" : "ply-arraybuffer",
+      correctionApplied: false,
+    };
     initScene(decodeLocalPlySplatPayload(fileName, bytes));
   }
 
   async function loadManifest(url: string) {
     const attributes = await fetchFirstSmokeSplatPayload(url);
+    sourceIdentity = {
+      source: url,
+      loadMethod: "manifest",
+      correctionApplied: false,
+    };
     initScene(attributes);
   }
 
   function loadAttributes(attributes: SplatAttributes) {
+    sourceIdentity = {
+      source: attributes.sourceKind,
+      loadMethod: "attributes",
+      correctionApplied: false,
+    };
     initScene(attributes);
   }
 
@@ -270,6 +350,9 @@ export async function createSplatOverlay(
 
   return {
     setCameraMatrices,
+    setModelMatrix,
+    setViewport,
+    setCorrectionIdentity,
     loadPly,
     loadManifest,
     loadAttributes,
@@ -278,5 +361,7 @@ export async function createSplatOverlay(
     destroy,
     canvas,
     get scene() { return scene; },
+    capabilities: CAPABILITIES,
+    get sourceIdentity() { return sourceIdentity; },
   };
 }
