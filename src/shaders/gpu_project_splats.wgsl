@@ -125,7 +125,7 @@ fn project_splats(@builtin(global_invocation_id) globalId: vec3u) {
   );
   let depthNdc = centerClip.z / safeW;
 
-  // Build covariance
+  // Build 3D covariance via scaled rotation matrix (matches PlayCanvas compute-gsplat-common.js)
   let vecBase = splatId * 3u;
   let quatBase = splatId * 4u;
   let scaleLog = vec3f(scales[vecBase], scales[vecBase + 1u], scales[vecBase + 2u]);
@@ -135,8 +135,7 @@ fn project_splats(@builtin(global_invocation_id) globalId: vec3u) {
   let axis1 = rotateAxis(rotation, vec3f(0.0, 1.0, 0.0)) * scale.y;
   let axis2 = rotateAxis(rotation, vec3f(0.0, 0.0, 1.0)) * scale.z;
 
-  // Normal: smallest-scale axis is the thin direction of the ellipsoid.
-  // axis0/1/2 already have scale baked in, so the shortest one is the normal direction.
+  // Normal: smallest-scale axis direction
   let len0 = dot(axis0, axis0);
   let len1 = dot(axis1, axis1);
   let len2 = dot(axis2, axis2);
@@ -149,12 +148,19 @@ fn project_splats(@builtin(global_invocation_id) globalId: vec3u) {
   let a1 = projectAxisJacobian(axis1, centerClip) * viewportScale;
   let a2 = projectAxisJacobian(axis2, centerClip) * viewportScale;
 
-  let covXX = a0.x * a0.x + a1.x * a1.x + a2.x * a2.x + COV_LOW_PASS;
+  let covXXraw = a0.x * a0.x + a1.x * a1.x + a2.x * a2.x;
   let covXY = a0.x * a0.y + a1.x * a1.y + a2.x * a2.y;
-  let covYY = a0.y * a0.y + a1.y * a1.y + a2.y * a2.y + COV_LOW_PASS;
+  let covYYraw = a0.y * a0.y + a1.y * a1.y + a2.y * a2.y;
+
+  // AA opacity compensation: ratio of determinants before/after low-pass filter
+  let detOrig = covXXraw * covYYraw - covXY * covXY;
+  let covXX = covXXraw + COV_LOW_PASS;
+  let covYY = covYYraw + COV_LOW_PASS;
+  let detBlur = covXX * covYY - covXY * covXY;
+  let aaFactor = sqrt(max(detOrig / max(detBlur, 0.000001), 0.0));
 
   let mid = 0.5 * (covXX + covYY);
-  let det = max(covXX * covYY - covXY * covXY, 0.1);
+  let det = max(detBlur, 0.1);
   let lambda = mid + sqrt(max(mid * mid - det, 0.1));
   let radius = ceil(COMPACT_FOOTPRINT_SIGMA_RADIUS * sqrt(lambda));
 
@@ -165,10 +171,9 @@ fn project_splats(@builtin(global_invocation_id) globalId: vec3u) {
     return;
   }
 
-  let detFull = max(covXX * covYY - covXY * covXY, 0.000001);
-  let detInv = 1.0 / detFull;
+  let detInv = 1.0 / max(detBlur, 0.000001);
   let inverseCov2d = vec3f(covYY * detInv, -covXY * detInv, covXX * detInv);
-  let sourceOpacity = clamp(opacities[splatId], 0.0, 0.99);
+  let sourceOpacity = clamp(opacities[splatId] * aaFactor, 0.0, 0.99);
 
   // Compute tile bounds, capped to MAX_TILE_SPAN per axis to prevent tile-ref
   // buffer overflow on close-up splats. The Gaussian is negligible beyond ~8

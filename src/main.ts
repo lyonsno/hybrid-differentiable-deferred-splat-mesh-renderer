@@ -164,7 +164,6 @@ function bindDroppedSplatLoading(
 // ---------------------------------------------------------------------------
 
 const REAL_SCANIVERSE_WITNESS_VIEW = selectedRealScaniverseWitnessViewMode();
-
 async function main() {
   const gpu = await initGPU(canvas);
   const cam = createCamera();

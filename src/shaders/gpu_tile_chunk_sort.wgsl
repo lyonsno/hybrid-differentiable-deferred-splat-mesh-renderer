@@ -2,15 +2,12 @@
 // Adapted from PlayCanvas engine gsplat-local-chunk-sort.js (MIT license).
 //
 // Each workgroup reads (start, count) from chunkRanges and sorts entries
-// in tileEntries by depth using the same bitonic sort as small tiles.
+// in tileEntries by depth using raw f32 depth bits for full precision.
 //
 // Dispatch: (maxChunks, 1, 1). Workgroups beyond totalChunks[0] early-out.
 
 const BITONIC_WG_SIZE = 256u;
 const MAX_TILE_ENTRIES = 4096u;
-const INDEX_BITS = 12u;
-const INDEX_MASK = 0xFFFu;
-const DEPTH_LEVELS: f32 = 1048575.0;
 
 struct ChunkSortParams {
   maxChunks: u32,
@@ -33,9 +30,8 @@ fn insertZeroBit(v: u32, bitPos: u32) -> u32 {
   return ((v >> bitPos) << (bitPos + 1u)) | (v & mask);
 }
 
-var<workgroup> sData: array<u32, 4096>;
-var<workgroup> sDepthMin: atomic<u32>;
-var<workgroup> sDepthMax: atomic<u32>;
+var<workgroup> sKeys: array<u32, 4096>;   // raw depth bits
+var<workgroup> sVals: array<u32, 4096>;   // sortRank values
 
 @compute @workgroup_size(256)
 fn chunk_sort(
@@ -49,50 +45,20 @@ fn chunk_sort(
   let count = min(chunkRanges[chunkIdx * 2u + 1u], MAX_TILE_ENTRIES);
   if (count <= 1u) { return; }
 
-  // Phase 1: Load depths
-  if (localIdx == 0u) {
-    atomicStore(&sDepthMin, 0xFFFFFFFFu);
-    atomicStore(&sDepthMax, 0u);
-  }
-
+  // Phase 1: Load raw depth keys and sortRank values
   for (var i = localIdx; i < MAX_TILE_ENTRIES; i += BITONIC_WG_SIZE) {
     if (i < count) {
-      sData[i] = depthBuffer[tileEntries[tStart + i]];
+      let sortRank = tileEntries[tStart + i];
+      sKeys[i] = depthBuffer[sortRank];
+      sVals[i] = sortRank;
     } else {
-      sData[i] = 0xFFFFFFFFu;
+      sKeys[i] = 0xFFFFFFFFu;
+      sVals[i] = 0xFFFFFFFFu;
     }
   }
   workgroupBarrier();
 
-  // Phase 2: Min/max reduction
-  for (var i = localIdx; i < MAX_TILE_ENTRIES; i += BITONIC_WG_SIZE) {
-    if (sData[i] != 0xFFFFFFFFu) {
-      atomicMin(&sDepthMin, sData[i]);
-      atomicMax(&sDepthMax, sData[i]);
-    }
-  }
-  workgroupBarrier();
-
-  let depthMin = bitcast<f32>(atomicLoad(&sDepthMin));
-  let depthMax = bitcast<f32>(atomicLoad(&sDepthMax));
-  let logMin = log(max(depthMin, 1e-6));
-  let logRange = log(max(depthMax, 1e-6)) - logMin;
-  let invLogRange = select(DEPTH_LEVELS / logRange, 0.0, logRange < 1e-10);
-
-  // Phase 3: Pack (depth20 << 12 | localIndex12)
-  for (var i = localIdx; i < MAX_TILE_ENTRIES; i += BITONIC_WG_SIZE) {
-    if (i < count) {
-      let depth = bitcast<f32>(sData[i]);
-      let logDepth = log(max(depth, 1e-6));
-      let depth20 = min(u32((logDepth - logMin) * invLogRange + 0.5), u32(DEPTH_LEVELS));
-      sData[i] = (depth20 << INDEX_BITS) | i;
-    } else {
-      sData[i] = 0xFFFFFFFFu;
-    }
-  }
-  workgroupBarrier();
-
-  // Phase 4: Bitonic sort — constant 12 stages
+  // Phase 2: Bitonic sort on raw depth keys
   for (var k: u32 = 2u; k <= MAX_TILE_ENTRIES; k = k << 1u) {
     for (var j: u32 = k >> 1u; j > 0u; j = j >> 1u) {
       let bitPos = countTrailingZeros(j);
@@ -101,27 +67,20 @@ fn chunk_sort(
         let l = insertZeroBit(c, bitPos);
         let r = l | j;
         let ascending = (l & k) == 0u;
-        let shouldSwap = select(sData[l] < sData[r], sData[l] > sData[r], ascending);
+        let shouldSwap = select(sKeys[l] < sKeys[r], sKeys[l] > sKeys[r], ascending);
         if (shouldSwap) {
-          let tmp = sData[l]; sData[l] = sData[r]; sData[r] = tmp;
+          let tmpK = sKeys[l]; sKeys[l] = sKeys[r]; sKeys[r] = tmpK;
+          let tmpV = sVals[l]; sVals[l] = sVals[r]; sVals[r] = tmpV;
         }
       }
       workgroupBarrier();
     }
   }
 
-  // Phase 5: Gather sorted entries and write back
+  // Phase 3: Write sorted sortRanks back
   for (var i = localIdx; i < MAX_TILE_ENTRIES; i += BITONIC_WG_SIZE) {
     if (i < count) {
-      let localIndex = sData[i] & INDEX_MASK;
-      sData[i] = tileEntries[tStart + localIndex];
-    }
-  }
-  workgroupBarrier();
-
-  for (var i = localIdx; i < MAX_TILE_ENTRIES; i += BITONIC_WG_SIZE) {
-    if (i < count) {
-      tileEntries[tStart + i] = sData[i];
+      tileEntries[tStart + i] = sVals[i];
     }
   }
 }
