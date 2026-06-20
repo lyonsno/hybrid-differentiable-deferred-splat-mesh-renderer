@@ -99,7 +99,7 @@ async function main() {
       // Fallback: check body dataset set by exposeMeshSplatSmokeEvidence
       const count = document.body.dataset.smokeSplatCount;
       return count && Number(count) > 0;
-    }, { timeout: 60000 });
+    }, { timeout: 120000 });
   } catch (e) {
     console.error("Timeout waiting for renderer to load splats");
     console.error("Console output:", messages.slice(-10).join("\n"));
@@ -164,6 +164,14 @@ async function main() {
 
   const buf = await canvas.screenshot({ type: "png" });
   await writeFile(path.resolve(outputPath), buf);
+
+  // Save camera state for the baking pipeline
+  const cameraState = await page.evaluate(() => window.__MESH_SPLAT_CAMERA_STATE__);
+  if (cameraState) {
+    const cameraPath = path.resolve(outputPath).replace(/\.png$/i, ".camera.json");
+    await writeFile(cameraPath, JSON.stringify(cameraState, null, 2));
+    console.log(`Camera: ${cameraPath}`);
+  }
 
   console.log(`Captured: ${outputPath} (${splatCount.toLocaleString()} splats, ${width}x${height})`);
 
