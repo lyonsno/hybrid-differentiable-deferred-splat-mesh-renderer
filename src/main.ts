@@ -455,6 +455,7 @@ async function main() {
     renderer.renderFrame(scene, {
       viewProj,
       viewMatrix: view,
+      projMatrix: proj,
       cameraPosition,
       viewportWidth: width,
       viewportHeight: height,

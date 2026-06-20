@@ -217,6 +217,7 @@ export async function createSplatOverlay(
     renderer.renderFrame(scene, {
       viewProj: currentViewProj,
       viewMatrix: currentView,
+      projMatrix: currentProj,
       cameraPosition: currentCameraPos,
       viewportWidth: plan.viewportWidth,
       viewportHeight: plan.viewportHeight,

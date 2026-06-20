@@ -13,8 +13,8 @@ import classifyLargeSplatsShader from "./shaders/gpu_classify_large_splats.wgsl?
 
 // Frame uniforms: viewProj(64) + viewport(8) + tileSizePx(4) + debugMode(4) +
 //   tileGrid(8) + splatCount(4) + totalTileRefs(4) + splatScale(4) + shDegree(4) +
-//   pad(8) + cameraPos(12) + pad(4) = 128
-export const TILE_SPLAT_FRAME_UNIFORM_BYTES = 128;
+//   pad(8) + cameraPos(12) + pad(4) + viewMatrix(64) + focal(8) + pad(8) = 208
+export const TILE_SPLAT_FRAME_UNIFORM_BYTES = 208;
 const PROJ_STRIDE_U32 = 11; // Must match PROJ_STRIDE in gpu_project_splats.wgsl
 const TILE_ENTRY_BYTES = 4; // 1 u32 per tile entry (sortRank)
 
@@ -733,6 +733,8 @@ export function writeTileSplatFrameUniforms(
   splatScale = 1.0,
   shDegree = 0,
   cameraPos?: Float32Array | readonly number[],
+  viewMatrix?: Float32Array,
+  projMatrix?: Float32Array,
 ): void {
   target.set(viewProj, 0);
   target[16] = plan.viewportWidth;
@@ -752,6 +754,15 @@ export function writeTileSplatFrameUniforms(
     target[28] = cameraPos[0];
     target[29] = cameraPos[1];
     target[30] = cameraPos[2];
+  }
+  // viewMatrix at offset 128 = float index 32
+  if (viewMatrix) {
+    target.set(viewMatrix, 32);
+  }
+  // focal at offset 192 = float index 48 (half-focal: viewport * proj[i][i] * 0.5)
+  if (projMatrix) {
+    target[48] = plan.viewportWidth * projMatrix[0] * 0.5;
+    target[49] = plan.viewportHeight * projMatrix[5] * 0.5;
   }
 }
 

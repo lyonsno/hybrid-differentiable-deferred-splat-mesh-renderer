@@ -33,7 +33,10 @@ struct FrameUniforms {
   shDegree: u32,            // offset 100, size 4
   _pad0: vec2u,             // offset 104, size 8 (pad to align cameraPos at 112)
   cameraPos: vec3f,         // offset 112, size 12 (align 16)
-  _pad1: f32,               // offset 124, size 4 → struct size 128
+  _pad1: f32,               // offset 124, size 4
+  viewMatrix: mat4x4f,      // offset 128, size 64
+  focal: vec2f,             // offset 192, size 8 (viewport * proj[0][0] * 0.5, viewport * proj[1][1] * 0.5)
+  _pad2: vec2f,             // offset 200, size 8 → struct size 208
 };
 
 @group(0) @binding(0) var<uniform> frame: FrameUniforms;
@@ -143,14 +146,30 @@ fn project_splats(@builtin(global_invocation_id) globalId: vec3u) {
   let normalAxis = select(select(axis2, axis1, len1 == minLen), axis0, len0 == minLen);
   let normal = normalize(normalAxis);
 
-  let viewportScale = vec2f(frame.viewport.x, frame.viewport.y) * 0.5;
-  let a0 = projectAxisJacobian(axis0, centerClip) * viewportScale;
-  let a1 = projectAxisJacobian(axis1, centerClip) * viewportScale;
-  let a2 = projectAxisJacobian(axis2, centerClip) * viewportScale;
+  // PlayCanvas-style Jacobian: focal/vz with separate view matrix.
+  // focal = viewport * projMat[0][0] * 0.5 (the 0.5 corrects for the NDC range).
+  let M = transpose(mat3x3f(axis0, axis1, axis2));
 
-  let covXXraw = a0.x * a0.x + a1.x * a1.x + a2.x * a2.x;
-  let covXY = a0.x * a0.y + a1.x * a1.y + a2.x * a2.y;
-  let covYYraw = a0.y * a0.y + a1.y * a1.y + a2.y * a2.y;
+  let w0 = vec3f(frame.viewMatrix[0].x, frame.viewMatrix[1].x, frame.viewMatrix[2].x);
+  let w1 = vec3f(frame.viewMatrix[0].y, frame.viewMatrix[1].y, frame.viewMatrix[2].y);
+  let w2 = vec3f(frame.viewMatrix[0].z, frame.viewMatrix[1].z, frame.viewMatrix[2].z);
+
+  let viewCenter = (frame.viewMatrix * vec4f(center, 1.0)).xyz;
+  let vz = min(viewCenter.z, -0.001);
+
+  let J1x = frame.focal.x / vz;
+  let J1y = frame.focal.y / vz;
+  let J2 = vec2f(-J1x, -J1y) / vz * viewCenter.xy;
+
+  let tt0 = J1x * w0 + J2.x * w2;
+  let tt1 = J1y * w1 + J2.y * w2;
+
+  let b0 = M * tt0;
+  let b1 = M * tt1;
+
+  let covXXraw = dot(b0, b0);
+  let covXY = dot(b0, b1);
+  let covYYraw = dot(b1, b1);
 
   // AA opacity compensation: ratio of determinants before/after low-pass filter
   let detOrig = covXXraw * covYYraw - covXY * covXY;

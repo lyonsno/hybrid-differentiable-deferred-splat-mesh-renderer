@@ -67,6 +67,7 @@ export interface SplatScene {
 export interface RenderFrameParams {
   viewProj: Float32Array;
   viewMatrix: Float32Array;
+  projMatrix: Float32Array;
   cameraPosition: Float32Array;
   viewportWidth: number;
   viewportHeight: number;
@@ -814,7 +815,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
       const cc = internal.computeCompositor;
 
       // Upload frame uniforms (SH evaluation happens on GPU in the projection shader)
-      writeTileSplatFrameUniforms(cc.frameUniformData, params.viewProj, cc.resources.plan, scene.splatScale, scene.shDegree, params.cameraPosition);
+      writeTileSplatFrameUniforms(cc.frameUniformData, params.viewProj, cc.resources.plan, scene.splatScale, scene.shDegree, params.cameraPosition, params.viewMatrix, params.projMatrix);
       device.queue.writeBuffer(cc.resources.frameUniformBuffer, 0, cc.frameUniformData);
 
       // Full compositor pipeline or composite-only
