@@ -99,7 +99,7 @@ async function main() {
       // Fallback: check body dataset set by exposeMeshSplatSmokeEvidence
       const count = document.body.dataset.smokeSplatCount;
       return count && Number(count) > 0;
-    }, { timeout: 60000 });
+    }, { timeout: 120000 });
   } catch (e) {
     console.error("Timeout waiting for renderer to load splats");
     console.error("Console output:", messages.slice(-10).join("\n"));
