@@ -74,6 +74,7 @@ export interface RenderFrameParams {
   lightDirection: [number, number, number];
   lightIntensity: number;
   ambientIntensity: number;
+  specularOnly?: boolean;
 }
 
 export interface SplatRenderer {
@@ -375,6 +376,7 @@ function createDeferredLightingPass(device: GPUDevice) {
       lightDirection: [number, number, number],
       lightIntensity: number,
       ambientIntensity: number,
+      specularOnly: boolean = false,
     ) {
       const params = new Float32Array(36);
       params[0] = viewport[0];
@@ -388,6 +390,7 @@ function createDeferredLightingPass(device: GPUDevice) {
       params[28] = 1.0; params[29] = 0.95; params[30] = 0.9; // lightColor (warm white)
       params[31] = lightIntensity;
       params[32] = ambientIntensity; params[33] = ambientIntensity; params[34] = ambientIntensity * 1.1; // ambient (slightly blue)
+      params[35] = specularOnly ? 1.0 : 0.0;
       device.queue.writeBuffer(paramsBuffer, 0, params);
       const bg = device.createBindGroup({
         layout: bgl,
@@ -836,6 +839,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
           params.lightDirection,
           params.lightIntensity,
           params.ambientIntensity,
+          params.specularOnly ?? false,
         );
       }
     },

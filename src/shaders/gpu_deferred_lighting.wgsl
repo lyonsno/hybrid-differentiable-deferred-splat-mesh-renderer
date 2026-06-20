@@ -15,7 +15,7 @@ struct Params {
   lightColor: vec3f,
   lightIntensity: f32,
   ambientColor: vec3f,
-  _pad2: f32,
+  specularOnly: f32,
 };
 
 @group(0) @binding(0) var<uniform> params: Params;
@@ -133,9 +133,15 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let kS = F;
   let kD = (vec3f(1.0) - kS) * (1.0 - metallic);
 
-  let Lo = (kD * albedo / PI + specular) * params.lightColor * params.lightIntensity * NdotL;
-  let ambient = params.ambientColor * albedo;
-  let color = ambient + Lo;
+  var color: vec3f;
+  if (params.specularOnly > 0.5) {
+    // Specular-only mode: output just the Cook-Torrance specular term
+    color = specular * params.lightColor * params.lightIntensity * NdotL;
+  } else {
+    let Lo = (kD * albedo / PI + specular) * params.lightColor * params.lightIntensity * NdotL;
+    let ambient = params.ambientColor * albedo;
+    color = ambient + Lo;
+  }
 
   // Reinhard tonemap in linear space, then convert back to sRGB for display
   let tonemapped = color / (color + vec3f(1.0));

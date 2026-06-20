@@ -66,6 +66,7 @@ let fixedLightAzimuth = 0.8;  // radians
 let fixedLightElevation = 0.6; // radians
 let lightIntensity = 3.0;
 let ambientIntensity = 0.12;
+let specularOnly = false;
 
 // ---------------------------------------------------------------------------
 // URL param helpers
@@ -189,6 +190,22 @@ async function main() {
     if (params.elevation !== undefined) cam.elevation = params.elevation;
     if (params.distance !== undefined) cam.distance = params.distance;
     positionCameraFromTarget(cam);
+    requestFrame();
+  };
+
+  // Light control API for headless emissive extraction pipeline
+  (window as unknown as Record<string, unknown>).__MESH_SPLAT_SET_LIGHT__ = (params: {
+    mode?: string; azimuth?: number; elevation?: number; intensity?: number; ambient?: number; specularOnly?: boolean;
+  }) => {
+    if (params.mode !== undefined) {
+      const idx = LIGHT_MODES.indexOf(params.mode as LightMode);
+      if (idx >= 0) lightModeIndex = idx;
+    }
+    if (params.azimuth !== undefined) fixedLightAzimuth = params.azimuth;
+    if (params.elevation !== undefined) fixedLightElevation = params.elevation;
+    if (params.intensity !== undefined) lightIntensity = params.intensity;
+    if (params.ambient !== undefined) ambientIntensity = params.ambient;
+    if (params.specularOnly !== undefined) specularOnly = params.specularOnly;
     requestFrame();
   };
 
@@ -428,6 +445,20 @@ async function main() {
     const proj = getProjectionMatrix(cam, aspect);
     const viewProj = composeFirstSmokeViewProjection(proj, view);
 
+    // Expose camera state for headless baking pipeline
+    (window as unknown as Record<string, unknown>).__MESH_SPLAT_CAMERA_STATE__ = {
+      viewMatrix: Array.from(view),
+      projectionMatrix: Array.from(proj),
+      viewProjMatrix: Array.from(viewProj),
+      viewportWidth: width,
+      viewportHeight: height,
+      cameraPosition: Array.from(cam.position),
+      cameraTarget: Array.from(cam.target),
+      distance: cam.distance,
+      azimuth: cam.azimuth,
+      elevation: cam.elevation,
+    };
+
     const encoder = gpu.device.createCommandEncoder();
 
     // GPU sort
@@ -450,6 +481,7 @@ async function main() {
       lightDirection: computeLightDirection(cameraPosition, cam.target),
       lightIntensity,
       ambientIntensity,
+      specularOnly,
     }, encoder);
 
     // ---- Present to screen ----
