@@ -31,14 +31,16 @@ const VIEW_DEPTH_DIRECTION_INDICES = [2, 6, 10] as const;
 
 export function sortSplatIdsBackToFront(
   positions: NumericArray,
-  viewMatrix: NumericArray
+  viewMatrix: NumericArray,
+  modelMatrix?: NumericArray
 ): Uint32Array {
   const splatCount = validatePackedPositions(positions);
   validateViewMatrix(viewMatrix);
+  if (modelMatrix) validateViewMatrix(modelMatrix);
 
   const keys: DepthKey[] = new Array(splatCount);
   for (let id = 0; id < splatCount; id++) {
-    const depth = viewSpaceDepthUnchecked(positions, id, viewMatrix);
+    const depth = viewSpaceDepthUnchecked(positions, id, viewMatrix, modelMatrix);
     if (!Number.isFinite(depth)) {
       throw new RangeError(`splat ${id} produced a non-finite view-space depth`);
     }
@@ -56,10 +58,11 @@ export function sortSplatIdsBackToFront(
 
 export function createSplatSortRefreshState(
   positions: NumericArray,
-  viewMatrix: NumericArray
+  viewMatrix: NumericArray,
+  modelMatrix?: NumericArray
 ): SplatSortRefreshState {
   return {
-    sortedIds: sortSplatIdsBackToFront(positions, viewMatrix),
+    sortedIds: sortSplatIdsBackToFront(positions, viewMatrix, modelMatrix),
     viewDepthKey: captureViewDepthKey(viewMatrix),
     observedViewDepthKey: captureViewDepthKey(viewMatrix),
     lastViewDepthChangeMs: Number.NEGATIVE_INFINITY,
@@ -148,14 +151,16 @@ export function viewDepthKeyChanged(
 export function computeViewSpaceDepth(
   positions: NumericArray,
   splatId: number,
-  viewMatrix: NumericArray
+  viewMatrix: NumericArray,
+  modelMatrix?: NumericArray
 ): number {
   const splatCount = validatePackedPositions(positions);
   validateViewMatrix(viewMatrix);
+  if (modelMatrix) validateViewMatrix(modelMatrix);
   if (!Number.isInteger(splatId) || splatId < 0 || splatId >= splatCount) {
     throw new RangeError(`splat id ${splatId} is outside 0..${splatCount - 1}`);
   }
-  return viewSpaceDepthUnchecked(positions, splatId, viewMatrix);
+  return viewSpaceDepthUnchecked(positions, splatId, viewMatrix, modelMatrix);
 }
 
 function validatePackedPositions(positions: NumericArray): number {
@@ -178,12 +183,21 @@ function validateViewMatrix(viewMatrix: NumericArray) {
 function viewSpaceDepthUnchecked(
   positions: NumericArray,
   splatId: number,
-  viewMatrix: NumericArray
+  viewMatrix: NumericArray,
+  modelMatrix?: NumericArray
 ): number {
   const offset = splatId * 3;
-  const x = positions[offset];
-  const y = positions[offset + 1];
-  const z = positions[offset + 2];
+  let x = positions[offset];
+  let y = positions[offset + 1];
+  let z = positions[offset + 2];
+  if (modelMatrix) {
+    const modelX = modelMatrix[0] * x + modelMatrix[4] * y + modelMatrix[8] * z + modelMatrix[12];
+    const modelY = modelMatrix[1] * x + modelMatrix[5] * y + modelMatrix[9] * z + modelMatrix[13];
+    const modelZ = modelMatrix[2] * x + modelMatrix[6] * y + modelMatrix[10] * z + modelMatrix[14];
+    x = modelX;
+    y = modelY;
+    z = modelZ;
+  }
 
   // Column-major mat4 transform, z row only.
   return (

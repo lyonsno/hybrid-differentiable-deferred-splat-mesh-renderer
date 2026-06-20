@@ -120,9 +120,11 @@ export function createSyntheticDepthSortInput(depths: ArrayLike<number>): Synthe
 export function createViewDepthSortInput(
   positions: ArrayLike<number>,
   viewMatrix: ArrayLike<number>,
+  modelMatrix?: ArrayLike<number>,
 ): SyntheticDepthSortInput {
   const count = validatePackedPositions(positions);
   validateViewMatrix(viewMatrix);
+  if (modelMatrix) validateViewMatrix(modelMatrix);
 
   const plan = createGpuSortPrototypePlan(count);
   const keys = new Float32Array(plan.paddedCount);
@@ -132,7 +134,7 @@ export function createViewDepthSortInput(
   indices.fill(GPU_SORT_PADDED_INDEX_SENTINEL);
 
   for (let i = 0; i < count; i += 1) {
-    keys[i] = -viewSpaceDepthUnchecked(positions, i, viewMatrix);
+    keys[i] = -viewSpaceDepthUnchecked(positions, i, viewMatrix, modelMatrix);
     indices[i] = i;
   }
 
@@ -165,8 +167,9 @@ export function simulateGpuSortPrototype(depths: ArrayLike<number>): Uint32Array
 export function simulateGpuViewDepthSortPrototype(
   positions: ArrayLike<number>,
   viewMatrix: ArrayLike<number>,
+  modelMatrix?: ArrayLike<number>,
 ): Uint32Array {
-  const { keys } = createViewDepthSortInput(positions, viewMatrix);
+  const { keys } = createViewDepthSortInput(positions, viewMatrix, modelMatrix);
   const count = validatePackedPositions(positions);
   return simulateGpuSortPrototype(keys.slice(0, count));
 }
@@ -261,8 +264,9 @@ export function writeViewDepthSortInput(
   prototype: GpuSortPrototype,
   positions: ArrayLike<number>,
   viewMatrix: ArrayLike<number>,
+  modelMatrix?: ArrayLike<number>,
 ): SyntheticDepthSortInput {
-  const input = createViewDepthSortInput(positions, viewMatrix);
+  const input = createViewDepthSortInput(positions, viewMatrix, modelMatrix);
   if (input.keys.length !== prototype.plan.paddedCount) {
     throw new Error(`Position input count ${positions.length / 3} does not match prototype count ${prototype.plan.count}.`);
   }
@@ -309,12 +313,24 @@ function viewSpaceDepthUnchecked(
   positions: ArrayLike<number>,
   splatId: number,
   viewMatrix: ArrayLike<number>,
+  modelMatrix?: ArrayLike<number>,
 ): number {
   const offset = splatId * 3;
+  let x = positions[offset];
+  let y = positions[offset + 1];
+  let z = positions[offset + 2];
+  if (modelMatrix) {
+    const modelX = modelMatrix[0] * x + modelMatrix[4] * y + modelMatrix[8] * z + modelMatrix[12];
+    const modelY = modelMatrix[1] * x + modelMatrix[5] * y + modelMatrix[9] * z + modelMatrix[13];
+    const modelZ = modelMatrix[2] * x + modelMatrix[6] * y + modelMatrix[10] * z + modelMatrix[14];
+    x = modelX;
+    y = modelY;
+    z = modelZ;
+  }
   return (
-    viewMatrix[2] * positions[offset] +
-    viewMatrix[6] * positions[offset + 1] +
-    viewMatrix[10] * positions[offset + 2] +
+    viewMatrix[2] * x +
+    viewMatrix[6] * y +
+    viewMatrix[10] * z +
     viewMatrix[14]
   );
 }
