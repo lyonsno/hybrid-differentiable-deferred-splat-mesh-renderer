@@ -1,6 +1,7 @@
 import { defineConfig, type Plugin } from "vite";
-import { writeFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { writeFileSync, mkdirSync, createReadStream, statSync } from "node:fs";
+import { join, extname } from "node:path";
+import { homedir } from "node:os";
 
 function telemetryPlugin(): Plugin {
   const dir = join(process.cwd(), ".telemetry");
@@ -35,9 +36,42 @@ function telemetryPlugin(): Plugin {
   };
 }
 
+function kaminosAssetsPlugin(): Plugin {
+  const assetsRoot = join(homedir(), ".local/state/kaminos/assets");
+  const mimeTypes: Record<string, string> = {
+    ".ply": "application/octet-stream",
+    ".json": "application/json",
+    ".spz": "application/octet-stream",
+    ".glb": "model/gltf-binary",
+  };
+  return {
+    name: "kaminos-assets",
+    configureServer(server) {
+      server.middlewares.use("/kaminos-assets", (req, res, next) => {
+        const urlPath = decodeURIComponent(req.url?.split("?")[0] ?? "");
+        if (urlPath.includes("..")) { res.writeHead(403); res.end(); return; }
+        const filePath = join(assetsRoot, urlPath);
+        try {
+          const stat = statSync(filePath);
+          if (!stat.isFile()) { next(); return; }
+          const ext = extname(filePath).toLowerCase();
+          res.writeHead(200, {
+            "Content-Type": mimeTypes[ext] ?? "application/octet-stream",
+            "Content-Length": stat.size,
+            "Cache-Control": "no-cache",
+          });
+          createReadStream(filePath).pipe(res);
+        } catch {
+          next();
+        }
+      });
+    },
+  };
+}
+
 export default defineConfig({
   assetsInclude: ["**/*.wgsl"],
-  plugins: [telemetryPlugin()],
+  plugins: [telemetryPlugin(), kaminosAssetsPlugin()],
   server: {
     open: true,
   },
