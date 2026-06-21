@@ -37,8 +37,10 @@ export async function tryFetchSidecar(plyUrl: string): Promise<KaminosSidecar | 
 }
 
 /**
- * Apply Kaminos sidecar corrections to decoded SplatAttributes in-place.
- * Operations applied in order: centroid offset, axis flips, crop.
+ * Apply Kaminos sidecar corrections to decoded SplatAttributes.
+ * Operations applied in order: crop (raw PLY space), centroid offset, axis flips.
+ * Crop bounds in the sidecar are in the original PLY coordinate space — they
+ * must be applied before offset/flip transforms.
  * Returns a new SplatAttributes with filtered splats if crop is active,
  * or the same object (mutated in-place) if no crop.
  */
@@ -47,6 +49,32 @@ export function applySidecarCorrections(
   sidecar: KaminosSidecar,
 ): SplatAttributes {
   const correction = sidecar.correction;
+
+  // Apply crop first — bounds are in raw PLY coordinate space
+  if (correction.crop?.enabled) {
+    const [minX, minY, minZ] = correction.crop.min;
+    const [maxX, maxY, maxZ] = correction.crop.max;
+    const positions = attrs.positions;
+    const count = attrs.count;
+
+    const keep = new Uint8Array(count);
+    let kept = 0;
+    for (let i = 0; i < count; i++) {
+      const base = i * 3;
+      const x = positions[base];
+      const y = positions[base + 1];
+      const z = positions[base + 2];
+      if (x >= minX && x <= maxX && y >= minY && y <= maxY && z >= minZ && z <= maxZ) {
+        keep[i] = 1;
+        kept++;
+      }
+    }
+
+    if (kept < count) {
+      attrs = filterSplatAttributes(attrs, keep, kept);
+    }
+  }
+
   const positions = attrs.positions;
   const count = attrs.count;
 
@@ -74,31 +102,7 @@ export function applySidecarCorrections(
     }
   }
 
-  // Apply crop (filter out splats outside bounds)
-  if (correction.crop?.enabled) {
-    const [minX, minY, minZ] = correction.crop.min;
-    const [maxX, maxY, maxZ] = correction.crop.max;
-
-    // First pass: count survivors
-    const keep = new Uint8Array(count);
-    let kept = 0;
-    for (let i = 0; i < count; i++) {
-      const base = i * 3;
-      const x = positions[base];
-      const y = positions[base + 1];
-      const z = positions[base + 2];
-      if (x >= minX && x <= maxX && y >= minY && y <= maxY && z >= minZ && z <= maxZ) {
-        keep[i] = 1;
-        kept++;
-      }
-    }
-
-    if (kept < count) {
-      return filterSplatAttributes(attrs, keep, kept);
-    }
-  }
-
-  // Recompute bounds after offset/flip (even without crop)
+  // Recompute bounds after all transforms
   attrs.bounds = recomputeBounds(positions, count);
   return attrs;
 }
