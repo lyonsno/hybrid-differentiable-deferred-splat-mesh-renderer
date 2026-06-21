@@ -12,7 +12,7 @@ import {
   type SplatScene,
 } from "./splatRenderer.js";
 import { createAlphaTexturePresenter } from "./tileLocalTexturePresenter.js";
-import { decodeLocalPlySplatPayload, tryFetchSidecar, applySidecarCorrections, type KaminosSidecar } from "./localPly.js";
+import { decodeLocalPlySplatPayload, applySidecarCorrections, type KaminosSidecar } from "./localPly.js";
 import { fetchFirstSmokeSplatPayload, type SplatAttributes } from "./splats.js";
 
 // ---------------------------------------------------------------------------
@@ -256,52 +256,29 @@ export async function createSplatOverlay(
   }
 
   async function loadPly(source: string | ArrayBuffer, fileName?: string) {
+    // The overlay loads raw PLY data without applying sidecar corrections.
+    // The host (Kaminos) manages position transforms via setModelMatrix and
+    // passes crop bounds via setCorrectionIdentity. Sidecar auto-apply only
+    // happens in main.ts (standalone renderer).
     let bytes: ArrayBuffer;
     const isUrl = typeof source === "string";
     if (isUrl) {
-      const [resp, sidecar] = await Promise.all([
-        fetch(source).then(r => { if (!r.ok) throw new Error(`Failed to fetch PLY: ${r.status}`); return r; }),
-        tryFetchSidecar(source),
-      ]);
+      const resp = await fetch(source);
+      if (!resp.ok) throw new Error(`Failed to fetch PLY: ${resp.status}`);
       bytes = await resp.arrayBuffer();
       fileName = fileName ?? source.split("/").pop() ?? "scene.ply";
-      const rawAttrs = decodeLocalPlySplatPayload(fileName, bytes);
-      preCropAttributes = rawAttrs;
-      let attrs = rawAttrs;
-      if (sidecar) {
-        console.log(`Applying Kaminos sidecar corrections from ${source}.kaminos-splat.json`);
-        attrs = applySidecarCorrections(rawAttrs, sidecar);
-        sourceIdentity = {
-          source,
-          loadMethod: "ply-url",
-          correctionApplied: true,
-          correctionIdentity: {
-            rotation: sidecar.correction.orientation?.rotation,
-            axisFlips: sidecar.correction.axisFlips?.map(v => v !== 1),
-            centroidOffset: sidecar.correction.centroidOffset,
-            crop: sidecar.correction.crop,
-          },
-        };
-      } else {
-        sourceIdentity = {
-          source,
-          loadMethod: "ply-url",
-          correctionApplied: false,
-        };
-      }
-      initScene(attrs);
     } else {
       bytes = source;
       fileName = fileName ?? "scene.ply";
-      const attrs = decodeLocalPlySplatPayload(fileName, bytes);
-      preCropAttributes = attrs;
-      sourceIdentity = {
-        source: fileName,
-        loadMethod: "ply-arraybuffer",
-        correctionApplied: false,
-      };
-      initScene(attrs);
     }
+    const attrs = decodeLocalPlySplatPayload(fileName, bytes);
+    preCropAttributes = attrs;
+    sourceIdentity = {
+      source: isUrl ? source : fileName,
+      loadMethod: isUrl ? "ply-url" : "ply-arraybuffer",
+      correctionApplied: false,
+    };
+    initScene(attrs);
   }
 
   async function loadManifest(url: string) {
