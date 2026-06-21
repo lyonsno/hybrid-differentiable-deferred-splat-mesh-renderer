@@ -563,7 +563,7 @@ function recomputeBounds(positions: Float32Array, count: number): SplatBounds {
   return boundsFromExtents(minX, minY, minZ, maxX, maxY, maxZ);
 }
 
-function filterSplatAttributes(
+export function filterSplatAttributes(
   attrs: SplatAttributes,
   keep: Uint8Array,
   kept: number,

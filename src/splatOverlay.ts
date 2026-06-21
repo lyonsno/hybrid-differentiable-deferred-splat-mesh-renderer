@@ -12,7 +12,7 @@ import {
   type SplatScene,
 } from "./splatRenderer.js";
 import { createAlphaTexturePresenter } from "./tileLocalTexturePresenter.js";
-import { decodeLocalPlySplatPayload, applySidecarCorrections, type KaminosSidecar } from "./localPly.js";
+import { decodeLocalPlySplatPayload, filterSplatAttributes } from "./localPly.js";
 import { fetchFirstSmokeSplatPayload, type SplatAttributes } from "./splats.js";
 
 // ---------------------------------------------------------------------------
@@ -211,29 +211,46 @@ export async function createSplatOverlay(
     if (sourceIdentity) {
       sourceIdentity = { ...sourceIdentity, correctionApplied: true, correctionIdentity: correction };
     }
-    // Apply crop if correction includes crop bounds and we have pre-crop attributes
+    // Apply crop if correction includes crop bounds and we have pre-crop attributes.
+    // Crop bounds from Kaminos are in corrected space (after offset + flip).
+    // We transform raw positions to corrected space for the crop test, then
+    // keep only the raw positions that survive — the host handles rendering transforms.
     const crop = correction?.crop as { enabled?: boolean; min?: number[]; max?: number[] } | undefined;
     if (crop?.enabled && preCropAttributes && crop.min && crop.max) {
-      const sidecar: KaminosSidecar = {
-        schema: "kaminos.splat-correction.v0",
-        correction: {
-          centroidOffset: correction?.centroidOffset as [number, number, number] | undefined,
-          axisFlips: correction?.axisFlips
-            ? (correction.axisFlips as (boolean | number)[]).map(v => typeof v === "boolean" ? (v ? -1 : 1) : (v ? -1 : 1)) as [number, number, number]
-            : undefined,
-          crop: {
-            enabled: true,
-            min: crop.min as [number, number, number],
-            max: crop.max as [number, number, number],
-          },
-        },
-      };
-      const cropped = applySidecarCorrections(preCropAttributes, sidecar);
-      if (cropped.count > 0) {
-        console.log(`Overlay: applying crop from correction identity (${cropped.count}/${preCropAttributes.count} splats)`);
-        initScene(cropped);
-      } else {
-        console.warn(`Overlay: crop would remove all splats, skipping`);
+      const [cMinX, cMinY, cMinZ] = crop.min;
+      const [cMaxX, cMaxY, cMaxZ] = crop.max;
+      const offset = correction?.centroidOffset as number[] | undefined;
+      const flips = correction?.axisFlips as (boolean | number)[] | undefined;
+      const ox = offset?.[0] ?? 0, oy = offset?.[1] ?? 0, oz = offset?.[2] ?? 0;
+      // Kaminos passes axisFlips as booleans (true = flipped) or numbers
+      const fx = flips?.[0] ? -1 : 1;
+      const fy = flips?.[1] ? -1 : 1;
+      const fz = flips?.[2] ? -1 : 1;
+
+      const src = preCropAttributes;
+      const positions = src.positions;
+      const count = src.count;
+      const keep = new Uint8Array(count);
+      let kept = 0;
+      for (let i = 0; i < count; i++) {
+        const base = i * 3;
+        // Transform to corrected space for crop test only
+        const cx = (positions[base] - ox) * fx;
+        const cy = (positions[base + 1] - oy) * fy;
+        const cz = (positions[base + 2] - oz) * fz;
+        if (cx >= cMinX && cx <= cMaxX && cy >= cMinY && cy <= cMaxY && cz >= cMinZ && cz <= cMaxZ) {
+          keep[i] = 1;
+          kept++;
+        }
+      }
+
+      if (kept === 0) {
+        console.warn(`Overlay: crop would remove all ${count} splats, skipping`);
+      } else if (kept < count) {
+        console.log(`Overlay: crop ${kept}/${count} splats`);
+        // Filter raw attributes (keep raw positions for rendering)
+        const filtered = filterSplatAttributes(src, keep, kept);
+        initScene(filtered);
       }
     }
   }
