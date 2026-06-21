@@ -307,7 +307,7 @@ test("applySidecarCorrections crops splats outside bounds", () => {
   assert.ok(Math.abs(result.positions[3] - 0.5) < 0.001);
 });
 
-test("applySidecarCorrections crops in raw PLY space then applies offset", () => {
+test("applySidecarCorrections applies offset then crop in corrected space", () => {
   const attrs = decodeLocalPlySplatPayload("test.ply", binaryPlyFixture([
     { position: [10, 10, 10], dc: [0, 0, 0], opacity: 0, scales: [0, 0, 0], rotation: [1, 0, 0, 0] },
     { position: [10.5, 10.5, 10.5], dc: [0, 0, 0], opacity: 0, scales: [0, 0, 0], rotation: [1, 0, 0, 0] },
@@ -318,16 +318,32 @@ test("applySidecarCorrections crops in raw PLY space then applies offset", () =>
     schema: "kaminos.splat-correction.v0",
     correction: {
       centroidOffset: [10, 10, 10],
-      // Crop in raw PLY space: keeps [10,10,10] and [10.5,10.5,10.5], removes [15,15,15]
-      crop: { enabled: true, min: [9, 9, 9], max: [11, 11, 11] },
+      // Crop in corrected space (after offset): [0,0,0] and [0.5,0.5,0.5] survive, [5,5,5] doesn't
+      crop: { enabled: true, min: [-1, -1, -1], max: [1, 1, 1] },
     },
   };
 
   const result = applySidecarCorrections(attrs, sidecar);
-  // Crop first (raw space): keeps first two. Then offset: [0,0,0] and [0.5,0.5,0.5].
   assert.equal(result.count, 2);
   assert.ok(Math.abs(result.positions[0] - 0) < 0.001);
   assert.ok(Math.abs(result.positions[3] - 0.5) < 0.001);
+});
+
+test("applySidecarCorrections warns and skips crop when all splats filtered", () => {
+  const attrs = decodeLocalPlySplatPayload("test.ply", binaryPlyFixture([
+    { position: [0, 0, 0], dc: [0, 0, 0], opacity: 0, scales: [0, 0, 0], rotation: [1, 0, 0, 0] },
+  ]));
+
+  const sidecar: KaminosSidecar = {
+    schema: "kaminos.splat-correction.v0",
+    correction: {
+      crop: { enabled: true, min: [100, 100, 100], max: [200, 200, 200] },
+    },
+  };
+
+  // Should not crash — returns original attrs when crop would remove everything
+  const result = applySidecarCorrections(attrs, sidecar);
+  assert.equal(result.count, 1);
 });
 
 test("applySidecarCorrections preserves SH coefficients through crop", () => {

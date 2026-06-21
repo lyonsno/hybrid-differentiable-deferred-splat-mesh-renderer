@@ -38,9 +38,9 @@ export async function tryFetchSidecar(plyUrl: string): Promise<KaminosSidecar | 
 
 /**
  * Apply Kaminos sidecar corrections to decoded SplatAttributes.
- * Operations applied in order: crop (raw PLY space), centroid offset, axis flips.
- * Crop bounds in the sidecar are in the original PLY coordinate space — they
- * must be applied before offset/flip transforms.
+ * Operations applied in order: centroid offset, axis flips, crop.
+ * Crop bounds in the sidecar are in corrected space (post-offset, post-flip),
+ * matching how Kaminos applies corrections as scene transforms.
  * Returns a new SplatAttributes with filtered splats if crop is active,
  * or the same object (mutated in-place) if no crop.
  */
@@ -49,32 +49,6 @@ export function applySidecarCorrections(
   sidecar: KaminosSidecar,
 ): SplatAttributes {
   const correction = sidecar.correction;
-
-  // Apply crop first — bounds are in raw PLY coordinate space
-  if (correction.crop?.enabled) {
-    const [minX, minY, minZ] = correction.crop.min;
-    const [maxX, maxY, maxZ] = correction.crop.max;
-    const positions = attrs.positions;
-    const count = attrs.count;
-
-    const keep = new Uint8Array(count);
-    let kept = 0;
-    for (let i = 0; i < count; i++) {
-      const base = i * 3;
-      const x = positions[base];
-      const y = positions[base + 1];
-      const z = positions[base + 2];
-      if (x >= minX && x <= maxX && y >= minY && y <= maxY && z >= minZ && z <= maxZ) {
-        keep[i] = 1;
-        kept++;
-      }
-    }
-
-    if (kept < count) {
-      attrs = filterSplatAttributes(attrs, keep, kept);
-    }
-  }
-
   const positions = attrs.positions;
   const count = attrs.count;
 
@@ -99,6 +73,33 @@ export function applySidecarCorrections(
         positions[base + 1] *= fy;
         positions[base + 2] *= fz;
       }
+    }
+  }
+
+  // Apply crop after transforms — bounds are in corrected space
+  if (correction.crop?.enabled) {
+    const [minX, minY, minZ] = correction.crop.min;
+    const [maxX, maxY, maxZ] = correction.crop.max;
+
+    const keep = new Uint8Array(count);
+    let kept = 0;
+    for (let i = 0; i < count; i++) {
+      const base = i * 3;
+      const x = positions[base];
+      const y = positions[base + 1];
+      const z = positions[base + 2];
+      if (x >= minX && x <= maxX && y >= minY && y <= maxY && z >= minZ && z <= maxZ) {
+        keep[i] = 1;
+        kept++;
+      }
+    }
+
+    if (kept === 0) {
+      console.warn(`Sidecar crop filtered all ${count} splats — crop bounds may be stale or in wrong space`);
+    }
+
+    if (kept < count && kept > 0) {
+      return filterSplatAttributes(attrs, keep, kept);
     }
   }
 
