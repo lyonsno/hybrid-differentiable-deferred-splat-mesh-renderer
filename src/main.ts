@@ -11,7 +11,7 @@ import {
   positionCameraFromTarget,
 } from "./camera.js";
 import { handleDoubleClickPivot } from "./clickToPivot.js";
-import { loadDroppedSplatFile, decodeLocalPlySplatPayload } from "./localPly.js";
+import { loadDroppedSplatFile, decodeLocalPlySplatPayload, tryFetchSidecar, applySidecarCorrections } from "./localPly.js";
 import {
   createRenderDemandState,
   markRenderFrameFinished,
@@ -383,9 +383,15 @@ async function main() {
   const urlSplatScale = selectedSplatScale();
   async function fetchSplatAttributes(path: string): Promise<SplatAttributes> {
     if (path.toLowerCase().endsWith(".ply")) {
-      const response = await fetch(path);
-      if (!response.ok) throw new Error(`Failed to fetch PLY: ${response.status} ${response.statusText}`);
-      const attrs = decodeLocalPlySplatPayload(path, await response.arrayBuffer());
+      const [response, sidecar] = await Promise.all([
+        fetch(path).then(r => { if (!r.ok) throw new Error(`Failed to fetch PLY: ${r.status} ${r.statusText}`); return r; }),
+        tryFetchSidecar(path),
+      ]);
+      let attrs = decodeLocalPlySplatPayload(path, await response.arrayBuffer());
+      if (sidecar) {
+        console.log(`Applying Kaminos sidecar corrections from ${path}.kaminos-splat.json`);
+        attrs = applySidecarCorrections(attrs, sidecar);
+      }
       // URL param overrides auto-detected scale
       if (urlSplatScale !== undefined) attrs.splatScale = urlSplatScale;
       return attrs;

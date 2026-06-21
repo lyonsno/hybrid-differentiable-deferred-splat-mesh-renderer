@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { decodeLocalPlySplatPayload } from "../src/localPly.ts";
+import { decodeLocalPlySplatPayload, applySidecarCorrections, type KaminosSidecar } from "../src/localPly.ts";
 
 const SH_C0 = 0.28209479;
 
@@ -244,3 +244,112 @@ function requireShRest(row: PlyFixtureRow): number[] {
   }
   return row.shRest;
 }
+
+// ---------------------------------------------------------------------------
+// Sidecar correction tests
+// ---------------------------------------------------------------------------
+
+test("applySidecarCorrections applies centroid offset", () => {
+  const attrs = decodeLocalPlySplatPayload("test.ply", binaryPlyFixture([
+    { position: [10, 20, 30], dc: [0, 0, 0], opacity: 0, scales: [0, 0, 0], rotation: [1, 0, 0, 0] },
+    { position: [12, 22, 32], dc: [0, 0, 0], opacity: 0, scales: [0, 0, 0], rotation: [1, 0, 0, 0] },
+  ]));
+
+  const sidecar: KaminosSidecar = {
+    schema: "kaminos.splat-correction.v0",
+    correction: { centroidOffset: [10, 20, 30] },
+  };
+
+  const result = applySidecarCorrections(attrs, sidecar);
+  assert.equal(result.count, 2);
+  assert.ok(Math.abs(result.positions[0] - 0) < 0.001);
+  assert.ok(Math.abs(result.positions[1] - 0) < 0.001);
+  assert.ok(Math.abs(result.positions[2] - 0) < 0.001);
+  assert.ok(Math.abs(result.positions[3] - 2) < 0.001);
+  assert.ok(Math.abs(result.positions[4] - 2) < 0.001);
+  assert.ok(Math.abs(result.positions[5] - 2) < 0.001);
+});
+
+test("applySidecarCorrections applies axis flips", () => {
+  const attrs = decodeLocalPlySplatPayload("test.ply", binaryPlyFixture([
+    { position: [1, 2, 3], dc: [0, 0, 0], opacity: 0, scales: [0, 0, 0], rotation: [1, 0, 0, 0] },
+  ]));
+
+  const sidecar: KaminosSidecar = {
+    schema: "kaminos.splat-correction.v0",
+    correction: { axisFlips: [1, 1, -1] },
+  };
+
+  const result = applySidecarCorrections(attrs, sidecar);
+  assert.ok(Math.abs(result.positions[0] - 1) < 0.001);
+  assert.ok(Math.abs(result.positions[1] - 2) < 0.001);
+  assert.ok(Math.abs(result.positions[2] - (-3)) < 0.001);
+});
+
+test("applySidecarCorrections crops splats outside bounds", () => {
+  const attrs = decodeLocalPlySplatPayload("test.ply", binaryPlyFixture([
+    { position: [0, 0, 0], dc: [1, 0, 0], opacity: 0, scales: [0, 0, 0], rotation: [1, 0, 0, 0] },
+    { position: [5, 5, 5], dc: [0, 1, 0], opacity: 0, scales: [0, 0, 0], rotation: [1, 0, 0, 0] },
+    { position: [0.5, 0.5, 0.5], dc: [0, 0, 1], opacity: 0, scales: [0, 0, 0], rotation: [1, 0, 0, 0] },
+  ]));
+
+  const sidecar: KaminosSidecar = {
+    schema: "kaminos.splat-correction.v0",
+    correction: {
+      crop: { enabled: true, min: [-1, -1, -1], max: [1, 1, 1] },
+    },
+  };
+
+  const result = applySidecarCorrections(attrs, sidecar);
+  // Splat at [5,5,5] is outside crop bounds, should be removed
+  assert.equal(result.count, 2);
+  assert.ok(Math.abs(result.positions[0] - 0) < 0.001);
+  assert.ok(Math.abs(result.positions[3] - 0.5) < 0.001);
+});
+
+test("applySidecarCorrections applies offset then crop in correct order", () => {
+  const attrs = decodeLocalPlySplatPayload("test.ply", binaryPlyFixture([
+    { position: [10, 10, 10], dc: [0, 0, 0], opacity: 0, scales: [0, 0, 0], rotation: [1, 0, 0, 0] },
+    { position: [10.5, 10.5, 10.5], dc: [0, 0, 0], opacity: 0, scales: [0, 0, 0], rotation: [1, 0, 0, 0] },
+    { position: [15, 15, 15], dc: [0, 0, 0], opacity: 0, scales: [0, 0, 0], rotation: [1, 0, 0, 0] },
+  ]));
+
+  const sidecar: KaminosSidecar = {
+    schema: "kaminos.splat-correction.v0",
+    correction: {
+      centroidOffset: [10, 10, 10],
+      crop: { enabled: true, min: [-1, -1, -1], max: [1, 1, 1] },
+    },
+  };
+
+  const result = applySidecarCorrections(attrs, sidecar);
+  // After offset: [0,0,0], [0.5,0.5,0.5], [5,5,5]. Crop removes [5,5,5].
+  assert.equal(result.count, 2);
+  assert.ok(Math.abs(result.positions[0] - 0) < 0.001);
+  assert.ok(Math.abs(result.positions[3] - 0.5) < 0.001);
+});
+
+test("applySidecarCorrections preserves SH coefficients through crop", () => {
+  const attrs = decodeLocalPlySplatPayload("test.ply", binaryPlyFixture([
+    { position: [0, 0, 0], dc: [0, 0, 0], opacity: 0, scales: [0, 0, 0], rotation: [1, 0, 0, 0],
+      shRest: [1, 2, 3, 4, 5, 6, 7, 8, 9] },
+    { position: [5, 5, 5], dc: [0, 0, 0], opacity: 0, scales: [0, 0, 0], rotation: [1, 0, 0, 0],
+      shRest: [10, 20, 30, 40, 50, 60, 70, 80, 90] },
+  ]));
+
+  const sidecar: KaminosSidecar = {
+    schema: "kaminos.splat-correction.v0",
+    correction: {
+      crop: { enabled: true, min: [-1, -1, -1], max: [1, 1, 1] },
+    },
+  };
+
+  const result = applySidecarCorrections(attrs, sidecar);
+  assert.equal(result.count, 1);
+  assert.ok(result.sh, "SH should be preserved");
+  // First splat's SH should survive
+  assert.deepEqual(
+    Array.from(result.sh!.coefficients),
+    Array.from(new Float32Array([1, 4, 7, 2, 5, 8, 3, 6, 9]))
+  );
+});

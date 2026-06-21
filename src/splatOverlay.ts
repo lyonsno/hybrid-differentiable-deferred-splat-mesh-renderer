@@ -12,7 +12,7 @@ import {
   type SplatScene,
 } from "./splatRenderer.js";
 import { createAlphaTexturePresenter } from "./tileLocalTexturePresenter.js";
-import { decodeLocalPlySplatPayload } from "./localPly.js";
+import { decodeLocalPlySplatPayload, tryFetchSidecar, applySidecarCorrections } from "./localPly.js";
 import { fetchFirstSmokeSplatPayload, type SplatAttributes } from "./splats.js";
 
 // ---------------------------------------------------------------------------
@@ -233,20 +233,45 @@ export async function createSplatOverlay(
     let bytes: ArrayBuffer;
     const isUrl = typeof source === "string";
     if (isUrl) {
-      const resp = await fetch(source);
-      if (!resp.ok) throw new Error(`Failed to fetch PLY: ${resp.status}`);
+      const [resp, sidecar] = await Promise.all([
+        fetch(source).then(r => { if (!r.ok) throw new Error(`Failed to fetch PLY: ${r.status}`); return r; }),
+        tryFetchSidecar(source),
+      ]);
       bytes = await resp.arrayBuffer();
       fileName = fileName ?? source.split("/").pop() ?? "scene.ply";
+      let attrs = decodeLocalPlySplatPayload(fileName, bytes);
+      if (sidecar) {
+        console.log(`Applying Kaminos sidecar corrections from ${source}.kaminos-splat.json`);
+        attrs = applySidecarCorrections(attrs, sidecar);
+        sourceIdentity = {
+          source,
+          loadMethod: "ply-url",
+          correctionApplied: true,
+          correctionIdentity: {
+            rotation: sidecar.correction.orientation?.rotation,
+            axisFlips: sidecar.correction.axisFlips?.map(v => v !== 1),
+            centroidOffset: sidecar.correction.centroidOffset,
+            crop: sidecar.correction.crop,
+          },
+        };
+      } else {
+        sourceIdentity = {
+          source,
+          loadMethod: "ply-url",
+          correctionApplied: false,
+        };
+      }
+      initScene(attrs);
     } else {
       bytes = source;
       fileName = fileName ?? "scene.ply";
+      sourceIdentity = {
+        source: fileName,
+        loadMethod: "ply-arraybuffer",
+        correctionApplied: false,
+      };
+      initScene(decodeLocalPlySplatPayload(fileName, bytes));
     }
-    sourceIdentity = {
-      source: isUrl ? source : fileName,
-      loadMethod: isUrl ? "ply-url" : "ply-arraybuffer",
-      correctionApplied: false,
-    };
-    initScene(decodeLocalPlySplatPayload(fileName, bytes));
   }
 
   async function loadManifest(url: string) {

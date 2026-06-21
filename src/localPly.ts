@@ -1,5 +1,108 @@
 import type { FirstSmokeSplatLayout, SplatAttributes, SplatBounds } from "./splats.js";
 
+// ---------------------------------------------------------------------------
+// Kaminos sidecar correction types
+// ---------------------------------------------------------------------------
+
+export interface KaminosSidecar {
+  schema: string;
+  root_id?: string;
+  path?: string;
+  source?: string;
+  correction: {
+    orientation?: { rotation: [number, number, number] };
+    axisFlips?: [number, number, number];
+    centroidOffset?: [number, number, number];
+    crop?: {
+      enabled: boolean;
+      min: [number, number, number];
+      max: [number, number, number];
+    };
+  };
+  updatedAt?: string;
+}
+
+/** Try to fetch a .kaminos-splat.json sidecar for the given PLY URL. */
+export async function tryFetchSidecar(plyUrl: string): Promise<KaminosSidecar | undefined> {
+  const sidecarUrl = `${plyUrl}.kaminos-splat.json`;
+  try {
+    const resp = await fetch(sidecarUrl);
+    if (!resp.ok) return undefined;
+    const json = await resp.json();
+    if (json && typeof json === "object" && json.correction) return json as KaminosSidecar;
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Apply Kaminos sidecar corrections to decoded SplatAttributes in-place.
+ * Operations applied in order: centroid offset, axis flips, crop.
+ * Returns a new SplatAttributes with filtered splats if crop is active,
+ * or the same object (mutated in-place) if no crop.
+ */
+export function applySidecarCorrections(
+  attrs: SplatAttributes,
+  sidecar: KaminosSidecar,
+): SplatAttributes {
+  const correction = sidecar.correction;
+  const positions = attrs.positions;
+  const count = attrs.count;
+
+  // Apply centroid offset (subtract to re-center)
+  if (correction.centroidOffset) {
+    const [cx, cy, cz] = correction.centroidOffset;
+    for (let i = 0; i < count; i++) {
+      const base = i * 3;
+      positions[base] -= cx;
+      positions[base + 1] -= cy;
+      positions[base + 2] -= cz;
+    }
+  }
+
+  // Apply axis flips (multiply each axis by +1 or -1)
+  if (correction.axisFlips) {
+    const [fx, fy, fz] = correction.axisFlips;
+    if (fx !== 1 || fy !== 1 || fz !== 1) {
+      for (let i = 0; i < count; i++) {
+        const base = i * 3;
+        positions[base] *= fx;
+        positions[base + 1] *= fy;
+        positions[base + 2] *= fz;
+      }
+    }
+  }
+
+  // Apply crop (filter out splats outside bounds)
+  if (correction.crop?.enabled) {
+    const [minX, minY, minZ] = correction.crop.min;
+    const [maxX, maxY, maxZ] = correction.crop.max;
+
+    // First pass: count survivors
+    const keep = new Uint8Array(count);
+    let kept = 0;
+    for (let i = 0; i < count; i++) {
+      const base = i * 3;
+      const x = positions[base];
+      const y = positions[base + 1];
+      const z = positions[base + 2];
+      if (x >= minX && x <= maxX && y >= minY && y <= maxY && z >= minZ && z <= maxZ) {
+        keep[i] = 1;
+        kept++;
+      }
+    }
+
+    if (kept < count) {
+      return filterSplatAttributes(attrs, keep, kept);
+    }
+  }
+
+  // Recompute bounds after offset/flip (even without crop)
+  attrs.bounds = recomputeBounds(positions, count);
+  return attrs;
+}
+
 const SH_C0 = 0.28209479177387814;
 const FIRST_SMOKE_SPLAT_LAYOUT: FirstSmokeSplatLayout = {
   strideBytes: 32,
@@ -439,5 +542,101 @@ function percentileBounds(
   const lo = Math.floor(sampleCount * trimFraction);
   const hi = Math.min(Math.floor(sampleCount * (1 - trimFraction)), sampleCount - 1);
   return boundsFromExtents(xs[lo], ys[lo], zs[lo], xs[hi], ys[hi], zs[hi]);
+}
+
+function recomputeBounds(positions: Float32Array, count: number): SplatBounds {
+  if (count > 100) return percentileBounds(positions, count, 0.05);
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  for (let i = 0; i < count; i++) {
+    const base = i * 3;
+    const x = positions[base], y = positions[base + 1], z = positions[base + 2];
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
+    if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+  }
+  return boundsFromExtents(minX, minY, minZ, maxX, maxY, maxZ);
+}
+
+function filterSplatAttributes(
+  attrs: SplatAttributes,
+  keep: Uint8Array,
+  kept: number,
+): SplatAttributes {
+  const newPositions = new Float32Array(kept * 3);
+  const newColors = new Float32Array(kept * 3);
+  const newOpacities = new Float32Array(kept);
+  const newRadii = new Float32Array(kept);
+  const newScales = new Float32Array(kept * 3);
+  const newRotations = new Float32Array(kept * 4);
+  const newOriginalIds = new Uint32Array(kept);
+  const newNormals = attrs.normals ? new Float32Array(kept * 3) : undefined;
+  const newRoughness = attrs.roughness ? new Float32Array(kept) : undefined;
+  const newMetalness = attrs.metalness ? new Float32Array(kept) : undefined;
+  const newSh = attrs.sh
+    ? new Float32Array(kept * attrs.sh.coefficientCount * 3)
+    : undefined;
+
+  let dst = 0;
+  for (let src = 0; src < attrs.count; src++) {
+    if (!keep[src]) continue;
+    const srcVec = src * 3;
+    const dstVec = dst * 3;
+    newPositions[dstVec] = attrs.positions[srcVec];
+    newPositions[dstVec + 1] = attrs.positions[srcVec + 1];
+    newPositions[dstVec + 2] = attrs.positions[srcVec + 2];
+    newColors[dstVec] = attrs.colors[srcVec];
+    newColors[dstVec + 1] = attrs.colors[srcVec + 1];
+    newColors[dstVec + 2] = attrs.colors[srcVec + 2];
+    newOpacities[dst] = attrs.opacities[src];
+    newRadii[dst] = attrs.radii[src];
+    newScales[dstVec] = attrs.scales[srcVec];
+    newScales[dstVec + 1] = attrs.scales[srcVec + 1];
+    newScales[dstVec + 2] = attrs.scales[srcVec + 2];
+    const srcQuat = src * 4;
+    const dstQuat = dst * 4;
+    newRotations[dstQuat] = attrs.rotations[srcQuat];
+    newRotations[dstQuat + 1] = attrs.rotations[srcQuat + 1];
+    newRotations[dstQuat + 2] = attrs.rotations[srcQuat + 2];
+    newRotations[dstQuat + 3] = attrs.rotations[srcQuat + 3];
+    newOriginalIds[dst] = attrs.originalIds[src];
+    if (newNormals && attrs.normals) {
+      newNormals[dstVec] = attrs.normals[srcVec];
+      newNormals[dstVec + 1] = attrs.normals[srcVec + 1];
+      newNormals[dstVec + 2] = attrs.normals[srcVec + 2];
+    }
+    if (newRoughness && attrs.roughness) newRoughness[dst] = attrs.roughness[src];
+    if (newMetalness && attrs.metalness) newMetalness[dst] = attrs.metalness[src];
+    if (newSh && attrs.sh) {
+      const coeffCount = attrs.sh.coefficientCount * 3;
+      const srcShBase = src * coeffCount;
+      const dstShBase = dst * coeffCount;
+      for (let c = 0; c < coeffCount; c++) {
+        newSh[dstShBase + c] = attrs.sh.coefficients[srcShBase + c];
+      }
+    }
+    dst++;
+  }
+
+  return {
+    count: kept,
+    sourceKind: attrs.sourceKind,
+    positions: newPositions,
+    colors: newColors,
+    opacities: newOpacities,
+    radii: newRadii,
+    scales: newScales,
+    rotations: newRotations,
+    sh: attrs.sh && newSh
+      ? { ...attrs.sh, coefficients: newSh }
+      : attrs.sh,
+    normals: newNormals,
+    roughness: newRoughness,
+    metalness: newMetalness,
+    originalIds: newOriginalIds,
+    bounds: recomputeBounds(newPositions, kept),
+    layout: attrs.layout,
+    splatScale: attrs.splatScale,
+  };
 }
 
