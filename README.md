@@ -20,24 +20,41 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full pipeline design.
 
 ## Quick start
 
-### WebGPU renderer
+### WebGPU renderer (standalone dev harness)
 
 ```bash
 npm install
 npm run dev
 ```
 
-Opens a browser with a WebGPU canvas. The default scene is the committed real Scaniverse first-smoke asset:
-
-```
-http://127.0.0.1:5173/
-```
-
-You can load another exported first-smoke manifest with the `asset` query parameter:
+Opens a browser with a WebGPU canvas. Load PLY splat files via drag-and-drop, or
+specify an asset with the `asset` query parameter:
 
 ```
 http://127.0.0.1:5173/?asset=/smoke-assets/scaniverse-first-smoke/scaniverse-first-smoke.json
 ```
+
+The standalone harness has a single directional light and flat ambient — useful for
+debugging the rasterizer, but not representative of production visual quality.
+
+### Visual evaluation through Kaminos (recommended)
+
+For evaluating how rendering features look in context, use
+[Kaminos](https://github.com/lyonsno/kaminos) (`~/dev/kaminos`) — the spatial asset
+workbench that consumes this renderer as an overlay:
+
+```bash
+# Terminal 1: start the renderer dev server
+npm run dev
+
+# Terminal 2: start Kaminos
+cd ~/dev/kaminos && python3 serve.py
+```
+
+Open `http://127.0.0.1:8090` and load a PLY. Kaminos imports the renderer overlay
+from the Vite dev server and composites splats over a Three.js scene with HDR
+environment maps, GTAO ambient occlusion, and full PBR scene context. Hot reload
+works — save a renderer file and the overlay picks up the change.
 
 ### Compute compositor (GPU-sorted tile pipeline)
 
