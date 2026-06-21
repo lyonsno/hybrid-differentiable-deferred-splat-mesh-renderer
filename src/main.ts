@@ -57,6 +57,28 @@ const statsEl = document.getElementById("stats")!;
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 const SORT_BACKEND = "gpu-bitonic-cpu-depth-keys";
 
+// Slider elements
+const emIntensitySlider = document.getElementById("emIntensity") as HTMLInputElement | null;
+const emIntensityValEl = document.getElementById("emIntensityVal");
+const emThresholdSlider = document.getElementById("emThreshold") as HTMLInputElement | null;
+const emThresholdValEl = document.getElementById("emThresholdVal");
+const lightIntensitySliderEl = document.getElementById("lightIntensitySlider") as HTMLInputElement | null;
+const lightIntensityValEl = document.getElementById("lightIntensityVal");
+const ambientSliderEl = document.getElementById("ambientSlider") as HTMLInputElement | null;
+const ambientValEl = document.getElementById("ambientVal");
+const aoRadiusSlider = document.getElementById("aoRadius") as HTMLInputElement | null;
+const aoRadiusValEl = document.getElementById("aoRadiusVal");
+const aoIntensitySlider = document.getElementById("aoIntensity") as HTMLInputElement | null;
+const aoIntensityValEl = document.getElementById("aoIntensityVal");
+const aoFalloffSlider = document.getElementById("aoFalloff") as HTMLInputElement | null;
+const aoFalloffValEl = document.getElementById("aoFalloffVal");
+const aoSlicesSlider = document.getElementById("aoSlices") as HTMLInputElement | null;
+const aoSlicesValEl = document.getElementById("aoSlicesVal");
+const aoStepsSlider = document.getElementById("aoSteps") as HTMLInputElement | null;
+const aoStepsValEl = document.getElementById("aoStepsVal");
+const aoThicknessSlider = document.getElementById("aoThickness") as HTMLInputElement | null;
+const aoThicknessValEl = document.getElementById("aoThicknessVal");
+
 // Light control state -- L key cycles modes, arrow keys adjust angle in fixed mode
 type LightMode = "camera" | "fixed" | "overhead" | "rim";
 const LIGHT_MODES: LightMode[] = ["camera", "fixed", "overhead", "rim"];
@@ -66,19 +88,27 @@ let fixedLightElevation = 0.6; // radians
 let lightIntensity = 3.0;
 let ambientIntensity = 0.12;
 let specularOnly = false;
+let emissiveIntensity = 3.0;
+let emissiveThreshold = 0.05;
+let aoRadius = 0.15;
+let aoIntensity = 1.5;
+let aoFalloff = 1.0;
+let aoSlices = 3;
+let aoSteps = 4;
+let aoThickness = 1.81;
 
 // ---------------------------------------------------------------------------
 // URL param helpers
 // ---------------------------------------------------------------------------
 
-function selectedSplatAssetPath(): string {
+function selectedSplatAssetPath(): string | null {
   const params = new URLSearchParams(window.location.search);
   const splat = params.get("splat");
-  if (splat === null) return REAL_SCANIVERSE_SMOKE_ASSET_PATH;
+  if (splat === null) return null; // No default — require drag-and-drop or ?splat=
   // Restrict to same-origin paths — reject absolute URLs to prevent SSRF
   if (/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(splat)) {
     console.warn("?splat= must be a relative path, not an absolute URL");
-    return REAL_SCANIVERSE_SMOKE_ASSET_PATH;
+    return null;
   }
   return splat;
 }
@@ -226,11 +256,11 @@ async function main() {
   const ts = createTimestamps(gpu.device, gpu.timestampsSupported);
 
   // ---- G-buffer view mode: cycle with 'G' key ----
-  type GBufferViewMode = "color" | "normal" | "roughness" | "metalness" | "lit";
+  type GBufferViewMode = "color" | "normal" | "roughness" | "metalness" | "ao" | "lit";
   let gbufferViewMode: GBufferViewMode = "color";
   window.addEventListener("keydown", (e) => {
     if (e.key === "g" || e.key === "G") {
-      const modes: GBufferViewMode[] = ["color", "normal", "roughness", "metalness", "lit"];
+      const modes: GBufferViewMode[] = ["color", "normal", "roughness", "metalness", "ao", "lit"];
       const idx = modes.indexOf(gbufferViewMode);
       gbufferViewMode = modes[(idx + 1) % modes.length];
       console.log(`G-buffer view: ${gbufferViewMode}`);
@@ -245,10 +275,88 @@ async function main() {
     if (e.key === "ArrowRight") { fixedLightAzimuth += 0.15; requestFrame(); }
     if (e.key === "ArrowUp") { fixedLightElevation = Math.min(fixedLightElevation + 0.1, Math.PI / 2 - 0.05); requestFrame(); }
     if (e.key === "ArrowDown") { fixedLightElevation = Math.max(fixedLightElevation - 0.1, -Math.PI / 2 + 0.05); requestFrame(); }
-    if (e.key === "+" || e.key === "=") { lightIntensity = Math.min(lightIntensity + 0.5, 10.0); requestFrame(); }
-    if (e.key === "-" || e.key === "_") { lightIntensity = Math.max(lightIntensity - 0.5, 0.5); requestFrame(); }
-    if (e.key === "[") { ambientIntensity = Math.max(ambientIntensity - 0.03, 0.0); requestFrame(); }
-    if (e.key === "]") { ambientIntensity = Math.min(ambientIntensity + 0.03, 0.5); requestFrame(); }
+    if (e.key === "+" || e.key === "=") { lightIntensity = Math.min(lightIntensity + 0.5, 10.0); syncSliders(); requestFrame(); }
+    if (e.key === "-" || e.key === "_") { lightIntensity = Math.max(lightIntensity - 0.5, 0.5); syncSliders(); requestFrame(); }
+    if (e.key === "[") { ambientIntensity = Math.max(ambientIntensity - 0.03, 0.0); syncSliders(); requestFrame(); }
+    if (e.key === "]") { ambientIntensity = Math.min(ambientIntensity + 0.03, 0.5); syncSliders(); requestFrame(); }
+    if (e.key === "e") { emissiveIntensity = Math.min(emissiveIntensity + 0.5, 20.0); syncSliders(); requestFrame(); }
+    if (e.key === "E") { emissiveIntensity = Math.max(emissiveIntensity - 0.5, 0.0); syncSliders(); requestFrame(); }
+    if (e.key === "t") { emissiveThreshold = Math.min(emissiveThreshold + 0.01, 1.0); syncSliders(); requestFrame(); }
+    if (e.key === "T") { emissiveThreshold = Math.max(emissiveThreshold - 0.01, 0.0); syncSliders(); requestFrame(); }
+  });
+
+  // ---- Slider bindings ----
+  function syncSliders() {
+    if (emIntensitySlider) { emIntensitySlider.value = String(emissiveIntensity); }
+    if (emIntensityValEl) { emIntensityValEl.textContent = emissiveIntensity.toFixed(1); }
+    if (emThresholdSlider) { emThresholdSlider.value = String(emissiveThreshold); }
+    if (emThresholdValEl) { emThresholdValEl.textContent = emissiveThreshold.toFixed(3); }
+    if (lightIntensitySliderEl) { lightIntensitySliderEl.value = String(lightIntensity); }
+    if (lightIntensityValEl) { lightIntensityValEl.textContent = lightIntensity.toFixed(1); }
+    if (ambientSliderEl) { ambientSliderEl.value = String(ambientIntensity); }
+    if (ambientValEl) { ambientValEl.textContent = ambientIntensity.toFixed(2); }
+    if (aoRadiusSlider) { aoRadiusSlider.value = String(aoRadius); }
+    if (aoRadiusValEl) { aoRadiusValEl.textContent = aoRadius.toFixed(2); }
+    if (aoIntensitySlider) { aoIntensitySlider.value = String(aoIntensity); }
+    if (aoIntensityValEl) { aoIntensityValEl.textContent = aoIntensity.toFixed(1); }
+    if (aoFalloffSlider) { aoFalloffSlider.value = String(aoFalloff); }
+    if (aoFalloffValEl) { aoFalloffValEl.textContent = aoFalloff.toFixed(1); }
+    if (aoSlicesSlider) { aoSlicesSlider.value = String(aoSlices); }
+    if (aoSlicesValEl) { aoSlicesValEl.textContent = String(aoSlices); }
+    if (aoStepsSlider) { aoStepsSlider.value = String(aoSteps); }
+    if (aoStepsValEl) { aoStepsValEl.textContent = String(aoSteps); }
+    if (aoThicknessSlider) { aoThicknessSlider.value = String(aoThickness); }
+    if (aoThicknessValEl) { aoThicknessValEl.textContent = aoThickness.toFixed(2); }
+  }
+  emIntensitySlider?.addEventListener("input", () => {
+    emissiveIntensity = Number(emIntensitySlider!.value);
+    syncSliders();
+    requestFrame();
+  });
+  emThresholdSlider?.addEventListener("input", () => {
+    emissiveThreshold = Number(emThresholdSlider!.value);
+    syncSliders();
+    requestFrame();
+  });
+  lightIntensitySliderEl?.addEventListener("input", () => {
+    lightIntensity = Number(lightIntensitySliderEl!.value);
+    syncSliders();
+    requestFrame();
+  });
+  ambientSliderEl?.addEventListener("input", () => {
+    ambientIntensity = Number(ambientSliderEl!.value);
+    syncSliders();
+    requestFrame();
+  });
+  aoRadiusSlider?.addEventListener("input", () => {
+    aoRadius = Number(aoRadiusSlider!.value);
+    syncSliders();
+    requestFrame();
+  });
+  aoIntensitySlider?.addEventListener("input", () => {
+    aoIntensity = Number(aoIntensitySlider!.value);
+    syncSliders();
+    requestFrame();
+  });
+  aoFalloffSlider?.addEventListener("input", () => {
+    aoFalloff = Number(aoFalloffSlider!.value);
+    syncSliders();
+    requestFrame();
+  });
+  aoSlicesSlider?.addEventListener("input", () => {
+    aoSlices = Number(aoSlicesSlider!.value);
+    syncSliders();
+    requestFrame();
+  });
+  aoStepsSlider?.addEventListener("input", () => {
+    aoSteps = Number(aoStepsSlider!.value);
+    syncSliders();
+    requestFrame();
+  });
+  aoThicknessSlider?.addEventListener("input", () => {
+    aoThickness = Number(aoThicknessSlider!.value);
+    syncSliders();
+    requestFrame();
   });
 
   // ---- Scene state ----
@@ -262,8 +370,10 @@ async function main() {
   let operatorWitnessViewMode: RealScaniverseWitnessViewMode = REAL_SCANIVERSE_WITNESS_VIEW;
   let operatorWitnessRevision = 0;
 
-  statsEl.textContent = "Loading real Scaniverse splats...";
   const assetPath = selectedSplatAssetPath();
+  if (assetPath !== null) {
+    statsEl.textContent = `Loading ${assetPath}...`;
+  }
   let activeScene: SplatScene | null = null;
 
   // ---- Operator witness view switching ----
@@ -398,7 +508,11 @@ async function main() {
     }
     return fetchFirstSmokeSplatPayload(path);
   }
-  await replaceSplatScene(await fetchSplatAttributes(assetPath), assetPath);
+  if (assetPath !== null) {
+    await replaceSplatScene(await fetchSplatAttributes(assetPath), assetPath);
+  } else {
+    statsEl.textContent = "Drop a .ply file to load";
+  }
 
   bindDroppedSplatLoading(canvas, async (file) => {
     statsEl.textContent = `Loading ${file.name}...`;
@@ -487,6 +601,16 @@ async function main() {
       lightIntensity,
       ambientIntensity,
       specularOnly,
+      emissiveIntensity,
+      emissiveThreshold,
+      near: cam.near,
+      far: cam.far,
+      aoRadius,
+      aoIntensity,
+      aoFalloff,
+      aoSlices,
+      aoSteps,
+      aoThickness,
     }, encoder);
 
     // ---- Present to screen ----
@@ -522,6 +646,8 @@ async function main() {
       renderer.gbufferDebugPresenter.drawRoughness(renderPass, scene.gbufferDepthView, scene.gbufferNormalView, scene.gbufferMaterialView);
     } else if (gbufferViewMode === "metalness") {
       renderer.gbufferDebugPresenter.drawMetalness(renderPass, scene.gbufferDepthView, scene.gbufferNormalView, scene.gbufferMaterialView);
+    } else if (gbufferViewMode === "ao") {
+      renderer.gbufferDebugPresenter.drawDepth(renderPass, scene.aoView);
     } else if (gbufferViewMode === "lit") {
       renderer.presentTexture(renderPass, scene.litView);
     } else {
@@ -545,7 +671,7 @@ async function main() {
     // ---- Stats overlay ----
     const alphaSummary = renderer.alphaDensityState(scene).summary;
     const lightLabel = LIGHT_MODES[lightModeIndex] + (LIGHT_MODES[lightModeIndex] === "fixed" ? ` az:${fixedLightAzimuth.toFixed(1)} el:${fixedLightElevation.toFixed(1)}` : "");
-    let statsText = `${width}x${height} | ${displayFps} fps | ${scene.count.toLocaleString()} splats | light: ${lightLabel} (${lightIntensity.toFixed(1)}) amb:${ambientIntensity.toFixed(2)} | view: ${gbufferViewMode}`;
+    let statsText = `${width}x${height} | ${displayFps} fps | ${scene.count.toLocaleString()} splats | light: ${lightLabel} (${lightIntensity.toFixed(1)}) amb:${ambientIntensity.toFixed(2)} | em:${emissiveIntensity.toFixed(1)} thr:${emissiveThreshold.toFixed(3)} | view: ${gbufferViewMode}`;
     const frameTimingOverlay = formatFrameTimingOverlay(frameTiming);
     statsText += ` | ${frameTimingOverlay}`;
     if (gpuTimings.size > 0) {

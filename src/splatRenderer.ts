@@ -36,6 +36,7 @@ import {
 import gbufferDebugPresentShader from "./shaders/gbuffer_debug_present.wgsl?raw";
 import screenSpaceNormalsShader from "./shaders/gpu_screen_space_normals.wgsl?raw";
 import deferredLightingShader from "./shaders/gpu_deferred_lighting.wgsl?raw";
+import { createGTAO, DEFAULT_GTAO_PARAMS, type GTAOResources, type GTAOParams } from "./gtao.js";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -60,6 +61,7 @@ export interface SplatScene {
   readonly gbufferDepthView: GPUTextureView;
   readonly gbufferNormalView: GPUTextureView;
   readonly gbufferMaterialView: GPUTextureView;
+  readonly aoView: GPUTextureView;
   /** @internal */
   readonly _internal: ActiveSceneInternal;
 }
@@ -75,6 +77,16 @@ export interface RenderFrameParams {
   lightIntensity: number;
   ambientIntensity: number;
   specularOnly?: boolean;
+  emissiveIntensity?: number;
+  emissiveThreshold?: number;
+  near?: number;
+  far?: number;
+  aoRadius?: number;
+  aoIntensity?: number;
+  aoFalloff?: number;
+  aoSlices?: number;
+  aoSteps?: number;
+  aoThickness?: number;
 }
 
 export interface SplatRenderer {
@@ -266,6 +278,8 @@ interface ActiveSceneInternal {
     gbufferNormalTexture: GPUTexture;
     gbufferMaterialTexture: GPUTexture;
     litTexture: GPUTexture;
+    gtao: GTAOResources;
+    gtaoFrameCounter: number;
     frameUniformData: Float32Array;
     lastSortedViewProj: Float32Array | null;
     hasSortedRefs: boolean;
@@ -347,8 +361,9 @@ function createDeferredLightingPass(device: GPUDevice) {
       { binding: 1, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "float" } },
       { binding: 2, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float" } },
       { binding: 3, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "uint" } },
-      { binding: 4, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "uint" } },
+      { binding: 4, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "uint" } }, // material+emissive (rgba32uint)
       { binding: 5, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba16float" } },
+      { binding: 6, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float" } }, // AO (r32float)
     ],
   });
   const pipeline = device.createComputePipeline({
@@ -358,7 +373,7 @@ function createDeferredLightingPass(device: GPUDevice) {
   });
   const paramsBuffer = device.createBuffer({
     label: "deferred_lighting_params",
-    size: 144,
+    size: 160,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
   return {
@@ -368,6 +383,7 @@ function createDeferredLightingPass(device: GPUDevice) {
       depthView: GPUTextureView,
       normalView: GPUTextureView,
       materialView: GPUTextureView,
+      aoView: GPUTextureView,
       litTexture: GPUTexture,
       viewport: [number, number],
       viewProjInverse: Float32Array,
@@ -376,8 +392,10 @@ function createDeferredLightingPass(device: GPUDevice) {
       lightIntensity: number,
       ambientIntensity: number,
       specularOnly: boolean = false,
+      emissiveIntensity: number = 3.0,
+      emissiveThreshold: number = 0.05,
     ) {
-      const params = new Float32Array(36);
+      const params = new Float32Array(40);
       params[0] = viewport[0];
       params[1] = viewport[1];
       params[2] = 0.65; // roughness (fallback, G-buffer material overrides)
@@ -390,6 +408,8 @@ function createDeferredLightingPass(device: GPUDevice) {
       params[31] = lightIntensity;
       params[32] = ambientIntensity; params[33] = ambientIntensity; params[34] = ambientIntensity * 1.1; // ambient (slightly blue)
       params[35] = specularOnly ? 1.0 : 0.0;
+      params[36] = emissiveIntensity;
+      params[37] = emissiveThreshold;
       device.queue.writeBuffer(paramsBuffer, 0, params);
       const bg = device.createBindGroup({
         layout: bgl,
@@ -400,6 +420,7 @@ function createDeferredLightingPass(device: GPUDevice) {
           { binding: 3, resource: normalView },
           { binding: 4, resource: materialView },
           { binding: 5, resource: litTexture.createView() },
+          { binding: 6, resource: aoView },
         ],
       });
       const pass = encoder.beginComputePass({ label: "deferred_lighting" });
@@ -558,6 +579,7 @@ function destroySceneInternal(scene: SplatScene): void {
   cc.gbufferNormalTexture.destroy();
   cc.gbufferMaterialTexture.destroy();
   cc.litTexture.destroy();
+  cc.gtao.destroy();
   scene.buffers.positionBuffer.destroy();
   scene.buffers.opacityBuffer.destroy();
   scene.buffers.scaleBuffer.destroy();
@@ -732,7 +754,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
       const gbufferMaterialTexture = device.createTexture({
         label: "gbuffer_material",
         size: [viewportWidth, viewportHeight],
-        format: "r32uint",
+        format: "rgba32uint",
         usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
       });
       const litTexture = device.createTexture({
@@ -741,6 +763,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
         format: "rgba16float",
         usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
       });
+      const gtao = createGTAO(device, viewportWidth, viewportHeight);
       const computeBindGroups = createTileSplatBindGroups(
         device,
         computeResources,
@@ -777,6 +800,8 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
           gbufferNormalTexture,
           gbufferMaterialTexture,
           litTexture,
+          gtao,
+          gtaoFrameCounter: 0,
           frameUniformData: new Float32Array(TILE_SPLAT_FRAME_UNIFORM_BYTES / 4),
           lastSortedViewProj: null,
           hasSortedRefs: false,
@@ -795,6 +820,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
         gbufferDepthView: gbufferDepthTexture.createView(),
         gbufferNormalView: gbufferNormalTexture.createView(),
         gbufferMaterialView: gbufferMaterialTexture.createView(),
+        aoView: gtao.aoView,
         _internal: internal,
       };
     },
@@ -831,7 +857,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
         encodeCompositeOnly(encoder, cc.resources, cc.bindGroups);
       }
 
-      // Screen-space normal reconstruction + deferred lighting
+      // Screen-space normal reconstruction + GTAO + deferred lighting
       const vpInv = mat4Inverse(params.viewProj);
       if (vpInv) {
         if (!scene.hasPerSplatNormals) {
@@ -843,12 +869,36 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
             vpInv,
           );
         }
+
+        // GTAO: compute ambient occlusion from G-buffer depth
+        cc.gtao.encode(
+          encoder,
+          scene.gbufferDepthView,
+          scene.gbufferNormalView,
+          [cc.resources.plan.viewportWidth, cc.resources.plan.viewportHeight],
+          params.near ?? 0.01,
+          params.far ?? 100,
+          params.projMatrix,
+          params.viewMatrix,
+          {
+            ...DEFAULT_GTAO_PARAMS,
+            radiusWorld: params.aoRadius ?? DEFAULT_GTAO_PARAMS.radiusWorld,
+            intensity: params.aoIntensity ?? DEFAULT_GTAO_PARAMS.intensity,
+            thickness: params.aoThickness ?? DEFAULT_GTAO_PARAMS.thickness,
+            falloffEnd: params.aoFalloff ?? DEFAULT_GTAO_PARAMS.falloffEnd,
+            sliceCount: params.aoSlices ?? DEFAULT_GTAO_PARAMS.sliceCount,
+            stepsPerSlice: params.aoSteps ?? DEFAULT_GTAO_PARAMS.stepsPerSlice,
+          },
+          cc.gtaoFrameCounter++,
+        );
+
         deferredLighting.encode(
           encoder,
           scene.outputView,
           scene.gbufferDepthView,
           scene.gbufferNormalView,
           scene.gbufferMaterialView,
+          cc.gtao.aoView,
           cc.litTexture,
           [cc.resources.plan.viewportWidth, cc.resources.plan.viewportHeight],
           vpInv,
@@ -857,6 +907,8 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
           params.lightIntensity,
           params.ambientIntensity,
           params.specularOnly ?? false,
+          params.emissiveIntensity ?? 3.0,
+          params.emissiveThreshold ?? 0.05,
         );
       }
     },

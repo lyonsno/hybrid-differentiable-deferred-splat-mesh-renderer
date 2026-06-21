@@ -36,7 +36,7 @@ fn mortonEncode2D(x: u32, y: u32) -> u32 {
   return mx | (my << 1u);
 }
 
-const PROJ_STRIDE = 11u;
+const PROJ_STRIDE = 13u;
 const WG_SIZE = 64u;
 
 @group(0) @binding(0) var<uniform> frame: FrameUniforms;

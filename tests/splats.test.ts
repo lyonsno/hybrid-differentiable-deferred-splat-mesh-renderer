@@ -420,7 +420,13 @@ test("uploads typed splat attributes into separate GPU storage buffers", () => {
   assert.deepEqual(Array.from(new Float32Array(created[3].bytes.buffer)), Array.from(decoded.rotations));
   // materials buffer: pack2x16float(0.75, 0.0) per splat (no roughness/metalness data)
   assert.equal(created[4].desc.label, "first_smoke_splat_materials");
-  // shData buffer: DC colors only (no SH coefficients for this payload)
-  assert.deepEqual(Array.from(new Float32Array(created[5].bytes.buffer)), Array.from(decoded.colors));
+  // shData buffer: DC colors + emissive (0,0,0) per splat (no SH coefficients for this payload)
+  // Stride per splat: 3 (DC) + 3 (emissive zeros) = 6 floats
+  const shData = Array.from(new Float32Array(created[5].bytes.buffer));
+  const expectedShData: number[] = [];
+  for (let i = 0; i < decoded.count; i++) {
+    expectedShData.push(decoded.colors[i * 3], decoded.colors[i * 3 + 1], decoded.colors[i * 3 + 2], 0, 0, 0);
+  }
+  assert.deepEqual(shData, expectedShData);
   assert.deepEqual(Array.from(new Uint32Array(created[6].bytes.buffer)), [0, 1]);
 });

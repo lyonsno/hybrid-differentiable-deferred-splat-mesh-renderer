@@ -15,7 +15,7 @@ import classifyLargeSplatsShader from "./shaders/gpu_classify_large_splats.wgsl?
 //   tileGrid(8) + splatCount(4) + totalTileRefs(4) + splatScale(4) + shDegree(4) +
 //   pad(8) + cameraPos(12) + pad(4) + viewMatrix(64) + focal(8) + pad(8) = 208
 export const TILE_SPLAT_FRAME_UNIFORM_BYTES = 208;
-const PROJ_STRIDE_U32 = 11; // Must match PROJ_STRIDE in gpu_project_splats.wgsl
+const PROJ_STRIDE_U32 = 13; // Must match PROJ_STRIDE in gpu_project_splats.wgsl
 const TILE_ENTRY_BYTES = 4; // 1 u32 per tile entry (sortRank)
 
 // Morton (Z-order) encoding for 2D coordinates — matches WGSL mortonEncode2D.
@@ -198,7 +198,7 @@ export function createTileSplatCompositor(
       { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },           // depthBuffer (write)
       { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // materialData (packed roughness+metalness)
       { binding: 9, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // normals
-      { binding: 10, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // shData (DC colors + SH coefficients)
+      { binding: 10, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // shData (DC colors + SH coefficients + emissive)
     ],
   });
 
@@ -223,7 +223,7 @@ export function createTileSplatCompositor(
       { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // depthBuffer
       { binding: 5, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "r32float" } }, // G-buffer depth
       { binding: 6, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "r32uint" } }, // G-buffer normal (oct, pack2x16float)
-      { binding: 7, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "r32uint" } }, // G-buffer material (pack2x16float roughness, metalness)
+      { binding: 7, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba32uint" } }, // G-buffer material+emissive (.r=mat, .gb=emissive)
     ],
   });
 

@@ -173,10 +173,12 @@ export function decodeLocalPlySplatPayload(
   const hasNormals = fields.has("nx") && fields.has("ny") && fields.has("nz");
   const hasRoughness = fields.has("roughness");
   const hasMetallic = fields.has("metallic");
+  const hasEmissive = fields.has("emissive_r") && fields.has("emissive_g") && fields.has("emissive_b");
   const shLayout = discoverPlyShLayout(fields);
   const normals = hasNormals ? new Float32Array(count * 3) : undefined;
   const roughness = hasRoughness ? new Float32Array(count) : undefined;
   const metalness = hasMetallic ? new Float32Array(count) : undefined;
+  const emissive = hasEmissive ? new Float32Array(count * 3) : undefined;
   const shCoefficients =
     shLayout === undefined
       ? undefined
@@ -258,6 +260,11 @@ export function decodeLocalPlySplatPayload(
     if (hasMetallic && metalness !== undefined) {
       metalness[row] = readProperty(view, rowOffset, fields.get("metallic")!);
     }
+    if (hasEmissive && emissive !== undefined) {
+      emissive[vecBase] = readProperty(view, rowOffset, fields.get("emissive_r")!);
+      emissive[vecBase + 1] = readProperty(view, rowOffset, fields.get("emissive_g")!);
+      emissive[vecBase + 2] = readProperty(view, rowOffset, fields.get("emissive_b")!);
+    }
     if (shLayout !== undefined && shCoefficients !== undefined) {
       writePlyShRow(view, rowOffset, shLayout, shCoefficients, row);
     }
@@ -293,6 +300,7 @@ export function decodeLocalPlySplatPayload(
     normals,
     roughness,
     metalness,
+    emissive,
     originalIds,
     bounds,
     layout: FIRST_SMOKE_SPLAT_LAYOUT,

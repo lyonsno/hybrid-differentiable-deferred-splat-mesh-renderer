@@ -21,11 +21,38 @@
       pointer-events: none;
       z-index: 10;
     }
+    #controls {
+      position: fixed;
+      top: 8px;
+      right: 8px;
+      color: #ccc;
+      font: 12px/1.6 monospace;
+      background: rgba(0,0,0,0.75);
+      padding: 8px 12px;
+      border-radius: 4px;
+      z-index: 10;
+      min-width: 220px;
+    }
+    #controls label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    #controls input[type=range] { flex: 1; min-width: 100px; }
+    #controls .val { min-width: 40px; text-align: right; }
   </style>
 </head>
 <body>
   <canvas id="canvas"></canvas>
   <div id="stats"></div>
+  <div id="controls">
+    <label>em intensity <input type="range" id="emIntensity" min="0" max="20" step="0.1" value="3.0"><span class="val" id="emIntensityVal">3.0</span></label>
+    <label>em threshold <input type="range" id="emThreshold" min="0" max="0.5" step="0.005" value="0.05"><span class="val" id="emThresholdVal">0.050</span></label>
+    <label>light intensity <input type="range" id="lightIntensitySlider" min="0.5" max="10" step="0.1" value="3.0"><span class="val" id="lightIntensityVal">3.0</span></label>
+    <label>ambient <input type="range" id="ambientSlider" min="0" max="0.5" step="0.01" value="0.12"><span class="val" id="ambientVal">0.12</span></label>
+    <label>ao radius <input type="range" id="aoRadius" min="0.01" max="2.0" step="0.01" value="0.15"><span class="val" id="aoRadiusVal">0.15</span></label>
+    <label>ao intensity <input type="range" id="aoIntensity" min="0" max="5.0" step="0.1" value="1.5"><span class="val" id="aoIntensityVal">1.5</span></label>
+    <label>ao falloff <input type="range" id="aoFalloff" min="0.1" max="5.0" step="0.1" value="1.0"><span class="val" id="aoFalloffVal">1.0</span></label>
+    <label>ao slices <input type="range" id="aoSlices" min="1" max="8" step="1" value="3"><span class="val" id="aoSlicesVal">3</span></label>
+    <label>ao steps <input type="range" id="aoSteps" min="1" max="8" step="1" value="4"><span class="val" id="aoStepsVal">4</span></label>
+    <label>ao thickness <input type="range" id="aoThickness" min="0.1" max="5.0" step="0.05" value="1.81"><span class="val" id="aoThicknessVal">1.81</span></label>
+  </div>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

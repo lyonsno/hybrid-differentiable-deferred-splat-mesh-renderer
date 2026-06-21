@@ -16,14 +16,18 @@ struct Params {
   lightIntensity: f32,
   ambientColor: vec3f,
   specularOnly: f32,
+  emissiveIntensity: f32,
+  emissiveThreshold: f32,
+  _pad2: vec2f,
 };
 
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var colorTexture: texture_2d<f32>;
 @group(0) @binding(2) var depthTexture: texture_2d<f32>;
 @group(0) @binding(3) var normalTexture: texture_2d<u32>;
-@group(0) @binding(4) var materialTexture: texture_2d<u32>;
+@group(0) @binding(4) var materialTexture: texture_2d<u32>; // rgba32uint: .r=pack2x16float(roughness,metalness), .g=pack2x16float(emissive_rg), .b=pack2x16float(emissive_b,0)
 @group(0) @binding(5) var outputLit: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(6) var aoTexture: texture_2d<f32>; // GTAO result (0=occluded, 1=visible)
 
 const PI = 3.14159265359;
 
@@ -114,9 +118,9 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let NdotH = max(dot(N, H), 0.0);
   let HdotV = max(dot(H, V), 0.0);
 
-  // Material properties from G-buffer (per-pixel voted roughness/metalness)
-  let packedMat = textureLoad(materialTexture, px, 0).r;
-  let matVec = unpack2x16float(packedMat);
+  // Material properties from G-buffer (per-pixel voted roughness/metalness + emissive)
+  let matSample = textureLoad(materialTexture, px, 0);
+  let matVec = unpack2x16float(matSample.r);
   let roughness = max(matVec.x, 0.04); // clamp to avoid singularities
   let metallic = matVec.y;
   let F0 = mix(vec3f(0.04), albedo, metallic);
@@ -133,19 +137,35 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let kS = F;
   let kD = (vec3f(1.0) - kS) * (1.0 - metallic);
 
+  // Ambient occlusion from GTAO
+  let aoRaw = textureLoad(aoTexture, px, 0).r;
+
+  // Emissive: read early so we can use it to carve into AO
+  let emRG = unpack2x16float(matSample.g);
+  let emB = unpack2x16float(matSample.b).x;
+  let emissiveRaw = vec3f(emRG.x, emRG.y, emB);
+  let emissiveMag = max(emissiveRaw.r, max(emissiveRaw.g, emissiveRaw.b));
+
+  // Emissive eats AO: emissive regions radiate light, clearing occlusion
+  let ao = max(aoRaw, saturate(emissiveMag * params.emissiveIntensity * 0.5));
+
   var color: vec3f;
   if (params.specularOnly > 0.5) {
-    // Specular-only mode: output just the Cook-Torrance specular term
     color = specular * params.lightColor * params.lightIntensity * NdotL;
   } else {
     let Lo = (kD * albedo / PI + specular) * params.lightColor * params.lightIntensity * NdotL;
-    let ambient = params.ambientColor * albedo;
-    color = ambient + Lo;
+    let ambient = params.ambientColor * albedo * ao; // AO modulates ambient only
+    color = ambient + Lo; // direct light is NOT attenuated by AO
   }
 
   // Reinhard tonemap in linear space, then convert back to sRGB for display
   let tonemapped = color / (color + vec3f(1.0));
-  let mapped = linearToSrgb(tonemapped);
+  var mapped = linearToSrgb(tonemapped);
+
+  // Emissive: additive AFTER tonemapping so it punches through bright
+  if (emissiveMag > params.emissiveThreshold) {
+    mapped += emissiveRaw * params.emissiveIntensity;
+  }
 
   textureStore(outputLit, px, vec4f(mapped, splatOpacity));
 }

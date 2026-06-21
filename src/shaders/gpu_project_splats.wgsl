@@ -1,5 +1,5 @@
 // Project all visible splats into a packed projection cache.
-// One thread per splat. Writes 11 u32 per splat:
+// One thread per splat. Writes 13 u32 per splat:
 //   [0] centerPx.x (f32)
 //   [1] centerPx.y (f32)
 //   [2] inverseCov2d.x (f32)
@@ -11,11 +11,13 @@
 //   [8] oct-encoded normal as r32uint (pack2x16float of octahedral xy)
 //   [9] pack2x16float(color.r, color.g) — SH-evaluated view-dependent color
 //  [10] pack2x16float(color.b, 0.0)
+//  [11] pack2x16float(emissive.r, emissive.g) — per-splat emissive pass-through
+//  [12] pack2x16float(emissive.b, 0.0)
 //
 // Invisible splats (behind camera, zero radius) get sentinel values so
 // downstream passes can skip them cheaply.
 
-const PROJ_STRIDE = 11u;
+const PROJ_STRIDE = 13u;
 const COMPACT_FOOTPRINT_SIGMA_RADIUS = 3.0;
 const COMPACT_FOOTPRINT_EPSILON = 0.000000001;
 const MIN_SPLAT_CLIP_W = 0.0001;
@@ -49,7 +51,7 @@ struct FrameUniforms {
 @group(0) @binding(7) var<storage, read_write> depthBuffer: array<u32>;
 @group(0) @binding(8) var<storage, read> materialData: array<u32>;  // pack2x16float(roughness, metalness) per splat
 @group(0) @binding(9) var<storage, read> normalData: array<f32>;  // per-splat nx,ny,nz (stride 3) or empty
-@group(0) @binding(10) var<storage, read> shData: array<f32>;     // per-splat: [dc_r, dc_g, dc_b, sh1_r, sh1_g, sh1_b, ...]
+@group(0) @binding(10) var<storage, read> shData: array<f32>;     // per-splat: [dc_r, dc_g, dc_b, sh..., emissive_r, emissive_g, emissive_b]
 
 // --- SH basis constants (3DGS reference) ---
 const SH_C1 = 0.4886025119029199;
@@ -235,8 +237,8 @@ fn project_splats(@builtin(global_invocation_id) globalId: vec3u) {
 
   // SH-evaluated view-dependent color
   let shCoeffCount = (frame.shDegree + 1u) * (frame.shDegree + 1u) - 1u;
-  let shStride = shCoeffCount * 3u; // floats per splat excluding DC
-  let shBase = splatId * (3u + shStride); // DC (3 floats) + SH coefficients
+  let shStride = shCoeffCount * 3u; // floats per splat excluding DC and emissive
+  let shBase = splatId * (3u + shStride + 3u); // DC (3) + SH coefficients + emissive (3)
   // DC color (degree 0)
   var color = vec3f(shData[shBase], shData[shBase + 1u], shData[shBase + 2u]);
 
@@ -292,4 +294,10 @@ fn project_splats(@builtin(global_invocation_id) globalId: vec3u) {
   color = clamp(color, vec3f(0.0), vec3f(1.0));
   projCache[base + 9u] = pack2x16float(color.rg);
   projCache[base + 10u] = pack2x16float(vec2f(color.b, 0.0));
+
+  // Emissive pass-through: read from tail of shData stride (3 floats after SH coefficients)
+  let emissiveOffset = shBase + 3u + shStride; // after DC (3) + SH coefficients
+  let emissive = vec3f(shData[emissiveOffset], shData[emissiveOffset + 1u], shData[emissiveOffset + 2u]);
+  projCache[base + 11u] = pack2x16float(emissive.rg);
+  projCache[base + 12u] = pack2x16float(vec2f(emissive.b, 0.0));
 }

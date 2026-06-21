@@ -48,6 +48,7 @@ export interface SplatAttributes {
   normals?: Float32Array;
   roughness?: Float32Array;
   metalness?: Float32Array;
+  emissive?: Float32Array;
   originalIds: Uint32Array;
   bounds: SplatBounds;
   layout: FirstSmokeSplatLayout;
@@ -73,7 +74,7 @@ export interface SplatGpuBuffers {
   rotationBuffer: GPUBuffer;
   materialBuffer: GPUBuffer;  // pack2x16float(roughness, metalness) per splat
   normalBuffer?: GPUBuffer;
-  shDataBuffer: GPUBuffer;    // DC colors (3 floats/splat) + SH coefficients
+  shDataBuffer: GPUBuffer;    // DC colors (3 floats/splat) + SH coefficients + emissive (3 floats)
   shDegree: number;
   originalIdBuffer: GPUBuffer;
   bounds: SplatBounds;
@@ -407,7 +408,7 @@ export function uploadSplatAttributeBuffers(
       : undefined,
     shDataBuffer: createMappedStorageBuffer(
       device,
-      packShDataBuffer(attributes.colors, attributes.sh),
+      packShDataBuffer(attributes.colors, attributes.sh, attributes.emissive),
       "first_smoke_splat_sh_data"
     ),
     shDegree: attributes.sh?.degree ?? 0,
@@ -448,12 +449,13 @@ function packMaterialBuffer(count: number, roughness?: Float32Array, metalness?:
   return out;
 }
 
-/** Pack DC colors + SH coefficients into a single f32 array for GPU consumption.
- *  Layout per splat: [dc_r, dc_g, dc_b, sh_coeff_0_r, sh_coeff_0_g, sh_coeff_0_b, ...] */
-function packShDataBuffer(dcColors: Float32Array, sh?: SplatSphericalHarmonics): Float32Array {
+/** Pack DC colors + SH coefficients + emissive into a single f32 array for GPU consumption.
+ *  Layout per splat: [dc_r, dc_g, dc_b, sh_coeff_0_r, sh_coeff_0_g, sh_coeff_0_b, ..., emissive_r, emissive_g, emissive_b]
+ *  Emissive is always present in the stride (zero-filled if not provided). */
+function packShDataBuffer(dcColors: Float32Array, sh?: SplatSphericalHarmonics, emissive?: Float32Array): Float32Array {
   const count = dcColors.length / 3;
   const shCoeffCount = sh ? sh.coefficientCount : 0;
-  const stride = 3 + shCoeffCount * 3; // DC (3) + SH coefficients
+  const stride = 3 + shCoeffCount * 3 + 3; // DC (3) + SH coefficients + emissive (3)
   const out = new Float32Array(count * stride);
   const shCoeffs = sh?.coefficients;
   const shStride = shCoeffCount * 3;
@@ -469,6 +471,14 @@ function packShDataBuffer(dcColors: Float32Array, sh?: SplatSphericalHarmonics):
         out[outBase + 3 + j] = shCoeffs[shBase + j];
       }
     }
+    // Emissive always at the end of the stride
+    const emBase = outBase + 3 + shStride;
+    if (emissive) {
+      out[emBase] = emissive[dcBase];
+      out[emBase + 1] = emissive[dcBase + 1];
+      out[emBase + 2] = emissive[dcBase + 2];
+    }
+    // else: already zero-filled by Float32Array constructor
   }
   return out;
 }
