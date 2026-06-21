@@ -211,48 +211,10 @@ export async function createSplatOverlay(
     if (sourceIdentity) {
       sourceIdentity = { ...sourceIdentity, correctionApplied: true, correctionIdentity: correction };
     }
-    // Apply crop if correction includes crop bounds and we have pre-crop attributes.
-    // Crop bounds from Kaminos are in corrected space (after offset + flip).
-    // We transform raw positions to corrected space for the crop test, then
-    // keep only the raw positions that survive — the host handles rendering transforms.
-    const crop = correction?.crop as { enabled?: boolean; min?: number[]; max?: number[] } | undefined;
-    if (crop?.enabled && preCropAttributes && crop.min && crop.max) {
-      const [cMinX, cMinY, cMinZ] = crop.min;
-      const [cMaxX, cMaxY, cMaxZ] = crop.max;
-      const offset = correction?.centroidOffset as number[] | undefined;
-      const flips = correction?.axisFlips as (boolean | number)[] | undefined;
-      const ox = offset?.[0] ?? 0, oy = offset?.[1] ?? 0, oz = offset?.[2] ?? 0;
-      // Kaminos passes axisFlips as booleans (true = flipped) or numbers
-      const fx = flips?.[0] ? -1 : 1;
-      const fy = flips?.[1] ? -1 : 1;
-      const fz = flips?.[2] ? -1 : 1;
-
-      const src = preCropAttributes;
-      const positions = src.positions;
-      const count = src.count;
-      const keep = new Uint8Array(count);
-      let kept = 0;
-      for (let i = 0; i < count; i++) {
-        const base = i * 3;
-        // Transform to corrected space for crop test only
-        const cx = (positions[base] - ox) * fx;
-        const cy = (positions[base + 1] - oy) * fy;
-        const cz = (positions[base + 2] - oz) * fz;
-        if (cx >= cMinX && cx <= cMaxX && cy >= cMinY && cy <= cMaxY && cz >= cMinZ && cz <= cMaxZ) {
-          keep[i] = 1;
-          kept++;
-        }
-      }
-
-      if (kept === 0) {
-        console.warn(`Overlay: crop would remove all ${count} splats, skipping`);
-      } else if (kept < count) {
-        console.log(`Overlay: crop ${kept}/${count} splats`);
-        // Filter raw attributes (keep raw positions for rendering)
-        const filtered = filterSplatAttributes(src, keep, kept);
-        initScene(filtered);
-      }
-    }
+    // TODO: Renderer-applied crop requires an explicit crop API with unambiguous
+    // coordinate frame contract. setCorrectionIdentity records the correction
+    // metadata but does not filter vertices — the host controls visual crop
+    // through its own scene transform until the overlay has a proper crop API.
   }
 
   function initScene(attributes: SplatAttributes) {
