@@ -13,8 +13,13 @@ import {
   type SplatScene,
 } from "./splatRenderer.js";
 import { createAlphaTexturePresenter } from "./tileLocalTexturePresenter.js";
-import { decodeLocalPlySplatPayload, tryFetchSidecar, applySidecarCorrections } from "./localPly.js";
+import { decodeLocalPlySplatPayload, tryFetchSidecar, type KaminosSidecar } from "./localPly.js";
 import { fetchFirstSmokeSplatPayload, type SplatAttributes } from "./splats.js";
+import {
+  applySplatCorrectionToAttributes,
+  type SplatCorrectionApplication,
+  type SplatCorrectionIdentity,
+} from "./splatCorrection.js";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -26,6 +31,7 @@ export interface SplatOverlayCapabilities {
   readonly meshDepthOcclusion: false;
   readonly sharedCanvasComposite: false;
   readonly sharedCommandEncoder: false;
+  readonly cropAppliedByRenderer: true;
 }
 
 /** Source identity for the loaded splat asset. */
@@ -37,12 +43,7 @@ export interface SplatSourceIdentity {
   /** Whether Kaminos sidecar corrections have been applied upstream. */
   readonly correctionApplied: boolean;
   /** Correction identity fields, if known (from Kaminos sidecar). */
-  readonly correctionIdentity?: {
-    readonly rotation?: readonly number[];
-    readonly axisFlips?: readonly boolean[];
-    readonly centroidOffset?: readonly number[];
-    readonly crop?: unknown;
-  };
+  readonly correctionIdentity?: SplatCorrectionIdentity;
 }
 
 export interface SplatOverlayHandle {
@@ -78,6 +79,10 @@ export interface SplatOverlayHandle {
   readonly capabilities: SplatOverlayCapabilities;
   /** Source identity for the currently loaded splat asset. Null if nothing loaded. */
   readonly sourceIdentity: SplatSourceIdentity | null;
+  /** Last correction/crop application result for the loaded asset. */
+  readonly correctionApplication: SplatCorrectionApplication | null;
+  /** Whether the current loaded asset had sidecar crop applied by this renderer. */
+  readonly cropAppliedByRenderer: boolean | undefined;
 }
 
 export interface SplatOverlayOptions {
@@ -145,6 +150,7 @@ const CAPABILITIES: SplatOverlayCapabilities = Object.freeze({
   meshDepthOcclusion: false as const,
   sharedCanvasComposite: false as const,
   sharedCommandEncoder: false as const,
+  cropAppliedByRenderer: true as const,
 });
 
 export async function createSplatOverlay(
@@ -185,7 +191,10 @@ export async function createSplatOverlay(
   // Mutable state
   let scene: SplatScene | null = null;
   let lastAttributes: SplatAttributes | null = null;
+  let sourceAttributes: SplatAttributes | null = null;
   let sourceIdentity: SplatSourceIdentity | null = null;
+  let currentCorrectionIdentity: SplatCorrectionIdentity | null = null;
+  let currentCorrectionApplication: SplatCorrectionApplication | null = null;
   let running = false;
   let animFrameId = 0;
 
@@ -230,9 +239,25 @@ export async function createSplatOverlay(
   }
 
   function setCorrectionIdentity(correction: SplatSourceIdentity["correctionIdentity"]) {
+    currentCorrectionIdentity = correction ?? null;
     if (sourceIdentity) {
       sourceIdentity = { ...sourceIdentity, correctionApplied: true, correctionIdentity: correction };
     }
+    if (sourceAttributes) initScene(effectiveAttributesForSource(sourceAttributes));
+  }
+
+  function effectiveAttributesForSource(attributes: SplatAttributes): SplatAttributes {
+    currentCorrectionApplication = applySplatCorrectionToAttributes(attributes, currentCorrectionIdentity);
+    return currentCorrectionApplication.attributes;
+  }
+
+  function correctionIdentityFromSidecar(sidecar: KaminosSidecar): SplatCorrectionIdentity {
+    return {
+      rotation: sidecar.correction.orientation?.rotation,
+      axisFlips: sidecar.correction.axisFlips?.map(value => value !== 1),
+      centroidOffset: sidecar.correction.centroidOffset,
+      crop: sidecar.correction.crop,
+    };
   }
 
   function initScene(attributes: SplatAttributes) {
@@ -249,46 +274,29 @@ export async function createSplatOverlay(
   async function loadPly(source: string | ArrayBuffer, fileName?: string) {
     let bytes: ArrayBuffer;
     const isUrl = typeof source === "string";
+    let sidecar: KaminosSidecar | undefined;
     if (isUrl) {
-      const [resp, sidecar] = await Promise.all([
+      const [resp, fetchedSidecar] = await Promise.all([
         fetch(source).then(r => { if (!r.ok) throw new Error(`Failed to fetch PLY: ${r.status}`); return r; }),
         tryFetchSidecar(source),
       ]);
+      sidecar = fetchedSidecar;
       bytes = await resp.arrayBuffer();
       fileName = fileName ?? source.split("/").pop() ?? "scene.ply";
-      let attrs = decodeLocalPlySplatPayload(fileName, bytes);
-      if (sidecar) {
-        console.log(`Applying Kaminos sidecar corrections from ${source}.kaminos-splat.json`);
-        attrs = applySidecarCorrections(attrs, sidecar);
-        sourceIdentity = {
-          source,
-          loadMethod: "ply-url",
-          correctionApplied: true,
-          correctionIdentity: {
-            rotation: sidecar.correction.orientation?.rotation,
-            axisFlips: sidecar.correction.axisFlips?.map(v => v !== 1),
-            centroidOffset: sidecar.correction.centroidOffset,
-            crop: sidecar.correction.crop,
-          },
-        };
-      } else {
-        sourceIdentity = {
-          source,
-          loadMethod: "ply-url",
-          correctionApplied: false,
-        };
-      }
-      initScene(attrs);
     } else {
       bytes = source;
       fileName = fileName ?? "scene.ply";
-      sourceIdentity = {
-        source: fileName,
-        loadMethod: "ply-arraybuffer",
-        correctionApplied: false,
-      };
-      initScene(decodeLocalPlySplatPayload(fileName, bytes));
     }
+    currentCorrectionIdentity = sidecar ? correctionIdentityFromSidecar(sidecar) : null;
+    const decoded = decodeLocalPlySplatPayload(fileName, bytes);
+    sourceAttributes = decoded;
+    sourceIdentity = {
+      source: isUrl ? source : fileName,
+      loadMethod: isUrl ? "ply-url" : "ply-arraybuffer",
+      correctionApplied: currentCorrectionIdentity !== null,
+      correctionIdentity: currentCorrectionIdentity ?? undefined,
+    };
+    initScene(effectiveAttributesForSource(sourceAttributes));
   }
 
   async function loadManifest(url: string) {
@@ -298,7 +306,9 @@ export async function createSplatOverlay(
       loadMethod: "manifest",
       correctionApplied: false,
     };
-    initScene(attributes);
+    currentCorrectionIdentity = null;
+    sourceAttributes = attributes;
+    initScene(effectiveAttributesForSource(sourceAttributes));
   }
 
   function loadAttributes(attributes: SplatAttributes) {
@@ -307,7 +317,9 @@ export async function createSplatOverlay(
       loadMethod: "attributes",
       correctionApplied: false,
     };
-    initScene(attributes);
+    currentCorrectionIdentity = null;
+    sourceAttributes = attributes;
+    initScene(effectiveAttributesForSource(sourceAttributes));
   }
 
   function frame() {
@@ -405,5 +417,7 @@ export async function createSplatOverlay(
     get scene() { return scene; },
     capabilities: CAPABILITIES,
     get sourceIdentity() { return sourceIdentity; },
+    get correctionApplication() { return currentCorrectionApplication; },
+    get cropAppliedByRenderer() { return currentCorrectionApplication?.cropApplied; },
   };
 }

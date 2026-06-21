@@ -13,3 +13,12 @@ test("overlay applies setModelMatrix through effective model-view frame state", 
   assert.match(overlaySource, /viewMatrix:\s*currentModelView/);
   assert.match(overlaySource, /cameraPosition:\s*currentCameraModelLocal/);
 });
+
+test("overlay reapplies sidecar correction to raw source attributes before rendering", () => {
+  assert.match(overlaySource, /applySplatCorrectionToAttributes/);
+  assert.match(overlaySource, /let sourceAttributes:\s*SplatAttributes \| null/);
+  assert.match(overlaySource, /let currentCorrectionApplication/);
+  assert.match(overlaySource, /function setCorrectionIdentity\([\s\S]*applySplatCorrectionToAttributes/);
+  assert.match(overlaySource, /initScene\(effectiveAttributesForSource\(sourceAttributes\)\)/);
+  assert.match(overlaySource, /get cropAppliedByRenderer\(\)\s*\{\s*return currentCorrectionApplication\?\.cropApplied/);
+});
