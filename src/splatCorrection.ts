@@ -9,6 +9,7 @@ export interface SplatCorrectionIdentity {
   readonly rotation?: readonly number[];
   readonly axisFlips?: readonly (boolean | number)[];
   readonly centroidOffset?: readonly number[];
+  readonly cropCoordinateMatrix?: readonly number[];
   readonly crop?: unknown;
 }
 
@@ -42,10 +43,11 @@ export function applySplatCorrectionToAttributes(
   }
 
   const axisSigns = normalizeAxisSigns(correction?.axisFlips);
+  const cropCoordinateMatrix = normalizeMat4(correction?.cropCoordinateMatrix);
   const centroidOffset = normalizeVec3(correction?.centroidOffset, "correction.centroidOffset", [0, 0, 0]);
-  const canonicalIndices = collectCropIndices(attributes.positions, attributes.count, axisSigns, centroidOffset, crop, "axis-flipped-asset");
+  const canonicalIndices = collectCropIndices(attributes.positions, attributes.count, axisSigns, centroidOffset, cropCoordinateMatrix, crop, "axis-flipped-asset");
   const legacyIndices = canonicalIndices.length === 0 && centroidOffset.some(value => Math.abs(value) > 1e-9)
-    ? collectCropIndices(attributes.positions, attributes.count, axisSigns, centroidOffset, crop, "pivot-local-minus-centroid")
+    ? collectCropIndices(attributes.positions, attributes.count, axisSigns, centroidOffset, cropCoordinateMatrix, crop, "pivot-local-minus-centroid")
     : [];
   const cropFrame = legacyIndices.length > 0 ? "pivot-local-minus-centroid" : "axis-flipped-asset";
   const keptIndices = legacyIndices.length > 0 ? legacyIndices : canonicalIndices;
@@ -63,15 +65,22 @@ function collectCropIndices(
   count: number,
   axisSigns: readonly [number, number, number],
   centroidOffset: readonly [number, number, number],
+  cropCoordinateMatrix: readonly number[] | null,
   crop: NormalizedCrop,
   frame: Exclude<SplatCorrectionCropFrame, "disabled">,
 ): number[] {
   const indices: number[] = [];
   for (let index = 0; index < count; index += 1) {
     const base = index * 3;
-    let x = positions[base] * axisSigns[0];
-    let y = positions[base + 1] * axisSigns[1];
-    let z = positions[base + 2] * axisSigns[2];
+    let x = positions[base];
+    let y = positions[base + 1];
+    let z = positions[base + 2];
+    if (cropCoordinateMatrix) {
+      [x, y, z] = transformPoint3(cropCoordinateMatrix, x, y, z);
+    }
+    x *= axisSigns[0];
+    y *= axisSigns[1];
+    z *= axisSigns[2];
     if (frame === "pivot-local-minus-centroid") {
       x -= centroidOffset[0];
       y -= centroidOffset[1];
@@ -210,6 +219,28 @@ function normalizeAxisSigns(value: unknown): readonly [number, number, number] {
     axisSign(value[0]),
     axisSign(value[1]),
     axisSign(value[2]),
+  ];
+}
+
+function normalizeMat4(value: unknown): readonly number[] | null {
+  if (value === undefined || value === null) return null;
+  if (!Array.isArray(value) || value.length !== 16) {
+    throw new Error("correction.cropCoordinateMatrix must be a finite mat4");
+  }
+  const matrix = value.map(Number);
+  if (!matrix.every(Number.isFinite)) {
+    throw new Error("correction.cropCoordinateMatrix must be a finite mat4");
+  }
+  return matrix;
+}
+
+function transformPoint3(matrix: readonly number[], x: number, y: number, z: number): [number, number, number] {
+  const w = matrix[3] * x + matrix[7] * y + matrix[11] * z + matrix[15];
+  const safeW = Math.abs(w) > 1e-8 ? w : 1;
+  return [
+    (matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12]) / safeW,
+    (matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13]) / safeW,
+    (matrix[2] * x + matrix[6] * y + matrix[10] * z + matrix[14]) / safeW,
   ];
 }
 

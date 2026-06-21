@@ -55,6 +55,36 @@ test("sidecar crop uses legacy pivot-local-minus-centroid fallback only when can
   assert.deepEqual(Array.from(result.attributes.positions), [0.5, 0, 0]);
 });
 
+test("sidecar crop can evaluate raw splats in a supplied preview-normalized crop frame", () => {
+  const source = makeAttributes([
+    [10, 0, 0],
+    [20, 0, 0],
+    [10, 3, 0],
+  ]);
+
+  const result = applySplatCorrectionToAttributes(source, {
+    cropCoordinateMatrix: [
+      0.1, 0, 0, 0,
+      0, 0.1, 0, 0,
+      0, 0, 0.1, 0,
+      -0.5, 0, 0, 1,
+    ],
+    axisFlips: [false, false, false],
+    crop: {
+      enabled: true,
+      min: [0.49, -0.01, -0.01],
+      max: [0.51, 0.01, 0.01],
+    },
+  });
+
+  assert.equal(result.cropApplied, true);
+  assert.equal(result.cropFrame, "axis-flipped-asset");
+  assert.equal(result.sourceCount, 3);
+  assert.equal(result.keptCount, 1);
+  assert.deepEqual(Array.from(result.attributes.originalIds), [0]);
+  assert.deepEqual(Array.from(result.attributes.positions), [10, 0, 0]);
+});
+
 function makeAttributes(positions: Array<[number, number, number]>): SplatAttributes {
   const count = positions.length;
   return {
