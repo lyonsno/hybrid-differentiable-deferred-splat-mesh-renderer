@@ -15,13 +15,25 @@ Kaminos (`~/dev/kaminos`, served at `:8090`) provides:
 
 ### How to smoke through Kaminos
 
-1. Start the renderer: `cd ~/dev/hybrid-differentiable-defferred-splat-mesh-renderer && npm run dev`
-2. Start Kaminos: `cd ~/dev/kaminos && python3 serve.py`
-3. Open `http://127.0.0.1:8090` in Chrome/Edge with WebGPU
-4. Load a PLY via drag-and-drop or the Kaminos asset browser
+**You start the servers — not the operator.** The operator is smoking multiple repos
+concurrently. Start both servers, verify they're up, and hand them a URL.
+
+```bash
+# 1. Ensure renderer dev server is running
+npm run dev &
+# 2. Start Kaminos on a free port (check 8090-8099 for conflicts)
+cd ~/dev/kaminos && python3 serve.py <port> &
+# 3. Verify both are up
+curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:5173/
+curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:<port>/
+# 4. Hand the operator: "open http://127.0.0.1:<port>"
+```
 
 Kaminos dynamically imports the overlay module from `http://127.0.0.1:5173/src/splatOverlay.ts`.
 Hot reload works — save a renderer file and the overlay picks up the change.
+
+Splat assets for the Kaminos browser live in `~/.local/state/kaminos/assets/splats/inbox/`.
+If the asset you want smoked isn't there, symlink it in.
 
 ### When standalone smoke is sufficient
 

@@ -37,25 +37,28 @@ For evaluating how rendering features actually look — emissive materials, post
 lighting quality — smoke through Kaminos. Kaminos provides HDR environment maps (Polyhaven),
 GTAO ambient occlusion, scene graph, and the full presentation context.
 
-Setup (two terminals):
+**When handing work to the operator for visual smoke, start the servers yourself.**
+The operator may be smoking multiple repos — don't expect them to start servers manually.
 
 ```bash
-# Terminal 1: start the renderer dev server
-cd ~/dev/hybrid-differentiable-defferred-splat-mesh-renderer
-npm run dev
-
-# Terminal 2: start Kaminos
-cd ~/dev/kaminos
-python3 serve.py
+# Start both servers (the agent does this before handing the operator a URL):
+npm run dev &                              # renderer on :5173
+cd ~/dev/kaminos && python3 serve.py <port> &  # Kaminos on a free port (check 8090-8099)
 ```
 
-Then open `http://127.0.0.1:8090` in a WebGPU-capable browser.
-Load a PLY splat file (drag-and-drop or via the asset browser).
+Then hand the operator the Kaminos URL (e.g. `http://127.0.0.1:8092`).
 Kaminos automatically imports the renderer overlay from `http://127.0.0.1:5173/src/splatOverlay.ts`
 and composites it over the Three.js scene with environment lighting.
 
 **Default to Tier 2 when evaluating visual quality.** The standalone renderer's
 single directional light is not representative of how the output will look in production.
+
+## Kaminos sidecar corrections
+
+PLY files can have a `.kaminos-splat.json` sidecar with centroid offset, axis flips,
+and crop bounds. When loading a PLY by URL, the renderer auto-fetches and applies
+the sidecar. Crop is applied in raw PLY coordinate space (before offset/flip).
+Splat assets for Kaminos live in `~/.local/state/kaminos/assets/splats/inbox/`.
 
 ## Key architecture facts
 
