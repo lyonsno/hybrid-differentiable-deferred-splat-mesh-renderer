@@ -12,7 +12,7 @@ import {
   type SplatScene,
 } from "./splatRenderer.js";
 import { createAlphaTexturePresenter } from "./tileLocalTexturePresenter.js";
-import { decodeLocalPlySplatPayload, tryFetchSidecar, applySidecarCorrections } from "./localPly.js";
+import { decodeLocalPlySplatPayload, tryFetchSidecar, applySidecarCorrections, type KaminosSidecar } from "./localPly.js";
 import { fetchFirstSmokeSplatPayload, type SplatAttributes } from "./splats.js";
 
 // ---------------------------------------------------------------------------
@@ -172,6 +172,7 @@ export async function createSplatOverlay(
   // Mutable state
   let scene: SplatScene | null = null;
   let lastAttributes: SplatAttributes | null = null;
+  let preCropAttributes: SplatAttributes | null = null; // before crop, for re-crop on correction update
   let sourceIdentity: SplatSourceIdentity | null = null;
   let running = false;
   let animFrameId = 0;
@@ -210,6 +211,31 @@ export async function createSplatOverlay(
     if (sourceIdentity) {
       sourceIdentity = { ...sourceIdentity, correctionApplied: true, correctionIdentity: correction };
     }
+    // Apply crop if correction includes crop bounds and we have pre-crop attributes
+    const crop = correction?.crop as { enabled?: boolean; min?: number[]; max?: number[] } | undefined;
+    if (crop?.enabled && preCropAttributes && crop.min && crop.max) {
+      const sidecar: KaminosSidecar = {
+        schema: "kaminos.splat-correction.v0",
+        correction: {
+          centroidOffset: correction?.centroidOffset as [number, number, number] | undefined,
+          axisFlips: correction?.axisFlips
+            ? (correction.axisFlips as (boolean | number)[]).map(v => typeof v === "boolean" ? (v ? -1 : 1) : (v ? -1 : 1)) as [number, number, number]
+            : undefined,
+          crop: {
+            enabled: true,
+            min: crop.min as [number, number, number],
+            max: crop.max as [number, number, number],
+          },
+        },
+      };
+      const cropped = applySidecarCorrections(preCropAttributes, sidecar);
+      if (cropped.count > 0) {
+        console.log(`Overlay: applying crop from correction identity (${cropped.count}/${preCropAttributes.count} splats)`);
+        initScene(cropped);
+      } else {
+        console.warn(`Overlay: crop would remove all splats, skipping`);
+      }
+    }
   }
 
   function initScene(attributes: SplatAttributes) {
@@ -239,10 +265,12 @@ export async function createSplatOverlay(
       ]);
       bytes = await resp.arrayBuffer();
       fileName = fileName ?? source.split("/").pop() ?? "scene.ply";
-      let attrs = decodeLocalPlySplatPayload(fileName, bytes);
+      const rawAttrs = decodeLocalPlySplatPayload(fileName, bytes);
+      preCropAttributes = rawAttrs;
+      let attrs = rawAttrs;
       if (sidecar) {
         console.log(`Applying Kaminos sidecar corrections from ${source}.kaminos-splat.json`);
-        attrs = applySidecarCorrections(attrs, sidecar);
+        attrs = applySidecarCorrections(rawAttrs, sidecar);
         sourceIdentity = {
           source,
           loadMethod: "ply-url",
@@ -265,12 +293,14 @@ export async function createSplatOverlay(
     } else {
       bytes = source;
       fileName = fileName ?? "scene.ply";
+      const attrs = decodeLocalPlySplatPayload(fileName, bytes);
+      preCropAttributes = attrs;
       sourceIdentity = {
         source: fileName,
         loadMethod: "ply-arraybuffer",
         correctionApplied: false,
       };
-      initScene(decodeLocalPlySplatPayload(fileName, bytes));
+      initScene(attrs);
     }
   }
 
