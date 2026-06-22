@@ -705,10 +705,30 @@ async function main() {
         skipSidecar ? Promise.resolve(undefined) : tryFetchSidecar(path),
       ]);
       let attrs = decodeLocalPlySplatPayload(path, await response.arrayBuffer());
+      const sidecarLog: Record<string, unknown> = {
+        schema: "handy-renderman.sidecar-load-log.v0",
+        timestamp: new Date().toISOString(),
+        plyPath: path,
+        sidecarFound: !!sidecar,
+        rawSplatCount: attrs.count,
+        rawBoundsMin: Array.from(attrs.bounds.min),
+        rawBoundsMax: Array.from(attrs.bounds.max),
+      };
       if (sidecar) {
         console.log(`Applying Kaminos sidecar corrections from ${path}.kaminos-splat.json`);
+        sidecarLog.sidecar = sidecar;
+        sidecarLog.preCropCount = attrs.count;
         attrs = applySidecarCorrections(attrs, sidecar);
+        sidecarLog.postCropCount = attrs.count;
+        sidecarLog.correctedBoundsMin = Array.from(attrs.bounds.min);
+        sidecarLog.correctedBoundsMax = Array.from(attrs.bounds.max);
       }
+      // Write sidecar load log to .telemetry/sidecar-load.json
+      fetch("/api/sidecar-log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(sidecarLog, null, 2),
+      }).catch(() => {});
       // URL param overrides auto-detected scale
       if (urlSplatScale !== undefined) attrs.splatScale = urlSplatScale;
       return attrs;

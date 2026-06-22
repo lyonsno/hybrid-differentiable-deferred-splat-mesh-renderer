@@ -270,7 +270,7 @@ test("applySidecarCorrections applies centroid offset", () => {
   assert.ok(Math.abs(result.positions[5] - 2) < 0.001);
 });
 
-test("applySidecarCorrections applies axis flips", () => {
+test("applySidecarCorrections does not bake axis flips into positions", () => {
   const attrs = decodeLocalPlySplatPayload("test.ply", binaryPlyFixture([
     { position: [1, 2, 3], dc: [0, 0, 0], opacity: 0, scales: [0, 0, 0], rotation: [1, 0, 0, 0] },
   ]));
@@ -280,10 +280,11 @@ test("applySidecarCorrections applies axis flips", () => {
     correction: { axisFlips: [1, 1, -1] },
   };
 
+  // Axis flips are a scene-transform concern, not baked into vertex data
   const result = applySidecarCorrections(attrs, sidecar);
   assert.ok(Math.abs(result.positions[0] - 1) < 0.001);
   assert.ok(Math.abs(result.positions[1] - 2) < 0.001);
-  assert.ok(Math.abs(result.positions[2] - (-3)) < 0.001);
+  assert.ok(Math.abs(result.positions[2] - 3) < 0.001); // NOT negated
 });
 
 test("applySidecarCorrections crops splats outside bounds in preview-normalized space", () => {

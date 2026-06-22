@@ -101,21 +101,12 @@ export function applySidecarCorrections(
     }
   }
 
-  // Apply rendering transforms: flip then offset
+  // Apply centroid offset only — axis flips are a scene-transform concern
+  // handled by the host (Kaminos) at render time, not baked into vertex data.
+  // Baking flips into positions inverts the geometry relative to the camera,
+  // producing the opposite orientation from what Kaminos shows.
   const positions = attrs.positions;
   const count = attrs.count;
-
-  if (correction.axisFlips) {
-    const [fx, fy, fz] = correction.axisFlips;
-    if (fx !== 1 || fy !== 1 || fz !== 1) {
-      for (let i = 0; i < count; i++) {
-        const base = i * 3;
-        positions[base] *= fx;
-        positions[base + 1] *= fy;
-        positions[base + 2] *= fz;
-      }
-    }
-  }
 
   if (correction.centroidOffset) {
     const [ox, oy, oz] = correction.centroidOffset;

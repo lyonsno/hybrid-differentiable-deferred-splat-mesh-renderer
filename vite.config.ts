@@ -9,6 +9,17 @@ function telemetryPlugin(): Plugin {
     name: "telemetry-sink",
     configureServer(server) {
       mkdirSync(dir, { recursive: true });
+      server.middlewares.use("/api/sidecar-log", (req, res) => {
+        if (req.method !== "POST") { res.writeHead(405); res.end(); return; }
+        let body = "";
+        req.on("data", (chunk: string) => { body += chunk; });
+        req.on("end", () => {
+          const file = join(dir, "sidecar-load.json");
+          writeFileSync(file, body + "\n");
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end('{"ok":true}');
+        });
+      });
       server.middlewares.use("/api/telemetry", (req, res) => {
         if (req.method !== "POST") {
           res.writeHead(405);
