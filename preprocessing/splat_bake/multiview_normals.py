@@ -201,13 +201,11 @@ def project_splats_to_view(positions: np.ndarray, camera: dict, normal_map_shape
     N = positions.shape[0]
     normal_h, normal_w = normal_map_shape
 
-    view_matrix = np.array(camera["viewMatrix"]).reshape(4, 4).T
-    proj_matrix = np.array(camera["projectionMatrix"]).reshape(4, 4).T
     vp_w = camera["viewportWidth"]
     vp_h = camera["viewportHeight"]
 
-    viewProj = proj_matrix @ view_matrix
-    viewProj[1, :] = -viewProj[1, :]  # FLIP_Y
+    # Use the pre-composed viewProjMatrix which includes VIEWER_VERTICAL_FLIP.
+    viewProj = np.array(camera["viewProjMatrix"]).reshape(4, 4).T
 
     pts_h = np.concatenate([positions, np.ones((N, 1))], axis=1)
     clip = (viewProj @ pts_h.T).T

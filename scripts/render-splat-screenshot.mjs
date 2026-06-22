@@ -51,7 +51,7 @@ async function main() {
       case "--debug": debugMode = args[++i]; break;
       case "--help": case "-h":
         console.log("Usage: render-splat-screenshot.mjs --splat <path> --output <path> [options]");
-        console.log("Options: --url, --width, --height, --settle-ms, --azimuth, --elevation, --distance");
+        console.log("Options: --url, --width, --height, --settle-ms, --azimuth, --elevation, --distance, --debug");
         process.exit(0);
     }
   }
