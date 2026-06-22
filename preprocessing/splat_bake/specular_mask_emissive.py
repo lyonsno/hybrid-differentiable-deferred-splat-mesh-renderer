@@ -231,6 +231,12 @@ def main():
     parser.add_argument("--settle-ms", type=int, default=3000)
     parser.add_argument("--variance-threshold", type=float, default=0.05,
                         help="CV threshold — keep splats above this (light-validated surfaces)")
+    parser.add_argument("--hue-gate-lo", type=float, default=0.02,
+                        help="Hue divergence gate lower threshold (below = suppressed as specular)")
+    parser.add_argument("--hue-gate-hi", type=float, default=0.15,
+                        help="Hue divergence gate upper threshold (above = kept as emissive)")
+    parser.add_argument("--min-delta-mag", type=float, default=0.02,
+                        help="Minimum delta magnitude before hue gate applies")
     args = parser.parse_args()
 
     args.work_dir.mkdir(parents=True, exist_ok=True)
@@ -357,9 +363,25 @@ def main():
 
     LOG.info("Pass 2: Emissive solve...")
     raw_emissive = np.maximum(0, orig_colors - albedo_colors)
-    emissive = raw_emissive.copy()
-    # Keep emissive only where the light sweep validates the surface (high CV).
-    # Low CV = light can't reach = emissive signal unreliable.
+
+    # Hue divergence gate: suppress specular reflections that share albedo hue
+    delta_mag = np.sqrt((raw_emissive ** 2).sum(axis=1, keepdims=True))
+    albedo_mag = np.sqrt((albedo_colors ** 2).sum(axis=1, keepdims=True))
+    delta_dir = raw_emissive / np.maximum(delta_mag, 1e-8)
+    albedo_dir = albedo_colors / np.maximum(albedo_mag, 1e-8)
+    cos_sim = (delta_dir * albedo_dir).sum(axis=1)
+    hue_divergence = 1.0 - cos_sim
+    lo, hi = args.hue_gate_lo, args.hue_gate_hi
+    t = np.clip((hue_divergence - lo) / max(hi - lo, 1e-8), 0.0, 1.0)
+    hue_weight = t * t * (3.0 - 2.0 * t)
+    gate_active = delta_mag.squeeze() > args.min_delta_mag
+    hue_gate = np.where(gate_active, hue_weight, 0.0)
+    hue_gated = raw_emissive * hue_gate[:, np.newaxis]
+    hue_kept = (np.sqrt((hue_gated ** 2).sum(axis=1)) > 0.05).sum()
+    LOG.info(f"  Hue divergence gate: {hue_kept} splats survive (lo={lo}, hi={hi})")
+
+    emissive = hue_gated.copy()
+    # Also require light sweep validation (high CV).
     emissive[~specular_mask] = 0
 
     emit_mag = np.sqrt((emissive ** 2).sum(axis=1))

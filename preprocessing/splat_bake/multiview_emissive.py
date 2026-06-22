@@ -196,6 +196,12 @@ def main():
     parser.add_argument("--supermat-size", type=int, default=1024)
     parser.add_argument("--emissive-vis", type=Path, default=None,
                         help="Also write an emissive visualization PLY")
+    parser.add_argument("--hue-gate-lo", type=float, default=0.02,
+                        help="Hue divergence gate lower threshold (below = suppressed as specular)")
+    parser.add_argument("--hue-gate-hi", type=float, default=0.15,
+                        help="Hue divergence gate upper threshold (above = kept as emissive)")
+    parser.add_argument("--min-delta-mag", type=float, default=0.02,
+                        help="Minimum delta magnitude before hue gate applies (avoids noise in dark regions)")
     args = parser.parse_args()
 
     args.work_dir.mkdir(parents=True, exist_ok=True)
@@ -277,6 +283,28 @@ def main():
         # Step 4: Compute delta for this view
         delta = orig_colors - albedo_sampled  # positive where original is brighter
         delta = np.maximum(delta, 0)  # only keep positive (brighter than albedo)
+
+        # Step 4b: Hue divergence gate — suppress specular, keep emissive.
+        # Specular reflections have the same hue as the surface (Fresnel).
+        # Emissive glow has a different hue (e.g., amber glow on gray metal).
+        delta_mag = np.sqrt((delta ** 2).sum(axis=1, keepdims=True))
+        albedo_mag = np.sqrt((albedo_sampled ** 2).sum(axis=1, keepdims=True))
+        # Normalize to unit vectors in RGB space (avoid div-by-zero)
+        delta_dir = delta / np.maximum(delta_mag, 1e-8)
+        albedo_dir = albedo_sampled / np.maximum(albedo_mag, 1e-8)
+        # Cosine similarity: 1 = same hue, -1 = opposite
+        cos_sim = (delta_dir * albedo_dir).sum(axis=1)
+        hue_divergence = 1.0 - cos_sim  # 0 = same hue, 2 = opposite
+
+        # Smoothstep weight: 0 below lo threshold, 1 above hi threshold
+        lo, hi = args.hue_gate_lo, args.hue_gate_hi
+        t = np.clip((hue_divergence - lo) / max(hi - lo, 1e-8), 0.0, 1.0)
+        hue_weight = t * t * (3.0 - 2.0 * t)  # smoothstep
+
+        # Only apply gate where delta is above noise floor
+        gate_active = delta_mag.squeeze() > args.min_delta_mag
+        weight = np.where(gate_active, hue_weight, 0.0)
+        delta = delta * weight[:, np.newaxis]
 
         # Store
         emissive_candidates[:, :, vi] = delta
