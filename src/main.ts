@@ -12,6 +12,7 @@ import {
 } from "./camera.js";
 import { handleDoubleClickPivot } from "./clickToPivot.js";
 import { loadDroppedSplatFile, decodeLocalPlySplatPayload, tryFetchSidecar, applySidecarCorrections } from "./localPly.js";
+import { parseHDRHeader } from "./ibl.js";
 import {
   createRenderDemandState,
   markRenderFrameFinished,
@@ -78,6 +79,10 @@ const aoStepsSlider = document.getElementById("aoSteps") as HTMLInputElement | n
 const aoStepsValEl = document.getElementById("aoStepsVal");
 const aoThicknessSlider = document.getElementById("aoThickness") as HTMLInputElement | null;
 const aoThicknessValEl = document.getElementById("aoThicknessVal");
+const envIntensitySlider = document.getElementById("envIntensity") as HTMLInputElement | null;
+const envIntensityValEl = document.getElementById("envIntensityVal");
+const envRotationSlider = document.getElementById("envRotation") as HTMLInputElement | null;
+const envRotationValEl = document.getElementById("envRotationVal");
 
 // Light control state -- L key cycles modes, arrow keys adjust angle in fixed mode
 type LightMode = "camera" | "fixed" | "overhead" | "rim";
@@ -96,6 +101,8 @@ let aoFalloff = 1.0;
 let aoSlices = 3;
 let aoSteps = 4;
 let aoThickness = 1.81;
+let envIntensity = 1.0;
+let envRotation = 0.0;
 
 // ---------------------------------------------------------------------------
 // URL param helpers
@@ -171,9 +178,10 @@ function computeLightDirection(cameraPos: Float32Array, cameraTarget: readonly n
 // Drag-drop PLY loading
 // ---------------------------------------------------------------------------
 
-function bindDroppedSplatLoading(
+function bindDroppedFileLoading(
   canvas: HTMLCanvasElement,
-  loadFile: (file: File) => Promise<void>,
+  loadSplatFile: (file: File) => Promise<void>,
+  loadHDRFile: (file: File) => Promise<void>,
 ): void {
   window.addEventListener("dragover", (event) => {
     if (!event.dataTransfer?.types.includes("Files")) return;
@@ -183,7 +191,12 @@ function bindDroppedSplatLoading(
   window.addEventListener("drop", (event) => {
     if (!event.dataTransfer?.files.length) return;
     event.preventDefault();
-    void loadFile(event.dataTransfer.files[0]);
+    const file = event.dataTransfer.files[0];
+    if (file.name.toLowerCase().endsWith(".hdr")) {
+      void loadHDRFile(file);
+    } else {
+      void loadSplatFile(file);
+    }
   });
   canvas.addEventListener("dragenter", () => { canvas.dataset.dropTarget = "true"; });
   canvas.addEventListener("dragleave", () => { delete canvas.dataset.dropTarget; });
@@ -307,6 +320,10 @@ async function main() {
     if (aoStepsValEl) { aoStepsValEl.textContent = String(aoSteps); }
     if (aoThicknessSlider) { aoThicknessSlider.value = String(aoThickness); }
     if (aoThicknessValEl) { aoThicknessValEl.textContent = aoThickness.toFixed(2); }
+    if (envIntensitySlider) { envIntensitySlider.value = String(envIntensity); }
+    if (envIntensityValEl) { envIntensityValEl.textContent = envIntensity.toFixed(2); }
+    if (envRotationSlider) { envRotationSlider.value = String(envRotation); }
+    if (envRotationValEl) { envRotationValEl.textContent = envRotation.toFixed(2); }
   }
   emIntensitySlider?.addEventListener("input", () => {
     emissiveIntensity = Number(emIntensitySlider!.value);
@@ -355,6 +372,16 @@ async function main() {
   });
   aoThicknessSlider?.addEventListener("input", () => {
     aoThickness = Number(aoThicknessSlider!.value);
+    syncSliders();
+    requestFrame();
+  });
+  envIntensitySlider?.addEventListener("input", () => {
+    envIntensity = Number(envIntensitySlider!.value);
+    syncSliders();
+    requestFrame();
+  });
+  envRotationSlider?.addEventListener("input", () => {
+    envRotation = Number(envRotationSlider!.value);
     syncSliders();
     requestFrame();
   });
@@ -514,7 +541,7 @@ async function main() {
     statsEl.textContent = "Drop a .ply file to load";
   }
 
-  bindDroppedSplatLoading(canvas, async (file) => {
+  bindDroppedFileLoading(canvas, async (file) => {
     statsEl.textContent = `Loading ${file.name}...`;
     try {
       await replaceSplatScene(await loadDroppedSplatFile(file), `local-file:${file.name}`);
@@ -522,7 +549,31 @@ async function main() {
       statsEl.textContent = err instanceof Error ? err.message : String(err);
       requestFrame();
     }
+  }, async (file) => {
+    statsEl.textContent = `Loading HDR environment ${file.name}...`;
+    try {
+      const buffer = await file.arrayBuffer();
+      const { width, height } = parseHDRHeader(buffer);
+      renderer.ibl.loadEquirectHDR(buffer, width, height);
+      console.log(`Loaded HDR environment: ${file.name} (${width}x${height})`);
+      requestFrame();
+    } catch (err) {
+      statsEl.textContent = err instanceof Error ? err.message : String(err);
+      requestFrame();
+    }
   });
+
+  // ---- Load default environment map ----
+  const envUrl = new URLSearchParams(window.location.search).get("env")
+    ?? "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_09_1k.hdr";
+  fetch(envUrl).then(async (resp) => {
+    if (!resp.ok) { console.warn(`Failed to load env map: ${resp.status}`); return; }
+    const buffer = await resp.arrayBuffer();
+    const { width, height } = parseHDRHeader(buffer);
+    renderer.ibl.loadEquirectHDR(buffer, width, height);
+    console.log(`Loaded HDR environment: ${envUrl.split("/").pop()} (${width}x${height})`);
+    requestFrame();
+  }).catch(err => console.warn("Env map load failed:", err));
 
   // ---- Render loop ----
   async function frame() {
@@ -611,6 +662,8 @@ async function main() {
       aoSlices,
       aoSteps,
       aoThickness,
+      envIntensity,
+      envRotation,
     }, encoder);
 
     // ---- Present to screen ----

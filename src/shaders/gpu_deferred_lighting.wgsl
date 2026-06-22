@@ -18,7 +18,8 @@ struct Params {
   specularOnly: f32,
   emissiveIntensity: f32,
   emissiveThreshold: f32,
-  _pad2: vec2f,
+  envIntensity: f32,
+  envRotation: f32,
 };
 
 @group(0) @binding(0) var<uniform> params: Params;
@@ -28,6 +29,9 @@ struct Params {
 @group(0) @binding(4) var materialTexture: texture_2d<u32>; // rgba32uint: .r=pack2x16float(roughness,metalness), .g=pack2x16float(emissive_rg), .b=pack2x16float(emissive_b,0)
 @group(0) @binding(5) var outputLit: texture_storage_2d<rgba16float, write>;
 @group(0) @binding(6) var aoTexture: texture_2d<f32>; // GTAO result (0=occluded, 1=visible)
+@group(0) @binding(7) var envMap: texture_2d<f32>;  // equirect HDR environment
+@group(0) @binding(8) var brdfLUT: texture_2d<f32>; // split-sum BRDF integration LUT
+@group(0) @binding(9) var envSampler: sampler;
 
 const PI = 3.14159265359;
 
@@ -82,6 +86,25 @@ fn geometrySmith(NdotV: f32, NdotL: f32, roughness: f32) -> f32 {
 // Schlick Fresnel approximation
 fn fresnelSchlick(cosTheta: f32, F0: vec3f) -> vec3f {
   return F0 + (1.0 - F0) * pow(saturate(1.0 - cosTheta), 5.0);
+}
+
+fn fresnelSchlickRoughness(cosTheta: f32, F0: vec3f, roughness: f32) -> vec3f {
+  return F0 + (max(vec3f(1.0 - roughness), F0) - F0) * pow(saturate(1.0 - cosTheta), 5.0);
+}
+
+// Rotate direction around Y axis by angle (radians)
+fn rotateY(dir: vec3f, angle: f32) -> vec3f {
+  let c = cos(angle);
+  let s = sin(angle);
+  return vec3f(c * dir.x + s * dir.z, dir.y, -s * dir.x + c * dir.z);
+}
+
+// Sample equirectangular environment map with rotation and intensity
+fn sampleEnvEquirectLod(dir: vec3f, lod: f32) -> vec3f {
+  let rotDir = rotateY(dir, params.envRotation);
+  let u = atan2(rotDir.z, rotDir.x) / (2.0 * PI) + 0.5;
+  let v = asin(clamp(rotDir.y, -1.0, 1.0)) / PI + 0.5;
+  return textureSampleLevel(envMap, envSampler, vec2f(u, 1.0 - v), lod).rgb * params.envIntensity;
 }
 
 @compute @workgroup_size(8, 8)
@@ -154,8 +177,31 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
     color = specular * params.lightColor * params.lightIntensity * NdotL;
   } else {
     let Lo = (kD * albedo / PI + specular) * params.lightColor * params.lightIntensity * NdotL;
-    let ambient = params.ambientColor * albedo * ao; // AO modulates ambient only
-    color = ambient + Lo; // direct light is NOT attenuated by AO
+
+    // IBL ambient: split-sum approximation
+    let envSize = textureDimensions(envMap);
+    let hasEnvMap = envSize.x > 1u; // 1x1 = placeholder, no real env map loaded
+    var ambient: vec3f;
+    if (hasEnvMap) {
+      // Diffuse IBL: sample environment along normal (approximates irradiance convolution)
+      let irradiance = sampleEnvEquirectLod(N, 5.0); // high lod for diffuse blur
+      let diffuseIBL = kD * albedo * irradiance;
+
+      // Specular IBL: sample environment along reflection, roughness selects mip level
+      let R = reflect(-V, N);
+      let maxLod = log2(f32(envSize.x));
+      let specLod = roughness * maxLod; // rough surfaces sample blurred mip levels
+      let prefilteredColor = sampleEnvEquirectLod(R, specLod);
+      let brdfSample = textureSampleLevel(brdfLUT, envSampler, vec2f(NdotV, roughness), 0.0).rg;
+      let F_ibl = fresnelSchlickRoughness(NdotV, F0, roughness);
+      let specularIBL = prefilteredColor * (F_ibl * brdfSample.x + brdfSample.y);
+
+      ambient = (diffuseIBL + specularIBL) * ao;
+    } else {
+      ambient = params.ambientColor * albedo * ao;
+    }
+
+    color = ambient + Lo;
   }
 
   // Reinhard tonemap in linear space, then convert back to sRGB for display

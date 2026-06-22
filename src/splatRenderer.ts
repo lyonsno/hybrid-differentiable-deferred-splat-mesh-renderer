@@ -37,6 +37,7 @@ import gbufferDebugPresentShader from "./shaders/gbuffer_debug_present.wgsl?raw"
 import screenSpaceNormalsShader from "./shaders/gpu_screen_space_normals.wgsl?raw";
 import deferredLightingShader from "./shaders/gpu_deferred_lighting.wgsl?raw";
 import { createGTAO, DEFAULT_GTAO_PARAMS, type GTAOResources, type GTAOParams } from "./gtao.js";
+import { createIBL, type IBLResources } from "./ibl.js";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -87,6 +88,8 @@ export interface RenderFrameParams {
   aoSlices?: number;
   aoSteps?: number;
   aoThickness?: number;
+  envIntensity?: number;
+  envRotation?: number;
 }
 
 export interface SplatRenderer {
@@ -105,6 +108,7 @@ export interface SplatRenderer {
   readonly gbufferDebugPresenter: GBufferDebugPresenter;
   destroyScene(scene: SplatScene): void;
   readonly alphaDensityState: (scene: SplatScene) => AlphaDensityState;
+  readonly ibl: IBLResources;
 }
 
 export interface GBufferDebugPresenter {
@@ -364,6 +368,9 @@ function createDeferredLightingPass(device: GPUDevice) {
       { binding: 4, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "uint" } }, // material+emissive (rgba32uint)
       { binding: 5, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba16float" } },
       { binding: 6, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float" } }, // AO (r32float)
+      { binding: 7, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "float" } }, // env map (equirect, rgba16float)
+      { binding: 8, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "float" } }, // BRDF LUT (rg16float)
+      { binding: 9, visibility: GPUShaderStage.COMPUTE, sampler: { type: "filtering" } }, // env sampler
     ],
   });
   const pipeline = device.createComputePipeline({
@@ -384,6 +391,7 @@ function createDeferredLightingPass(device: GPUDevice) {
       normalView: GPUTextureView,
       materialView: GPUTextureView,
       aoView: GPUTextureView,
+      ibl: IBLResources,
       litTexture: GPUTexture,
       viewport: [number, number],
       viewProjInverse: Float32Array,
@@ -394,6 +402,8 @@ function createDeferredLightingPass(device: GPUDevice) {
       specularOnly: boolean = false,
       emissiveIntensity: number = 3.0,
       emissiveThreshold: number = 0.05,
+      envIntensity: number = 1.0,
+      envRotation: number = 0.0,
     ) {
       const params = new Float32Array(40);
       params[0] = viewport[0];
@@ -410,6 +420,8 @@ function createDeferredLightingPass(device: GPUDevice) {
       params[35] = specularOnly ? 1.0 : 0.0;
       params[36] = emissiveIntensity;
       params[37] = emissiveThreshold;
+      params[38] = envIntensity;
+      params[39] = envRotation;
       device.queue.writeBuffer(paramsBuffer, 0, params);
       const bg = device.createBindGroup({
         layout: bgl,
@@ -421,6 +433,9 @@ function createDeferredLightingPass(device: GPUDevice) {
           { binding: 4, resource: materialView },
           { binding: 5, resource: litTexture.createView() },
           { binding: 6, resource: aoView },
+          { binding: 7, resource: ibl.envTextureView },
+          { binding: 8, resource: ibl.brdfLUTView },
+          { binding: 9, resource: ibl.envSampler },
         ],
       });
       const pass = encoder.beginComputePass({ label: "deferred_lighting" });
@@ -689,6 +704,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
   const gbufferDebug = createGBufferDebugPresenter(device, format);
   const screenSpaceNormals = createScreenSpaceNormalsPass(device);
   const deferredLighting = createDeferredLightingPass(device);
+  const ibl = createIBL(device);
 
   return {
     loadScene(
@@ -899,6 +915,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
           scene.gbufferNormalView,
           scene.gbufferMaterialView,
           cc.gtao.aoView,
+          ibl,
           cc.litTexture,
           [cc.resources.plan.viewportWidth, cc.resources.plan.viewportHeight],
           vpInv,
@@ -909,6 +926,8 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
           params.specularOnly ?? false,
           params.emissiveIntensity ?? 3.0,
           params.emissiveThreshold ?? 0.05,
+          params.envIntensity ?? 1.0,
+          params.envRotation ?? 0.0,
         );
       }
     },
@@ -919,6 +938,10 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
 
     get gbufferDebugPresenter(): GBufferDebugPresenter {
       return gbufferDebug;
+    },
+
+    get ibl(): IBLResources {
+      return ibl;
     },
 
     destroyScene(scene: SplatScene): void {
