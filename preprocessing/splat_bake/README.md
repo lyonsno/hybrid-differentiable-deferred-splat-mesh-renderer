@@ -185,9 +185,13 @@ python multiview_normals.py --ply input.ply --output output.ply --views 8 \
 
 ### Normal coordinate conventions
 
-- MoGE outputs normals in camera space matching the OpenGL view matrix convention.
-  No axis flips are needed.
+- MoGE's facing-camera normal is `(0, 0, -1)`. The Z component must be negated
+  before `cam_to_world` rotation: `(0, 0, -1)` → `(0, 0, +1)` → `cam_to_world`
+  maps to the outward surface direction. Without this, normals point toward the
+  camera instead of away, making `N·V` negative and killing all specular/metallic.
 - `cam_to_world = view_matrix[:3, :3].T` converts camera-space normals to world space.
+- **Lotus-D convention is unverified** — it may use `(0, 0, +1)` for facing-camera,
+  in which case the Z-flip should be skipped. Test before using `--normal-model lotus`.
 - The renderer's deferred lighting shader expects world-space normals (it computes
   `V = normalize(cameraPos - worldPos)` in world space).
 - For single-view baking without rotation, the normals are in camera space and only
