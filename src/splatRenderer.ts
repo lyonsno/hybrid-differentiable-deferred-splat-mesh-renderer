@@ -117,6 +117,7 @@ export interface SplatRenderer {
   presentTexture(renderPass: GPURenderPassEncoder, textureView: GPUTextureView): void;
   presentBloom(renderPass: GPURenderPassEncoder, bloomView: GPUTextureView, intensity: number): void;
   readonly gbufferDebugPresenter: GBufferDebugPresenter;
+  updateEmissive(scene: SplatScene, emissive: Float32Array): void;
   destroyScene(scene: SplatScene): void;
   readonly alphaDensityState: (scene: SplatScene) => AlphaDensityState;
   readonly ibl: IBLResources;
@@ -1136,6 +1137,47 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
 
     get ibl(): IBLResources {
       return ibl;
+    },
+
+    updateEmissive(scene: SplatScene, emissive: Float32Array): void {
+      // Emissive lives at the tail of each splat's shData stride:
+      // [dc_r, dc_g, dc_b, sh..., emissive_r, emissive_g, emissive_b]
+      const shCoeffCount = scene.shDegree > 0 ? (scene.shDegree + 1) ** 2 - 1 : 0;
+      const stride = 3 + shCoeffCount * 3 + 3; // floats per splat
+      const emissiveOffset = 3 + shCoeffCount * 3; // offset to emissive within stride
+      const count = scene.count;
+
+      if (emissive.length !== count * 3) {
+        console.warn(`updateEmissive: expected ${count * 3} floats, got ${emissive.length}`);
+        return;
+      }
+
+      // Build a sparse update: write just the emissive floats at their stride offsets
+      const fullData = new Float32Array(count * stride);
+      // Read back current shData (we only want to update emissive, keep DC+SH intact)
+      // Since we can't readback from GPU efficiently, rebuild the full buffer
+      // from the scene attributes
+      const dcColors = scene.attributes.colors;
+      const shCoeffs = scene.attributes.sh?.coefficients;
+      const shStride = shCoeffCount * 3;
+      for (let i = 0; i < count; i++) {
+        const outBase = i * stride;
+        const dcBase = i * 3;
+        fullData[outBase] = dcColors[dcBase];
+        fullData[outBase + 1] = dcColors[dcBase + 1];
+        fullData[outBase + 2] = dcColors[dcBase + 2];
+        if (shCoeffs) {
+          const shBase = i * shStride;
+          for (let j = 0; j < shStride; j++) {
+            fullData[outBase + 3 + j] = shCoeffs[shBase + j];
+          }
+        }
+        const emBase = outBase + emissiveOffset;
+        fullData[emBase] = emissive[dcBase];
+        fullData[emBase + 1] = emissive[dcBase + 1];
+        fullData[emBase + 2] = emissive[dcBase + 2];
+      }
+      device.queue.writeBuffer(scene.buffers.shDataBuffer, 0, fullData);
     },
 
     destroyScene(scene: SplatScene): void {

@@ -354,6 +354,61 @@ async function main() {
     requestFrame();
   };
 
+  // Live emissive update API — Kaminos calls this to hot-swap emissive data
+  (window as unknown as Record<string, unknown>).__MESH_SPLAT_UPDATE_EMISSIVE__ = (emissive: Float32Array) => {
+    if (!activeScene) return { applied: false, reason: "no scene loaded" };
+    renderer.updateEmissive(activeScene, emissive);
+    requestFrame();
+    return { applied: true, count: activeScene.count };
+  };
+
+  // Live emissive solve API — Kaminos passes original+albedo colors and thresholds,
+  // we compute the hue-gated emissive and apply it
+  (window as unknown as Record<string, unknown>).__MESH_SPLAT_SOLVE_EMISSIVE__ = (params: {
+    originalColors: Float32Array;  // RGB per splat (count * 3)
+    albedoColors: Float32Array;    // RGB per splat (count * 3)
+    hueGateLo?: number;
+    hueGateHi?: number;
+    minDeltaMag?: number;
+  }) => {
+    if (!activeScene) return { applied: false, reason: "no scene loaded" };
+    const count = activeScene.count;
+    const lo = params.hueGateLo ?? 0.02;
+    const hi = params.hueGateHi ?? 0.15;
+    const minMag = params.minDeltaMag ?? 0.02;
+    const emissive = new Float32Array(count * 3);
+
+    for (let i = 0; i < count; i++) {
+      const b = i * 3;
+      // Delta: original - albedo, clamped positive
+      const dr = Math.max(0, params.originalColors[b] - params.albedoColors[b]);
+      const dg = Math.max(0, params.originalColors[b + 1] - params.albedoColors[b + 1]);
+      const db = Math.max(0, params.originalColors[b + 2] - params.albedoColors[b + 2]);
+
+      const deltaMag = Math.sqrt(dr * dr + dg * dg + db * db);
+      if (deltaMag < minMag) continue;
+
+      // Hue divergence gate
+      const ar = params.albedoColors[b], ag = params.albedoColors[b + 1], ab = params.albedoColors[b + 2];
+      const albMag = Math.sqrt(ar * ar + ag * ag + ab * ab);
+      if (albMag < 1e-8) { emissive[b] = dr; emissive[b + 1] = dg; emissive[b + 2] = db; continue; }
+
+      const cosSim = (dr * ar + dg * ag + db * ab) / (deltaMag * albMag);
+      const hueDivergence = 1.0 - cosSim;
+      const t = Math.max(0, Math.min(1, (hueDivergence - lo) / Math.max(hi - lo, 1e-8)));
+      const weight = t * t * (3.0 - 2.0 * t); // smoothstep
+
+      emissive[b] = dr * weight;
+      emissive[b + 1] = dg * weight;
+      emissive[b + 2] = db * weight;
+    }
+
+    renderer.updateEmissive(activeScene, emissive);
+    requestFrame();
+    const emCount = emissive.reduce((n, v, i) => i % 3 === 0 ? n + (Math.sqrt(v * v + emissive[i + 1] ** 2 + emissive[i + 2] ** 2) > 0.05 ? 1 : 0) : n, 0);
+    return { applied: true, count, emissiveSplats: emCount };
+  };
+
   const renderDemand = createRenderDemandState();
   const requestFrame = () => {
     if (requestRenderFrame(renderDemand)) {
