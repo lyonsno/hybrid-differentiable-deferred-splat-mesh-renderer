@@ -85,6 +85,36 @@ test("sidecar crop can evaluate raw splats in a supplied preview-normalized crop
   assert.deepEqual(Array.from(result.attributes.positions), [10, 0, 0]);
 });
 
+test("visual-root crop matrix is authoritative and does not reapply sidecar axis flips", () => {
+  const source = makeAttributes([
+    [10, 0, 1],
+    [10, 0, -1],
+  ]);
+
+  const result = applySplatCorrectionToAttributes(source, {
+    cropCoordinateFrame: "visual-root-local",
+    cropCoordinateMatrix: [
+      0.1, 0, 0, 0,
+      0, 0.1, 0, 0,
+      0, 0, 1, 0,
+      -1, 0, 0, 1,
+    ],
+    axisFlips: [false, false, true],
+    crop: {
+      enabled: true,
+      min: [-0.01, -0.01, 0.9],
+      max: [0.01, 0.01, 1.1],
+    },
+  });
+
+  assert.equal(result.cropApplied, true);
+  assert.equal(result.cropFrame, "visual-root-local");
+  assert.equal(result.sourceCount, 2);
+  assert.equal(result.keptCount, 1);
+  assert.deepEqual(Array.from(result.attributes.originalIds), [0]);
+  assert.deepEqual(Array.from(result.attributes.positions), [10, 0, 1]);
+});
+
 function makeAttributes(positions: Array<[number, number, number]>): SplatAttributes {
   const count = positions.length;
   return {

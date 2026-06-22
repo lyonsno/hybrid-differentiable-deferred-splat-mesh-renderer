@@ -3,6 +3,7 @@ import type { SplatAttributes, SplatBounds } from "./splats.js";
 export type SplatCorrectionCropFrame =
   | "disabled"
   | "axis-flipped-asset"
+  | "visual-root-local"
   | "pivot-local-minus-centroid";
 
 export interface SplatCorrectionIdentity {
@@ -10,6 +11,7 @@ export interface SplatCorrectionIdentity {
   readonly axisFlips?: readonly (boolean | number)[];
   readonly centroidOffset?: readonly number[];
   readonly cropCoordinateMatrix?: readonly number[];
+  readonly cropCoordinateFrame?: unknown;
   readonly crop?: unknown;
 }
 
@@ -43,8 +45,21 @@ export function applySplatCorrectionToAttributes(
   }
 
   const axisSigns = normalizeAxisSigns(correction?.axisFlips);
-  const cropCoordinateMatrix = normalizeMat4(correction?.cropCoordinateMatrix);
+  const cropRecord = isRecord(correction?.crop) ? correction.crop : null;
+  const cropCoordinateMatrix = normalizeMat4(correction?.cropCoordinateMatrix ?? cropRecord?.sourceToCropMatrix);
+  const explicitCropFrame = normalizeCropFrame(correction?.cropCoordinateFrame ?? cropRecord?.frame);
   const centroidOffset = normalizeVec3(correction?.centroidOffset, "correction.centroidOffset", [0, 0, 0]);
+  if (cropCoordinateMatrix) {
+    const cropFrame = explicitCropFrame ?? "axis-flipped-asset";
+    const keptIndices = collectMatrixCropIndices(attributes.positions, attributes.count, cropCoordinateMatrix, crop);
+    return {
+      attributes: filterSplatAttributes(attributes, keptIndices),
+      cropApplied: true,
+      cropFrame,
+      sourceCount: attributes.count,
+      keptCount: keptIndices.length,
+    };
+  }
   const canonicalIndices = collectCropIndices(attributes.positions, attributes.count, axisSigns, centroidOffset, cropCoordinateMatrix, crop, "axis-flipped-asset");
   const legacyIndices = canonicalIndices.length === 0 && centroidOffset.some(value => Math.abs(value) > 1e-9)
     ? collectCropIndices(attributes.positions, attributes.count, axisSigns, centroidOffset, cropCoordinateMatrix, crop, "pivot-local-minus-centroid")
@@ -58,6 +73,27 @@ export function applySplatCorrectionToAttributes(
     sourceCount: attributes.count,
     keptCount: keptIndices.length,
   };
+}
+
+function collectMatrixCropIndices(
+  positions: Float32Array,
+  count: number,
+  cropCoordinateMatrix: readonly number[],
+  crop: NormalizedCrop,
+): number[] {
+  const indices: number[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const base = index * 3;
+    const [x, y, z] = transformPoint3(cropCoordinateMatrix, positions[base], positions[base + 1], positions[base + 2]);
+    if (
+      x >= crop.min[0] && x <= crop.max[0] &&
+      y >= crop.min[1] && y <= crop.max[1] &&
+      z >= crop.min[2] && z <= crop.max[2]
+    ) {
+      indices.push(index);
+    }
+  }
+  return indices;
 }
 
 function collectCropIndices(
@@ -220,6 +256,13 @@ function normalizeAxisSigns(value: unknown): readonly [number, number, number] {
     axisSign(value[1]),
     axisSign(value[2]),
   ];
+}
+
+function normalizeCropFrame(value: unknown): Exclude<SplatCorrectionCropFrame, "disabled"> | null {
+  if (value === "axis-flipped-asset" || value === "visual-root-local" || value === "pivot-local-minus-centroid") {
+    return value;
+  }
+  return null;
 }
 
 function normalizeMat4(value: unknown): readonly number[] | null {
