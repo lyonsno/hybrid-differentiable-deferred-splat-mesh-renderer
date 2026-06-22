@@ -36,6 +36,7 @@ async function main() {
   let elevation = null;
   let distance = null;
   let debugMode = null;
+  let noSidecar = false;
 
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
@@ -49,6 +50,7 @@ async function main() {
       case "--elevation": elevation = Number(args[++i]); break;
       case "--distance": distance = Number(args[++i]); break;
       case "--debug": debugMode = args[++i]; break;
+      case "--no-sidecar": noSidecar = true; break;
       case "--help": case "-h":
         console.log("Usage: render-splat-screenshot.mjs --splat <path> --output <path> [options]");
         console.log("Options: --url, --width, --height, --settle-ms, --azimuth, --elevation, --distance, --debug");
@@ -64,6 +66,7 @@ async function main() {
   // Build renderer URL with splat param
   let url = `${baseUrl}/?splat=${encodeURIComponent(splatPath)}`;
   if (debugMode) url += `&debug=${encodeURIComponent(debugMode)}`;
+  if (noSidecar) url += `&nosidecar`;
 
   // Ensure output directory exists
   const outputDir = path.dirname(path.resolve(outputPath));
@@ -155,6 +158,13 @@ async function main() {
     const smoke = window.__MESH_SPLAT_SMOKE__;
     if (smoke && smoke.splatCount > 0) return smoke.splatCount;
     return Number(document.body.dataset.smokeSplatCount || 0);
+  });
+
+  // Hide UI overlays before capture
+  await page.evaluate(() => {
+    for (const el of document.querySelectorAll("#controls, #stats")) {
+      el.style.display = "none";
+    }
   });
 
   // Capture canvas screenshot

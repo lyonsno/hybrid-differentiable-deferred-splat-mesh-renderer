@@ -616,7 +616,8 @@ async function main() {
         tryFetchSidecar(path),
       ]);
       let attrs = decodeLocalPlySplatPayload(path, await response.arrayBuffer());
-      if (sidecar) {
+      const skipSidecar = new URLSearchParams(window.location.search).has("nosidecar");
+      if (sidecar && !skipSidecar) {
         console.log(`Applying Kaminos sidecar corrections from ${path}.kaminos-splat.json`);
         attrs = applySidecarCorrections(attrs, sidecar);
       }

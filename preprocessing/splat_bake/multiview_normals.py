@@ -113,6 +113,7 @@ def render_orbit_views(
             "--elevation", str(elev),
             "--settle-ms", "2000",
             "--url", renderer_url,
+            "--no-sidecar",
         ]
         if distance is not None:
             cmd.extend(["--distance", str(distance)])
