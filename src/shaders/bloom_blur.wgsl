@@ -1,6 +1,6 @@
 // Separable Gaussian blur for bloom. Run twice: horizontal then vertical.
-// 13-tap Gaussian kernel (sigma ~= 4.0).
-// Dispatch: ceil(width/64) x height (horizontal) or width x ceil(height/64) (vertical)
+// 13-tap Gaussian kernel (sigma = 4.0).
+// Dispatch: ceil(width/8) x ceil(height/8)
 
 struct Params {
   direction: vec2f,  // (1/width, 0) for horizontal, (0, 1/height) for vertical
@@ -12,9 +12,9 @@ struct Params {
 @group(0) @binding(2) var<uniform> params: Params;
 @group(0) @binding(3) var blurSampler: sampler;
 
-// 13-tap Gaussian weights (sigma ~= 4.0, normalized)
+// 13-tap Gaussian weights (sigma = 4.0, properly normalized, center > all offsets)
 const OFFSETS = array<f32, 7>(0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
-const WEIGHTS = array<f32, 7>(0.1964825501511404, 0.2969069646728344, 0.09447039785044732, 0.010381362401148057, 0.0003951564638498498, 0.000005188228982663508, 0.000000023526053905804062);
+const WEIGHTS = array<f32, 7>(0.1112202001, 0.1077983143, 0.0981514821, 0.0839534116, 0.0674584614, 0.0509203181, 0.0361079124);
 
 @compute @workgroup_size(8, 8)
 fn main(@builtin(global_invocation_id) gid: vec3u) {

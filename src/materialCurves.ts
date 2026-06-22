@@ -90,6 +90,15 @@ export function createMaterialCurves(device: GPUDevice): MaterialCurves {
   uploadLUT(device, metalnessLUT, identity);
   uploadLUT(device, albedoLUT, identity);
 
+  // Track last params to skip redundant uploads
+  let lastR = { ...DEFAULT_CURVE };
+  let lastM = { ...DEFAULT_CURVE };
+  let lastA = { ...DEFAULT_CURVE };
+
+  function curveChanged(a: MaterialCurveParams, b: MaterialCurveParams): boolean {
+    return a.contrast !== b.contrast || a.brightness !== b.brightness || a.gamma !== b.gamma;
+  }
+
   return {
     roughnessLUT,
     metalnessLUT,
@@ -99,9 +108,9 @@ export function createMaterialCurves(device: GPUDevice): MaterialCurves {
     albedoLUTView: albedoLUT.createView(),
 
     update(roughness: MaterialCurveParams, metalness: MaterialCurveParams, albedo: MaterialCurveParams) {
-      uploadLUT(device, roughnessLUT, generateLUT(roughness));
-      uploadLUT(device, metalnessLUT, generateLUT(metalness));
-      uploadLUT(device, albedoLUT, generateLUT(albedo));
+      if (curveChanged(roughness, lastR)) { uploadLUT(device, roughnessLUT, generateLUT(roughness)); lastR = { ...roughness }; }
+      if (curveChanged(metalness, lastM)) { uploadLUT(device, metalnessLUT, generateLUT(metalness)); lastM = { ...metalness }; }
+      if (curveChanged(albedo, lastA)) { uploadLUT(device, albedoLUT, generateLUT(albedo)); lastA = { ...albedo }; }
     },
 
     destroy() {
