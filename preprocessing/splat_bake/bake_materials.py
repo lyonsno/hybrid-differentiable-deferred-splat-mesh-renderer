@@ -174,6 +174,9 @@ def main():
     parser.add_argument("--default-roughness", type=float, default=0.5)
     parser.add_argument("--default-metallic", type=float, default=0.0)
     parser.add_argument("--ignore-sidecar", action="store_true")
+    parser.add_argument("--camera", type=Path, default=None,
+                        help="Camera state JSON from render-splat-screenshot.mjs. "
+                             "Uses renderer's viewProjMatrix for projection.")
     args = parser.parse_args()
 
     if not args.roughness and not args.metallic and not args.normal_map:
@@ -217,23 +220,42 @@ def main():
         target_h, target_w = n.shape[:2]
         LOG.info(f"Normal map: {n.shape[1]}x{n.shape[0]}")
 
-    if intrinsics is None or extrinsics is None or image_size is None:
-        LOG.warning("PLY missing camera metadata — using map dimensions as fallback")
-        f_px = max(target_w, target_h)
-        intrinsics = np.array([[f_px, 0, target_w/2], [0, f_px, target_h/2], [0, 0, 1]])
-        extrinsics = np.eye(4)
-        image_size = (target_w, target_h)
+    if args.camera:
+        LOG.info(f"Using renderer camera from: {args.camera}")
+        with open(args.camera) as f:
+            cam = json.load(f)
+        viewProj = np.array(cam["viewProjMatrix"]).reshape(4, 4).T
+        vp_w = cam["viewportWidth"]
+        vp_h = cam["viewportHeight"]
 
-    # Scale intrinsics to map resolution
-    ply_w, ply_h = image_size
-    sx, sy = target_w / ply_w, target_h / ply_h
-    scaled_intrinsics = intrinsics.copy()
-    scaled_intrinsics[0, :] *= sx
-    scaled_intrinsics[1, :] *= sy
+        pts_h = np.concatenate([positions, np.ones((N, 1))], axis=1)
+        clip = (viewProj @ pts_h.T).T
+        w_clip = clip[:, 3]
+        valid = w_clip > 0.01
+        ndc_x = clip[:, 0] / np.where(valid, w_clip, 1.0)
+        ndc_y = clip[:, 1] / np.where(valid, w_clip, 1.0)
+        px = ((ndc_x + 1) * 0.5 * vp_w) * (target_w / vp_w)
+        py = ((1 - ndc_y) * 0.5 * vp_h) * (target_h / vp_h)
+        valid &= (px >= 0) & (px < target_w) & (py >= 0) & (py < target_h)
+        uv = np.stack([px, py], axis=1)
+        LOG.info(f"Projecting {N} splats via renderer camera...")
+    else:
+        if intrinsics is None or extrinsics is None or image_size is None:
+            LOG.warning("PLY missing camera metadata — using map dimensions as fallback")
+            f_px = max(target_w, target_h)
+            intrinsics = np.array([[f_px, 0, target_w/2], [0, f_px, target_h/2], [0, 0, 1]])
+            extrinsics = np.eye(4)
+            image_size = (target_w, target_h)
 
-    LOG.info(f"Projecting {N} splats...")
-    uv, valid = project_to_screen(corrected_pos, scaled_intrinsics, extrinsics,
-                                   (target_w, target_h))
+        ply_w, ply_h = image_size
+        sx, sy = target_w / ply_w, target_h / ply_h
+        scaled_intrinsics = intrinsics.copy()
+        scaled_intrinsics[0, :] *= sx
+        scaled_intrinsics[1, :] *= sy
+
+        LOG.info(f"Projecting {N} splats via PLY intrinsics...")
+        uv, valid = project_to_screen(corrected_pos, scaled_intrinsics, extrinsics,
+                                       (target_w, target_h))
     bakeable = valid & crop_mask
     LOG.info(f"  {bakeable.sum()}/{N} bakeable")
 
