@@ -38,6 +38,7 @@ import screenSpaceNormalsShader from "./shaders/gpu_screen_space_normals.wgsl?ra
 import deferredLightingShader from "./shaders/gpu_deferred_lighting.wgsl?raw";
 import { createGTAO, DEFAULT_GTAO_PARAMS, type GTAOResources, type GTAOParams } from "./gtao.js";
 import { createIBL, type IBLResources } from "./ibl.js";
+import bilateralNormalFilterShader from "./shaders/bilateral_normal_filter.wgsl?raw";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -281,6 +282,7 @@ interface ActiveSceneInternal {
     gbufferDepthTexture: GPUTexture;
     gbufferNormalTexture: GPUTexture;
     gbufferMaterialTexture: GPUTexture;
+    filteredNormalTexture: GPUTexture;
     litTexture: GPUTexture;
     gtao: GTAOResources;
     gtaoFrameCounter: number;
@@ -350,6 +352,66 @@ function createScreenSpaceNormalsPass(device: GPUDevice) {
 }
 
 // ---------------------------------------------------------------------------
+// Bilateral normal filter
+// ---------------------------------------------------------------------------
+
+function createBilateralNormalFilter(device: GPUDevice) {
+  const mod = device.createShaderModule({ label: "bilateral_normal_filter", code: bilateralNormalFilterShader });
+  const bgl = device.createBindGroupLayout({
+    label: "bilateral_normal_filter_bgl",
+    entries: [
+      { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "uint" } },
+      { binding: 1, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float" } },
+      { binding: 2, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "r32uint" } },
+      { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+    ],
+  });
+  const pipeline = device.createComputePipeline({
+    label: "bilateral_normal_filter_pipeline",
+    layout: device.createPipelineLayout({ bindGroupLayouts: [bgl] }),
+    compute: { module: mod, entryPoint: "main" },
+  });
+  const paramsBuffer = device.createBuffer({
+    label: "bilateral_normal_filter_params",
+    size: 32,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  });
+
+  return {
+    encode(
+      encoder: GPUCommandEncoder,
+      inputNormalView: GPUTextureView,
+      depthView: GPUTextureView,
+      outputNormalTexture: GPUTexture,
+      viewport: [number, number],
+    ) {
+      const params = new Float32Array(8);
+      params[0] = viewport[0];
+      params[1] = viewport[1];
+      params[2] = 2.0;  // spatialSigma
+      params[3] = 0.05; // depthSigma
+      params[4] = 0.3;  // normalSigma
+      params[5] = 2.0;  // kernelRadius
+      device.queue.writeBuffer(paramsBuffer, 0, params);
+      const bg = device.createBindGroup({
+        layout: bgl,
+        entries: [
+          { binding: 0, resource: inputNormalView },
+          { binding: 1, resource: depthView },
+          { binding: 2, resource: outputNormalTexture.createView() },
+          { binding: 3, resource: { buffer: paramsBuffer } },
+        ],
+      });
+      const pass = encoder.beginComputePass({ label: "bilateral_normal_filter" });
+      pass.setPipeline(pipeline);
+      pass.setBindGroup(0, bg);
+      pass.dispatchWorkgroups(Math.ceil(viewport[0] / 8), Math.ceil(viewport[1] / 8));
+      pass.end();
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Deferred lighting compute pass
 // ---------------------------------------------------------------------------
 
@@ -367,7 +429,7 @@ function createDeferredLightingPass(device: GPUDevice) {
       { binding: 3, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "uint" } },
       { binding: 4, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "uint" } }, // material+emissive (rgba32uint)
       { binding: 5, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba16float" } },
-      { binding: 6, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float" } }, // AO (r32float)
+      { binding: 6, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "float" } }, // AO + bent normal (rgba16float)
       { binding: 7, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "float" } }, // env map (equirect, rgba16float)
       { binding: 8, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "float" } }, // BRDF LUT (rg16float)
       { binding: 9, visibility: GPUShaderStage.COMPUTE, sampler: { type: "filtering" } }, // env sampler
@@ -593,6 +655,7 @@ function destroySceneInternal(scene: SplatScene): void {
   cc.gbufferDepthTexture.destroy();
   cc.gbufferNormalTexture.destroy();
   cc.gbufferMaterialTexture.destroy();
+  cc.filteredNormalTexture.destroy();
   cc.litTexture.destroy();
   cc.gtao.destroy();
   scene.buffers.positionBuffer.destroy();
@@ -704,6 +767,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
   const gbufferDebug = createGBufferDebugPresenter(device, format);
   const screenSpaceNormals = createScreenSpaceNormalsPass(device);
   const deferredLighting = createDeferredLightingPass(device);
+  const bilateralFilter = createBilateralNormalFilter(device);
   const ibl = createIBL(device);
 
   return {
@@ -773,6 +837,12 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
         format: "rgba32uint",
         usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
       });
+      const filteredNormalTexture = device.createTexture({
+        label: "gbuffer_normal_filtered",
+        size: [viewportWidth, viewportHeight],
+        format: "r32uint",
+        usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+      });
       const litTexture = device.createTexture({
         label: "deferred_lit_output",
         size: [viewportWidth, viewportHeight],
@@ -815,6 +885,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
           gbufferDepthTexture,
           gbufferNormalTexture,
           gbufferMaterialTexture,
+          filteredNormalTexture,
           litTexture,
           gtao,
           gtaoFrameCounter: 0,
@@ -886,11 +957,21 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
           );
         }
 
+        // Bilateral normal filter: smooth normals using depth as edge guide
+        bilateralFilter.encode(
+          encoder,
+          scene.gbufferNormalView,
+          scene.gbufferDepthView,
+          cc.filteredNormalTexture,
+          [cc.resources.plan.viewportWidth, cc.resources.plan.viewportHeight],
+        );
+        const filteredNormalView = cc.filteredNormalTexture.createView();
+
         // GTAO: compute ambient occlusion from G-buffer depth
         cc.gtao.encode(
           encoder,
           scene.gbufferDepthView,
-          scene.gbufferNormalView,
+          filteredNormalView,
           [cc.resources.plan.viewportWidth, cc.resources.plan.viewportHeight],
           params.near ?? 0.01,
           params.far ?? 100,
@@ -912,7 +993,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
           encoder,
           scene.outputView,
           scene.gbufferDepthView,
-          scene.gbufferNormalView,
+          filteredNormalView,
           scene.gbufferMaterialView,
           cc.gtao.aoView,
           ibl,

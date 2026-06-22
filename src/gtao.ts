@@ -65,7 +65,7 @@ export function createGTAO(device: GPUDevice, width: number, height: number): GT
       { binding: 1, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float" } },
       { binding: 2, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float" } },
       { binding: 3, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "uint" } }, // G-buffer normals
-      { binding: 4, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "r32float" } },
+      { binding: 4, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba16float" } },
       { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
     ],
   });
@@ -75,7 +75,7 @@ export function createGTAO(device: GPUDevice, width: number, height: number): GT
     entries: [
       { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float" } },
       { binding: 1, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float" } },
-      { binding: 2, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "r32float" } },
+      { binding: 2, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba16float" } },
       { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
     ],
   });
@@ -113,11 +113,11 @@ export function createGTAO(device: GPUDevice, width: number, height: number): GT
     usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
   });
   const aoRaw = device.createTexture({
-    label: "gtao_raw", size: [width, height], format: "r32float",
+    label: "gtao_raw", size: [width, height], format: "rgba16float",
     usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
   });
   const aoFinal = device.createTexture({
-    label: "gtao_final", size: [width, height], format: "r32float",
+    label: "gtao_final", size: [width, height], format: "rgba16float",
     usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
   });
 

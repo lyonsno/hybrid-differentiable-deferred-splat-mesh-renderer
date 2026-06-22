@@ -24,7 +24,7 @@ struct Params {
 @group(0) @binding(1) var depthMip1: texture_2d<f32>;
 @group(0) @binding(2) var depthMip2: texture_2d<f32>;
 @group(0) @binding(3) var normalTexture: texture_2d<u32>; // G-buffer oct-encoded normals (world space)
-@group(0) @binding(4) var outputAO: texture_storage_2d<r32float, write>;
+@group(0) @binding(4) var outputAO: texture_storage_2d<rgba16float, write>;
 @group(0) @binding(5) var<uniform> params: Params;
 
 const PI: f32 = 3.14159265;
@@ -56,6 +56,15 @@ fn hilbertIndex(x: u32, y: u32) -> u32 {
     }
   }
   return d;
+}
+
+fn octEncode(n: vec3f) -> vec2f {
+  let sum = abs(n.x) + abs(n.y) + abs(n.z);
+  var p = n.xy / sum;
+  if (n.z < 0.0) {
+    p = (1.0 - abs(p.yx)) * select(vec2f(-1.0), vec2f(1.0), p >= vec2f(0.0));
+  }
+  return p;
 }
 
 fn octDecode(e: vec2f) -> vec3f {
@@ -104,7 +113,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let centerDepth = textureLoad(depthMip0, coord, 0).r;
 
   if (centerDepth <= 0.0 || centerDepth > params.falloffEnd * 10.0) {
-    textureStore(outputAO, coord, vec4f(1.0, 0.0, 0.0, 0.0));
+    textureStore(outputAO, coord, vec4f(1.0, 0.0, 1.0, 0.0)); // ao=1, bent=(0,1,0) up
     return;
   }
 
@@ -125,6 +134,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let spatialOffset = r2Sequence(hilbert + params.frameCounter * 256u);
 
   var totalAO: f32 = 0.0;
+  var bentNormalAccum = vec3f(0.0); // accumulate bent normal in view space
   let sliceCount = params.sliceCount;
   let stepsPerSide = params.stepsPerSlice;
 
@@ -176,9 +186,30 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
     let cosHPos = max(maxHorizonPos, nDotSlice * 0.08);
     let cosHNeg = max(maxHorizonNeg, nDotSlice * 0.08);
     totalAO += cosHPos + cosHNeg;
+
+    // Bent normal: weight the slice direction by visibility (unoccluded fraction)
+    let visPos = 1.0 - cosHPos;
+    let visNeg = 1.0 - cosHNeg;
+    let sliceDir3 = vec3f(dir, 0.0);
+    bentNormalAccum += sliceDir3 * (visPos - visNeg) + viewNormal * (visPos + visNeg);
   }
 
   totalAO /= f32(sliceCount) * 2.0;
   let ao = saturate(1.0 - totalAO * params.intensity);
-  textureStore(outputAO, coord, vec4f(ao, 0.0, 0.0, 0.0));
+
+  // Normalize bent normal; fall back to view normal if degenerate
+  let bentLen = length(bentNormalAccum);
+  let bentViewSpace = select(viewNormal, bentNormalAccum / bentLen, bentLen > 0.001);
+
+  // Transform bent normal from view space back to world space
+  // viewMatrix is orthonormal, so inverse = transpose
+  let bentWorld = normalize(vec3f(
+    dot(vec3f(params.viewMatrix[0].x, params.viewMatrix[1].x, params.viewMatrix[2].x), bentViewSpace),
+    dot(vec3f(params.viewMatrix[0].y, params.viewMatrix[1].y, params.viewMatrix[2].y), bentViewSpace),
+    dot(vec3f(params.viewMatrix[0].z, params.viewMatrix[1].z, params.viewMatrix[2].z), bentViewSpace),
+  ));
+
+  // Pack: .r = AO, .gb = oct-encoded bent normal (in world space)
+  let bentOct = octEncode(bentWorld);
+  textureStore(outputAO, coord, vec4f(ao, bentOct.x, bentOct.y, 0.0));
 }

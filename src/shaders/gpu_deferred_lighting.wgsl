@@ -160,8 +160,9 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let kS = F;
   let kD = (vec3f(1.0) - kS) * (1.0 - metallic);
 
-  // Ambient occlusion from GTAO
-  let aoRaw = textureLoad(aoTexture, px, 0).r;
+  // Ambient occlusion + bent normal from GTAO
+  let aoSample = textureLoad(aoTexture, px, 0);
+  let aoRaw = aoSample.r;
 
   // Emissive: read early so we can use it to carve into AO
   let emRG = unpack2x16float(matSample.g);
@@ -183,18 +184,23 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
     let hasEnvMap = envSize.x > 1u; // 1x1 = placeholder, no real env map loaded
     var ambient: vec3f;
     if (hasEnvMap) {
-      // Diffuse IBL: sample environment along normal (approximates irradiance convolution)
-      let irradiance = sampleEnvEquirectLod(N, 5.0); // high lod for diffuse blur
+      // Diffuse IBL: sample environment along bent normal for AO-aware irradiance
+      let bentOct = aoSample.gb;
+      let bentNormal = octDecode(bentOct);
+      let diffuseDir = normalize(mix(N, bentNormal, 0.5)); // blend surface normal with bent normal
+      let irradiance = sampleEnvEquirectLod(diffuseDir, 5.0); // high lod for diffuse blur
       let diffuseIBL = kD * albedo * irradiance;
 
       // Specular IBL: sample environment along reflection, roughness selects mip level
       let R = reflect(-V, N);
       let maxLod = log2(f32(envSize.x));
-      let specLod = roughness * maxLod; // rough surfaces sample blurred mip levels
+      let specLod = roughness * maxLod;
       let prefilteredColor = sampleEnvEquirectLod(R, specLod);
       let brdfSample = textureSampleLevel(brdfLUT, envSampler, vec2f(NdotV, roughness), 0.0).rg;
       let F_ibl = fresnelSchlickRoughness(NdotV, F0, roughness);
-      let specularIBL = prefilteredColor * (F_ibl * brdfSample.x + brdfSample.y);
+      // Attenuate at extreme grazing angles to prevent Fresnel blowout on splat edges
+      let grazingFade = smoothstep(0.0, 0.1, NdotV);
+      let specularIBL = prefilteredColor * (F_ibl * brdfSample.x + brdfSample.y) * grazingFade;
 
       ambient = (diffuseIBL + specularIBL) * ao;
     } else {
