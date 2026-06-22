@@ -17,6 +17,8 @@ export interface KaminosSidecar {
       enabled: boolean;
       min: [number, number, number];
       max: [number, number, number];
+      frame?: string;
+      sourceToCropMatrix?: number[];
     };
   };
   updatedAt?: string;
@@ -38,7 +40,7 @@ export async function tryFetchSidecar(plyUrl: string): Promise<KaminosSidecar | 
 
 /**
  * Apply Kaminos sidecar corrections to decoded SplatAttributes in-place.
- * Operations applied in order: centroid offset, axis flips, crop.
+ * Operations applied in order: axis flips, centroid offset, crop.
  * Returns a new SplatAttributes with filtered splats if crop is active,
  * or the same object (mutated in-place) if no crop.
  */
@@ -50,17 +52,6 @@ export function applySidecarCorrections(
   const positions = attrs.positions;
   const count = attrs.count;
 
-  // Apply centroid offset (subtract to re-center)
-  if (correction.centroidOffset) {
-    const [cx, cy, cz] = correction.centroidOffset;
-    for (let i = 0; i < count; i++) {
-      const base = i * 3;
-      positions[base] -= cx;
-      positions[base + 1] -= cy;
-      positions[base + 2] -= cz;
-    }
-  }
-
   // Apply axis flips (multiply each axis by +1 or -1)
   if (correction.axisFlips) {
     const [fx, fy, fz] = correction.axisFlips;
@@ -71,6 +62,17 @@ export function applySidecarCorrections(
         positions[base + 1] *= fy;
         positions[base + 2] *= fz;
       }
+    }
+  }
+
+  // Apply centroid offset (subtract to re-center)
+  if (correction.centroidOffset) {
+    const [cx, cy, cz] = correction.centroidOffset;
+    for (let i = 0; i < count; i++) {
+      const base = i * 3;
+      positions[base] -= cx;
+      positions[base + 1] -= cy;
+      positions[base + 2] -= cz;
     }
   }
 
@@ -639,4 +641,3 @@ function filterSplatAttributes(
     splatScale: attrs.splatScale,
   };
 }
-

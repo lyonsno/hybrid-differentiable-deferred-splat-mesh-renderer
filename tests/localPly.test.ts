@@ -329,6 +329,27 @@ test("applySidecarCorrections applies offset then crop in correct order", () => 
   assert.ok(Math.abs(result.positions[3] - 0.5) < 0.001);
 });
 
+test("applySidecarCorrections applies axis flips before centroid offset for legacy Kaminos crops", () => {
+  const attrs = decodeLocalPlySplatPayload("test.ply", binaryPlyFixture([
+    { position: [0, 0, 1], dc: [0, 0, 0], opacity: 0, scales: [0, 0, 0], rotation: [1, 0, 0, 0] },
+    { position: [0, 0, 0.3], dc: [0, 0, 0], opacity: 0, scales: [0, 0, 0], rotation: [1, 0, 0, 0] },
+  ]));
+
+  const sidecar: KaminosSidecar = {
+    schema: "kaminos.splat-correction.v0",
+    correction: {
+      axisFlips: [1, 1, -1],
+      centroidOffset: [0, 0, 0.75],
+      crop: { enabled: true, min: [-0.1, -0.1, -1.8], max: [0.1, 0.1, -1.7] },
+    },
+  };
+
+  const result = applySidecarCorrections(attrs, sidecar);
+
+  assert.equal(result.count, 1);
+  assert.ok(Math.abs(result.positions[2] - (-1.75)) < 0.001);
+});
+
 test("applySidecarCorrections preserves SH coefficients through crop", () => {
   const attrs = decodeLocalPlySplatPayload("test.ply", binaryPlyFixture([
     { position: [0, 0, 0], dc: [0, 0, 0], opacity: 0, scales: [0, 0, 0], rotation: [1, 0, 0, 0],

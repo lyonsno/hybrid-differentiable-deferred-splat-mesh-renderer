@@ -11,7 +11,7 @@ import {
   positionCameraFromTarget,
 } from "./camera.js";
 import { handleDoubleClickPivot } from "./clickToPivot.js";
-import { loadDroppedSplatFile, decodeLocalPlySplatPayload, tryFetchSidecar, applySidecarCorrections } from "./localPly.js";
+import { loadDroppedSplatFile, decodeLocalPlySplatPayload, tryFetchSidecar, applySidecarCorrections, type KaminosSidecar } from "./localPly.js";
 import {
   createRenderDemandState,
   markRenderFrameFinished,
@@ -105,6 +105,59 @@ function normalizeOperatorWitnessViewMode(mode: string): RealScaniverseWitnessVi
     return mode;
   }
   return "default";
+}
+
+type MeshSplatRoute = "default-manifest" | "url-sidecar" | "drag-drop-no-sidecar";
+
+interface MeshSplatRouteEvidence {
+  readonly route: MeshSplatRoute;
+  readonly source: string;
+  readonly sourceCount: number;
+  readonly displayCount: number;
+  readonly sidecarAttempted: boolean;
+  readonly sidecarFound: boolean;
+  readonly correctionApplied: boolean;
+  readonly cropApplied: boolean;
+  readonly cropFrame?: string;
+  readonly sidecarUrl?: string;
+}
+
+interface LoadedSplatAttributes {
+  readonly attributes: SplatAttributes;
+  readonly routeEvidence: MeshSplatRouteEvidence;
+}
+
+function sidecarCropFrame(sidecar: KaminosSidecar | undefined): string | undefined {
+  if (!sidecar?.correction.crop?.enabled) return undefined;
+  if (typeof sidecar.correction.crop.frame === "string") return sidecar.correction.crop.frame;
+  return "legacy-localPly-flip-then-centroid";
+}
+
+function exposeMeshSplatRouteEvidence(evidence: MeshSplatRouteEvidence, canvas: HTMLCanvasElement): void {
+  const runtimeWindow = window as unknown as {
+    __MESH_SPLAT_ROUTE_EVIDENCE__?: MeshSplatRouteEvidence;
+  };
+  runtimeWindow.__MESH_SPLAT_ROUTE_EVIDENCE__ = evidence;
+  document.body.dataset.smokeSplatRoute = evidence.route;
+  document.body.dataset.smokeSplatSourceCount = String(evidence.sourceCount);
+  document.body.dataset.smokeSplatDisplayCount = String(evidence.displayCount);
+  document.body.dataset.smokeSplatSidecarFound = String(evidence.sidecarFound);
+  document.body.dataset.smokeSplatCropApplied = String(evidence.cropApplied);
+  if (evidence.cropFrame) {
+    document.body.dataset.smokeSplatCropFrame = evidence.cropFrame;
+  } else {
+    delete document.body.dataset.smokeSplatCropFrame;
+  }
+  canvas.dataset.smokeSplatRoute = evidence.route;
+  canvas.dataset.smokeSplatSourceCount = String(evidence.sourceCount);
+  canvas.dataset.smokeSplatDisplayCount = String(evidence.displayCount);
+  canvas.dataset.smokeSplatSidecarFound = String(evidence.sidecarFound);
+  canvas.dataset.smokeSplatCropApplied = String(evidence.cropApplied);
+  if (evidence.cropFrame) {
+    canvas.dataset.smokeSplatCropFrame = evidence.cropFrame;
+  } else {
+    delete canvas.dataset.smokeSplatCropFrame;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -332,7 +385,11 @@ async function main() {
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
   }
 
-  async function replaceSplatScene(attributes: SplatAttributes, sceneAssetPath: string): Promise<void> {
+  async function replaceSplatScene(
+    attributes: SplatAttributes,
+    sceneAssetPath: string,
+    routeEvidence?: MeshSplatRouteEvidence,
+  ): Promise<void> {
     const previousScene = activeScene;
     await updateSceneLoadStage(`Preparing ${attributes.count.toLocaleString()} splats...`);
     configureCameraForSplatBounds(cam, attributes.bounds);
@@ -373,6 +430,9 @@ async function main() {
       }),
       canvas,
     );
+    if (routeEvidence !== undefined) {
+      exposeMeshSplatRouteEvidence(routeEvidence, canvas);
+    }
     if (previousScene) {
       renderer.destroyScene(previousScene);
     }
@@ -381,29 +441,69 @@ async function main() {
 
   // ---- Initial load ----
   const urlSplatScale = selectedSplatScale();
-  async function fetchSplatAttributes(path: string): Promise<SplatAttributes> {
+  async function fetchSplatAttributes(path: string): Promise<LoadedSplatAttributes> {
     if (path.toLowerCase().endsWith(".ply")) {
+      const sidecarUrl = `${path}.kaminos-splat.json`;
       const [response, sidecar] = await Promise.all([
         fetch(path).then(r => { if (!r.ok) throw new Error(`Failed to fetch PLY: ${r.status} ${r.statusText}`); return r; }),
         tryFetchSidecar(path),
       ]);
       let attrs = decodeLocalPlySplatPayload(path, await response.arrayBuffer());
+      const sourceCount = attrs.count;
       if (sidecar) {
-        console.log(`Applying Kaminos sidecar corrections from ${path}.kaminos-splat.json`);
+        console.log(`Applying Kaminos sidecar corrections from ${sidecarUrl}`);
         attrs = applySidecarCorrections(attrs, sidecar);
       }
       // URL param overrides auto-detected scale
       if (urlSplatScale !== undefined) attrs.splatScale = urlSplatScale;
-      return attrs;
+      return {
+        attributes: attrs,
+        routeEvidence: {
+          route: "url-sidecar",
+          source: path,
+          sidecarUrl,
+          sourceCount,
+          displayCount: attrs.count,
+          sidecarAttempted: true,
+          sidecarFound: sidecar !== undefined,
+          correctionApplied: sidecar !== undefined,
+          cropApplied: sidecar?.correction.crop?.enabled === true,
+          cropFrame: sidecarCropFrame(sidecar),
+        },
+      };
     }
-    return fetchFirstSmokeSplatPayload(path);
+    const attrs = await fetchFirstSmokeSplatPayload(path);
+    return {
+      attributes: attrs,
+      routeEvidence: {
+        route: "default-manifest",
+        source: path,
+        sourceCount: attrs.count,
+        displayCount: attrs.count,
+        sidecarAttempted: false,
+        sidecarFound: false,
+        correctionApplied: false,
+        cropApplied: false,
+      },
+    };
   }
-  await replaceSplatScene(await fetchSplatAttributes(assetPath), assetPath);
+  const initialLoad = await fetchSplatAttributes(assetPath);
+  await replaceSplatScene(initialLoad.attributes, assetPath, initialLoad.routeEvidence);
 
   bindDroppedSplatLoading(canvas, async (file) => {
     statsEl.textContent = `Loading ${file.name}...`;
     try {
-      await replaceSplatScene(await loadDroppedSplatFile(file), `local-file:${file.name}`);
+      const attrs = await loadDroppedSplatFile(file);
+      await replaceSplatScene(attrs, `local-file:${file.name}`, {
+        route: "drag-drop-no-sidecar",
+        source: `local-file:${file.name}`,
+        sourceCount: attrs.count,
+        displayCount: attrs.count,
+        sidecarAttempted: false,
+        sidecarFound: false,
+        correctionApplied: false,
+        cropApplied: false,
+      });
     } catch (err) {
       statsEl.textContent = err instanceof Error ? err.message : String(err);
       requestFrame();
