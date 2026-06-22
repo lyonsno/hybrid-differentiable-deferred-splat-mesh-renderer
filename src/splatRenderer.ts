@@ -39,6 +39,8 @@ import deferredLightingShader from "./shaders/gpu_deferred_lighting.wgsl?raw";
 import { createGTAO, DEFAULT_GTAO_PARAMS, type GTAOResources, type GTAOParams } from "./gtao.js";
 import { createIBL, type IBLResources } from "./ibl.js";
 import bilateralNormalFilterShader from "./shaders/bilateral_normal_filter.wgsl?raw";
+import { createBloom, DEFAULT_BLOOM_PARAMS, type BloomResources, type BloomParams } from "./bloom.js";
+import { createMaterialCurves, DEFAULT_CURVE, type MaterialCurves, type MaterialCurveParams } from "./materialCurves.js";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -64,6 +66,7 @@ export interface SplatScene {
   readonly gbufferNormalView: GPUTextureView;
   readonly gbufferMaterialView: GPUTextureView;
   readonly aoView: GPUTextureView;
+  readonly bloomView: GPUTextureView;
   /** @internal */
   readonly _internal: ActiveSceneInternal;
 }
@@ -91,6 +94,12 @@ export interface RenderFrameParams {
   aoThickness?: number;
   envIntensity?: number;
   envRotation?: number;
+  bloomThreshold?: number;
+  bloomSoftKnee?: number;
+  bloomIntensity?: number;
+  roughnessCurve?: MaterialCurveParams;
+  metalnessCurve?: MaterialCurveParams;
+  albedoCurve?: MaterialCurveParams;
 }
 
 export interface SplatRenderer {
@@ -106,6 +115,7 @@ export interface SplatRenderer {
   encodeSort(scene: SplatScene, encoder: GPUCommandEncoder, viewMatrix: Float32Array): void;
   renderFrame(scene: SplatScene, params: RenderFrameParams, encoder: GPUCommandEncoder): void;
   presentTexture(renderPass: GPURenderPassEncoder, textureView: GPUTextureView): void;
+  presentBloom(renderPass: GPURenderPassEncoder, bloomView: GPUTextureView, intensity: number): void;
   readonly gbufferDebugPresenter: GBufferDebugPresenter;
   destroyScene(scene: SplatScene): void;
   readonly alphaDensityState: (scene: SplatScene) => AlphaDensityState;
@@ -286,6 +296,7 @@ interface ActiveSceneInternal {
     litTexture: GPUTexture;
     gtao: GTAOResources;
     gtaoFrameCounter: number;
+    bloom: BloomResources;
     frameUniformData: Float32Array;
     lastSortedViewProj: Float32Array | null;
     hasSortedRefs: boolean;
@@ -433,6 +444,10 @@ function createDeferredLightingPass(device: GPUDevice) {
       { binding: 7, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "float" } }, // env map (equirect, rgba16float)
       { binding: 8, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "float" } }, // BRDF LUT (rg16float)
       { binding: 9, visibility: GPUShaderStage.COMPUTE, sampler: { type: "filtering" } }, // env sampler
+      { binding: 10, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "float" } }, // bloom (half-res)
+      { binding: 11, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "float", viewDimension: "1d" } }, // roughness LUT
+      { binding: 12, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "float", viewDimension: "1d" } }, // metalness LUT
+      { binding: 13, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "float", viewDimension: "1d" } }, // albedo LUT
     ],
   });
   const pipeline = device.createComputePipeline({
@@ -454,6 +469,8 @@ function createDeferredLightingPass(device: GPUDevice) {
       materialView: GPUTextureView,
       aoView: GPUTextureView,
       ibl: IBLResources,
+      bloomView: GPUTextureView,
+      curves: MaterialCurves,
       litTexture: GPUTexture,
       viewport: [number, number],
       viewProjInverse: Float32Array,
@@ -498,6 +515,10 @@ function createDeferredLightingPass(device: GPUDevice) {
           { binding: 7, resource: ibl.envTextureView },
           { binding: 8, resource: ibl.brdfLUTView },
           { binding: 9, resource: ibl.envSampler },
+          { binding: 10, resource: bloomView },
+          { binding: 11, resource: curves.roughnessLUTView },
+          { binding: 12, resource: curves.metalnessLUTView },
+          { binding: 13, resource: curves.albedoLUTView },
         ],
       });
       const pass = encoder.beginComputePass({ label: "deferred_lighting" });
@@ -658,6 +679,7 @@ function destroySceneInternal(scene: SplatScene): void {
   cc.filteredNormalTexture.destroy();
   cc.litTexture.destroy();
   cc.gtao.destroy();
+  cc.bloom.destroy();
   scene.buffers.positionBuffer.destroy();
   scene.buffers.opacityBuffer.destroy();
   scene.buffers.scaleBuffer.destroy();
@@ -769,6 +791,56 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
   const deferredLighting = createDeferredLightingPass(device);
   const bilateralFilter = createBilateralNormalFilter(device);
   const ibl = createIBL(device);
+  const materialCurves = createMaterialCurves(device);
+
+  // Bloom additive composite presenter (uses linear sampler for upscale from half-res)
+  const bloomPresenter = (() => {
+    const sampler = device.createSampler({ magFilter: "linear", minFilter: "linear" });
+    const bgl = device.createBindGroupLayout({
+      label: "bloom_composite_bgl",
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.FRAGMENT, sampler: { type: "filtering" } },
+        { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: "float" } },
+        { binding: 2, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "uniform" } },
+      ],
+    });
+    const bloomCompShader = `
+      @group(0) @binding(0) var samp: sampler;
+      @group(0) @binding(1) var tex: texture_2d<f32>;
+      struct Params { intensity: f32, };
+      @group(0) @binding(2) var<uniform> params: Params;
+      struct V { @builtin(position) p: vec4f, @location(0) uv: vec2f, };
+      @vertex fn vs(@builtin(vertex_index) vi: u32) -> V {
+        var pos = array<vec2f,3>(vec2f(-1,-1), vec2f(3,-1), vec2f(-1,3));
+        var uv = array<vec2f,3>(vec2f(0,1), vec2f(2,1), vec2f(0,-1));
+        return V(vec4f(pos[vi], 0, 1), uv[vi]);
+      }
+      @fragment fn fs(v: V) -> @location(0) vec4f {
+        let bloom = textureSample(tex, samp, v.uv).rgb * params.intensity;
+        return vec4f(bloom, 0.0);
+      }
+    `;
+    const mod = device.createShaderModule({ label: "bloom_composite", code: bloomCompShader });
+    const pipeline = device.createRenderPipeline({
+      label: "bloom_composite",
+      layout: device.createPipelineLayout({ bindGroupLayouts: [bgl] }),
+      vertex: { module: mod, entryPoint: "vs" },
+      fragment: {
+        module: mod, entryPoint: "fs",
+        targets: [{
+          format,
+          blend: {
+            color: { srcFactor: "one", dstFactor: "one", operation: "add" },
+            alpha: { srcFactor: "zero", dstFactor: "one", operation: "add" },
+          },
+        }],
+      },
+      primitive: { topology: "triangle-list" },
+      depthStencil: { format: "depth32float", depthWriteEnabled: false, depthCompare: "always" },
+    });
+    const intensityBuf = device.createBuffer({ label: "bloom_intensity", size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    return { pipeline, bgl, sampler, intensityBuf };
+  })();
 
   return {
     loadScene(
@@ -850,6 +922,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
         usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
       });
       const gtao = createGTAO(device, viewportWidth, viewportHeight);
+      const bloom = createBloom(device, viewportWidth, viewportHeight);
       const computeBindGroups = createTileSplatBindGroups(
         device,
         computeResources,
@@ -889,6 +962,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
           litTexture,
           gtao,
           gtaoFrameCounter: 0,
+          bloom,
           frameUniformData: new Float32Array(TILE_SPLAT_FRAME_UNIFORM_BYTES / 4),
           lastSortedViewProj: null,
           hasSortedRefs: false,
@@ -908,6 +982,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
         gbufferNormalView: gbufferNormalTexture.createView(),
         gbufferMaterialView: gbufferMaterialTexture.createView(),
         aoView: gtao.aoView,
+        bloomView: bloom.bloomView,
         _internal: internal,
       };
     },
@@ -989,6 +1064,27 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
           cc.gtaoFrameCounter++,
         );
 
+        // Bloom: extract+blur from compositor output (has emissive in color channel)
+        // Runs before deferred lighting so bloom can feed into AO erasure
+        cc.bloom.encode(
+          encoder,
+          scene.gbufferMaterialView,
+          [cc.resources.plan.viewportWidth, cc.resources.plan.viewportHeight],
+          {
+            threshold: params.bloomThreshold ?? DEFAULT_BLOOM_PARAMS.threshold,
+            softKnee: params.bloomSoftKnee ?? DEFAULT_BLOOM_PARAMS.softKnee,
+            intensity: params.bloomIntensity ?? DEFAULT_BLOOM_PARAMS.intensity,
+          },
+          params.emissiveIntensity ?? 3.0,
+        );
+
+        // Update material curve LUTs
+        materialCurves.update(
+          params.roughnessCurve ?? DEFAULT_CURVE,
+          params.metalnessCurve ?? DEFAULT_CURVE,
+          params.albedoCurve ?? DEFAULT_CURVE,
+        );
+
         deferredLighting.encode(
           encoder,
           scene.outputView,
@@ -997,6 +1093,8 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
           scene.gbufferMaterialView,
           cc.gtao.aoView,
           ibl,
+          cc.bloom.bloomView,
+          materialCurves,
           cc.litTexture,
           [cc.resources.plan.viewportWidth, cc.resources.plan.viewportHeight],
           vpInv,
@@ -1015,6 +1113,21 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
 
     presentTexture(renderPass: GPURenderPassEncoder, textureView: GPUTextureView): void {
       texturePresenter.draw(renderPass, textureView);
+    },
+
+    presentBloom(renderPass: GPURenderPassEncoder, bloomView: GPUTextureView, intensity: number): void {
+      device.queue.writeBuffer(bloomPresenter.intensityBuf, 0, new Float32Array([intensity, 0, 0, 0]));
+      const bg = device.createBindGroup({
+        layout: bloomPresenter.bgl,
+        entries: [
+          { binding: 0, resource: bloomPresenter.sampler },
+          { binding: 1, resource: bloomView },
+          { binding: 2, resource: { buffer: bloomPresenter.intensityBuf } },
+        ],
+      });
+      renderPass.setPipeline(bloomPresenter.pipeline);
+      renderPass.setBindGroup(0, bg);
+      renderPass.draw(3);
     },
 
     get gbufferDebugPresenter(): GBufferDebugPresenter {

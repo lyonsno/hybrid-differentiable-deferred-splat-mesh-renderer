@@ -83,6 +83,23 @@ const envIntensitySlider = document.getElementById("envIntensity") as HTMLInputE
 const envIntensityValEl = document.getElementById("envIntensityVal");
 const envRotationSlider = document.getElementById("envRotation") as HTMLInputElement | null;
 const envRotationValEl = document.getElementById("envRotationVal");
+const bloomThresholdSlider = document.getElementById("bloomThreshold") as HTMLInputElement | null;
+const bloomThresholdValEl = document.getElementById("bloomThresholdVal");
+const bloomIntensitySlider = document.getElementById("bloomIntensity") as HTMLInputElement | null;
+const bloomIntensityValEl = document.getElementById("bloomIntensityVal");
+const envSelectEl = document.getElementById("envSelect") as HTMLSelectElement | null;
+const roughContrastSlider = document.getElementById("roughContrast") as HTMLInputElement | null;
+const roughContrastValEl = document.getElementById("roughContrastVal");
+const roughBrightSlider = document.getElementById("roughBright") as HTMLInputElement | null;
+const roughBrightValEl = document.getElementById("roughBrightVal");
+const metalContrastSlider = document.getElementById("metalContrast") as HTMLInputElement | null;
+const metalContrastValEl = document.getElementById("metalContrastVal");
+const metalBrightSlider = document.getElementById("metalBright") as HTMLInputElement | null;
+const metalBrightValEl = document.getElementById("metalBrightVal");
+const albedoContrastSlider = document.getElementById("albedoContrast") as HTMLInputElement | null;
+const albedoContrastValEl = document.getElementById("albedoContrastVal");
+const albedoBrightSlider = document.getElementById("albedoBright") as HTMLInputElement | null;
+const albedoBrightValEl = document.getElementById("albedoBrightVal");
 
 // Light control state -- L key cycles modes, arrow keys adjust angle in fixed mode
 type LightMode = "camera" | "fixed" | "overhead" | "rim";
@@ -103,6 +120,15 @@ let aoSteps = 4;
 let aoThickness = 1.81;
 let envIntensity = 1.0;
 let envRotation = 0.0;
+let bloomThreshold = 0.8;
+let bloomSoftKnee = 0.5;
+let bloomIntensity = 0.5;
+let roughContrast = 1.0;
+let roughBright = 0.0;
+let metalContrast = 1.0;
+let metalBright = 0.0;
+let albedoContrast = 1.0;
+let albedoBright = 0.0;
 
 // ---------------------------------------------------------------------------
 // URL param helpers
@@ -325,6 +351,22 @@ async function main() {
     if (envIntensityValEl) { envIntensityValEl.textContent = envIntensity.toFixed(2); }
     if (envRotationSlider) { envRotationSlider.value = String(envRotation); }
     if (envRotationValEl) { envRotationValEl.textContent = envRotation.toFixed(2); }
+    if (bloomThresholdSlider) { bloomThresholdSlider.value = String(bloomThreshold); }
+    if (bloomThresholdValEl) { bloomThresholdValEl.textContent = bloomThreshold.toFixed(2); }
+    if (bloomIntensitySlider) { bloomIntensitySlider.value = String(bloomIntensity); }
+    if (bloomIntensityValEl) { bloomIntensityValEl.textContent = bloomIntensity.toFixed(2); }
+    if (roughContrastSlider) { roughContrastSlider.value = String(roughContrast); }
+    if (roughContrastValEl) { roughContrastValEl.textContent = roughContrast.toFixed(2); }
+    if (roughBrightSlider) { roughBrightSlider.value = String(roughBright); }
+    if (roughBrightValEl) { roughBrightValEl.textContent = roughBright.toFixed(2); }
+    if (metalContrastSlider) { metalContrastSlider.value = String(metalContrast); }
+    if (metalContrastValEl) { metalContrastValEl.textContent = metalContrast.toFixed(2); }
+    if (metalBrightSlider) { metalBrightSlider.value = String(metalBright); }
+    if (metalBrightValEl) { metalBrightValEl.textContent = metalBright.toFixed(2); }
+    if (albedoContrastSlider) { albedoContrastSlider.value = String(albedoContrast); }
+    if (albedoContrastValEl) { albedoContrastValEl.textContent = albedoContrast.toFixed(2); }
+    if (albedoBrightSlider) { albedoBrightSlider.value = String(albedoBright); }
+    if (albedoBrightValEl) { albedoBrightValEl.textContent = albedoBright.toFixed(2); }
   }
   emIntensitySlider?.addEventListener("input", () => {
     emissiveIntensity = Number(emIntensitySlider!.value);
@@ -385,6 +427,54 @@ async function main() {
     envRotation = Number(envRotationSlider!.value);
     syncSliders();
     requestFrame();
+  });
+  bloomThresholdSlider?.addEventListener("input", () => {
+    bloomThreshold = Number(bloomThresholdSlider!.value);
+    syncSliders();
+    requestFrame();
+  });
+  bloomIntensitySlider?.addEventListener("input", () => {
+    bloomIntensity = Number(bloomIntensitySlider!.value);
+    syncSliders();
+    requestFrame();
+  });
+
+  // Material curve sliders
+  for (const [slider, setter] of [
+    [roughContrastSlider, (v: number) => { roughContrast = v; }],
+    [roughBrightSlider, (v: number) => { roughBright = v; }],
+    [metalContrastSlider, (v: number) => { metalContrast = v; }],
+    [metalBrightSlider, (v: number) => { metalBright = v; }],
+    [albedoContrastSlider, (v: number) => { albedoContrast = v; }],
+    [albedoBrightSlider, (v: number) => { albedoBright = v; }],
+  ] as [HTMLInputElement | null, (v: number) => void][]) {
+    slider?.addEventListener("input", () => {
+      setter(Number(slider.value));
+      syncSliders();
+      requestFrame();
+    });
+  }
+
+  // Environment map selector
+  const ENV_URLS: Record<string, string> = {
+    studio_small_09: "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_09_1k.hdr",
+    kloofendal_48d: "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/kloofendal_48d_partly_cloudy_puresky_1k.hdr",
+    empty_warehouse_01: "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/empty_warehouse_01_1k.hdr",
+    royal_esplanade: "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/royal_esplanade_1k.hdr",
+    moonlit_golf: "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/moonlit_golf_1k.hdr",
+  };
+  envSelectEl?.addEventListener("change", () => {
+    const url = ENV_URLS[envSelectEl!.value];
+    if (!url) return;
+    statsEl.textContent = `Loading environment...`;
+    fetch(url).then(async (resp) => {
+      if (!resp.ok) { console.warn(`Failed: ${resp.status}`); return; }
+      const buffer = await resp.arrayBuffer();
+      const { width, height } = parseHDRHeader(buffer);
+      renderer.ibl.loadEquirectHDR(buffer, width, height);
+      console.log(`Loaded: ${envSelectEl!.value} (${width}x${height})`);
+      requestFrame();
+    }).catch(err => console.warn("Env load failed:", err));
   });
 
   // ---- Scene state ----
@@ -665,6 +755,12 @@ async function main() {
       aoThickness,
       envIntensity,
       envRotation,
+      bloomThreshold,
+      bloomSoftKnee: 0.5,
+      bloomIntensity,
+      roughnessCurve: { contrast: roughContrast, brightness: roughBright, gamma: 1.0 },
+      metalnessCurve: { contrast: metalContrast, brightness: metalBright, gamma: 1.0 },
+      albedoCurve: { contrast: albedoContrast, brightness: albedoBright, gamma: 1.0 },
     }, encoder);
 
     // ---- Present to screen ----
@@ -704,6 +800,9 @@ async function main() {
       renderer.gbufferDebugPresenter.drawDepth(renderPass, scene.aoView);
     } else if (gbufferViewMode === "lit") {
       renderer.presentTexture(renderPass, scene.litView);
+      if (bloomIntensity > 0) {
+        renderer.presentBloom(renderPass, scene.bloomView, bloomIntensity);
+      }
     } else {
       renderer.presentTexture(renderPass, scene.outputView);
     }

@@ -32,6 +32,10 @@ struct Params {
 @group(0) @binding(7) var envMap: texture_2d<f32>;  // equirect HDR environment
 @group(0) @binding(8) var brdfLUT: texture_2d<f32>; // split-sum BRDF integration LUT
 @group(0) @binding(9) var envSampler: sampler;
+@group(0) @binding(10) var bloomTex: texture_2d<f32>; // half-res bloom for AO erasure
+@group(0) @binding(11) var roughnessLUT: texture_1d<f32>; // 256-entry curve remap
+@group(0) @binding(12) var metalnessLUT: texture_1d<f32>;
+@group(0) @binding(13) var albedoLUT: texture_1d<f32>;
 
 const PI = 3.14159265359;
 
@@ -104,7 +108,7 @@ fn sampleEnvEquirectLod(dir: vec3f, lod: f32) -> vec3f {
   let rotDir = rotateY(dir, params.envRotation);
   let u = atan2(rotDir.z, rotDir.x) / (2.0 * PI) + 0.5;
   let v = asin(clamp(rotDir.y, -1.0, 1.0)) / PI + 0.5;
-  return textureSampleLevel(envMap, envSampler, vec2f(u, 1.0 - v), lod).rgb * params.envIntensity;
+  return textureSampleLevel(envMap, envSampler, vec2f(u, v), lod).rgb * params.envIntensity;
 }
 
 @compute @workgroup_size(8, 8)
@@ -124,8 +128,11 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
     return;
   }
 
-  // Linearize albedo for physically correct BRDF math
-  let albedo = srgbToLinear(albedoSrgb);
+  // Remap albedo through curve LUT, then linearize
+  let albedoLum = dot(albedoSrgb, vec3f(0.2126, 0.7152, 0.0722));
+  let albedoRemapped = textureLoad(albedoLUT, clamp(i32(albedoLum * 255.0), 0, 255), 0).r;
+  let albedoScale = select(albedoRemapped / max(albedoLum, 0.001), 1.0, albedoLum < 0.001);
+  let albedo = srgbToLinear(albedoSrgb * albedoScale);
 
   let packedNormal = textureLoad(normalTexture, px, 0).r;
   let N = octDecode(unpack2x16float(packedNormal));
@@ -144,8 +151,8 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   // Material properties from G-buffer (per-pixel voted roughness/metalness + emissive)
   let matSample = textureLoad(materialTexture, px, 0);
   let matVec = unpack2x16float(matSample.r);
-  let roughness = max(matVec.x, 0.04); // clamp to avoid singularities
-  let metallic = matVec.y;
+  let roughness = max(textureLoad(roughnessLUT, clamp(i32(matVec.x * 255.0), 0, 255), 0).r, 0.04);
+  let metallic = textureLoad(metalnessLUT, clamp(i32(matVec.y * 255.0), 0, 255), 0).r;
   let F0 = mix(vec3f(0.04), albedo, metallic);
 
   // Cook-Torrance BRDF
@@ -170,8 +177,15 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let emissiveRaw = vec3f(emRG.x, emRG.y, emB);
   let emissiveMag = max(emissiveRaw.r, max(emissiveRaw.g, emissiveRaw.b));
 
-  // Emissive eats AO: emissive regions radiate light, clearing occlusion
-  let ao = max(aoRaw, saturate(emissiveMag * params.emissiveIntensity * 0.5));
+  // Bloom-based AO erasure: the spatial bloom spread clears occlusion around emissive regions
+  let bloomUV = (vec2f(px) + 0.5) / params.viewport;
+  let bloomSample = textureSampleLevel(bloomTex, envSampler, bloomUV, 0.0).rgb;
+  let bloomMag = dot(bloomSample, vec3f(0.2126, 0.7152, 0.0722));
+
+  // Emissive + bloom eat AO: both per-pixel emissive and spatial bloom glow clear occlusion
+  let emissiveAOLift = saturate(emissiveMag * params.emissiveIntensity * 0.5);
+  let bloomAOLift = saturate(bloomMag * 2.0);
+  let ao = max(aoRaw, max(emissiveAOLift, bloomAOLift));
 
   var color: vec3f;
   if (params.specularOnly > 0.5) {
