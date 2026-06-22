@@ -251,9 +251,12 @@ def sample_normal_map(normal_map: np.ndarray, uv: np.ndarray, valid: np.ndarray,
     n = n / np.maximum(norms, 1e-8)
 
     # Transform from MoGE camera space to world space.
-    # MoGE outputs normals in the same convention as the view matrix camera
-    # space — no axis flips needed. cam_to_world_rot converts directly.
+    # MoGE's facing-camera normal is (0,0,-1). cam_to_world @ (0,0,-1) gives
+    # the camera look direction (into scene), but the surface outward normal
+    # should point away from the camera. Negate Z before rotation so that
+    # (0,0,-1) becomes (0,0,+1), which cam_to_world maps to -look_dir = outward.
     if cam_to_world_rot is not None:
+        n[:, 2] = -n[:, 2]
         n = (cam_to_world_rot @ n.T).T
 
     normals[valid] = n
