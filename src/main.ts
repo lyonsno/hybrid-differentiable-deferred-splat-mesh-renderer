@@ -104,31 +104,108 @@ const albedoBrightValEl = document.getElementById("albedoBrightVal");
 // Light control state -- L key cycles modes, arrow keys adjust angle in fixed mode
 type LightMode = "camera" | "fixed" | "overhead" | "rim";
 const LIGHT_MODES: LightMode[] = ["camera", "fixed", "overhead", "rim"];
-let lightModeIndex = 0;
-let fixedLightAzimuth = 0.8;  // radians
-let fixedLightElevation = 0.6; // radians
-let lightIntensity = 3.0;
-let ambientIntensity = 0.12;
+
+// ---------------------------------------------------------------------------
+// Settings persistence (localStorage)
+// ---------------------------------------------------------------------------
+
+const SETTINGS_KEY = "meshsplat-renderer-settings";
+
+interface RendererSettings {
+  lightModeIndex: number;
+  fixedLightAzimuth: number;
+  fixedLightElevation: number;
+  lightIntensity: number;
+  ambientIntensity: number;
+  emissiveIntensity: number;
+  emissiveThreshold: number;
+  aoRadius: number;
+  aoIntensity: number;
+  aoFalloff: number;
+  aoSlices: number;
+  aoSteps: number;
+  aoThickness: number;
+  envIntensity: number;
+  envRotation: number;
+  bloomThreshold: number;
+  bloomSoftKnee: number;
+  bloomIntensity: number;
+  roughContrast: number;
+  roughBright: number;
+  metalContrast: number;
+  metalBright: number;
+  albedoContrast: number;
+  albedoBright: number;
+  envMap: string;
+}
+
+const DEFAULT_SETTINGS: RendererSettings = {
+  lightModeIndex: 0,
+  fixedLightAzimuth: 0.8,
+  fixedLightElevation: 0.6,
+  lightIntensity: 3.0,
+  ambientIntensity: 0.12,
+  emissiveIntensity: 3.0,
+  emissiveThreshold: 0.05,
+  aoRadius: 0.15,
+  aoIntensity: 1.5,
+  aoFalloff: 1.0,
+  aoSlices: 3,
+  aoSteps: 4,
+  aoThickness: 1.81,
+  envIntensity: 1.0,
+  envRotation: 0.0,
+  bloomThreshold: 0.8,
+  bloomSoftKnee: 0.5,
+  bloomIntensity: 0.5,
+  roughContrast: 1.0,
+  roughBright: 0.0,
+  metalContrast: 1.0,
+  metalBright: 0.0,
+  albedoContrast: 1.0,
+  albedoBright: 0.0,
+  envMap: "studio_small_09",
+};
+
+function loadSettings(): RendererSettings {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+  } catch { /* ignore parse errors */ }
+  return { ...DEFAULT_SETTINGS };
+}
+
+function saveSettings(s: RendererSettings): void {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch { /* ignore */ }
+}
+
+const settings = loadSettings();
+
+let lightModeIndex = settings.lightModeIndex;
+let fixedLightAzimuth = settings.fixedLightAzimuth;
+let fixedLightElevation = settings.fixedLightElevation;
+let lightIntensity = settings.lightIntensity;
+let ambientIntensity = settings.ambientIntensity;
 let specularOnly = false;
-let emissiveIntensity = 3.0;
-let emissiveThreshold = 0.05;
-let aoRadius = 0.15;
-let aoIntensity = 1.5;
-let aoFalloff = 1.0;
-let aoSlices = 3;
-let aoSteps = 4;
-let aoThickness = 1.81;
-let envIntensity = 1.0;
-let envRotation = 0.0;
-let bloomThreshold = 0.8;
-let bloomSoftKnee = 0.5;
-let bloomIntensity = 0.5;
-let roughContrast = 1.0;
-let roughBright = 0.0;
-let metalContrast = 1.0;
-let metalBright = 0.0;
-let albedoContrast = 1.0;
-let albedoBright = 0.0;
+let emissiveIntensity = settings.emissiveIntensity;
+let emissiveThreshold = settings.emissiveThreshold;
+let aoRadius = settings.aoRadius;
+let aoIntensity = settings.aoIntensity;
+let aoFalloff = settings.aoFalloff;
+let aoSlices = settings.aoSlices;
+let aoSteps = settings.aoSteps;
+let aoThickness = settings.aoThickness;
+let envIntensity = settings.envIntensity;
+let envRotation = settings.envRotation;
+let bloomThreshold = settings.bloomThreshold;
+let bloomSoftKnee = settings.bloomSoftKnee;
+let bloomIntensity = settings.bloomIntensity;
+let roughContrast = settings.roughContrast;
+let roughBright = settings.roughBright;
+let metalContrast = settings.metalContrast;
+let metalBright = settings.metalBright;
+let albedoContrast = settings.albedoContrast;
+let albedoBright = settings.albedoBright;
 
 // ---------------------------------------------------------------------------
 // URL param helpers
@@ -308,6 +385,7 @@ async function main() {
     if (e.key === "l" || e.key === "L") {
       lightModeIndex = (lightModeIndex + 1) % LIGHT_MODES.length;
       console.log(`Light mode: ${LIGHT_MODES[lightModeIndex]}`);
+      syncSliders();
       requestFrame();
     }
     // Arrow keys adjust fixed light angle, +/- adjust intensity
@@ -367,6 +445,15 @@ async function main() {
     if (albedoContrastValEl) { albedoContrastValEl.textContent = albedoContrast.toFixed(2); }
     if (albedoBrightSlider) { albedoBrightSlider.value = String(albedoBright); }
     if (albedoBrightValEl) { albedoBrightValEl.textContent = albedoBright.toFixed(2); }
+
+    // Persist all settings to localStorage
+    saveSettings({
+      lightModeIndex, fixedLightAzimuth, fixedLightElevation, lightIntensity, ambientIntensity,
+      emissiveIntensity, emissiveThreshold, aoRadius, aoIntensity, aoFalloff, aoSlices, aoSteps,
+      aoThickness, envIntensity, envRotation, bloomThreshold, bloomSoftKnee, bloomIntensity,
+      roughContrast, roughBright, metalContrast, metalBright, albedoContrast, albedoBright,
+      envMap: envSelectEl?.value ?? "studio_small_09",
+    });
   }
   emIntensitySlider?.addEventListener("input", () => {
     emissiveIntensity = Number(emIntensitySlider!.value);
@@ -473,6 +560,7 @@ async function main() {
       const { width, height } = parseHDRHeader(buffer);
       renderer.ibl.loadEquirectHDR(buffer, width, height);
       console.log(`Loaded: ${envSelectEl!.value} (${width}x${height})`);
+      syncSliders(); // persist env map selection
       requestFrame();
     }).catch(err => console.warn("Env load failed:", err));
   });
@@ -655,9 +743,13 @@ async function main() {
     }
   });
 
+  // ---- Initialize sliders from persisted settings ----
+  if (envSelectEl && settings.envMap) { envSelectEl.value = settings.envMap; }
+  syncSliders();
+
   // ---- Load default environment map ----
   const envUrl = new URLSearchParams(window.location.search).get("env")
-    ?? "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_09_1k.hdr";
+    ?? ENV_URLS[settings.envMap] ?? ENV_URLS.studio_small_09;
   fetch(envUrl).then(async (resp) => {
     if (!resp.ok) { console.warn(`Failed to load env map: ${resp.status}`); return; }
     const buffer = await resp.arrayBuffer();
