@@ -611,13 +611,13 @@ async function main() {
   const urlSplatScale = selectedSplatScale();
   async function fetchSplatAttributes(path: string): Promise<SplatAttributes> {
     if (path.toLowerCase().endsWith(".ply")) {
+      const skipSidecar = new URLSearchParams(window.location.search).has("nosidecar");
       const [response, sidecar] = await Promise.all([
         fetch(path).then(r => { if (!r.ok) throw new Error(`Failed to fetch PLY: ${r.status} ${r.statusText}`); return r; }),
-        tryFetchSidecar(path),
+        skipSidecar ? Promise.resolve(undefined) : tryFetchSidecar(path),
       ]);
       let attrs = decodeLocalPlySplatPayload(path, await response.arrayBuffer());
-      const skipSidecar = new URLSearchParams(window.location.search).has("nosidecar");
-      if (sidecar && !skipSidecar) {
+      if (sidecar) {
         console.log(`Applying Kaminos sidecar corrections from ${path}.kaminos-splat.json`);
         attrs = applySidecarCorrections(attrs, sidecar);
       }

@@ -53,7 +53,7 @@ async function main() {
       case "--no-sidecar": noSidecar = true; break;
       case "--help": case "-h":
         console.log("Usage: render-splat-screenshot.mjs --splat <path> --output <path> [options]");
-        console.log("Options: --url, --width, --height, --settle-ms, --azimuth, --elevation, --distance, --debug");
+        console.log("Options: --url, --width, --height, --settle-ms, --azimuth, --elevation, --distance, --debug, --no-sidecar");
         process.exit(0);
     }
   }
