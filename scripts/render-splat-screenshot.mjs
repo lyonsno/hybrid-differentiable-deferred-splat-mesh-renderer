@@ -35,6 +35,7 @@ async function main() {
   let azimuth = null;
   let elevation = null;
   let distance = null;
+  let debugMode = null;
 
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
@@ -47,6 +48,7 @@ async function main() {
       case "--azimuth": azimuth = Number(args[++i]); break;
       case "--elevation": elevation = Number(args[++i]); break;
       case "--distance": distance = Number(args[++i]); break;
+      case "--debug": debugMode = args[++i]; break;
       case "--help": case "-h":
         console.log("Usage: render-splat-screenshot.mjs --splat <path> --output <path> [options]");
         console.log("Options: --url, --width, --height, --settle-ms, --azimuth, --elevation, --distance");
@@ -60,7 +62,8 @@ async function main() {
   }
 
   // Build renderer URL with splat param
-  const url = `${baseUrl}/?splat=${encodeURIComponent(splatPath)}`;
+  let url = `${baseUrl}/?splat=${encodeURIComponent(splatPath)}`;
+  if (debugMode) url += `&debug=${encodeURIComponent(debugMode)}`;
 
   // Ensure output directory exists
   const outputDir = path.dirname(path.resolve(outputPath));

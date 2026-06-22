@@ -154,19 +154,47 @@ def run_moge_normals(image: np.ndarray, device: torch.device, model=None):
     return normals, model
 
 
+def run_lotus_normals(image: np.ndarray, device: torch.device, model=None):
+    """Run Lotus-D normal estimation. Returns normal map (H, W, 3) in [-1, 1] and the pipeline."""
+    sys.path.insert(0, str(Path.home() / "dev" / "Lotus"))
+    from pipeline import LotusDPipeline
+
+    if model is None:
+        LOG.info("Loading Lotus-D v1.1...")
+        model = LotusDPipeline.from_pretrained(
+            "jingheya/lotus-normal-d-v1-1",
+            torch_dtype=torch.float32,
+        ).to(device)
+        model.set_progress_bar_config(disable=True)
+
+    img_tensor = torch.from_numpy(image.copy()).permute(2, 0, 1).unsqueeze(0).float()
+    img_tensor = img_tensor / 127.5 - 1.0
+    img_tensor = img_tensor.to(device)
+
+    task_emb = torch.tensor([1, 0]).float().unsqueeze(0).to(device)
+    task_emb = torch.cat([torch.sin(task_emb), torch.cos(task_emb)], dim=-1)
+
+    from contextlib import nullcontext
+    autocast_ctx = nullcontext() if torch.backends.mps.is_available() else torch.autocast(device.type)
+    with torch.no_grad(), autocast_ctx:
+        pred = model(
+            rgb_in=img_tensor,
+            prompt='',
+            num_inference_steps=1,
+            generator=None,
+            output_type='np',
+            timesteps=[999],
+            task_emb=task_emb,
+        ).images[0]
+
+    normals = pred * 2.0 - 1.0
+    norms = np.linalg.norm(normals, axis=2, keepdims=True)
+    normals = normals / np.maximum(norms, 1e-8)
+    return normals, model
+
+
 def project_splats_to_view(positions: np.ndarray, camera: dict, normal_map_shape: tuple[int, int]):
     """Project splat positions to pixel coordinates matching the renderer exactly.
-
-    The renderer computes:
-        clip = FLIP_Y * proj * view * pos
-        ndc = clip.xy / clip.w
-        screen.x = (ndc.x * 0.5 + 0.5) * viewport.x
-        screen.y = (1.0 - (ndc.y * 0.5 + 0.5)) * viewport.y
-
-    The camera JSON stores raw view and proj (without FLIP_Y). The two Y-flips
-    (FLIP_Y in viewProj and the 1.0- in screen.y) cancel out, giving:
-        screen.x = (raw_ndc.x * 0.5 + 0.5) * viewport.x
-        screen.y = (raw_ndc.y * 0.5 + 0.5) * viewport.y
 
     Returns (uv, valid) arrays.
     """
@@ -178,9 +206,6 @@ def project_splats_to_view(positions: np.ndarray, camera: dict, normal_map_shape
     vp_w = camera["viewportWidth"]
     vp_h = camera["viewportHeight"]
 
-    # Apply VIEWER_VERTICAL_FLIP to match the renderer's viewProj.
-    # The renderer composes: viewProj = FLIP_Y * proj * view
-    # FLIP_Y negates row 1 of the result.
     viewProj = proj_matrix @ view_matrix
     viewProj[1, :] = -viewProj[1, :]  # FLIP_Y
 
@@ -191,10 +216,10 @@ def project_splats_to_view(positions: np.ndarray, camera: dict, normal_map_shape
     ndc_x = clip[:, 0] / np.where(valid, w_clip, 1.0)
     ndc_y = clip[:, 1] / np.where(valid, w_clip, 1.0)
 
-    # With FLIP_Y baked in, NDC Y+ points DOWN. Correct mapping per README footgun #3:
     px = ((ndc_x + 1) * 0.5 * vp_w) * (normal_w / vp_w)
     py = ((1 - ndc_y) * 0.5 * vp_h) * (normal_h / vp_h)
     valid &= (px >= 0) & (px < normal_w) & (py >= 0) & (py < normal_h)
+
     uv = np.stack([px, py], axis=1)
     return uv, valid
 
@@ -226,7 +251,9 @@ def sample_normal_map(normal_map: np.ndarray, uv: np.ndarray, valid: np.ndarray,
     norms = np.linalg.norm(n, axis=1, keepdims=True)
     n = n / np.maximum(norms, 1e-8)
 
-    # Transform from camera space to world space
+    # Transform from MoGE camera space to world space.
+    # MoGE outputs normals in the same convention as the view matrix camera
+    # space — no axis flips needed. cam_to_world_rot converts directly.
     if cam_to_world_rot is not None:
         n = (cam_to_world_rot @ n.T).T
 
@@ -353,6 +380,9 @@ def main():
                         help="Keep rendered images instead of cleaning up")
     parser.add_argument("--normal-maps-dir", type=Path, default=None,
                         help="Save individual normal maps to this directory")
+    parser.add_argument("--normal-model", type=str, default="moge",
+                        choices=["moge", "lotus"],
+                        help="Normal estimation model: moge (MoGE-2 vits-normal) or lotus (Lotus-D v1.1)")
     args = parser.parse_args()
 
     device = torch.device(args.device)
@@ -368,6 +398,15 @@ def main():
     ], axis=1)
     N = positions.shape[0]
     LOG.info(f"  {N} splats")
+
+    # Load Kaminos sidecar for crop mask (determines which splats get normals)
+    from bake_normals import load_kaminos_sidecar, apply_sidecar_correction
+    correction = load_kaminos_sidecar(args.ply)
+    if correction:
+        _, crop_mask = apply_sidecar_correction(positions, correction)
+        LOG.info(f"  Sidecar crop: {crop_mask.sum()}/{N} inside bounds")
+    else:
+        crop_mask = np.ones(N, dtype=bool)
 
     # Render orbit views
     with tempfile.TemporaryDirectory(prefix="multiview_normals_") as tmpdir:
@@ -392,9 +431,11 @@ def main():
             LOG.error("No views rendered. Is the dev server running?")
             sys.exit(1)
 
-        # Run MoGE on each view and project normals
-        moge_model = None
+        # Run normal estimation on each view and project normals
+        normal_model = None
+        run_normals = run_moge_normals if args.normal_model == "moge" else run_lotus_normals
         all_normals = []
+        LOG.info(f"Normal model: {args.normal_model}")
 
         if args.normal_maps_dir:
             args.normal_maps_dir.mkdir(parents=True, exist_ok=True)
@@ -406,8 +447,8 @@ def main():
             image = np.array(Image.open(view["image_path"]).convert("RGB"))
             LOG.info(f"  Image: {image.shape[1]}x{image.shape[0]}")
 
-            # Run MoGE (reuse model across views)
-            normal_map, moge_model = run_moge_normals(image, device, model=moge_model)
+            # Run normal estimation (reuse model across views)
+            normal_map, normal_model = run_normals(image, device, model=normal_model)
             LOG.info(f"  Normal map: {normal_map.shape}")
 
             if args.normal_maps_dir:
@@ -418,10 +459,16 @@ def main():
             with open(view["camera_path"]) as f:
                 camera = json.load(f)
 
-            # Project and sample (no rotation for now — debug)
+            # Extract camera-to-world rotation for transforming normals
+            view_mat = np.array(camera["viewMatrix"]).reshape(4, 4).T
+            cam_to_world_rot = view_mat[:3, :3].T
+
+            # Project and sample, transforming normals from camera space to world space
+            # Only bake normals for splats inside the sidecar crop
             uv, valid = project_splats_to_view(positions, camera, normal_map.shape[:2])
-            view_normals = sample_normal_map(normal_map, uv, valid)
-            LOG.info(f"  Projected: {valid.sum()}/{N} visible")
+            bakeable = valid & crop_mask
+            view_normals = sample_normal_map(normal_map, uv, bakeable, cam_to_world_rot=cam_to_world_rot)
+            LOG.info(f"  Projected: {valid.sum()}/{N} visible, {bakeable.sum()} bakeable")
 
             all_normals.append(view_normals)
 
