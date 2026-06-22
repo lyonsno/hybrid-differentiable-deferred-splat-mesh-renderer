@@ -270,7 +270,8 @@ async function main() {
 
   // ---- G-buffer view mode: cycle with 'G' key ----
   type GBufferViewMode = "color" | "normal" | "roughness" | "metalness" | "ao" | "lit";
-  let gbufferViewMode: GBufferViewMode = "color";
+  const debugParam = new URLSearchParams(window.location.search).get("debug");
+  let gbufferViewMode: GBufferViewMode = (debugParam as GBufferViewMode) || "color";
   window.addEventListener("keydown", (e) => {
     if (e.key === "g" || e.key === "G") {
       const modes: GBufferViewMode[] = ["color", "normal", "roughness", "metalness", "ao", "lit"];
