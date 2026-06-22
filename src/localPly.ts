@@ -38,11 +38,10 @@ export async function tryFetchSidecar(plyUrl: string): Promise<KaminosSidecar | 
 
 /**
  * Apply Kaminos sidecar corrections to decoded SplatAttributes.
- * Operations applied in order: centroid offset, axis flips, crop.
- * Crop bounds in the sidecar are in corrected space (post-offset, post-flip),
- * matching how Kaminos applies corrections as scene transforms.
- * Returns a new SplatAttributes with filtered splats if crop is active,
- * or the same object (mutated in-place) if no crop.
+ * Operations applied in order: axis flips, then centroid offset, then crop.
+ * This matches Kaminos's scene transform: scale (flip) is applied to the
+ * raw vertices, then the centroid offset is subtracted as a translation.
+ * Corrected = raw * flip - offset. Crop bounds are in this corrected space.
  */
 export function applySidecarCorrections(
   attrs: SplatAttributes,
@@ -52,18 +51,7 @@ export function applySidecarCorrections(
   const positions = attrs.positions;
   const count = attrs.count;
 
-  // Apply centroid offset (subtract to re-center)
-  if (correction.centroidOffset) {
-    const [cx, cy, cz] = correction.centroidOffset;
-    for (let i = 0; i < count; i++) {
-      const base = i * 3;
-      positions[base] -= cx;
-      positions[base + 1] -= cy;
-      positions[base + 2] -= cz;
-    }
-  }
-
-  // Apply axis flips (multiply each axis by +1 or -1)
+  // Apply axis flips first (multiply each axis by +1 or -1)
   if (correction.axisFlips) {
     const [fx, fy, fz] = correction.axisFlips;
     if (fx !== 1 || fy !== 1 || fz !== 1) {
@@ -73,6 +61,17 @@ export function applySidecarCorrections(
         positions[base + 1] *= fy;
         positions[base + 2] *= fz;
       }
+    }
+  }
+
+  // Then apply centroid offset (subtract to re-center)
+  if (correction.centroidOffset) {
+    const [cx, cy, cz] = correction.centroidOffset;
+    for (let i = 0; i < count; i++) {
+      const base = i * 3;
+      positions[base] -= cx;
+      positions[base + 1] -= cy;
+      positions[base + 2] -= cz;
     }
   }
 

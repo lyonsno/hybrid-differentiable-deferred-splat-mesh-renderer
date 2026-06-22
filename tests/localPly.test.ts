@@ -307,7 +307,7 @@ test("applySidecarCorrections crops splats outside bounds", () => {
   assert.ok(Math.abs(result.positions[3] - 0.5) < 0.001);
 });
 
-test("applySidecarCorrections applies offset then crop in corrected space", () => {
+test("applySidecarCorrections applies flip then offset then crop", () => {
   const attrs = decodeLocalPlySplatPayload("test.ply", binaryPlyFixture([
     { position: [10, 10, 10], dc: [0, 0, 0], opacity: 0, scales: [0, 0, 0], rotation: [1, 0, 0, 0] },
     { position: [10.5, 10.5, 10.5], dc: [0, 0, 0], opacity: 0, scales: [0, 0, 0], rotation: [1, 0, 0, 0] },
@@ -318,7 +318,8 @@ test("applySidecarCorrections applies offset then crop in corrected space", () =
     schema: "kaminos.splat-correction.v0",
     correction: {
       centroidOffset: [10, 10, 10],
-      // Crop in corrected space (after offset): [0,0,0] and [0.5,0.5,0.5] survive, [5,5,5] doesn't
+      // corrected = raw * 1 - 10 = raw - 10. Crop keeps [-1,1].
+      // [10,10,10]→[0,0,0] ✓, [10.5]→[0.5] ✓, [15]→[5] ✗
       crop: { enabled: true, min: [-1, -1, -1], max: [1, 1, 1] },
     },
   };
