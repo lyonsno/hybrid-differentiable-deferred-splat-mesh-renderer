@@ -38,20 +38,73 @@ export async function tryFetchSidecar(plyUrl: string): Promise<KaminosSidecar | 
 
 /**
  * Apply Kaminos sidecar corrections to decoded SplatAttributes.
- * Operations applied in order: axis flips, then centroid offset, then crop.
- * This matches Kaminos's scene transform: scale (flip) is applied to the
- * raw vertices, then the centroid offset is subtracted as a translation.
- * Corrected = raw * flip - offset. Crop bounds are in this corrected space.
+ * Order: crop (in preview-normalized space), then axis flips, then centroid offset.
+ *
+ * Crop bounds in the sidecar are in Kaminos's preview-normalized space:
+ *   preview = (raw - boundsCenter) * (2 / maxExtent)
+ * The crop box is parented to the splat's visualRoot which shows
+ * preview-normalized positions. We crop first, then apply the rendering
+ * transforms (flip + offset) to the surviving splats.
  */
 export function applySidecarCorrections(
   attrs: SplatAttributes,
   sidecar: KaminosSidecar,
 ): SplatAttributes {
   const correction = sidecar.correction;
+
+  // Crop in preview-normalized space (before any position transforms)
+  if (correction.crop?.enabled) {
+    const [cropMinX, cropMinY, cropMinZ] = correction.crop.min;
+    const [cropMaxX, cropMaxY, cropMaxZ] = correction.crop.max;
+
+    const positions = attrs.positions;
+    const count = attrs.count;
+
+    // Compute preview normalization from actual min/max (same as Kaminos parsePlyPointCloud).
+    // Can't use attrs.bounds because those may be percentile-trimmed.
+    let rMinX = Infinity, rMinY = Infinity, rMinZ = Infinity;
+    let rMaxX = -Infinity, rMaxY = -Infinity, rMaxZ = -Infinity;
+    for (let i = 0; i < count; i++) {
+      const base = i * 3;
+      const px = positions[base], py = positions[base + 1], pz = positions[base + 2];
+      if (px < rMinX) rMinX = px; if (px > rMaxX) rMaxX = px;
+      if (py < rMinY) rMinY = py; if (py > rMaxY) rMaxY = py;
+      if (pz < rMinZ) rMinZ = pz; if (pz > rMaxZ) rMaxZ = pz;
+    }
+    const cx = (rMinX + rMaxX) * 0.5;
+    const cy = (rMinY + rMaxY) * 0.5;
+    const cz = (rMinZ + rMaxZ) * 0.5;
+    const maxExtent = Math.max(rMaxX - rMinX, rMaxY - rMinY, rMaxZ - rMinZ, 1e-6);
+    const previewScale = 2.0 / maxExtent;
+
+    const keep = new Uint8Array(count);
+    let kept = 0;
+    for (let i = 0; i < count; i++) {
+      const base = i * 3;
+      const px = (positions[base] - cx) * previewScale;
+      const py = (positions[base + 1] - cy) * previewScale;
+      const pz = (positions[base + 2] - cz) * previewScale;
+      if (px >= cropMinX && px <= cropMaxX && py >= cropMinY && py <= cropMaxY && pz >= cropMinZ && pz <= cropMaxZ) {
+        keep[i] = 1;
+        kept++;
+      }
+    }
+
+    if (kept === 0) {
+      console.warn(`Sidecar crop filtered all ${count} splats — crop bounds may be stale or in wrong space`);
+    }
+
+    if (kept === 0) {
+      console.warn(`Sidecar crop filtered all ${count} splats — crop bounds may be stale`);
+    } else if (kept < count) {
+      attrs = filterSplatAttributes(attrs, keep, kept);
+    }
+  }
+
+  // Apply rendering transforms: flip then offset
   const positions = attrs.positions;
   const count = attrs.count;
 
-  // Apply axis flips first (multiply each axis by +1 or -1)
   if (correction.axisFlips) {
     const [fx, fy, fz] = correction.axisFlips;
     if (fx !== 1 || fy !== 1 || fz !== 1) {
@@ -64,45 +117,16 @@ export function applySidecarCorrections(
     }
   }
 
-  // Then apply centroid offset (subtract to re-center)
   if (correction.centroidOffset) {
-    const [cx, cy, cz] = correction.centroidOffset;
+    const [ox, oy, oz] = correction.centroidOffset;
     for (let i = 0; i < count; i++) {
       const base = i * 3;
-      positions[base] -= cx;
-      positions[base + 1] -= cy;
-      positions[base + 2] -= cz;
+      positions[base] -= ox;
+      positions[base + 1] -= oy;
+      positions[base + 2] -= oz;
     }
   }
 
-  // Apply crop after transforms — bounds are in corrected space
-  if (correction.crop?.enabled) {
-    const [minX, minY, minZ] = correction.crop.min;
-    const [maxX, maxY, maxZ] = correction.crop.max;
-
-    const keep = new Uint8Array(count);
-    let kept = 0;
-    for (let i = 0; i < count; i++) {
-      const base = i * 3;
-      const x = positions[base];
-      const y = positions[base + 1];
-      const z = positions[base + 2];
-      if (x >= minX && x <= maxX && y >= minY && y <= maxY && z >= minZ && z <= maxZ) {
-        keep[i] = 1;
-        kept++;
-      }
-    }
-
-    if (kept === 0) {
-      console.warn(`Sidecar crop filtered all ${count} splats — crop bounds may be stale or in wrong space`);
-    }
-
-    if (kept < count && kept > 0) {
-      return filterSplatAttributes(attrs, keep, kept);
-    }
-  }
-
-  // Recompute bounds after all transforms
   attrs.bounds = recomputeBounds(positions, count);
   return attrs;
 }
