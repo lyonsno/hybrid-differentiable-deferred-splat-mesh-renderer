@@ -159,11 +159,50 @@ training resolution).
 | `trim_splats.py` | Remove fog splats, recenter to median |
 | `bake_normals.py` | Single-view MoGE normal baking via PLY intrinsics |
 | `bake_materials.py` | Bake roughness/metallic from SuperMat image maps |
-| `multiview_normals.py` | Multi-view MoGE consensus normals (WIP) |
+| `multiview_normals.py` | Multi-view normal consensus (MoGE or Lotus-D) |
 | `multiview_emissive.py` | Multi-view emissive via per-channel min (superseded) |
 | `specular_mask_emissive.py` | Light sweep + hue divergence emissive extraction |
 | `render_splat_view.py` | Simple CPU splat renderer for map generation |
 | `sharpen_normals.py` | High-frequency detail injection from albedo into normals |
+
+## Multi-view Normal Baking
+
+`multiview_normals.py` renders N orbit views of a splat PLY, runs a normal
+estimator on each, projects normals back to splats with cam-to-world rotation,
+and takes the median across views with angular outlier rejection.
+
+```bash
+# MoGE (default)
+python multiview_normals.py --ply input.ply --output output.ply --views 8
+
+# Lotus-D (sharper on some assets)
+python multiview_normals.py --ply input.ply --output output.ply --views 8 --normal-model lotus
+
+# Front-hemisphere only (for assets with a clear front)
+python multiview_normals.py --ply input.ply --output output.ply --views 8 \
+  --azimuth-center 3.14 --azimuth-spread 3.14
+```
+
+### Normal coordinate conventions
+
+- MoGE outputs normals in camera space matching the OpenGL view matrix convention.
+  No axis flips are needed.
+- `cam_to_world = view_matrix[:3, :3].T` converts camera-space normals to world space.
+- The renderer's deferred lighting shader expects world-space normals (it computes
+  `V = normalize(cameraPos - worldPos)` in world space).
+- For single-view baking without rotation, the normals are in camera space and only
+  look correct when viewed from the bake camera angle.
+
+### Critical: renderer and bake pipeline must see the same splats
+
+If the renderer crops splats (via Kaminos sidecar) but the bake pipeline projects
+all splats, back-facing/occluded splats will project onto pixels showing background
+or different geometry. MoGE produces junk normals for those pixels, and the bake
+result looks "blobby" even though the projection is numerically correct.
+
+**Rule: whatever the renderer shows is what MoGE sees. Only project splats that
+the renderer actually rendered.** When sidecar crop is active in the renderer, the
+bake pipeline must apply the same crop.
 
 ## Dependencies
 
@@ -171,4 +210,5 @@ All scripts run in the MoGE venv (`~/dev/moge-standalone/.venv/`). Requires:
 `numpy`, `plyfile`, `Pillow`, `playwright-core` (for headless rendering).
 
 MoGE inference: `~/dev/moge-standalone/`
+Lotus-D inference: `~/dev/Lotus/` with model `jingheya/lotus-normal-d-v1-1`
 SuperMat inference: `~/dev/SuperMat/` with checkpoint at `checkpoints/supermat.pth`
