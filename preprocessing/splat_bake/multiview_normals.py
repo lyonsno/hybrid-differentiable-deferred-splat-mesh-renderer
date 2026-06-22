@@ -399,14 +399,9 @@ def main():
     N = positions.shape[0]
     LOG.info(f"  {N} splats")
 
-    # Load Kaminos sidecar for crop mask (determines which splats get normals)
-    from bake_normals import load_kaminos_sidecar, apply_sidecar_correction
-    correction = load_kaminos_sidecar(args.ply)
-    if correction:
-        _, crop_mask = apply_sidecar_correction(positions, correction)
-        LOG.info(f"  Sidecar crop: {crop_mask.sum()}/{N} inside bounds")
-    else:
-        crop_mask = np.ones(N, dtype=bool)
+    # TODO: re-enable sidecar crop once renderer sidecar integration lands
+    # (both sides must see the same splats or normals are wrong)
+    crop_mask = np.ones(N, dtype=bool)
 
     # Render orbit views
     with tempfile.TemporaryDirectory(prefix="multiview_normals_") as tmpdir:
