@@ -167,41 +167,71 @@ export function createIBL(device: GPUDevice): IBLResources {
   };
 }
 
-/** Convert f32 to IEEE 754 half-precision (f16), returned as u16. */
+/** Convert f32 to IEEE 754 half-precision (f16) with round-to-nearest-even and subnormals. */
 function f32ToF16(value: number): number {
-  const f32 = new Float32Array(1);
-  const u32 = new Uint32Array(f32.buffer);
-  f32[0] = value;
-  const bits = u32[0];
+  const f32Buf = new Float32Array(1);
+  const u32Buf = new Uint32Array(f32Buf.buffer);
+  f32Buf[0] = value;
+  const bits = u32Buf[0];
   const sign = (bits >>> 16) & 0x8000;
-  const exp = ((bits >>> 23) & 0xFF) - 127 + 15;
+  const rawExp = (bits >>> 23) & 0xFF;
   const frac = bits & 0x7FFFFF;
-  if (exp <= 0) return sign;
-  if (exp >= 31) return sign | 0x7C00;
-  return sign | (exp << 10) | (frac >>> 13);
+
+  if (rawExp === 0xFF) {
+    // Inf or NaN
+    return frac ? (sign | 0x7C01) : (sign | 0x7C00); // preserve NaN vs Inf
+  }
+
+  const exp = rawExp - 127 + 15;
+
+  if (exp >= 31) return sign | 0x7C00; // overflow → Inf
+  if (exp > 0) {
+    // Normal f16: round-to-nearest-even on the truncated mantissa bits
+    const round = (frac >>> 12) & 1; // bit just below the f16 mantissa
+    return (sign | (exp << 10) | (frac >>> 13)) + round;
+  }
+  if (exp > -10) {
+    // Subnormal f16: shift mantissa right and round
+    const shift = 1 - exp; // how many extra bits to shift (1..10)
+    const subnormalFrac = (0x800000 | frac) >>> (13 + shift);
+    const round = ((0x800000 | frac) >>> (12 + shift)) & 1;
+    return sign | (subnormalFrac + round);
+  }
+  return sign; // too small → zero
 }
 
-/** Decode Radiance .hdr (RGBE) format into RGBA float32 array. */
+/** Decode Radiance .hdr (RGBE) format into RGBA float32 array.
+ *  Validates dimensions against the header resolution line. */
 function decodeRadianceHDR(buffer: ArrayBuffer, expectedWidth: number, expectedHeight: number): Float32Array {
   const bytes = new Uint8Array(buffer);
   let offset = 0;
+  let width = expectedWidth;
+  let height = expectedHeight;
 
-  // Skip header lines until empty line
-  while (offset < bytes.length) {
+  // Parse header: scan lines until resolution line (supports large headers)
+  const maxHeaderBytes = Math.min(bytes.length, 4096);
+  while (offset < maxHeaderBytes) {
     let lineEnd = offset;
-    while (lineEnd < bytes.length && bytes[lineEnd] !== 10) lineEnd++;
+    while (lineEnd < maxHeaderBytes && bytes[lineEnd] !== 10) lineEnd++;
     const line = String.fromCharCode(...bytes.slice(offset, lineEnd));
     offset = lineEnd + 1;
-    if (line.trim() === "" || line.startsWith("-Y") || line.startsWith("+Y")) {
+    // Resolution line: -Y height +X width (or variants)
+    const resMatch = line.match(/^[-+][YX]\s+(\d+)\s+[-+][YX]\s+(\d+)/);
+    if (resMatch) {
+      // First dimension is the one after the first axis letter
       if (line.startsWith("-Y") || line.startsWith("+Y")) {
-        // Found resolution line, data follows
-        break;
+        height = parseInt(resMatch[1], 10);
+        width = parseInt(resMatch[2], 10);
+      } else {
+        width = parseInt(resMatch[1], 10);
+        height = parseInt(resMatch[2], 10);
       }
+      if (width !== expectedWidth || height !== expectedHeight) {
+        console.warn(`HDR header dimensions ${width}x${height} differ from expected ${expectedWidth}x${expectedHeight}; using header values`);
+      }
+      break;
     }
   }
-
-  const width = expectedWidth;
-  const height = expectedHeight;
   const result = new Float32Array(width * height * 4);
 
   // Decode scanlines (supports both uncompressed and RLE)

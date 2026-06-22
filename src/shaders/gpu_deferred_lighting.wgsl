@@ -76,7 +76,9 @@ fn distributionGGX(NdotH: f32, roughness: f32) -> f32 {
   return a2 / (PI * d * d);
 }
 
-// Schlick-GGX geometry function
+// Schlick-GGX geometry function — direct lighting k factor: (roughness+1)²/8.
+// The IBL path uses a different k (a²/2) baked into the BRDF LUT (ibl_brdf_lut.wgsl).
+// This function is only called for the direct Cook-Torrance specular.
 fn geometrySchlickGGX(NdotV: f32, roughness: f32) -> f32 {
   let r = roughness + 1.0;
   let k = (r * r) / 8.0;
@@ -202,15 +204,17 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
       let bentOct = aoSample.gb;
       let bentNormal = octDecode(bentOct);
       let diffuseDir = normalize(mix(N, bentNormal, 0.5)); // blend surface normal with bent normal
-      let irradiance = sampleEnvEquirectLod(diffuseDir, 5.0); // high lod for diffuse blur
+      let maxLod = log2(f32(envSize.x));
+      let diffuseLod = max(maxLod - 2.0, 3.0); // ~4x4 to 16x8 texels, scales with env map size
+      let irradiance = sampleEnvEquirectLod(diffuseDir, diffuseLod);
       let diffuseIBL = kD * albedo * irradiance;
 
       // Specular IBL: sample environment along reflection, roughness selects mip level
       let R = reflect(-V, N);
-      let maxLod = log2(f32(envSize.x));
       let specLod = roughness * maxLod;
       let prefilteredColor = sampleEnvEquirectLod(R, specLod);
-      let brdfSample = textureSampleLevel(brdfLUT, envSampler, vec2f(NdotV, roughness), 0.0).rg;
+      let brdfCoord = vec2i(clamp(vec2f(NdotV, roughness) * 255.0, vec2f(0.0), vec2f(255.0)));
+      let brdfSample = textureLoad(brdfLUT, brdfCoord, 0).rg;
       let F_ibl = fresnelSchlickRoughness(NdotV, F0, roughness);
       // Attenuate at extreme grazing angles to prevent Fresnel blowout on splat edges
       let grazingFade = smoothstep(0.0, 0.1, NdotV);

@@ -442,7 +442,7 @@ function createDeferredLightingPass(device: GPUDevice) {
       { binding: 5, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba16float" } },
       { binding: 6, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "float" } }, // AO + bent normal (rgba16float)
       { binding: 7, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "float" } }, // env map (equirect, rgba16float)
-      { binding: 8, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "float" } }, // BRDF LUT (rg16float)
+      { binding: 8, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float" } }, // BRDF LUT (rgba16float, textureLoad)
       { binding: 9, visibility: GPUShaderStage.COMPUTE, sampler: { type: "filtering" } }, // env sampler
       { binding: 10, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "float" } }, // bloom (half-res)
       { binding: 11, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "float", viewDimension: "1d" } }, // roughness LUT
