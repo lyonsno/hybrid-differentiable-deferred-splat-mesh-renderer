@@ -15,6 +15,7 @@ import { createAlphaTexturePresenter } from "./tileLocalTexturePresenter.js";
 import { decodeLocalPlySplatPayload, filterSplatAttributes } from "./localPly.js";
 import { fetchFirstSmokeSplatPayload, type SplatAttributes } from "./splats.js";
 import { composeOverlayFrameMatrices } from "./splatOverlayFrame.js";
+import { solveHueGatedEmissive, type EmissiveSolveParams } from "./emissiveSolve.js";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -58,6 +59,10 @@ export interface SplatOverlayHandle {
   setViewport(width: number, height: number, devicePixelRatio?: number): void;
   /** Mark that Kaminos sidecar corrections have been applied to the loaded asset. */
   setCorrectionIdentity(correction: SplatSourceIdentity["correctionIdentity"]): void;
+  /** Hot-swap per-splat emissive RGB values into the active overlay scene. */
+  updateEmissive(emissive: Float32Array): { applied: boolean; count?: number; reason?: string };
+  /** Compute hue-gated emissive RGB from original/albedo colors and apply it live. */
+  solveEmissive(params: EmissiveSolveParams): { applied: boolean; count?: number; emissiveSplats?: number; reason?: string };
   /** Load a PLY splat file from a URL or ArrayBuffer. */
   loadPly(source: string | ArrayBuffer, fileName?: string): Promise<void>;
   /** Load from our JSON manifest format (sidecar binary). */
@@ -202,6 +207,19 @@ export async function createSplatOverlay(
     // coordinate frame contract. setCorrectionIdentity records the correction
     // metadata but does not filter vertices — the host controls visual crop
     // through its own scene transform until the overlay has a proper crop API.
+  }
+
+  function updateEmissive(emissive: Float32Array) {
+    if (!scene) return { applied: false, reason: "no scene loaded" };
+    renderer.updateEmissive(scene, emissive);
+    return { applied: true, count: scene.count };
+  }
+
+  function solveEmissive(params: EmissiveSolveParams) {
+    if (!scene) return { applied: false, reason: "no scene loaded" };
+    const result = solveHueGatedEmissive(params);
+    renderer.updateEmissive(scene, result.emissive);
+    return { applied: true, count: scene.count, emissiveSplats: result.emissiveSplats };
   }
 
   function initScene(attributes: SplatAttributes) {
@@ -353,6 +371,8 @@ export async function createSplatOverlay(
     setModelMatrix,
     setViewport,
     setCorrectionIdentity,
+    updateEmissive,
+    solveEmissive,
     loadPly,
     loadManifest,
     loadAttributes,
