@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { decodeLocalPlySplatPayload, applySidecarCorrections, type KaminosSidecar } from "../src/localPly.ts";
@@ -250,19 +249,6 @@ function requireShRest(row: PlyFixtureRow): number[] {
 // Sidecar correction tests
 // ---------------------------------------------------------------------------
 
-test("applySidecarCorrections JSDoc documents that axis flips are not baked", () => {
-  const source = readFileSync(new URL("../src/localPly.ts", import.meta.url), "utf8");
-  const exportIndex = source.indexOf("export function applySidecarCorrections");
-  assert.notEqual(exportIndex, -1, "applySidecarCorrections should stay exported");
-  const commentStart = source.lastIndexOf("/**", exportIndex);
-  const commentEnd = source.indexOf("*/", commentStart);
-  assert.ok(commentStart !== -1 && commentEnd < exportIndex, "applySidecarCorrections should keep its exported contract comment");
-  const jsdoc = source.slice(commentStart, commentEnd + 2);
-
-  assert.doesNotMatch(jsdoc, /axis flips?, then centroid offset/i);
-  assert.match(jsdoc, /axis flips are a scene-transform concern/i);
-});
-
 test("applySidecarCorrections applies centroid offset", () => {
   const attrs = decodeLocalPlySplatPayload("test.ply", binaryPlyFixture([
     { position: [10, 20, 30], dc: [0, 0, 0], opacity: 0, scales: [0, 0, 0], rotation: [1, 0, 0, 0] },
@@ -284,9 +270,10 @@ test("applySidecarCorrections applies centroid offset", () => {
   assert.ok(Math.abs(result.positions[5] - 2) < 0.001);
 });
 
-test("applySidecarCorrections does not bake axis flips into positions", () => {
+test("applySidecarCorrections applies axis flips to positions, normals, and rotations", () => {
   const attrs = decodeLocalPlySplatPayload("test.ply", binaryPlyFixture([
-    { position: [1, 2, 3], dc: [0, 0, 0], opacity: 0, scales: [0, 0, 0], rotation: [1, 0, 0, 0] },
+    { position: [1, 2, 3], dc: [0, 0, 0], opacity: 0, scales: [0, 0, 0], rotation: [1, 0, 0, 0],
+      normal: [0, 0.6, 0.8] },
   ]));
 
   const sidecar: KaminosSidecar = {
@@ -294,11 +281,14 @@ test("applySidecarCorrections does not bake axis flips into positions", () => {
     correction: { axisFlips: [1, 1, -1] },
   };
 
-  // Axis flips are a scene-transform concern, not baked into vertex data
   const result = applySidecarCorrections(attrs, sidecar);
+  // Positions flipped on Z
   assert.ok(Math.abs(result.positions[0] - 1) < 0.001);
   assert.ok(Math.abs(result.positions[1] - 2) < 0.001);
-  assert.ok(Math.abs(result.positions[2] - 3) < 0.001); // NOT negated
+  assert.ok(Math.abs(result.positions[2] - (-3)) < 0.001);
+  // Normals flipped on Z
+  assert.ok(result.normals !== undefined);
+  assert.ok(Math.abs(result.normals![2] - (-0.8)) < 0.001);
 });
 
 test("applySidecarCorrections crops splats outside bounds in preview-normalized space", () => {

@@ -38,14 +38,14 @@ export async function tryFetchSidecar(plyUrl: string): Promise<KaminosSidecar | 
 
 /**
  * Apply Kaminos sidecar corrections to decoded SplatAttributes.
- * Order: crop in preview-normalized space, then apply centroid offset.
- * Axis flips are a scene-transform concern and are not baked into vertex data.
+ * Order: crop (in preview-normalized space), orientation rotation,
+ * axis flips (positions + normals + rotations), centroid offset.
  *
  * Crop bounds in the sidecar are in Kaminos's preview-normalized space:
  *   preview = (raw - boundsCenter) * (2 / maxExtent)
  * The crop box is parented to the splat's visualRoot which shows
- * preview-normalized positions. We crop first, then apply the centroid
- * offset to the surviving splats.
+ * preview-normalized positions. We crop first in that space, then apply
+ * all geometric transforms to the surviving splats.
  */
 export function applySidecarCorrections(
   attrs: SplatAttributes,
@@ -62,7 +62,6 @@ export function applySidecarCorrections(
     const count = attrs.count;
 
     // Compute preview normalization from actual min/max (same as Kaminos parsePlyPointCloud).
-    // Can't use attrs.bounds because those may be percentile-trimmed.
     let rMinX = Infinity, rMinY = Infinity, rMinZ = Infinity;
     let rMaxX = -Infinity, rMaxY = -Infinity, rMaxZ = -Infinity;
     for (let i = 0; i < count; i++) {
@@ -92,23 +91,36 @@ export function applySidecarCorrections(
     }
 
     if (kept === 0) {
-      console.warn(`Sidecar crop filtered all ${count} splats — crop bounds may be stale or in wrong space`);
-    }
-
-    if (kept === 0) {
       console.warn(`Sidecar crop filtered all ${count} splats — crop bounds may be stale`);
     } else if (kept < count) {
       attrs = filterSplatAttributes(attrs, keep, kept);
     }
   }
 
-  // Apply centroid offset only — axis flips are a scene-transform concern
-  // handled by the host (Kaminos) at render time, not baked into vertex data.
-  // Baking flips into positions inverts the geometry relative to the camera,
-  // producing the opposite orientation from what Kaminos shows.
   const positions = attrs.positions;
   const count = attrs.count;
 
+  // Apply asset-local Euler orientation rotation to positions, normals, rotations
+  if (correction.orientation?.rotation) {
+    const orient = quaternionFromEulerXYZ(correction.orientation.rotation);
+    if (!isIdentityQuaternion(orient)) {
+      applyQuaternionToTriples(positions, count, orient);
+      if (attrs.normals) applyQuaternionToTriples(attrs.normals, count, orient);
+      applyQuaternionToRotations(attrs.rotations, count, orient);
+    }
+  }
+
+  // Apply axis flips to positions, normals, and rotations
+  if (correction.axisFlips) {
+    const [fx, fy, fz] = correction.axisFlips;
+    if (fx !== 1 || fy !== 1 || fz !== 1) {
+      applyAxisFlipsToTriples(positions, count, fx, fy, fz);
+      if (attrs.normals) applyAxisFlipsToTriples(attrs.normals, count, fx, fy, fz);
+      applyAxisFlipsToRotations(attrs.rotations, count, fx, fy, fz);
+    }
+  }
+
+  // Apply centroid offset (positions only)
   if (correction.centroidOffset) {
     const [ox, oy, oz] = correction.centroidOffset;
     for (let i = 0; i < count; i++) {
@@ -121,6 +133,96 @@ export function applySidecarCorrections(
 
   attrs.bounds = recomputeBounds(positions, count);
   return attrs;
+}
+
+// --- Sidecar transform helpers ---
+
+function applyAxisFlipsToTriples(values: Float32Array, count: number, fx: number, fy: number, fz: number): void {
+  for (let i = 0; i < count; i++) {
+    const base = i * 3;
+    values[base] *= fx;
+    values[base + 1] *= fy;
+    values[base + 2] *= fz;
+  }
+}
+
+function applyAxisFlipsToRotations(rotations: Float32Array, count: number, fx: number, fy: number, fz: number): void {
+  // Mirror quaternion components: flipping axis A negates the two quaternion
+  // components whose basis bivectors include A.
+  const sx = fy * fz;
+  const sy = fx * fz;
+  const sz = fx * fy;
+  for (let i = 0; i < count; i++) {
+    const base = i * 4;
+    rotations[base + 1] *= sx;
+    rotations[base + 2] *= sy;
+    rotations[base + 3] *= sz;
+    normalizeQuaternionInPlace(rotations, base);
+  }
+}
+
+function applyQuaternionToTriples(values: Float32Array, count: number, q: readonly [number, number, number, number]): void {
+  const [w, x, y, z] = q;
+  for (let i = 0; i < count; i++) {
+    const base = i * 3;
+    const vx = values[base], vy = values[base + 1], vz = values[base + 2];
+    const tx = 2 * (y * vz - z * vy);
+    const ty = 2 * (z * vx - x * vz);
+    const tz = 2 * (x * vy - y * vx);
+    values[base] = vx + w * tx + (y * tz - z * ty);
+    values[base + 1] = vy + w * ty + (z * tx - x * tz);
+    values[base + 2] = vz + w * tz + (x * ty - y * tx);
+  }
+}
+
+function applyQuaternionToRotations(rotations: Float32Array, count: number, q: readonly [number, number, number, number]): void {
+  for (let i = 0; i < count; i++) {
+    const base = i * 4;
+    const r: [number, number, number, number] = [rotations[base], rotations[base + 1], rotations[base + 2], rotations[base + 3]];
+    const m = multiplyQuaternions(q, r);
+    rotations[base] = m[0]; rotations[base + 1] = m[1]; rotations[base + 2] = m[2]; rotations[base + 3] = m[3];
+    normalizeQuaternionInPlace(rotations, base);
+  }
+}
+
+function quaternionFromEulerXYZ(rotation: readonly [number, number, number]): [number, number, number, number] {
+  const [rx, ry, rz] = rotation;
+  const c1 = Math.cos(rx * 0.5), c2 = Math.cos(ry * 0.5), c3 = Math.cos(rz * 0.5);
+  const s1 = Math.sin(rx * 0.5), s2 = Math.sin(ry * 0.5), s3 = Math.sin(rz * 0.5);
+  return normalizeQuaternion([
+    c1 * c2 * c3 - s1 * s2 * s3,
+    s1 * c2 * c3 + c1 * s2 * s3,
+    c1 * s2 * c3 - s1 * c2 * s3,
+    c1 * c2 * s3 + s1 * s2 * c3,
+  ]);
+}
+
+function multiplyQuaternions(
+  a: readonly [number, number, number, number],
+  b: readonly [number, number, number, number],
+): [number, number, number, number] {
+  return normalizeQuaternion([
+    a[0]*b[0] - a[1]*b[1] - a[2]*b[2] - a[3]*b[3],
+    a[0]*b[1] + a[1]*b[0] + a[2]*b[3] - a[3]*b[2],
+    a[0]*b[2] - a[1]*b[3] + a[2]*b[0] + a[3]*b[1],
+    a[0]*b[3] + a[1]*b[2] - a[2]*b[1] + a[3]*b[0],
+  ]);
+}
+
+function normalizeQuaternion(q: readonly [number, number, number, number]): [number, number, number, number] {
+  const len = Math.hypot(q[0], q[1], q[2], q[3]);
+  if (len === 0) return [1, 0, 0, 0];
+  return [q[0]/len, q[1]/len, q[2]/len, q[3]/len];
+}
+
+function normalizeQuaternionInPlace(rotations: Float32Array, base: number): void {
+  const len = Math.hypot(rotations[base], rotations[base+1], rotations[base+2], rotations[base+3]);
+  if (len === 0) { rotations[base] = 1; rotations[base+1] = 0; rotations[base+2] = 0; rotations[base+3] = 0; return; }
+  rotations[base] /= len; rotations[base+1] /= len; rotations[base+2] /= len; rotations[base+3] /= len;
+}
+
+function isIdentityQuaternion(q: readonly [number, number, number, number]): boolean {
+  return Math.abs(q[0] - 1) < 1e-12 && Math.abs(q[1]) < 1e-12 && Math.abs(q[2]) < 1e-12 && Math.abs(q[3]) < 1e-12;
 }
 
 const SH_C0 = 0.28209479177387814;
@@ -601,6 +703,7 @@ export function filterSplatAttributes(
   const newNormals = attrs.normals ? new Float32Array(kept * 3) : undefined;
   const newRoughness = attrs.roughness ? new Float32Array(kept) : undefined;
   const newMetalness = attrs.metalness ? new Float32Array(kept) : undefined;
+  const newEmissive = attrs.emissive ? new Float32Array(kept * 3) : undefined;
   const newSh = attrs.sh
     ? new Float32Array(kept * attrs.sh.coefficientCount * 3)
     : undefined;
@@ -635,6 +738,11 @@ export function filterSplatAttributes(
     }
     if (newRoughness && attrs.roughness) newRoughness[dst] = attrs.roughness[src];
     if (newMetalness && attrs.metalness) newMetalness[dst] = attrs.metalness[src];
+    if (newEmissive && attrs.emissive) {
+      newEmissive[dstVec] = attrs.emissive[srcVec];
+      newEmissive[dstVec + 1] = attrs.emissive[srcVec + 1];
+      newEmissive[dstVec + 2] = attrs.emissive[srcVec + 2];
+    }
     if (newSh && attrs.sh) {
       const coeffCount = attrs.sh.coefficientCount * 3;
       const srcShBase = src * coeffCount;
@@ -661,6 +769,7 @@ export function filterSplatAttributes(
     normals: newNormals,
     roughness: newRoughness,
     metalness: newMetalness,
+    emissive: newEmissive,
     originalIds: newOriginalIds,
     bounds: recomputeBounds(newPositions, kept),
     layout: attrs.layout,
