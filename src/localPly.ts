@@ -38,13 +38,14 @@ export async function tryFetchSidecar(plyUrl: string): Promise<KaminosSidecar | 
 
 /**
  * Apply Kaminos sidecar corrections to decoded SplatAttributes.
- * Order: crop (in preview-normalized space), then axis flips, then centroid offset.
+ * Order: crop in preview-normalized space, then apply centroid offset.
+ * Axis flips are a scene-transform concern and are not baked into vertex data.
  *
  * Crop bounds in the sidecar are in Kaminos's preview-normalized space:
  *   preview = (raw - boundsCenter) * (2 / maxExtent)
  * The crop box is parented to the splat's visualRoot which shows
- * preview-normalized positions. We crop first, then apply the rendering
- * transforms (flip + offset) to the surviving splats.
+ * preview-normalized positions. We crop first, then apply the centroid
+ * offset to the surviving splats.
  */
 export function applySidecarCorrections(
   attrs: SplatAttributes,
@@ -666,4 +667,3 @@ export function filterSplatAttributes(
     splatScale: attrs.splatScale,
   };
 }
-

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { decodeLocalPlySplatPayload, applySidecarCorrections, type KaminosSidecar } from "../src/localPly.ts";
@@ -249,6 +250,19 @@ function requireShRest(row: PlyFixtureRow): number[] {
 // Sidecar correction tests
 // ---------------------------------------------------------------------------
 
+test("applySidecarCorrections JSDoc documents that axis flips are not baked", () => {
+  const source = readFileSync(new URL("../src/localPly.ts", import.meta.url), "utf8");
+  const exportIndex = source.indexOf("export function applySidecarCorrections");
+  assert.notEqual(exportIndex, -1, "applySidecarCorrections should stay exported");
+  const commentStart = source.lastIndexOf("/**", exportIndex);
+  const commentEnd = source.indexOf("*/", commentStart);
+  assert.ok(commentStart !== -1 && commentEnd < exportIndex, "applySidecarCorrections should keep its exported contract comment");
+  const jsdoc = source.slice(commentStart, commentEnd + 2);
+
+  assert.doesNotMatch(jsdoc, /axis flips?, then centroid offset/i);
+  assert.match(jsdoc, /axis flips are a scene-transform concern/i);
+});
+
 test("applySidecarCorrections applies centroid offset", () => {
   const attrs = decodeLocalPlySplatPayload("test.ply", binaryPlyFixture([
     { position: [10, 20, 30], dc: [0, 0, 0], opacity: 0, scales: [0, 0, 0], rotation: [1, 0, 0, 0] },
@@ -311,12 +325,12 @@ test("applySidecarCorrections crops splats outside bounds in preview-normalized 
   assert.equal(result.count, 2);
 });
 
-test("applySidecarCorrections crops in preview space then applies flip and offset", () => {
+test("applySidecarCorrections crops in preview space then applies centroid offset", () => {
   // Positions: [10,10,10], [10.5,10.5,10.5], [15,15,15]
   // Raw bounds: min=[10,10,10] max=[15,15,15], center=[12.5,12.5,12.5], scale=2/5=0.4
   // Preview: [10]→-1.0, [10.5]→-0.8, [15]→1.0
   // Crop in preview space [-1.1, 0.0] keeps [10] and [10.5], removes [15]
-  // Then flip+offset: corrected = raw * 1 - 10
+  // Then offset: corrected = raw - 10
   const attrs = decodeLocalPlySplatPayload("test.ply", binaryPlyFixture([
     { position: [10, 10, 10], dc: [0, 0, 0], opacity: 0, scales: [0, 0, 0], rotation: [1, 0, 0, 0] },
     { position: [10.5, 10.5, 10.5], dc: [0, 0, 0], opacity: 0, scales: [0, 0, 0], rotation: [1, 0, 0, 0] },
