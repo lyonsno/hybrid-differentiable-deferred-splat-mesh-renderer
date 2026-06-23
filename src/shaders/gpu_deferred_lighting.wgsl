@@ -124,9 +124,26 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let splatOpacity = colorSample.a; // opacity from compositor (1-T)
   let depth = textureLoad(depthTexture, px, 0).r;
 
-  // Background: pass through with zero opacity
-  if (depth >= 0.9999) {
-    textureStore(outputLit, px, vec4f(albedoSrgb, 0.0));
+  // Background: sample environment map for skybox, or pass through dark
+  if (depth >= 0.9999 || depth <= 0.0001) {
+    let envSize = textureDimensions(envMap);
+    if (envSize.x > 1u) {
+      // Reconstruct view direction from pixel coordinate
+      let ndc = vec2f(
+        (f32(px.x) + 0.5) / params.viewport.x * 2.0 - 1.0,
+        1.0 - (f32(px.y) + 0.5) / params.viewport.y * 2.0,
+      );
+      let clipNear = vec4f(ndc, 0.0, 1.0);
+      let clipFar = vec4f(ndc, 1.0, 1.0);
+      let worldNear = params.viewProjInv * clipNear;
+      let worldFar = params.viewProjInv * clipFar;
+      let viewDir = normalize(worldFar.xyz / worldFar.w - worldNear.xyz / worldNear.w);
+      let envColor = sampleEnvEquirectLod(viewDir, 0.0);
+      let tonemapped = envColor / (envColor + vec3f(1.0));
+      textureStore(outputLit, px, vec4f(linearToSrgb(tonemapped), 0.0));
+    } else {
+      textureStore(outputLit, px, vec4f(albedoSrgb, 0.0));
+    }
     return;
   }
 
