@@ -185,16 +185,29 @@ python multiview_normals.py --ply input.ply --output output.ply --views 8 \
 
 ### Normal coordinate conventions
 
-- MoGE's facing-camera normal is `(0, 0, -1)`. The Z component must be negated
-  before `cam_to_world` rotation: `(0, 0, -1)` → `(0, 0, +1)` → `cam_to_world`
-  maps to the outward surface direction. Without this, normals point toward the
-  camera instead of away, making `N·V` negative and killing all specular/metallic.
-- `cam_to_world = view_matrix[:3, :3].T` converts camera-space normals to world space.
-- **Lotus-D convention is unverified** — it may use `(0, 0, +1)` for facing-camera,
-  in which case the Z-flip should be skipped. Test before using `--normal-model lotus`.
-- The renderer's deferred lighting shader expects world-space normals (it computes
-  `V = normalize(cameraPos - worldPos)` in world space).
-- For single-view baking without rotation, the normals are in camera space and only
+MoGE uses image convention (X=right, Y=down, Z=into scene). The renderer
+uses OpenGL convention (X=right-in-view but left-in-scene due to mirroring,
+Y=up). Before applying `cam_to_world` rotation, **negate X and Y**:
+
+```python
+n[:, 0] = -n[:, 0]  # mirror X (image right → scene left)
+n[:, 1] = -n[:, 1]  # Y-down → Y-up
+world_normals = (cam_to_world_rot @ n.T).T
+```
+
+Where `cam_to_world_rot = view_matrix[:3, :3].T` (transpose of the view
+rotation converts camera space to world space).
+
+**How we found this:** Compare baked normals in the renderer's normal debug
+view against screen-space depth-derived normals (loaded asset with no `nx/ny/nz`).
+Camera-facing surfaces should be purple/blue `(0.5, 0.5, 1.0)` = normal `(0, 0, +1)`.
+Without the flips, the vertical and horizontal gradients are inverted.
+
+- **Lotus-D** uses `(0, 0, +1)` for facing-camera (opposite Z from MoGE).
+  The X and Y flips may differ — verify by comparing against screen-space
+  normals before using `--normal-model lotus` with rotation.
+- The deferred lighting shader expects world-space normals (`V = normalize(cameraPos - worldPos)`).
+- For single-view baking without rotation, normals are in camera space and only
   look correct when viewed from the bake camera angle.
 
 ### Critical: renderer and bake pipeline must see the same splats
