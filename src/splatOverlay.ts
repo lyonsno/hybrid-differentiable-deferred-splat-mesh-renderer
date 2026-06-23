@@ -14,6 +14,7 @@ import {
 import { createAlphaTexturePresenter } from "./tileLocalTexturePresenter.js";
 import { decodeLocalPlySplatPayload, filterSplatAttributes } from "./localPly.js";
 import { fetchFirstSmokeSplatPayload, type SplatAttributes } from "./splats.js";
+import { composeOverlayFrameMatrices } from "./splatOverlayFrame.js";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -90,32 +91,6 @@ export interface SplatOverlayOptions {
 // Matrix utilities
 // ---------------------------------------------------------------------------
 
-function multiplyMat4(a: Float32Array, b: Float32Array): Float32Array {
-  const out = new Float32Array(16);
-  for (let i = 0; i < 4; i++) {
-    for (let j = 0; j < 4; j++) {
-      out[j * 4 + i] =
-        a[0 * 4 + i] * b[j * 4 + 0] +
-        a[1 * 4 + i] * b[j * 4 + 1] +
-        a[2 * 4 + i] * b[j * 4 + 2] +
-        a[3 * 4 + i] * b[j * 4 + 3];
-    }
-  }
-  return out;
-}
-
-// Y-flip to match WebGPU clip space convention used by the splat compositor
-const VERTICAL_FLIP = new Float32Array([
-  1, 0, 0, 0,
-  0, -1, 0, 0,
-  0, 0, 1, 0,
-  0, 0, 0, 1,
-]);
-
-function composeViewProj(proj: Float32Array, view: Float32Array): Float32Array {
-  return multiplyMat4(VERTICAL_FLIP, multiplyMat4(proj, view));
-}
-
 function cameraFollowLightDir(pos: Float32Array): [number, number, number] {
   const len = Math.sqrt(pos[0] * pos[0] + pos[1] * pos[1] + pos[2] * pos[2]) || 1;
   return [-pos[0] / len, -pos[1] / len, -pos[2] / len];
@@ -178,29 +153,41 @@ export async function createSplatOverlay(
   let animFrameId = 0;
 
   // Camera state (written by host via setCameraMatrices)
+  let hostView = new Float32Array(16);
+  let hostProj = new Float32Array(16);
+  let hostCameraPos = new Float32Array(3);
   let currentView = new Float32Array(16);
   let currentProj = new Float32Array(16);
   let currentViewProj = new Float32Array(16);
   let currentCameraPos = new Float32Array(3);
-  // Model matrix (written by host via setModelMatrix) — not yet applied to rendering,
-  // stored for contract completeness and future objectWorldMatrix integration.
-  let _modelMatrix = new Float32Array(IDENTITY_MAT4);
+  // Model matrix (written by host via setModelMatrix) is composed into the
+  // renderer view/projection so raw splats render in the Kaminos object frame.
+  let modelMatrix = new Float32Array(IDENTITY_MAT4);
   // Viewport override
   let _viewportOverride: { width: number; height: number; dpr: number } | null = null;
+
+  function updateEffectiveFrame() {
+    currentProj.set(hostProj);
+    const frame = composeOverlayFrameMatrices(hostView, hostProj, hostCameraPos, modelMatrix);
+    currentView.set(frame.viewMatrix);
+    currentViewProj = frame.viewProj as Float32Array<ArrayBuffer>;
+    currentCameraPos.set(frame.cameraPosition);
+  }
 
   function setCameraMatrices(
     viewMatrix: Float32Array,
     projectionMatrix: Float32Array,
     cameraPosition: Float32Array,
   ) {
-    currentView.set(viewMatrix);
-    currentProj.set(projectionMatrix);
-    currentViewProj = composeViewProj(projectionMatrix, viewMatrix) as Float32Array<ArrayBuffer>;
-    currentCameraPos.set(cameraPosition);
+    hostView.set(viewMatrix);
+    hostProj.set(projectionMatrix);
+    hostCameraPos.set(cameraPosition);
+    updateEffectiveFrame();
   }
 
   function setModelMatrix(matrix: Float32Array) {
-    _modelMatrix = new Float32Array(matrix);
+    modelMatrix = new Float32Array(matrix);
+    updateEffectiveFrame();
   }
 
   function setViewport(width: number, height: number, devicePixelRatio = 1) {
@@ -229,7 +216,9 @@ export async function createSplatOverlay(
     const initProj = currentProj[0] === 0
       ? new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1, -1, 0, 0, -0.02, 0])
       : currentProj;
-    const initViewProj = multiplyMat4(initProj, initView);
+    const initViewProj = currentViewProj[0] === 0
+      ? new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1, -1, 0, 0, -0.02, 0])
+      : currentViewProj;
     scene = renderer.loadScene(attributes, initView, initViewProj, width, height);
     lastAttributes = attributes;
   }
