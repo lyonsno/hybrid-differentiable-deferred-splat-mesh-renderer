@@ -156,42 +156,55 @@ def run_moge_normals(image: np.ndarray, device: torch.device, model=None):
 
 
 def run_lotus_normals(image: np.ndarray, device: torch.device, model=None):
-    """Run Lotus-D normal estimation. Returns normal map (H, W, 3) in [-1, 1] and the pipeline."""
-    sys.path.insert(0, str(Path.home() / "dev" / "Lotus"))
-    from pipeline import LotusDPipeline
+    """Run Lotus-D normal estimation via subprocess (needs its own venv).
 
-    if model is None:
-        LOG.info("Loading Lotus-D v1.1...")
-        model = LotusDPipeline.from_pretrained(
-            "jingheya/lotus-normal-d-v1-1",
-            torch_dtype=torch.float32,
-        ).to(device)
-        model.set_progress_bar_config(disable=True)
+    Returns normal map (H, W, 3) in [-1, 1] and None (no persistent model).
+    """
+    import tempfile
+    lotus_dir = Path.home() / "dev" / "Lotus"
+    lotus_python = lotus_dir / ".venv" / "bin" / "python"
 
-    img_tensor = torch.from_numpy(image.copy()).permute(2, 0, 1).unsqueeze(0).float()
-    img_tensor = img_tensor / 127.5 - 1.0
-    img_tensor = img_tensor.to(device)
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+        input_path = f.name
+        Image.fromarray(image).save(input_path)
 
-    task_emb = torch.tensor([1, 0]).float().unsqueeze(0).to(device)
-    task_emb = torch.cat([torch.sin(task_emb), torch.cos(task_emb)], dim=-1)
+    output_path = input_path.replace(".png", "_normals.npy")
 
-    from contextlib import nullcontext
-    autocast_ctx = nullcontext() if torch.backends.mps.is_available() else torch.autocast(device.type)
-    with torch.no_grad(), autocast_ctx:
-        pred = model(
-            rgb_in=img_tensor,
-            prompt='',
-            num_inference_steps=1,
-            generator=None,
-            output_type='np',
-            timesteps=[999],
-            task_emb=task_emb,
-        ).images[0]
+    script = f"""
+import numpy as np, torch
+from PIL import Image
+from pipeline import LotusDPipeline
+from contextlib import nullcontext
 
-    normals = pred * 2.0 - 1.0
-    norms = np.linalg.norm(normals, axis=2, keepdims=True)
-    normals = normals / np.maximum(norms, 1e-8)
-    return normals, model
+image = np.array(Image.open("{input_path}").convert("RGB"))
+model = LotusDPipeline.from_pretrained("jingheya/lotus-normal-d-v1-1", torch_dtype=torch.float32).to("{device}")
+model.set_progress_bar_config(disable=True)
+img_tensor = torch.from_numpy(image.copy()).permute(2,0,1).unsqueeze(0).float() / 127.5 - 1.0
+img_tensor = img_tensor.to("{device}")
+task_emb = torch.tensor([1,0]).float().unsqueeze(0).to("{device}")
+task_emb = torch.cat([torch.sin(task_emb), torch.cos(task_emb)], dim=-1)
+with torch.no_grad(), nullcontext():
+    pred = model(rgb_in=img_tensor, prompt="", num_inference_steps=1,
+                 generator=None, output_type="np", timesteps=[999],
+                 task_emb=task_emb).images[0]
+normals = pred * 2.0 - 1.0
+norms = np.linalg.norm(normals, axis=2, keepdims=True)
+normals = normals / np.maximum(norms, 1e-8)
+np.save("{output_path}", normals)
+print("OK")
+"""
+    result = subprocess.run(
+        [str(lotus_python), "-c", script],
+        capture_output=True, text=True, timeout=300,
+        cwd=str(lotus_dir),
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Lotus-D inference failed: {result.stderr[:500]}")
+
+    normals = np.load(output_path)
+    Path(input_path).unlink(missing_ok=True)
+    Path(output_path).unlink(missing_ok=True)
+    return normals, None  # no persistent model (subprocess)
 
 
 def project_splats_to_view(positions: np.ndarray, camera: dict, normal_map_shape: tuple[int, int]):
@@ -224,7 +237,8 @@ def project_splats_to_view(positions: np.ndarray, camera: dict, normal_map_shape
 
 
 def sample_normal_map(normal_map: np.ndarray, uv: np.ndarray, valid: np.ndarray,
-                      cam_to_world_rot: np.ndarray | None = None) -> np.ndarray:
+                      cam_to_world_rot: np.ndarray | None = None,
+                      flip_z: bool = True) -> np.ndarray:
     """Bilinear sample normals from map at projected positions.
 
     If cam_to_world_rot is provided (3x3 rotation matrix), transforms the
@@ -250,13 +264,14 @@ def sample_normal_map(normal_map: np.ndarray, uv: np.ndarray, valid: np.ndarray,
     norms = np.linalg.norm(n, axis=1, keepdims=True)
     n = n / np.maximum(norms, 1e-8)
 
-    # Transform from MoGE camera space to world space.
-    # MoGE's facing-camera normal is (0,0,-1). cam_to_world @ (0,0,-1) gives
-    # the camera look direction (into scene), but the surface outward normal
-    # should point away from the camera. Negate Z before rotation so that
-    # (0,0,-1) becomes (0,0,+1), which cam_to_world maps to -look_dir = outward.
+    # Transform from normal estimator camera space to renderer world space.
+    # MoGE uses image convention (X-right, Y-down). The renderer uses OpenGL
+    # convention (X-right, Y-up) but the rendered image is mirrored so
+    # MoGE's X-right maps to scene-left. Negate X and Y before rotation.
     if cam_to_world_rot is not None:
-        n[:, 2] = -n[:, 2]
+        if flip_z:
+            n[:, 0] = -n[:, 0]  # mirror X
+            n[:, 1] = -n[:, 1]  # Y-down → Y-up
         n = (cam_to_world_rot @ n.T).T
 
     normals[valid] = n
@@ -464,7 +479,9 @@ def main():
             # Only bake normals for splats inside the sidecar crop
             uv, valid = project_splats_to_view(positions, camera, normal_map.shape[:2])
             bakeable = valid & crop_mask
-            view_normals = sample_normal_map(normal_map, uv, bakeable, cam_to_world_rot=cam_to_world_rot)
+            view_normals = sample_normal_map(normal_map, uv, bakeable,
+                                             cam_to_world_rot=cam_to_world_rot,
+                                             flip_z=True)
             LOG.info(f"  Projected: {valid.sum()}/{N} visible, {bakeable.sum()} bakeable")
 
             all_normals.append(view_normals)
