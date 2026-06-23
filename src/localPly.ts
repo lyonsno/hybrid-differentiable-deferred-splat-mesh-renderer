@@ -17,6 +17,8 @@ export interface KaminosSidecar {
       enabled: boolean;
       min: [number, number, number];
       max: [number, number, number];
+      frame?: string;
+      sourceToCropMatrix?: number[];
     };
   };
   updatedAt?: string;
@@ -423,6 +425,7 @@ function parseBinaryLittleEndianPlyHeader(bytes: ArrayBuffer): PlyHeader {
   };
 }
 
+
 function findHeaderEnd(bytes: ArrayBuffer): { headerTextEnd: number; dataOffset: number } {
   const data = new Uint8Array(bytes);
   const marker = "end_header";
@@ -666,4 +669,3 @@ export function filterSplatAttributes(
     splatScale: attrs.splatScale,
   };
 }
-
