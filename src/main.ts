@@ -247,6 +247,23 @@ function normalizeOperatorWitnessViewMode(mode: string): RealScaniverseWitnessVi
   return "default";
 }
 
+type SidecarLoadLog = Record<string, unknown>;
+
+function exposeSidecarLoadLog(log: SidecarLoadLog, canvas: HTMLCanvasElement): void {
+  const runtimeWindow = window as unknown as {
+    __MESH_SPLAT_SIDECAR_LOAD_LOG__?: SidecarLoadLog;
+  };
+  runtimeWindow.__MESH_SPLAT_SIDECAR_LOAD_LOG__ = log;
+  document.body.dataset.sidecarFound = String(log.sidecarFound);
+  document.body.dataset.sidecarRawSplatCount = String(log.rawSplatCount ?? "");
+  document.body.dataset.sidecarPostCropCount = String(log.postCropCount ?? "");
+  document.body.dataset.sidecarPlyPath = String(log.plyPath ?? "");
+  canvas.dataset.sidecarFound = String(log.sidecarFound);
+  canvas.dataset.sidecarRawSplatCount = String(log.rawSplatCount ?? "");
+  canvas.dataset.sidecarPostCropCount = String(log.postCropCount ?? "");
+  canvas.dataset.sidecarPlyPath = String(log.plyPath ?? "");
+}
+
 // ---------------------------------------------------------------------------
 // Light direction computation
 // ---------------------------------------------------------------------------
@@ -764,20 +781,22 @@ async function main() {
         schema: "handy-renderman.sidecar-load-log.v0",
         timestamp: new Date().toISOString(),
         plyPath: path,
+        sidecarSkippedByNosidecar: skipSidecar,
         sidecarFound: !!sidecar,
         rawSplatCount: attrs.count,
         rawBoundsMin: Array.from(attrs.bounds.min),
         rawBoundsMax: Array.from(attrs.bounds.max),
       };
+      sidecarLog.preCropCount = attrs.count;
       if (sidecar) {
         console.log(`Applying Kaminos sidecar corrections from ${path}.kaminos-splat.json`);
         sidecarLog.sidecar = sidecar;
-        sidecarLog.preCropCount = attrs.count;
         attrs = applySidecarCorrections(attrs, sidecar);
-        sidecarLog.postCropCount = attrs.count;
         sidecarLog.correctedBoundsMin = Array.from(attrs.bounds.min);
         sidecarLog.correctedBoundsMax = Array.from(attrs.bounds.max);
       }
+      sidecarLog.postCropCount = attrs.count;
+      exposeSidecarLoadLog(sidecarLog, canvas);
       // Write sidecar load log to .telemetry/sidecar-load.json
       fetch("/api/sidecar-log", {
         method: "POST",
