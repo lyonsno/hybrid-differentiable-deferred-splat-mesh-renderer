@@ -687,7 +687,6 @@ function destroySceneInternal(scene: SplatScene): void {
   scene.buffers.rotationBuffer.destroy();
   scene.buffers.materialBuffer.destroy();
   scene.buffers.normalBuffer?.destroy();
-  scene.buffers.detailNormalBuffer?.destroy();
   scene.buffers.shDataBuffer.destroy();
   scene.buffers.originalIdBuffer.destroy();
   internal.gpuSort.keyBuffer.destroy();

@@ -74,8 +74,7 @@ export interface SplatGpuBuffers {
   scaleBuffer: GPUBuffer;
   rotationBuffer: GPUBuffer;
   materialBuffer: GPUBuffer;  // pack2x16float(roughness, metalness) per splat
-  normalBuffer?: GPUBuffer;
-  detailNormalBuffer?: GPUBuffer;
+  normalBuffer?: GPUBuffer;  // [geometric normals (N*3) | detail normals (N*3)] concatenated
   shDataBuffer: GPUBuffer;    // DC colors (3 floats/splat) + SH coefficients + emissive (3 floats)
   shDegree: number;
   originalIdBuffer: GPUBuffer;
@@ -406,10 +405,11 @@ export function uploadSplatAttributeBuffers(
       "first_smoke_splat_materials"
     ),
     normalBuffer: attributes.normals
-      ? createMappedStorageBuffer(device, attributes.normals, "first_smoke_splat_normals")
-      : undefined,
-    detailNormalBuffer: attributes.detailNormals
-      ? createMappedStorageBuffer(device, attributes.detailNormals, "first_smoke_splat_detail_normals")
+      ? createMappedStorageBuffer(
+          device,
+          packNormalBuffer(attributes.count, attributes.normals, attributes.detailNormals),
+          "first_smoke_splat_normals",
+        )
       : undefined,
     shDataBuffer: createMappedStorageBuffer(
       device,
@@ -442,6 +442,17 @@ function f32ToF16(value: number): number {
 }
 
 /** Pack roughness + metalness into u32 array matching WGSL pack2x16float layout. */
+/** Pack geometric normals and optional detail normals into one buffer.
+ *  Layout: [geometric normals (count*3 f32)] [detail normals (count*3 f32)]
+ *  The shader reads detail normals at offset splatCount*3. */
+function packNormalBuffer(count: number, normals: Float32Array, detailNormals?: Float32Array): Float32Array {
+  if (!detailNormals) return normals;
+  const out = new Float32Array(count * 6);
+  out.set(normals, 0);
+  out.set(detailNormals, count * 3);
+  return out;
+}
+
 function packMaterialBuffer(count: number, roughness?: Float32Array, metalness?: Float32Array): Uint32Array {
   const out = new Uint32Array(count);
   const defaultRoughness = 0.75;
