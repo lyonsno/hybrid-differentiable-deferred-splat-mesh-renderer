@@ -247,28 +247,31 @@ fn project_splats(@builtin(global_invocation_id) globalId: vec3u) {
     );
     let detailLen = length(detail);
     if (detailLen > 0.001) {
-      // Build TBN from covariance axes: tangent and bitangent are the two
-      // largest-scale axes, normal is the smallest (already computed above).
-      // Sort axes by scale to identify tangent plane.
-      var T: vec3f;
-      var B: vec3f;
+      // Build TBN from covariance axes, projected onto the geometric normal's
+      // tangent plane. This ensures the TBN is valid even when the baked normal
+      // diverges from the covariance-derived normal.
+      // Pick the largest-scale covariance axis as the initial tangent candidate.
+      var tCandidate: vec3f;
       if (len0 >= len1 && len0 >= len2) {
-        T = normalize(axis0);
-        B = select(normalize(axis2), normalize(axis1), len1 >= len2);
+        tCandidate = axis0;
       } else if (len1 >= len2) {
-        T = normalize(axis1);
-        B = select(normalize(axis2), normalize(axis0), len0 >= len2);
+        tCandidate = axis1;
       } else {
-        T = normalize(axis2);
-        B = select(normalize(axis1), normalize(axis0), len0 >= len1);
+        tCandidate = axis2;
       }
-      // Ensure B is orthogonal to both T and splatNormal
-      B = normalize(cross(splatNormal, T));
-      T = normalize(cross(B, splatNormal));
+      // Project onto splatNormal's tangent plane: remove the normal component
+      let tProjected = tCandidate - splatNormal * dot(tCandidate, splatNormal);
+      let tLen = length(tProjected);
+      // Guard: if the candidate is parallel to the normal, skip perturbation
+      if (tLen > 0.001) {
+        let T = tProjected / tLen;
+        let B = cross(splatNormal, T); // already unit length (N and T are orthonormal)
 
-      // Apply tangent-space perturbation: composed = T*dx + B*dy + N*dz, normalized
-      let dn = detail / detailLen;
-      splatNormal = normalize(T * dn.x + B * dn.y + splatNormal * dn.z);
+        // Apply tangent-space perturbation: composed = T*dx + B*dy + N*dz
+        // Detail normals are unit vectors in tangent space (z=1 = unperturbed).
+        let dn = detail / detailLen;
+        splatNormal = normalize(T * dn.x + B * dn.y + splatNormal * dn.z);
+      }
     }
   }
   projCache[base + 8u] = pack2x16float(octEncode(splatNormal));
