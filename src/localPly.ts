@@ -291,11 +291,13 @@ export function decodeLocalPlySplatPayload(
   const hasRoughness = fields.has("roughness");
   const hasMetallic = fields.has("metallic");
   const hasEmissive = fields.has("emissive_r") && fields.has("emissive_g") && fields.has("emissive_b");
+  const hasDetailNormals = fields.has("detail_normal_x") && fields.has("detail_normal_y") && fields.has("detail_normal_z");
   const shLayout = discoverPlyShLayout(fields);
   const normals = hasNormals ? new Float32Array(count * 3) : undefined;
   const roughness = hasRoughness ? new Float32Array(count) : undefined;
   const metalness = hasMetallic ? new Float32Array(count) : undefined;
   const emissive = hasEmissive ? new Float32Array(count * 3) : undefined;
+  const detailNormals = hasDetailNormals ? new Float32Array(count * 3) : undefined;
   const shCoefficients =
     shLayout === undefined
       ? undefined
@@ -382,6 +384,11 @@ export function decodeLocalPlySplatPayload(
       emissive[vecBase + 1] = readProperty(view, rowOffset, fields.get("emissive_g")!);
       emissive[vecBase + 2] = readProperty(view, rowOffset, fields.get("emissive_b")!);
     }
+    if (hasDetailNormals && detailNormals !== undefined) {
+      detailNormals[vecBase] = readProperty(view, rowOffset, fields.get("detail_normal_x")!);
+      detailNormals[vecBase + 1] = readProperty(view, rowOffset, fields.get("detail_normal_y")!);
+      detailNormals[vecBase + 2] = readProperty(view, rowOffset, fields.get("detail_normal_z")!);
+    }
     if (shLayout !== undefined && shCoefficients !== undefined) {
       writePlyShRow(view, rowOffset, shLayout, shCoefficients, row);
     }
@@ -418,6 +425,7 @@ export function decodeLocalPlySplatPayload(
     roughness,
     metalness,
     emissive,
+    detailNormals,
     originalIds,
     bounds,
     layout: FIRST_SMOKE_SPLAT_LAYOUT,
@@ -704,6 +712,7 @@ export function filterSplatAttributes(
   const newRoughness = attrs.roughness ? new Float32Array(kept) : undefined;
   const newMetalness = attrs.metalness ? new Float32Array(kept) : undefined;
   const newEmissive = attrs.emissive ? new Float32Array(kept * 3) : undefined;
+  const newDetailNormals = attrs.detailNormals ? new Float32Array(kept * 3) : undefined;
   const newSh = attrs.sh
     ? new Float32Array(kept * attrs.sh.coefficientCount * 3)
     : undefined;
@@ -743,6 +752,11 @@ export function filterSplatAttributes(
       newEmissive[dstVec + 1] = attrs.emissive[srcVec + 1];
       newEmissive[dstVec + 2] = attrs.emissive[srcVec + 2];
     }
+    if (newDetailNormals && attrs.detailNormals) {
+      newDetailNormals[dstVec] = attrs.detailNormals[srcVec];
+      newDetailNormals[dstVec + 1] = attrs.detailNormals[srcVec + 1];
+      newDetailNormals[dstVec + 2] = attrs.detailNormals[srcVec + 2];
+    }
     if (newSh && attrs.sh) {
       const coeffCount = attrs.sh.coefficientCount * 3;
       const srcShBase = src * coeffCount;
@@ -770,6 +784,7 @@ export function filterSplatAttributes(
     roughness: newRoughness,
     metalness: newMetalness,
     emissive: newEmissive,
+    detailNormals: newDetailNormals,
     originalIds: newOriginalIds,
     bounds: recomputeBounds(newPositions, kept),
     layout: attrs.layout,

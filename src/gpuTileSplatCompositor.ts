@@ -199,6 +199,7 @@ export function createTileSplatCompositor(
       { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // materialData (packed roughness+metalness)
       { binding: 9, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // normals
       { binding: 10, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // shData (DC colors + SH coefficients + emissive)
+      { binding: 11, visibility: GPUShaderStage.COMPUTE, buffer: { type: "read-only-storage" } }, // detailNormalData (tangent-space detail normals)
     ],
   });
 
@@ -792,6 +793,7 @@ export function createTileSplatBindGroups(
     opacityBuffer: GPUBuffer;
     materialBuffer: GPUBuffer;
     normalBuffer?: GPUBuffer;
+    detailNormalBuffer?: GPUBuffer;
     shDataBuffer: GPUBuffer;
     sortedIndexBuffer: GPUBuffer;
   },
@@ -801,6 +803,12 @@ export function createTileSplatBindGroups(
   // Empty normal buffer signals the shader to use covariance-derived normals.
   const normalBuffer = splatBuffers.normalBuffer ?? device.createBuffer({
     label: "default_empty_normals",
+    size: 16,
+    usage: GPUBufferUsage.STORAGE,
+  });
+  // Empty detail normal buffer means no tangent-space detail perturbation.
+  const detailNormalBuffer = splatBuffers.detailNormalBuffer ?? device.createBuffer({
+    label: "default_empty_detail_normals",
     size: 16,
     usage: GPUBufferUsage.STORAGE,
   });
@@ -821,6 +829,7 @@ export function createTileSplatBindGroups(
       { binding: 8, resource: { buffer: splatBuffers.materialBuffer } },
       { binding: 9, resource: { buffer: normalBuffer } },
       { binding: 10, resource: { buffer: splatBuffers.shDataBuffer } },
+      { binding: 11, resource: { buffer: detailNormalBuffer } },
     ],
   });
 

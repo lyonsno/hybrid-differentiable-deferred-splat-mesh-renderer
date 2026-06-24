@@ -52,6 +52,7 @@ struct FrameUniforms {
 @group(0) @binding(8) var<storage, read> materialData: array<u32>;  // pack2x16float(roughness, metalness) per splat
 @group(0) @binding(9) var<storage, read> normalData: array<f32>;  // per-splat nx,ny,nz (stride 3) or empty
 @group(0) @binding(10) var<storage, read> shData: array<f32>;     // per-splat: [dc_r, dc_g, dc_b, sh..., emissive_r, emissive_g, emissive_b]
+@group(0) @binding(11) var<storage, read> detailNormalData: array<f32>;  // tangent-space detail normals (stride 3) or empty
 
 // --- SH basis constants (3DGS reference) ---
 const SH_C1 = 0.4886025119029199;
@@ -231,6 +232,43 @@ fn project_splats(@builtin(global_invocation_id) globalId: vec3u) {
     let bakedLen = length(baked);
     if (bakedLen > 0.001) {
       splatNormal = baked / bakedLen;
+    }
+  }
+
+  // Tangent-space detail normal perturbation using covariance-derived TBN.
+  // The two largest-scale axes of the Gaussian form the tangent plane.
+  // Detail normals are in tangent space: (dx, dy, dz) where z=1 is unperturbed.
+  let detailBase = splatId * 3u;
+  if (detailBase + 2u < arrayLength(&detailNormalData)) {
+    let detail = vec3f(
+      detailNormalData[detailBase],
+      detailNormalData[detailBase + 1u],
+      detailNormalData[detailBase + 2u],
+    );
+    let detailLen = length(detail);
+    if (detailLen > 0.001) {
+      // Build TBN from covariance axes: tangent and bitangent are the two
+      // largest-scale axes, normal is the smallest (already computed above).
+      // Sort axes by scale to identify tangent plane.
+      var T: vec3f;
+      var B: vec3f;
+      if (len0 >= len1 && len0 >= len2) {
+        T = normalize(axis0);
+        B = select(normalize(axis2), normalize(axis1), len1 >= len2);
+      } else if (len1 >= len2) {
+        T = normalize(axis1);
+        B = select(normalize(axis2), normalize(axis0), len0 >= len2);
+      } else {
+        T = normalize(axis2);
+        B = select(normalize(axis1), normalize(axis0), len0 >= len1);
+      }
+      // Ensure B is orthogonal to both T and splatNormal
+      B = normalize(cross(splatNormal, T));
+      T = normalize(cross(B, splatNormal));
+
+      // Apply tangent-space perturbation: composed = T*dx + B*dy + N*dz, normalized
+      let dn = detail / detailLen;
+      splatNormal = normalize(T * dn.x + B * dn.y + splatNormal * dn.z);
     }
   }
   projCache[base + 8u] = pack2x16float(octEncode(splatNormal));
