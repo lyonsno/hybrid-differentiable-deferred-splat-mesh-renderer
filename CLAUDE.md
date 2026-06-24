@@ -62,6 +62,7 @@ Splat assets for Kaminos live in `~/.local/state/kaminos/assets/splats/inbox/`.
 
 ## Key architecture facts
 
+- **10 storage buffer limit**: WebGPU `maxStorageBuffersPerShaderStage` defaults to 10. The projection shader currently uses exactly 10 storage buffers (bindings 1-10). **Do not add more storage bindings without packing existing ones.** If you need a new per-splat channel, concatenate it into an existing buffer (e.g., normalData already packs geometric + detail normals at offset `splatCount*3`).
 - **Deferred pipeline**: G-buffer (color, depth, oct-encoded normals, packed material, emissive) -> Cook-Torrance BRDF lighting pass
 - **Overlay API** (`src/splatOverlay.ts`): The seam between this renderer and Kaminos. Exposes `setCameraMatrices`, `setModelMatrix`, `setViewport`, `loadPly`, `render`, `capabilities`, `sourceIdentity`.
 - **Compute shaders**: 8 WGSL shaders in `src/shaders/` — projection, tiling, radix sort, bitonic sort, bucket cascade, compositing, deferred lighting
