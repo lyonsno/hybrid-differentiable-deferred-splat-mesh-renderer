@@ -82,6 +82,7 @@ export interface RenderFrameParams {
   lightIntensity: number;
   ambientIntensity: number;
   specularOnly?: boolean;
+  forceScreenSpaceNormals?: boolean;
   emissiveIntensity?: number;
   emissiveThreshold?: number;
   near?: number;
@@ -1023,7 +1024,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
       // Screen-space normal reconstruction + GTAO + deferred lighting
       const vpInv = mat4Inverse(params.viewProj);
       if (vpInv) {
-        if (!scene.hasPerSplatNormals) {
+        if (!scene.hasPerSplatNormals || params.forceScreenSpaceNormals) {
           screenSpaceNormals.encode(
             encoder,
             scene.gbufferDepthView,

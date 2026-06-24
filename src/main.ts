@@ -87,6 +87,8 @@ const bloomThresholdSlider = document.getElementById("bloomThreshold") as HTMLIn
 const bloomThresholdValEl = document.getElementById("bloomThresholdVal");
 const bloomIntensitySlider = document.getElementById("bloomIntensity") as HTMLInputElement | null;
 const bloomIntensityValEl = document.getElementById("bloomIntensityVal");
+const forceSSNormalsCheckbox = document.getElementById("forceSSNormals") as HTMLInputElement | null;
+const forceSSNormalsValEl = document.getElementById("forceSSNormalsVal");
 const envSelectEl = document.getElementById("envSelect") as HTMLSelectElement | null;
 const roughContrastSlider = document.getElementById("roughContrast") as HTMLInputElement | null;
 const roughContrastValEl = document.getElementById("roughContrastVal");
@@ -187,6 +189,7 @@ let fixedLightElevation = settings.fixedLightElevation;
 let lightIntensity = settings.lightIntensity;
 let ambientIntensity = settings.ambientIntensity;
 let specularOnly = false;
+let forceScreenSpaceNormals = false;
 let emissiveIntensity = settings.emissiveIntensity;
 let emissiveThreshold = settings.emissiveThreshold;
 let aoRadius = settings.aoRadius;
@@ -560,6 +563,11 @@ async function main() {
     syncSliders();
     requestFrame();
   });
+  forceSSNormalsCheckbox?.addEventListener("change", () => {
+    forceScreenSpaceNormals = forceSSNormalsCheckbox!.checked;
+    if (forceSSNormalsValEl) forceSSNormalsValEl.textContent = forceScreenSpaceNormals ? "on" : "off";
+    requestFrame();
+  });
   envIntensitySlider?.addEventListener("input", () => {
     envIntensity = Number(envIntensitySlider!.value);
     syncSliders();
@@ -911,6 +919,7 @@ async function main() {
       lightIntensity,
       ambientIntensity,
       specularOnly,
+      forceScreenSpaceNormals,
       emissiveIntensity,
       emissiveThreshold,
       near: cam.near,
