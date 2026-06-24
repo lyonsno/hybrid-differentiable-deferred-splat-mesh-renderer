@@ -233,8 +233,10 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
       let brdfCoord = vec2i(clamp(vec2f(NdotV, roughness) * 255.0, vec2f(0.0), vec2f(255.0)));
       let brdfSample = textureLoad(brdfLUT, brdfCoord, 0).rg;
       let F_ibl = fresnelSchlickRoughness(NdotV, F0, roughness);
-      // Attenuate at extreme grazing angles to prevent Fresnel blowout on splat edges
-      let grazingFade = smoothstep(0.0, 0.1, NdotV);
+      // Gentle grazing attenuation — only suppress near-zero NdotV to avoid NaN
+      // from degenerate backfacing splats. Real normals legitimately have low NdotV
+      // at silhouette edges where metals should be bright (Fresnel), not black.
+      let grazingFade = smoothstep(0.0, 0.02, NdotV);
       let specularIBL = prefilteredColor * (F_ibl * brdfSample.x + brdfSample.y) * grazingFade;
 
       ambient = (diffuseIBL + specularIBL) * ao;
