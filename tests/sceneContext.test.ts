@@ -33,7 +33,7 @@ test("classifySceneContextHonored reports environment as honorable", async () =>
   assert.equal(result.schema, "hybrid-render.scene-context.v0");
   assert.equal(result.accepted, true);
   assert.equal(result.honored.environment, true);
-  assert.equal(result.honored.exposure, true);
+  assert.equal(result.honored.exposure, false); // stored but not yet wired
   assert.equal(result.honored.toneMapping, false); // not yet implemented
   assert.equal(result.honored.lights, false);
   assert.equal(result.honored.depthSource, false);

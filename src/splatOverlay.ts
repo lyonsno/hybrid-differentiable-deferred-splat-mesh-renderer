@@ -201,6 +201,7 @@ export async function createSplatOverlay(
   let _envIntensity = 1.0;
   let _envRotation = 0.0;
   let _exposure = 1.0;
+  let _envFetchAbort: AbortController | null = null;
 
   function setCameraMatrices(
     viewMatrix: Float32Array,
@@ -248,9 +249,14 @@ export async function createSplatOverlay(
         : env.kind === "preset" && env.preset ? ENV_PRESETS[env.preset]
         : undefined;
       if (url) {
-        fetch(url).then(async (resp) => {
-          if (!resp.ok) return;
+        // Abort any prior env map fetch to prevent stale loads
+        _envFetchAbort?.abort();
+        const abort = new AbortController();
+        _envFetchAbort = abort;
+        fetch(url, { signal: abort.signal }).then(async (resp) => {
+          if (!resp.ok || abort.signal.aborted) return;
           const data = await resp.arrayBuffer();
+          if (abort.signal.aborted) return;
           const { parseHDRHeader } = await import("./ibl.js");
           const { width, height } = parseHDRHeader(data);
           renderer.ibl.loadEquirectHDR(data, width, height);
@@ -401,6 +407,8 @@ export async function createSplatOverlay(
 
   function destroy() {
     stop();
+    _envFetchAbort?.abort();
+    _envFetchAbort = null;
     if (scene) {
       renderer.destroyScene(scene);
       scene = null;
