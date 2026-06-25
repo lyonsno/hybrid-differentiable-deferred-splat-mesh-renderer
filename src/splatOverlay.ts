@@ -14,6 +14,11 @@ import {
 import { createAlphaTexturePresenter } from "./tileLocalTexturePresenter.js";
 import { decodeLocalPlySplatPayload, filterSplatAttributes } from "./localPly.js";
 import { fetchFirstSmokeSplatPayload, type SplatAttributes } from "./splats.js";
+import { classifySceneContextHonored, ENV_PRESETS, type HybridRenderSceneContextV0, type SceneContextTelemetry } from "./sceneContext.js";
+
+// Re-export the scene context type for consumers
+export type { HybridRenderSceneContextV0, SceneContextTelemetry };
+export { classifySceneContextHonored };
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -57,6 +62,10 @@ export interface SplatOverlayHandle {
   setViewport(width: number, height: number, devicePixelRatio?: number): void;
   /** Mark that Kaminos sidecar corrections have been applied to the loaded asset. */
   setCorrectionIdentity(correction: SplatSourceIdentity["correctionIdentity"]): void;
+  /** Set renderer-neutral scene context (lighting, exposure, composition). */
+  setSceneContext(context: HybridRenderSceneContextV0): SceneContextTelemetry;
+  /** Last scene-context telemetry, or null if setSceneContext has not been called. */
+  readonly sceneContextTelemetry: SceneContextTelemetry | null;
   /** Load a PLY splat file from a URL or ArrayBuffer. */
   loadPly(source: string | ArrayBuffer, fileName?: string): Promise<void>;
   /** Load from our JSON manifest format (sidecar binary). */
@@ -187,6 +196,11 @@ export async function createSplatOverlay(
   let _modelMatrix = new Float32Array(IDENTITY_MAT4);
   // Viewport override
   let _viewportOverride: { width: number; height: number; dpr: number } | null = null;
+  // Scene context
+  let _sceneContextTelemetry: SceneContextTelemetry | null = null;
+  let _envIntensity = 1.0;
+  let _envRotation = 0.0;
+  let _exposure = 1.0;
 
   function setCameraMatrices(
     viewMatrix: Float32Array,
@@ -215,6 +229,40 @@ export async function createSplatOverlay(
     // coordinate frame contract. setCorrectionIdentity records the correction
     // metadata but does not filter vertices — the host controls visual crop
     // through its own scene transform until the overlay has a proper crop API.
+  }
+
+  function setSceneContext(context: HybridRenderSceneContextV0): SceneContextTelemetry {
+    const telemetry = classifySceneContextHonored(context);
+    _sceneContextTelemetry = telemetry;
+
+    if (!telemetry.accepted) return telemetry;
+
+    // Apply honored fields
+    const env = context.lighting?.environment;
+    if (env && env.kind !== "none") {
+      _envIntensity = env.intensity;
+      _envRotation = env.rotationY ?? 0;
+
+      // Load env map if URL or preset provided
+      const url = env.kind === "hdr-url" ? env.url
+        : env.kind === "preset" && env.preset ? ENV_PRESETS[env.preset]
+        : undefined;
+      if (url) {
+        fetch(url).then(async (resp) => {
+          if (!resp.ok) return;
+          const data = await resp.arrayBuffer();
+          const { parseHDRHeader } = await import("./ibl.js");
+          const { width, height } = parseHDRHeader(data);
+          renderer.ibl.loadEquirectHDR(data, width, height);
+        }).catch(() => {});
+      }
+    }
+
+    if (context.lighting?.exposure !== undefined) {
+      _exposure = context.lighting.exposure;
+    }
+
+    return telemetry;
   }
 
   function initScene(attributes: SplatAttributes) {
@@ -315,6 +363,8 @@ export async function createSplatOverlay(
       lightDirection: lightDir,
       lightIntensity,
       ambientIntensity,
+      envIntensity: _envIntensity,
+      envRotation: _envRotation,
     }, encoder);
 
     // Present to overlay canvas with premultiplied alpha
@@ -364,6 +414,7 @@ export async function createSplatOverlay(
     setModelMatrix,
     setViewport,
     setCorrectionIdentity,
+    setSceneContext,
     loadPly,
     loadManifest,
     loadAttributes,
@@ -374,5 +425,6 @@ export async function createSplatOverlay(
     get scene() { return scene; },
     capabilities: CAPABILITIES,
     get sourceIdentity() { return sourceIdentity; },
+    get sceneContextTelemetry() { return _sceneContextTelemetry; },
   };
 }
