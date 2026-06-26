@@ -15,6 +15,7 @@ import { createAlphaTexturePresenter } from "./tileLocalTexturePresenter.js";
 import { decodeLocalPlySplatPayload } from "./localPly.js";
 import { fetchFirstSmokeSplatPayload, type SplatAttributes } from "./splats.js";
 import { classifySceneContextHonored, ENV_PRESETS, type HybridRenderSceneContextV0, type SceneContextTelemetry } from "./sceneContext.js";
+import { composeOverlayFrameMatrices } from "./splatOverlayFrame.js";
 import {
   applySplatCorrectionToAttributes,
   EMPTY_SPLAT_CORRECTION_STATUS,
@@ -124,36 +125,6 @@ export interface SplatOverlayOptions {
   ambientIntensity?: number;
 }
 
-// ---------------------------------------------------------------------------
-// Matrix utilities
-// ---------------------------------------------------------------------------
-
-function multiplyMat4(a: Float32Array, b: Float32Array): Float32Array {
-  const out = new Float32Array(16);
-  for (let i = 0; i < 4; i++) {
-    for (let j = 0; j < 4; j++) {
-      out[j * 4 + i] =
-        a[0 * 4 + i] * b[j * 4 + 0] +
-        a[1 * 4 + i] * b[j * 4 + 1] +
-        a[2 * 4 + i] * b[j * 4 + 2] +
-        a[3 * 4 + i] * b[j * 4 + 3];
-    }
-  }
-  return out;
-}
-
-// Y-flip to match WebGPU clip space convention used by the splat compositor
-const VERTICAL_FLIP = new Float32Array([
-  1, 0, 0, 0,
-  0, -1, 0, 0,
-  0, 0, 1, 0,
-  0, 0, 0, 1,
-]);
-
-function composeViewProj(proj: Float32Array, view: Float32Array): Float32Array {
-  return multiplyMat4(VERTICAL_FLIP, multiplyMat4(proj, view));
-}
-
 function cameraFollowLightDir(pos: Float32Array): [number, number, number] {
   const len = Math.sqrt(pos[0] * pos[0] + pos[1] * pos[1] + pos[2] * pos[2]) || 1;
   return [-pos[0] / len, -pos[1] / len, -pos[2] / len];
@@ -218,13 +189,16 @@ export async function createSplatOverlay(
   let running = false;
   let animFrameId = 0;
 
-  // Camera state (written by host via setCameraMatrices)
+  // Host camera/model state. The renderer receives positions in object-local
+  // asset coordinates, so every rendered frame composes view * model before
+  // projection/sorting and transforms camera position into the same local frame.
+  let hostView = new Float32Array(16);
+  let hostProj = new Float32Array(16);
+  let hostCameraPos = new Float32Array(3);
   let currentView = new Float32Array(16);
   let currentProj = new Float32Array(16);
   let currentViewProj = new Float32Array(16);
   let currentCameraPos = new Float32Array(3);
-  // Model matrix (written by host via setModelMatrix) — not yet applied to rendering,
-  // stored for contract completeness and future objectWorldMatrix integration.
   let _modelMatrix = new Float32Array(IDENTITY_MAT4);
   // Viewport override
   let _viewportOverride: { width: number; height: number; dpr: number } | null = null;
@@ -249,14 +223,27 @@ export async function createSplatOverlay(
     projectionMatrix: Float32Array,
     cameraPosition: Float32Array,
   ) {
-    currentView.set(viewMatrix);
-    currentProj.set(projectionMatrix);
-    currentViewProj = composeViewProj(projectionMatrix, viewMatrix) as Float32Array<ArrayBuffer>;
-    currentCameraPos.set(cameraPosition);
+    hostView.set(viewMatrix);
+    hostProj.set(projectionMatrix);
+    hostCameraPos.set(cameraPosition);
+    recomputeCurrentFrameMatrices();
   }
 
   function setModelMatrix(matrix: Float32Array) {
     _modelMatrix = new Float32Array(matrix);
+    recomputeCurrentFrameMatrices();
+  }
+
+  function recomputeCurrentFrameMatrices() {
+    const view = hostView[0] === 0 ? new Float32Array(IDENTITY_MAT4) : hostView;
+    const proj = hostProj[0] === 0
+      ? new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1, -1, 0, 0, -0.02, 0])
+      : hostProj;
+    const frameMatrices = composeOverlayFrameMatrices(view, proj, _modelMatrix, hostCameraPos);
+    currentView = new Float32Array(frameMatrices.viewMatrix);
+    currentProj.set(proj);
+    currentViewProj = new Float32Array(frameMatrices.viewProj);
+    currentCameraPos = new Float32Array(frameMatrices.cameraPosition);
   }
 
   function setViewport(width: number, height: number, devicePixelRatio = 1) {
@@ -370,14 +357,8 @@ export async function createSplatOverlay(
       scene = null;
     }
     const { width, height } = resizeCanvas(gpu);
-    const initView = currentView[0] === 0
-      ? new Float32Array(IDENTITY_MAT4)
-      : currentView;
-    const initProj = currentProj[0] === 0
-      ? new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1, -1, 0, 0, -0.02, 0])
-      : currentProj;
-    const initViewProj = multiplyMat4(initProj, initView);
-    scene = renderer.loadScene(attributes, initView, initViewProj, width, height);
+    recomputeCurrentFrameMatrices();
+    scene = renderer.loadScene(attributes, currentView, currentViewProj, width, height);
     lastAttributes = attributes;
   }
 
