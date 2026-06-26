@@ -66,6 +66,15 @@ export interface SplatOverlayHandle {
   setSceneContext(context: HybridRenderSceneContextV0): SceneContextTelemetry;
   /** Last scene-context telemetry, or null if setSceneContext has not been called. */
   readonly sceneContextTelemetry: SceneContextTelemetry | null;
+  /** Effective environment map load state for diagnostics. */
+  readonly environmentStatus: {
+    readonly status: "none" | "loading" | "loaded" | "error";
+    readonly source: string | null;
+    readonly preset: string | null;
+    readonly width: number | null;
+    readonly height: number | null;
+    readonly error: string | null;
+  };
   /** Load a PLY splat file from a URL or ArrayBuffer. */
   loadPly(source: string | ArrayBuffer, fileName?: string): Promise<void>;
   /** Load from our JSON manifest format (sidecar binary). */
@@ -202,6 +211,15 @@ export async function createSplatOverlay(
   let _envRotation = 0.0;
   let _exposure = 1.0;
   let _envFetchAbort: AbortController | null = null;
+  let _envRequestedUrl: string | null = null;
+  let _environmentStatus: SplatOverlayHandle["environmentStatus"] = {
+    status: "none",
+    source: null,
+    preset: null,
+    width: null,
+    height: null,
+    error: null,
+  };
 
   function setCameraMatrices(
     viewMatrix: Float32Array,
@@ -249,18 +267,59 @@ export async function createSplatOverlay(
         : env.kind === "preset" && env.preset ? ENV_PRESETS[env.preset]
         : undefined;
       if (url) {
-        // Abort any prior env map fetch to prevent stale loads
-        _envFetchAbort?.abort();
-        const abort = new AbortController();
-        _envFetchAbort = abort;
-        fetch(url, { signal: abort.signal }).then(async (resp) => {
-          if (!resp.ok || abort.signal.aborted) return;
-          const data = await resp.arrayBuffer();
-          if (abort.signal.aborted) return;
-          const { parseHDRHeader } = await import("./ibl.js");
-          const { width, height } = parseHDRHeader(data);
-          renderer.ibl.loadEquirectHDR(data, width, height);
-        }).catch(() => {});
+        const alreadyRequested = _envRequestedUrl === url && _environmentStatus.status !== "none";
+        if (!alreadyRequested) {
+          // Abort any prior env map fetch to prevent stale loads
+          _envFetchAbort?.abort();
+          _envRequestedUrl = url;
+          const abort = new AbortController();
+          _envFetchAbort = abort;
+          _environmentStatus = {
+            status: "loading",
+            source: url,
+            preset: env.kind === "preset" ? env.preset ?? null : null,
+            width: null,
+            height: null,
+            error: null,
+          };
+          fetch(url, { signal: abort.signal }).then(async (resp) => {
+            if (abort.signal.aborted) return;
+            if (!resp.ok) {
+              _environmentStatus = {
+                status: "error",
+                source: url,
+                preset: env.kind === "preset" ? env.preset ?? null : null,
+                width: null,
+                height: null,
+                error: `HTTP ${resp.status}`,
+              };
+              return;
+            }
+            const data = await resp.arrayBuffer();
+            if (abort.signal.aborted) return;
+            const { parseHDRHeader } = await import("./ibl.js");
+            const { width, height } = parseHDRHeader(data);
+            renderer.ibl.loadEquirectHDR(data, width, height);
+            _environmentStatus = {
+              status: "loaded",
+              source: url,
+              preset: env.kind === "preset" ? env.preset ?? null : null,
+              width,
+              height,
+              error: null,
+            };
+          }).catch((error) => {
+            if (abort.signal.aborted) return;
+            _environmentStatus = {
+              status: "error",
+              source: url,
+              preset: env.kind === "preset" ? env.preset ?? null : null,
+              width: null,
+              height: null,
+              error: error instanceof Error ? error.message : String(error),
+            };
+          });
+        }
       }
     }
 
@@ -434,5 +493,6 @@ export async function createSplatOverlay(
     capabilities: CAPABILITIES,
     get sourceIdentity() { return sourceIdentity; },
     get sceneContextTelemetry() { return _sceneContextTelemetry; },
+    get environmentStatus() { return _environmentStatus; },
   };
 }

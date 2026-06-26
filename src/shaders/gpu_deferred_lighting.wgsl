@@ -109,7 +109,7 @@ fn rotateY(dir: vec3f, angle: f32) -> vec3f {
 fn sampleEnvEquirectLod(dir: vec3f, lod: f32) -> vec3f {
   let rotDir = rotateY(dir, params.envRotation);
   let u = atan2(rotDir.z, rotDir.x) / (2.0 * PI) + 0.5;
-  let v = asin(clamp(rotDir.y, -1.0, 1.0)) / PI + 0.5;
+  let v = 0.5 - asin(clamp(rotDir.y, -1.0, 1.0)) / PI;
   return textureSampleLevel(envMap, envSampler, vec2f(u, v), lod).rgb * params.envIntensity;
 }
 
