@@ -12,9 +12,14 @@ import {
   type SplatScene,
 } from "./splatRenderer.js";
 import { createAlphaTexturePresenter } from "./tileLocalTexturePresenter.js";
-import { decodeLocalPlySplatPayload, filterSplatAttributes } from "./localPly.js";
+import { decodeLocalPlySplatPayload } from "./localPly.js";
 import { fetchFirstSmokeSplatPayload, type SplatAttributes } from "./splats.js";
 import { classifySceneContextHonored, ENV_PRESETS, type HybridRenderSceneContextV0, type SceneContextTelemetry } from "./sceneContext.js";
+import {
+  applySplatCorrectionToAttributes,
+  EMPTY_SPLAT_CORRECTION_STATUS,
+  type SplatCorrectionStatus,
+} from "./splatCorrection.js";
 
 // Re-export the scene context type for consumers
 export type { HybridRenderSceneContextV0, SceneContextTelemetry };
@@ -30,6 +35,7 @@ export interface SplatOverlayCapabilities {
   readonly meshDepthOcclusion: false;
   readonly sharedCanvasComposite: false;
   readonly sharedCommandEncoder: false;
+  readonly cropAppliedByRenderer: true;
 }
 
 /** Source identity for the loaded splat asset. */
@@ -43,8 +49,10 @@ export interface SplatSourceIdentity {
   /** Correction identity fields, if known (from Kaminos sidecar). */
   readonly correctionIdentity?: {
     readonly rotation?: readonly number[];
-    readonly axisFlips?: readonly boolean[];
+    readonly axisFlips?: readonly (boolean | number)[];
     readonly centroidOffset?: readonly number[];
+    readonly cropCoordinateMatrix?: readonly number[];
+    readonly cropCoordinateFrame?: unknown;
     readonly crop?: unknown;
   };
 }
@@ -74,6 +82,18 @@ export interface SplatOverlayHandle {
     readonly width: number | null;
     readonly height: number | null;
     readonly error: string | null;
+  };
+  /** Effective renderer crop application status for the currently loaded asset. */
+  readonly cropStatus: SplatCorrectionStatus;
+  /** Kaminos compatibility alias for cropStatus.cropAppliedByRenderer. */
+  readonly cropAppliedByRenderer: boolean;
+  /** Kaminos compatibility alias for renderer-side correction application telemetry. */
+  readonly correctionApplication: {
+    readonly cropApplied: boolean;
+    readonly cropFrame: string;
+    readonly sourceCount: number;
+    readonly keptCount: number;
+    readonly warning: string | null;
   };
   /** Load a PLY splat file from a URL or ArrayBuffer. */
   loadPly(source: string | ArrayBuffer, fileName?: string): Promise<void>;
@@ -150,6 +170,7 @@ const CAPABILITIES: SplatOverlayCapabilities = Object.freeze({
   meshDepthOcclusion: false as const,
   sharedCanvasComposite: false as const,
   sharedCommandEncoder: false as const,
+  cropAppliedByRenderer: true as const,
 });
 
 export async function createSplatOverlay(
@@ -192,6 +213,8 @@ export async function createSplatOverlay(
   let lastAttributes: SplatAttributes | null = null;
   let preCropAttributes: SplatAttributes | null = null; // before crop, for re-crop on correction update
   let sourceIdentity: SplatSourceIdentity | null = null;
+  let correctionIdentity: SplatSourceIdentity["correctionIdentity"] | null = null;
+  let cropStatus: SplatCorrectionStatus = EMPTY_SPLAT_CORRECTION_STATUS;
   let running = false;
   let animFrameId = 0;
 
@@ -241,13 +264,24 @@ export async function createSplatOverlay(
   }
 
   function setCorrectionIdentity(correction: SplatSourceIdentity["correctionIdentity"]) {
+    correctionIdentity = correction;
     if (sourceIdentity) {
       sourceIdentity = { ...sourceIdentity, correctionApplied: true, correctionIdentity: correction };
     }
-    // TODO: Renderer-applied crop requires an explicit crop API with unambiguous
-    // coordinate frame contract. setCorrectionIdentity records the correction
-    // metadata but does not filter vertices — the host controls visual crop
-    // through its own scene transform until the overlay has a proper crop API.
+    applyCorrectionToLoadedAttributes();
+  }
+
+  function applyCorrectionToLoadedAttributes() {
+    if (!preCropAttributes) return;
+    const result = applySplatCorrectionToAttributes(preCropAttributes, correctionIdentity);
+    cropStatus = {
+      cropAppliedByRenderer: result.cropAppliedByRenderer,
+      cropFrame: result.cropFrame,
+      sourceCount: result.sourceCount,
+      keptCount: result.keptCount,
+      warning: result.warning,
+    };
+    initScene(result.attributes);
   }
 
   function setSceneContext(context: HybridRenderSceneContextV0): SceneContextTelemetry {
@@ -348,10 +382,9 @@ export async function createSplatOverlay(
   }
 
   async function loadPly(source: string | ArrayBuffer, fileName?: string) {
-    // The overlay loads raw PLY data without applying sidecar corrections.
-    // The host (Kaminos) manages position transforms via setModelMatrix and
-    // passes crop bounds via setCorrectionIdentity. Sidecar auto-apply only
-    // happens in main.ts (standalone renderer).
+    // The overlay loads raw PLY data, then applies any host-provided crop
+    // identity in setCorrectionIdentity. Full orientation/offset correction
+    // remains host-owned until Kaminos exports corrected standalone PLYs.
     let bytes: ArrayBuffer;
     const isUrl = typeof source === "string";
     if (isUrl) {
@@ -370,7 +403,7 @@ export async function createSplatOverlay(
       loadMethod: isUrl ? "ply-url" : "ply-arraybuffer",
       correctionApplied: false,
     };
-    initScene(attrs);
+    applyCorrectionToLoadedAttributes();
   }
 
   async function loadManifest(url: string) {
@@ -380,7 +413,8 @@ export async function createSplatOverlay(
       loadMethod: "manifest",
       correctionApplied: false,
     };
-    initScene(attributes);
+    preCropAttributes = attributes;
+    applyCorrectionToLoadedAttributes();
   }
 
   function loadAttributes(attributes: SplatAttributes) {
@@ -389,7 +423,8 @@ export async function createSplatOverlay(
       loadMethod: "attributes",
       correctionApplied: false,
     };
-    initScene(attributes);
+    preCropAttributes = attributes;
+    applyCorrectionToLoadedAttributes();
   }
 
   function frame() {
@@ -494,5 +529,16 @@ export async function createSplatOverlay(
     get sourceIdentity() { return sourceIdentity; },
     get sceneContextTelemetry() { return _sceneContextTelemetry; },
     get environmentStatus() { return _environmentStatus; },
+    get cropStatus() { return cropStatus; },
+    get cropAppliedByRenderer() { return cropStatus.cropAppliedByRenderer; },
+    get correctionApplication() {
+      return {
+        cropApplied: cropStatus.cropAppliedByRenderer,
+        cropFrame: cropStatus.cropFrame,
+        sourceCount: cropStatus.sourceCount,
+        keptCount: cropStatus.keptCount,
+        warning: cropStatus.warning,
+      };
+    },
   };
 }
