@@ -93,6 +93,31 @@ test("rejects dropped files that are not supported PLY splats", () => {
   );
 });
 
+test("rejects World Tracing point-cloud PLY with route and schema identity", () => {
+  const bytes = new TextEncoder().encode([
+    "ply",
+    "format ascii 1.0",
+    "comment generated_by world-tracing scripts/kaminos_wt_object.py",
+    "element vertex 2",
+    "property float x",
+    "property float y",
+    "property float z",
+    "property uchar red",
+    "property uchar green",
+    "property uchar blue",
+    "property uchar layer",
+    "end_header",
+    "0.01600226 -0.59024471 0.13915212 102 103 104 0",
+    "0.00055143 -0.58335477 0.12435700 75 77 79 1",
+    "",
+  ].join("\n")).buffer;
+
+  assert.throws(
+    () => decodeLocalPlySplatPayload("ablate02-01-denser-interior_flood-alpha_wt_layers.ply", bytes),
+    /Unsupported PLY schema for hybrid splat renderer: parser=ply-point-cloud-v0; format=ascii 1\.0; vertexCount=2; colorSource=rgb; properties=x,y,z,red,green,blue,layer; file=ablate02-01-denser-interior_flood-alpha_wt_layers\.ply/
+  );
+});
+
 test("decodes PLY with per-splat normals, roughness, and metallic attributes", () => {
   const bytes = binaryPlyFixture([
     {

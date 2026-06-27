@@ -253,6 +253,7 @@ type PlyScalarType =
   | "double";
 
 interface PlyHeader {
+  format: string;
   vertexCount: number;
   properties: PlyProperty[];
   rowStride: number;
@@ -270,7 +271,7 @@ export function decodeLocalPlySplatPayload(
   fileName: string,
   bytes: ArrayBuffer
 ): SplatAttributes {
-  const header = parseBinaryLittleEndianPlyHeader(bytes);
+  const header = parseBinaryLittleEndianPlyHeader(fileName, bytes);
   const view = new DataView(bytes, header.dataOffset);
   const fields = new Map(header.properties.map((property) => [property.name, property]));
   const count = header.vertexCount;
@@ -483,7 +484,7 @@ function writePlyShRow(
   }
 }
 
-function parseBinaryLittleEndianPlyHeader(bytes: ArrayBuffer): PlyHeader {
+function parseBinaryLittleEndianPlyHeader(fileName: string, bytes: ArrayBuffer): PlyHeader {
   const headerEnd = findHeaderEnd(bytes);
   const headerText = new TextDecoder("ascii").decode(bytes.slice(0, headerEnd.headerTextEnd));
   const lines = headerText.split(/\r?\n/);
@@ -491,7 +492,7 @@ function parseBinaryLittleEndianPlyHeader(bytes: ArrayBuffer): PlyHeader {
     throw new Error("Dropped file does not start with a PLY header");
   }
 
-  let isBinaryLittleEndian = false;
+  let format: string | null = null;
   let vertexCount: number | null = null;
   let inVertexElement = false;
   const properties: PlyProperty[] = [];
@@ -500,7 +501,7 @@ function parseBinaryLittleEndianPlyHeader(bytes: ArrayBuffer): PlyHeader {
   for (const line of lines.slice(1)) {
     const parts = line.trim().split(/\s+/);
     if (parts[0] === "format") {
-      isBinaryLittleEndian = parts[1] === "binary_little_endian";
+      format = [parts[1], parts[2]].filter(Boolean).join(" ");
     } else if (parts[0] === "element") {
       inVertexElement = parts[1] === "vertex";
       if (inVertexElement) {
@@ -516,22 +517,58 @@ function parseBinaryLittleEndianPlyHeader(bytes: ArrayBuffer): PlyHeader {
     }
   }
 
-  if (!isBinaryLittleEndian) {
-    throw new Error("Only binary_little_endian PLY drag-drop is supported");
-  }
   if (!Number.isInteger(vertexCount) || vertexCount === null || vertexCount <= 0) {
     throw new Error("PLY vertex count must be a positive integer");
   }
   if (properties.length === 0) {
     throw new Error("PLY vertex element has no scalar properties");
   }
+  const normalizedFormat = format ?? "unknown";
+  if (isPointCloudPlySchema(properties)) {
+    throw new Error(formatUnsupportedPointCloudPlyError(
+      fileName,
+      normalizedFormat,
+      vertexCount,
+      properties,
+    ));
+  }
+  if (normalizedFormat !== "binary_little_endian 1.0" && normalizedFormat !== "binary_little_endian") {
+    throw new Error("Only binary_little_endian PLY drag-drop is supported");
+  }
 
   return {
+    format: normalizedFormat,
     vertexCount,
     properties,
     rowStride,
     dataOffset: headerEnd.dataOffset,
   };
+}
+
+function isPointCloudPlySchema(properties: PlyProperty[]): boolean {
+  const fields = new Set(properties.map((property) => property.name));
+  const hasPosition = fields.has("x") && fields.has("y") && fields.has("z");
+  const hasRgb = fields.has("red") && fields.has("green") && fields.has("blue");
+  const hasSplatCovariance =
+    fields.has("scale_0") && fields.has("scale_1") && fields.has("scale_2")
+    && fields.has("rot_0") && fields.has("rot_1") && fields.has("rot_2") && fields.has("rot_3");
+  const hasSplatOpacity = fields.has("opacity");
+  return hasPosition && hasRgb && !hasSplatCovariance && !hasSplatOpacity;
+}
+
+function formatUnsupportedPointCloudPlyError(
+  fileName: string,
+  format: string,
+  vertexCount: number,
+  properties: PlyProperty[],
+): string {
+  const propertyNames = properties.map((property) => property.name).join(",");
+  return [
+    "Unsupported PLY schema for hybrid splat renderer:",
+    `parser=ply-point-cloud-v0; format=${format}; vertexCount=${vertexCount}; colorSource=rgb; properties=${propertyNames}; file=${fileName}.`,
+    "This is a valid point-cloud PLY route, not a Gaussian splat PLY/SPZ payload.",
+    "Kaminos cheap preview may accept it, but the hybrid renderer needs splat covariance/opacity fields before rendering it as splats.",
+  ].join(" ");
 }
 
 function findHeaderEnd(bytes: ArrayBuffer): { headerTextEnd: number; dataOffset: number } {
