@@ -20,6 +20,7 @@ struct Params {
   emissiveThreshold: f32,
   envIntensity: f32,
   envRotation: f32,
+  exposure: f32,
 };
 
 @group(0) @binding(0) var<uniform> params: Params;
@@ -139,7 +140,8 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
       let worldFar = params.viewProjInv * clipFar;
       let viewDir = normalize(worldFar.xyz / worldFar.w - worldNear.xyz / worldNear.w);
       let envColor = sampleEnvEquirectLod(viewDir, 0.0);
-      let tonemapped = envColor / (envColor + vec3f(1.0));
+      let exposed = envColor * params.exposure;
+      let tonemapped = exposed / (exposed + vec3f(1.0));
       textureStore(outputLit, px, vec4f(linearToSrgb(tonemapped), 0.0));
     } else {
       textureStore(outputLit, px, vec4f(albedoSrgb, 0.0));
@@ -248,7 +250,8 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   }
 
   // Reinhard tonemap in linear space, then convert back to sRGB for display
-  let tonemapped = color / (color + vec3f(1.0));
+  let exposed = color * params.exposure;
+  let tonemapped = exposed / (exposed + vec3f(1.0));
   var mapped = linearToSrgb(tonemapped);
 
   // Emissive: additive AFTER tonemapping so it punches through bright

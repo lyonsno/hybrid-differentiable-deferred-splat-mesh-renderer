@@ -15,3 +15,18 @@ test("deferred equirect sampling maps +Y to HDR top and -Y to HDR bottom", async
     "standard HDR lat-long convention maps world +Y to v=0 and world -Y to v=1",
   );
 });
+
+test("deferred lighting applies scene exposure before tonemapping", async () => {
+  const shader = await readFile(SHADER_PATH, "utf8");
+
+  assert.match(shader, /exposure:\s*f32/);
+  assert.match(shader, /let exposed = envColor \* params\.exposure;/);
+  assert.match(shader, /let exposed = color \* params\.exposure;/);
+});
+
+test("projection shader transforms normals into the lighting frame", async () => {
+  const shader = await readFile(new URL("../src/shaders/gpu_project_splats.wgsl", import.meta.url), "utf8");
+
+  assert.match(shader, /normalMatrix:\s*mat3x3f/);
+  assert.match(shader, /let normal = normalize\(frame\.normalMatrix \* normalAxis\);/);
+});

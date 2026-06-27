@@ -144,7 +144,7 @@ export function classifySceneContextHonored(
       environment: canResolveEnv,
       environmentIntensity: hasEnv,
       environmentRotation: hasEnv,
-      exposure: false, // stored but not yet wired to tone mapping shader
+      exposure: typeof ctx.lighting?.exposure === "number",
       toneMapping: false, // P0: always Reinhard, don't claim we switch
       lights: false,
       depthSource: false,

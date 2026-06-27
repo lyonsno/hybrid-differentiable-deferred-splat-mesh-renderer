@@ -76,6 +76,9 @@ export interface RenderFrameParams {
   viewMatrix: Float32Array;
   projMatrix: Float32Array;
   cameraPosition: Float32Array;
+  lightingViewProj?: Float32Array;
+  lightingCameraPosition?: Float32Array;
+  normalMatrix?: Float32Array;
   viewportWidth: number;
   viewportHeight: number;
   lightDirection: [number, number, number];
@@ -93,6 +96,7 @@ export interface RenderFrameParams {
   aoSlices?: number;
   aoSteps?: number;
   aoThickness?: number;
+  exposure?: number;
   envIntensity?: number;
   envRotation?: number;
   bloomThreshold?: number;
@@ -459,7 +463,7 @@ function createDeferredLightingPass(device: GPUDevice) {
   });
   const paramsBuffer = device.createBuffer({
     label: "deferred_lighting_params",
-    size: 160,
+    size: 176,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
   return {
@@ -485,8 +489,9 @@ function createDeferredLightingPass(device: GPUDevice) {
       emissiveThreshold: number = 0.05,
       envIntensity: number = 1.0,
       envRotation: number = 0.0,
+      exposure: number = 1.0,
     ) {
-      const params = new Float32Array(40);
+      const params = new Float32Array(44);
       params[0] = viewport[0];
       params[1] = viewport[1];
       params[2] = 0.65; // roughness (fallback, G-buffer material overrides)
@@ -503,6 +508,7 @@ function createDeferredLightingPass(device: GPUDevice) {
       params[37] = emissiveThreshold;
       params[38] = envIntensity;
       params[39] = envRotation;
+      params[40] = exposure;
       device.queue.writeBuffer(paramsBuffer, 0, params);
       const bg = device.createBindGroup({
         layout: bgl,
@@ -1008,7 +1014,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
       const cc = internal.computeCompositor;
 
       // Upload frame uniforms (SH evaluation happens on GPU in the projection shader)
-      writeTileSplatFrameUniforms(cc.frameUniformData, params.viewProj, cc.resources.plan, scene.splatScale, scene.shDegree, params.cameraPosition, params.viewMatrix, params.projMatrix);
+      writeTileSplatFrameUniforms(cc.frameUniformData, params.viewProj, cc.resources.plan, scene.splatScale, scene.shDegree, params.cameraPosition, params.viewMatrix, params.projMatrix, params.normalMatrix);
       device.queue.writeBuffer(cc.resources.frameUniformBuffer, 0, cc.frameUniformData);
 
       // Full compositor pipeline or composite-only
@@ -1022,7 +1028,9 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
       }
 
       // Screen-space normal reconstruction + GTAO + deferred lighting
-      const vpInv = mat4Inverse(params.viewProj);
+      const lightingViewProj = params.lightingViewProj ?? params.viewProj;
+      const lightingCameraPosition = params.lightingCameraPosition ?? params.cameraPosition;
+      const vpInv = mat4Inverse(lightingViewProj);
       if (vpInv) {
         if (!scene.hasPerSplatNormals || params.forceScreenSpaceNormals) {
           screenSpaceNormals.encode(
@@ -1100,7 +1108,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
           cc.litTexture,
           [cc.resources.plan.viewportWidth, cc.resources.plan.viewportHeight],
           vpInv,
-          params.cameraPosition,
+          lightingCameraPosition,
           params.lightDirection,
           params.lightIntensity,
           params.ambientIntensity,
@@ -1109,6 +1117,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
           params.emissiveThreshold ?? 0.05,
           params.envIntensity ?? 1.0,
           params.envRotation ?? 0.0,
+          params.exposure ?? 1.0,
         );
       }
     },

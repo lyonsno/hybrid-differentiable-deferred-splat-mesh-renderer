@@ -199,6 +199,9 @@ export async function createSplatOverlay(
   let currentProj = new Float32Array(16);
   let currentViewProj = new Float32Array(16);
   let currentCameraPos = new Float32Array(3);
+  let currentLightingViewProj = new Float32Array(16);
+  let currentLightingCameraPos = new Float32Array(3);
+  let currentNormalMatrix = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
   let _modelMatrix = new Float32Array(IDENTITY_MAT4);
   // Viewport override
   let _viewportOverride: { width: number; height: number; dpr: number } | null = null;
@@ -244,6 +247,9 @@ export async function createSplatOverlay(
     currentProj.set(proj);
     currentViewProj = new Float32Array(frameMatrices.viewProj);
     currentCameraPos = new Float32Array(frameMatrices.cameraPosition);
+    currentLightingViewProj = new Float32Array(frameMatrices.lightingViewProj);
+    currentLightingCameraPos = new Float32Array(frameMatrices.lightingCameraPosition);
+    currentNormalMatrix = new Float32Array(frameMatrices.normalMatrix);
   }
 
   function setViewport(width: number, height: number, devicePixelRatio = 1) {
@@ -439,11 +445,15 @@ export async function createSplatOverlay(
       viewMatrix: currentView,
       projMatrix: currentProj,
       cameraPosition: currentCameraPos,
+      lightingViewProj: currentLightingViewProj,
+      lightingCameraPosition: currentLightingCameraPos,
+      normalMatrix: currentNormalMatrix,
       viewportWidth: plan.viewportWidth,
       viewportHeight: plan.viewportHeight,
       lightDirection: lightDir,
       lightIntensity,
       ambientIntensity,
+      exposure: _exposure,
       envIntensity: _envIntensity,
       envRotation: _envRotation,
     }, encoder);

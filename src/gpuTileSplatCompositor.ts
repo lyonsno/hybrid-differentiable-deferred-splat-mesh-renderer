@@ -13,8 +13,9 @@ import classifyLargeSplatsShader from "./shaders/gpu_classify_large_splats.wgsl?
 
 // Frame uniforms: viewProj(64) + viewport(8) + tileSizePx(4) + debugMode(4) +
 //   tileGrid(8) + splatCount(4) + totalTileRefs(4) + splatScale(4) + shDegree(4) +
-//   pad(8) + cameraPos(12) + pad(4) + viewMatrix(64) + focal(8) + pad(8) = 208
-export const TILE_SPLAT_FRAME_UNIFORM_BYTES = 208;
+//   pad(8) + cameraPos(12) + pad(4) + viewMatrix(64) + focal(8) + pad(8) +
+//   normalMatrix mat3x3f with padded vec4 columns(48) = 256
+export const TILE_SPLAT_FRAME_UNIFORM_BYTES = 256;
 const PROJ_STRIDE_U32 = 13; // Must match PROJ_STRIDE in gpu_project_splats.wgsl
 const TILE_ENTRY_BYTES = 4; // 1 u32 per tile entry (sortRank)
 
@@ -735,6 +736,7 @@ export function writeTileSplatFrameUniforms(
   cameraPos?: Float32Array | readonly number[],
   viewMatrix?: Float32Array,
   projMatrix?: Float32Array,
+  normalMatrix?: Float32Array | readonly number[],
 ): void {
   target.set(viewProj, 0);
   target[16] = plan.viewportWidth;
@@ -764,6 +766,11 @@ export function writeTileSplatFrameUniforms(
     target[48] = plan.viewportWidth * projMatrix[0] * 0.5;
     target[49] = plan.viewportHeight * projMatrix[5] * 0.5;
   }
+  // normalMatrix at offset 208 = float index 52. WGSL mat3x3f columns have 16-byte stride.
+  const normal = normalMatrix ?? [1, 0, 0, 0, 1, 0, 0, 0, 1];
+  target[52] = normal[0]; target[53] = normal[1]; target[54] = normal[2]; target[55] = 0;
+  target[56] = normal[3]; target[57] = normal[4]; target[58] = normal[5]; target[59] = 0;
+  target[60] = normal[6]; target[61] = normal[7]; target[62] = normal[8]; target[63] = 0;
 }
 
 export interface TileSplatCompositorBindGroups {

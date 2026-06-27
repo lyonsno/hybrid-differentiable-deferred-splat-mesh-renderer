@@ -1,7 +1,10 @@
 export interface OverlayFrameMatrices {
   readonly viewMatrix: Float32Array;
   readonly viewProj: Float32Array;
+  readonly lightingViewProj: Float32Array;
   readonly cameraPosition: Float32Array;
+  readonly lightingCameraPosition: Float32Array;
+  readonly normalMatrix: Float32Array;
 }
 
 const VERTICAL_FLIP = new Float32Array([
@@ -19,12 +22,21 @@ export function composeOverlayFrameMatrices(
 ): OverlayFrameMatrices {
   const viewMatrix = multiplyMat4(hostViewMatrix, modelMatrix);
   const viewProj = multiplyMat4(VERTICAL_FLIP, multiplyMat4(hostProjectionMatrix, viewMatrix));
+  const lightingViewProj = multiplyMat4(VERTICAL_FLIP, multiplyMat4(hostProjectionMatrix, hostViewMatrix));
   const modelInverse = invertAffineMat4(modelMatrix);
   const cameraPosition = modelInverse
     ? transformPoint(modelInverse, cameraPositionWorld)
     : new Float32Array(cameraPositionWorld);
+  const normalMatrix = modelInverse ? transposeMat3FromMat4(modelInverse) : identityMat3();
 
-  return { viewMatrix, viewProj, cameraPosition };
+  return {
+    viewMatrix,
+    viewProj,
+    lightingViewProj,
+    cameraPosition,
+    lightingCameraPosition: new Float32Array(cameraPositionWorld),
+    normalMatrix,
+  };
 }
 
 function multiplyMat4(a: Float32Array, b: Float32Array): Float32Array {
@@ -51,6 +63,22 @@ function transformPoint(matrix: Float32Array, point: Float32Array): Float32Array
     (matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12]) / safeW,
     (matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13]) / safeW,
     (matrix[2] * x + matrix[6] * y + matrix[10] * z + matrix[14]) / safeW,
+  ]);
+}
+
+function identityMat3(): Float32Array {
+  return new Float32Array([
+    1, 0, 0,
+    0, 1, 0,
+    0, 0, 1,
+  ]);
+}
+
+function transposeMat3FromMat4(matrix: Float32Array): Float32Array {
+  return new Float32Array([
+    matrix[0], matrix[4], matrix[8],
+    matrix[1], matrix[5], matrix[9],
+    matrix[2], matrix[6], matrix[10],
   ]);
 }
 

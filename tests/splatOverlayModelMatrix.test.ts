@@ -32,7 +32,14 @@ test("overlay composes host model matrix into renderer frame matrices", () => {
 
   assert.deepEqual(Array.from(frame.viewMatrix), Array.from(model));
   assert.deepEqual(Array.from(frame.viewProj), Array.from(multiplyMat4(VERTICAL_FLIP, model)));
+  assert.deepEqual(Array.from(frame.lightingViewProj), Array.from(VERTICAL_FLIP));
   assert.deepEqual(Array.from(frame.cameraPosition), [1, 2, 3]);
+  assert.deepEqual(Array.from(frame.lightingCameraPosition), [12, 24, 36]);
+  assert.deepEqual(Array.from(frame.normalMatrix), [
+    0.5, 0, 0,
+    0, 0.5, 0,
+    0, 0, 0.5,
+  ]);
 });
 
 function multiplyMat4(a: Float32Array, b: Float32Array): Float32Array {

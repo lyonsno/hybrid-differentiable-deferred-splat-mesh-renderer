@@ -39,6 +39,7 @@ struct FrameUniforms {
   viewMatrix: mat4x4f,      // offset 128, size 64
   focal: vec2f,             // offset 192, size 8 (viewport * proj[0][0] * 0.5, viewport * proj[1][1] * 0.5)
   _pad2: vec2f,             // offset 200, size 8 → struct size 208
+  normalMatrix: mat3x3f,    // offset 208, size 48 (model inverse-transpose for lighting-frame normals)
 };
 
 @group(0) @binding(0) var<uniform> frame: FrameUniforms;
@@ -146,7 +147,7 @@ fn project_splats(@builtin(global_invocation_id) globalId: vec3u) {
   let len2 = dot(axis2, axis2);
   let minLen = min(len0, min(len1, len2));
   let normalAxis = select(select(axis2, axis1, len1 == minLen), axis0, len0 == minLen);
-  let normal = normalize(normalAxis);
+  let normal = normalize(frame.normalMatrix * normalAxis);
 
   // PlayCanvas-style Jacobian: focal/vz with separate view matrix.
   // focal = viewport * projMat[0][0] * 0.5 (the 0.5 corrects for the NDC range).
