@@ -147,7 +147,7 @@ fn project_splats(@builtin(global_invocation_id) globalId: vec3u) {
   let len2 = dot(axis2, axis2);
   let minLen = min(len0, min(len1, len2));
   let normalAxis = select(select(axis2, axis1, len1 == minLen), axis0, len0 == minLen);
-  let normal = normalize(frame.normalMatrix * normalAxis);
+  let localNormal = normalize(normalAxis);
 
   // PlayCanvas-style Jacobian: focal/vz with separate view matrix.
   // focal = viewport * projMat[0][0] * 0.5 (the 0.5 corrects for the NDC range).
@@ -225,7 +225,7 @@ fn project_splats(@builtin(global_invocation_id) globalId: vec3u) {
   projCache[base + 7u] = tileBoundsPacked;
 
   // Per-splat normal: use baked normal data if available, else covariance-derived
-  var splatNormal = normal; // covariance-derived default
+  var splatNormal = localNormal; // covariance-derived default, still in asset-local space
   let normalBase = splatId * 3u;
   if (normalBase + 2u < arrayLength(&normalData)) {
     let baked = vec3f(normalData[normalBase], normalData[normalBase + 1u], normalData[normalBase + 2u]);
@@ -276,7 +276,7 @@ fn project_splats(@builtin(global_invocation_id) globalId: vec3u) {
       }
     }
   }
-  projCache[base + 8u] = pack2x16float(octEncode(splatNormal));
+  projCache[base + 8u] = pack2x16float(octEncode(normalize(frame.normalMatrix * splatNormal)));
 
   // SH-evaluated view-dependent color
   let shCoeffCount = (frame.shDegree + 1u) * (frame.shDegree + 1u) - 1u;

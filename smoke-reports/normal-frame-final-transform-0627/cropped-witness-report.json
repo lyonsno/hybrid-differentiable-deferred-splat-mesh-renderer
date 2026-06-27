@@ -1,0 +1,3945 @@
+{
+  "requestedUrl": "http://127.0.0.1:8094/?load=splat-inbox/evil_orb_final_composite.ply&hybrid_splat_overlay_module_url=http%3A%2F%2F127.0.0.1%3A5173%2Fsrc%2FsplatOverlay.ts",
+  "effectiveUrl": "http://127.0.0.1:8094/?load=splat-inbox/evil_orb_final_composite.ply&hybrid_splat_overlay_module_url=http%3A%2F%2F127.0.0.1%3A5173%2Fsrc%2FsplatOverlay.ts",
+  "effectiveServerRoots": {
+    "scratch": {
+      "path": "/private/tmp/kaminos-gutterglass-scene-context-producer-0625/scratch",
+      "exists": true
+    },
+    "scenes": {
+      "path": "/private/tmp/kaminos-gutterglass-scene-context-producer-0625/scenes",
+      "exists": true
+    },
+    "splat-inbox": {
+      "path": "/Users/noahlyons/.local/state/kaminos/assets/splats/inbox",
+      "exists": true
+    },
+    "splat-production": {
+      "path": "/Users/noahlyons/.local/state/kaminos/assets/splats/production",
+      "exists": true
+    },
+    "greenroom": {
+      "path": "/Users/noahlyons/.local/state/gpu-greenroom",
+      "exists": true
+    },
+    "pixal3d": {
+      "path": "/Users/noahlyons/dev/pixal3d-mlx/outputs",
+      "exists": true
+    },
+    "trellis2mlx": {
+      "path": "/Users/noahlyons/dev/trellis2mlx/assets/outputs",
+      "exists": true
+    }
+  },
+  "expectedServerRoot": "/private/tmp/kaminos-gutterglass-scene-context-producer-0625",
+  "scenario": "real-hybrid-cropped-supported-overlay",
+  "debugPort": 9484,
+  "chrome": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "userDataDir": "/tmp/kaminos-scene-object-witness-profile-9484-22591",
+  "settleMs": 4500,
+  "phase": "writing-report",
+  "browserVersion": {
+    "Browser": "Chrome/149.0.7827.197",
+    "Protocol-Version": "1.3",
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/149.0.0.0 Safari/537.36",
+    "V8-Version": "14.9.207.35",
+    "WebKit-Version": "537.36 (@c4198d130c11d41dd01ec4f57b781c40cce65d38)",
+    "webSocketDebuggerUrl": "ws://127.0.0.1:9484/devtools/browser/7fa0539b-e4a1-426b-b360-5ae0ebb3e6b4"
+  },
+  "stderrTail": "\nDevTools listening on ws://127.0.0.1:9484/devtools/browser/7fa0539b-e4a1-426b-b360-5ae0ebb3e6b4\nTrying to load the allocator multiple times. This is *not* supported.\n[22602:10772147:0627/173019.719969:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT\n",
+  "ok": true,
+  "screenshot": "/tmp/kaminos-evil-orb-cropped-normal-frame-fix.png",
+  "screenshotBytes": 420938,
+  "evidence": {
+    "realHybridCroppedSupportedOverlay": {
+      "assetEntry": {
+        "id": "splat-inbox:evil_orb_final_composite.ply",
+        "kind": "splat",
+        "stage": "experimental",
+        "root_id": "splat-inbox",
+        "root_label": "Experimental Splat Inbox",
+        "name": "evil_orb_final_composite.ply",
+        "path": "evil_orb_final_composite.ply",
+        "size": 92541867,
+        "mtime": 1782077601.7517586,
+        "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+        "correction": {
+          "orientation": {
+            "rotation": [
+              0,
+              0,
+              0
+            ]
+          },
+          "axisFlips": [
+            1,
+            -1,
+            -1
+          ],
+          "centroidOffset": [
+            0.7821271597845634,
+            -1.7356318273283757,
+            5.6760158645573835
+          ],
+          "crop": {
+            "enabled": true,
+            "min": [
+              -0.172,
+              -0.037,
+              -0.986
+            ],
+            "max": [
+              0.383,
+              0.459,
+              -0.618
+            ]
+          }
+        },
+        "display": {
+          "title": "Evil Orb Final Composite",
+          "subtitle": "PLY / experimental / Experimental Splat Inbox / 88.3 MB",
+          "meta": "raw evil_orb_final_composite.ply",
+          "raw_name": "evil_orb_final_composite.ply",
+          "load_label": "Import Splat",
+          "stage": "experimental",
+          "root_label": "Experimental Splat Inbox"
+        }
+      },
+      "splatObject": {
+        "id": "splat-f5e483ba-3198-4d1b-ba1c-2b40b3e855f0",
+        "label": "evil_orb_final_composite.ply",
+        "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+        "type": "splat",
+        "groupId": null,
+        "active": false,
+        "transform": {
+          "position": [
+            0.7821271597845634,
+            -1.7356318273283757,
+            5.6760158645573835
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            1,
+            -1,
+            -1
+          ]
+        },
+        "sceneTransform": {
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "splat": {
+          "schema": "kaminos.splat-asset.v0",
+          "assetSource": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+          "fileName": "evil_orb_final_composite.ply",
+          "format": "ply",
+          "root_id": "splat-inbox",
+          "path": "evil_orb_final_composite.ply",
+          "correction": {
+            "orientation": {
+              "rotation": [
+                0,
+                0,
+                0
+              ]
+            },
+            "axisFlips": [
+              1,
+              -1,
+              -1
+            ],
+            "centroidOffset": [
+              0.7821271597845634,
+              -1.7356318273283757,
+              5.6760158645573835
+            ],
+            "crop": {
+              "enabled": true,
+              "min": [
+                -0.172,
+                -0.037,
+                -0.986
+              ],
+              "max": [
+                0.383,
+                0.459,
+                -0.618
+              ]
+            }
+          },
+          "previewKind": "point-cloud",
+          "pointCount": 1051601,
+          "bounds": {
+            "min": [
+              -3.967681407928467,
+              -3.8226823806762695,
+              -0.49587273597717285
+            ],
+            "max": [
+              3.214388370513916,
+              2.2484562397003174,
+              5.5355610847473145
+            ],
+            "center": [
+              -0.3766465187072754,
+              -0.7871130704879761,
+              2.519844174385071
+            ],
+            "size": [
+              7.182069778442383,
+              6.071138620376587,
+              6.031433820724487
+            ]
+          },
+          "colorSource": "sh-dc",
+          "parser": "ply-point-cloud-v0",
+          "previewDepthTest": false
+        },
+        "renderRoute": "hybrid-mesh-splat-route-stub",
+        "renderCapabilities": {
+          "meshDepthOcclusion": false,
+          "sharedCanvasComposite": false,
+          "activeAO": false,
+          "realSplatRendering": false,
+          "canvasMode": "three-point-cloud-preview",
+          "sharedCommandEncoder": false,
+          "correctionAppliedMode": null,
+          "cropAppliedByRenderer": false,
+          "sceneContextAccepted": false
+        },
+        "renderHandoffSchema": "kaminos.render-handoff.v0"
+      },
+      "startResult": {
+        "status": "rendering",
+        "error": null,
+        "moduleUrl": "http://127.0.0.1:5173/src/splatOverlay.ts",
+        "objectId": "splat-f5e483ba-3198-4d1b-ba1c-2b40b3e855f0",
+        "loadedSource": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+        "loadedFileName": "evil_orb_final_composite.ply",
+        "loadedAt": "2026-06-27T21:30:24.060Z",
+        "frameCount": 49,
+        "canvasMode": "dual-canvas-overlay",
+        "correctionAppliedMode": "visual-root-world-matrix",
+        "cropAppliedByRenderer": true,
+        "canvasConnected": true,
+        "sceneLoaded": true,
+        "capabilities": {
+          "canvasMode": "dual-canvas-overlay",
+          "meshDepthOcclusion": false,
+          "sharedCanvasComposite": false,
+          "sharedCommandEncoder": false,
+          "cropAppliedByRenderer": true
+        },
+        "handleCapabilities": {
+          "canvasMode": "dual-canvas-overlay",
+          "meshDepthOcclusion": false,
+          "sharedCanvasComposite": false,
+          "sharedCommandEncoder": false,
+          "cropAppliedByRenderer": true
+        },
+        "sourceIdentity": {
+          "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+          "loadMethod": "ply-url",
+          "correctionApplied": true,
+          "correctionIdentity": {
+            "rotation": [
+              0,
+              0,
+              0
+            ],
+            "axisFlips": [
+              false,
+              true,
+              true
+            ],
+            "centroidOffset": [
+              0.7821271597845634,
+              -1.7356318273283757,
+              5.6760158645573835
+            ],
+            "crop": {
+              "enabled": true,
+              "min": [
+                -0.172,
+                -0.037,
+                -0.986
+              ],
+              "max": [
+                0.383,
+                0.459,
+                -0.618
+              ]
+            },
+            "cropCoordinateMatrix": [
+              0.27847125713024634,
+              0,
+              0,
+              0,
+              0,
+              0.27847125713024634,
+              0,
+              0,
+              0,
+              0,
+              0.27847125713024634,
+              0,
+              0.10488522955814582,
+              0.2191883662424349,
+              -0.7017041750133384,
+              1
+            ],
+            "cropCoordinateFrame": "kaminos-raw-asset-to-preview"
+          }
+        },
+        "correctionApplication": {
+          "cropApplied": true,
+          "cropFrame": "kaminos-raw-asset-to-preview",
+          "sourceCount": 1051601,
+          "keptCount": 587327,
+          "warning": null
+        },
+        "sceneContextAccepted": true,
+        "sceneContextTelemetry": {
+          "schema": "kaminos.hybrid-splat-overlay.scene-context-telemetry.v0",
+          "rendererSchema": "hybrid-render.scene-context.v0",
+          "contextSchema": "hybrid-render.scene-context.v0",
+          "contextFrame": 49,
+          "contextFrameId": null,
+          "contextTimestamp": "2026-06-27T21:30:24.060Z",
+          "rendererTimestamp": "2026-06-27T21:30:24.060Z",
+          "rendererFrameId": null,
+          "route": "hybrid-mesh-splat-route-stub",
+          "capability": {
+            "meshDepthOcclusion": false,
+            "sharedCanvasComposite": false,
+            "sharedCommandEncoder": false,
+            "realSplatRendering": true,
+            "canvasMode": "dual-canvas-overlay",
+            "sceneContextApi": true
+          },
+          "accepted": true,
+          "acceptedFields": [],
+          "honored": {
+            "environment": true,
+            "environmentIntensity": true,
+            "environmentRotation": true,
+            "exposure": true,
+            "toneMapping": false,
+            "lights": false,
+            "depthSource": false
+          },
+          "honoredFields": [
+            "lighting.environment",
+            "lighting.environment.intensity",
+            "lighting.environment.rotationY",
+            "lighting.exposure"
+          ],
+          "unsupportedFields": [
+            "toneMapping:ACESFilmicToneMapping"
+          ],
+          "rejectedFields": [],
+          "stale": false,
+          "missing": false,
+          "ignored": false,
+          "failurePhase": null,
+          "message": null
+        },
+        "lastSceneContext": {
+          "schema": "hybrid-render.scene-context.v0",
+          "producer": {
+            "app": "kaminos",
+            "route": "hybrid-mesh-splat-overlay",
+            "frame": 49,
+            "updatedAt": "2026-06-27T21:30:24.060Z"
+          },
+          "coordinateSystem": {
+            "worldUnits": "kaminos-scene-units",
+            "upAxis": "Y",
+            "handedness": "three-js-right-handed"
+          },
+          "camera": {
+            "projectionFrame": "three-webgpu-host",
+            "viewMatrix": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0.98058067569092,
+              0.19611613513818393,
+              0,
+              0,
+              -0.19611613513818393,
+              0.98058067569092,
+              0,
+              0,
+              0,
+              -3.05941170815567,
+              1
+            ],
+            "projectionMatrix": [
+              2.063133319572083,
+              0,
+              0,
+              0,
+              0,
+              2.7474774194546225,
+              0,
+              0,
+              0,
+              0,
+              -1.0001000100010002,
+              -1,
+              0,
+              0,
+              -0.010001000100010001,
+              0
+            ],
+            "positionWorld": [
+              0,
+              0.6000000238418579,
+              3
+            ],
+            "viewport": {
+              "width": 1088,
+              "height": 817,
+              "devicePixelRatio": 1
+            }
+          },
+          "lighting": {
+            "environment": {
+              "kind": "hdr-url",
+              "name": "studio",
+              "label": "Studio",
+              "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_09_1k.hdr",
+              "preset": "studio",
+              "intensity": 1,
+              "rotationY": 0
+            },
+            "exposure": 1.5,
+            "toneMapping": "ACESFilmicToneMapping"
+          },
+          "composition": {
+            "mode": "dual-canvas-overlay",
+            "background": "transparent",
+            "capabilities": {
+              "meshDepthOcclusion": false,
+              "sharedCanvasComposite": false,
+              "sharedCommandEncoder": false
+            },
+            "hostBackground": {
+              "visible": false,
+              "blur": 0.4
+            }
+          }
+        },
+        "lastFrame": {
+          "schema": "kaminos.hybrid-splat-overlay.frame.v0",
+          "objectId": "splat-f5e483ba-3198-4d1b-ba1c-2b40b3e855f0",
+          "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+          "canvasMode": "dual-canvas-overlay",
+          "correctionAppliedMode": "visual-root-world-matrix",
+          "assetFrameMode": "raw-ply-to-normalized-preview",
+          "modelMatrixFrameMode": "pbrnext-setModelMatrix-owned",
+          "cropAppliedByRenderer": false,
+          "viewport": {
+            "width": 1088,
+            "height": 817,
+            "devicePixelRatio": 1
+          },
+          "objectWorldMatrix": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            -1,
+            0,
+            0.7821271597845634,
+            -1.7356318273283757,
+            5.6760158645573835,
+            1
+          ],
+          "visualRootWorldMatrix": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "overlayAssetWorldMatrix": [
+            0.27847125713024634,
+            0,
+            0,
+            0,
+            0,
+            -0.27847125713024634,
+            0,
+            0,
+            0,
+            0,
+            -0.27847125713024634,
+            0,
+            0.10488522955814582,
+            -0.2191883662424349,
+            0.7017041750133384,
+            1
+          ],
+          "rawAssetToPreviewMatrix": [
+            0.27847125713024634,
+            0,
+            0,
+            0,
+            0,
+            0.27847125713024634,
+            0,
+            0,
+            0,
+            0,
+            0.27847125713024634,
+            0,
+            0.10488522955814582,
+            0.2191883662424349,
+            -0.7017041750133384,
+            1
+          ],
+          "rawAssetToPreviewScale": 0.27847125713024634,
+          "rawAssetBoundsCenter": [
+            -0.3766465187072754,
+            -0.7871130704879761,
+            2.519844174385071
+          ],
+          "rawAssetBoundsSize": [
+            7.182069778442383,
+            6.071138620376587,
+            6.031433820724487
+          ],
+          "overlayViewMatrix": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            0.98058067569092,
+            0.19611613513818393,
+            0,
+            0,
+            -0.19611613513818393,
+            0.98058067569092,
+            0,
+            0,
+            0,
+            -3.05941170815567,
+            1
+          ],
+          "effectiveViewMatrix": [
+            0.27847125713024634,
+            0,
+            0,
+            0,
+            0,
+            -0.27306353347727685,
+            -0.05461270669545536,
+            0,
+            0,
+            0.05461270669545536,
+            -0.27306353347727685,
+            0,
+            0.10488522955814582,
+            -0.3525473870875394,
+            -2.41432052934067,
+            1
+          ],
+          "projectionMatrix": [
+            2.063133319572083,
+            0,
+            0,
+            0,
+            0,
+            2.7474774194546225,
+            0,
+            0,
+            0,
+            0,
+            -1.0001000100010002,
+            -1,
+            0,
+            0,
+            -0.010001000100010001,
+            0
+          ],
+          "overlayProjectionMatrix": [
+            2.063133319572083,
+            0,
+            0,
+            0,
+            0,
+            -2.7474774194546225,
+            0,
+            0,
+            0,
+            0,
+            -1.0001000100010002,
+            -1,
+            0,
+            0,
+            -0.010001000100010001,
+            0
+          ],
+          "projectionFrameMode": "pbrnext-vertical-flip-precompensated",
+          "cameraPositionWorld": [
+            0,
+            0.6000000238418579,
+            3
+          ],
+          "cameraPositionInSplatLocal": [
+            -0.3766465187072754,
+            -2.9417340040206903,
+            -8.253260493278503
+          ],
+          "splatCorrection": {
+            "orientation": {
+              "rotation": [
+                0,
+                0,
+                0
+              ]
+            },
+            "axisFlips": [
+              1,
+              -1,
+              -1
+            ],
+            "centroidOffset": [
+              0.7821271597845634,
+              -1.7356318273283757,
+              5.6760158645573835
+            ],
+            "crop": {
+              "enabled": true,
+              "min": [
+                -0.172,
+                -0.037,
+                -0.986
+              ],
+              "max": [
+                0.383,
+                0.459,
+                -0.618
+              ]
+            }
+          },
+          "overlayCapabilities": {
+            "canvasMode": "dual-canvas-overlay",
+            "meshDepthOcclusion": false,
+            "sharedCanvasComposite": false,
+            "sharedCommandEncoder": false,
+            "cropAppliedByRenderer": true
+          },
+          "sourceIdentity": {
+            "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+            "loadMethod": "ply-url",
+            "correctionApplied": true,
+            "correctionIdentity": {
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "axisFlips": [
+                false,
+                true,
+                true
+              ],
+              "centroidOffset": [
+                0.7821271597845634,
+                -1.7356318273283757,
+                5.6760158645573835
+              ],
+              "crop": {
+                "enabled": true,
+                "min": [
+                  -0.172,
+                  -0.037,
+                  -0.986
+                ],
+                "max": [
+                  0.383,
+                  0.459,
+                  -0.618
+                ]
+              },
+              "cropCoordinateMatrix": [
+                0.27847125713024634,
+                0,
+                0,
+                0,
+                0,
+                0.27847125713024634,
+                0,
+                0,
+                0,
+                0,
+                0.27847125713024634,
+                0,
+                0.10488522955814582,
+                0.2191883662424349,
+                -0.7017041750133384,
+                1
+              ],
+              "cropCoordinateFrame": "kaminos-raw-asset-to-preview"
+            }
+          },
+          "correctionApplication": {
+            "cropApplied": true,
+            "cropFrame": "kaminos-raw-asset-to-preview",
+            "sourceCount": 1051601,
+            "keptCount": 587327,
+            "warning": null
+          },
+          "updatedAt": "2026-06-27T21:30:24.060Z",
+          "projectionProbe": {
+            "schema": "kaminos.hybrid-splat-overlay.projection-probe.v0",
+            "objectId": "splat-f5e483ba-3198-4d1b-ba1c-2b40b3e855f0",
+            "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+            "projectionFrameMode": "pbrnext-vertical-flip-precompensated",
+            "probePoint": [
+              -0.3766465187072754,
+              0.7306715846061707,
+              2.519844174385071
+            ],
+            "probePointRole": "raw-asset-upper-quarter",
+            "viewport": {
+              "width": 1088,
+              "height": 817,
+              "devicePixelRatio": 1
+            },
+            "kaminosPreviewScreen": {
+              "x": 544,
+              "y": 556.5308147016121,
+              "ndc": [
+                0,
+                -0.36237653537726344,
+                0.9969173114620581
+              ],
+              "clip": [
+                0,
+                -1.1386965250418637,
+                3.1326152978809776,
+                3.142302036351189
+              ],
+              "w": 3.142302036351189
+            },
+            "pbrnextOverlayScreen": {
+              "x": 544,
+              "y": 556.5308147016121,
+              "ndc": [
+                0,
+                -0.36237653537726344,
+                0.9969173114620581
+              ],
+              "clip": [
+                0,
+                -1.1386965250418637,
+                3.1326152978809776,
+                3.142302036351189
+              ],
+              "w": 3.142302036351189
+            },
+            "pbrnextUncompensatedScreen": {
+              "x": 544,
+              "y": 260.46918529838786,
+              "ndc": [
+                0,
+                0.36237653537726344,
+                0.9969173114620581
+              ],
+              "clip": [
+                0,
+                1.1386965250418637,
+                3.1326152978809776,
+                3.142302036351189
+              ],
+              "w": 3.142302036351189
+            }
+          },
+          "sceneContextTelemetry": {
+            "schema": "kaminos.hybrid-splat-overlay.scene-context-telemetry.v0",
+            "rendererSchema": "hybrid-render.scene-context.v0",
+            "contextSchema": "hybrid-render.scene-context.v0",
+            "contextFrame": 49,
+            "contextFrameId": null,
+            "contextTimestamp": "2026-06-27T21:30:24.060Z",
+            "rendererTimestamp": "2026-06-27T21:30:24.060Z",
+            "rendererFrameId": null,
+            "route": "hybrid-mesh-splat-route-stub",
+            "capability": {
+              "meshDepthOcclusion": false,
+              "sharedCanvasComposite": false,
+              "sharedCommandEncoder": false,
+              "realSplatRendering": true,
+              "canvasMode": "dual-canvas-overlay",
+              "sceneContextApi": true
+            },
+            "accepted": true,
+            "acceptedFields": [],
+            "honored": {
+              "environment": true,
+              "environmentIntensity": true,
+              "environmentRotation": true,
+              "exposure": true,
+              "toneMapping": false,
+              "lights": false,
+              "depthSource": false
+            },
+            "honoredFields": [
+              "lighting.environment",
+              "lighting.environment.intensity",
+              "lighting.environment.rotationY",
+              "lighting.exposure"
+            ],
+            "unsupportedFields": [
+              "toneMapping:ACESFilmicToneMapping"
+            ],
+            "rejectedFields": [],
+            "stale": false,
+            "missing": false,
+            "ignored": false,
+            "failurePhase": null,
+            "message": null
+          }
+        }
+      },
+      "overlayDebug": {
+        "status": "rendering",
+        "error": null,
+        "moduleUrl": "http://127.0.0.1:5173/src/splatOverlay.ts",
+        "objectId": "splat-f5e483ba-3198-4d1b-ba1c-2b40b3e855f0",
+        "loadedSource": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+        "loadedFileName": "evil_orb_final_composite.ply",
+        "loadedAt": "2026-06-27T21:30:24.060Z",
+        "frameCount": 306,
+        "canvasMode": "dual-canvas-overlay",
+        "correctionAppliedMode": "visual-root-world-matrix",
+        "cropAppliedByRenderer": true,
+        "canvasConnected": true,
+        "sceneLoaded": true,
+        "capabilities": {
+          "canvasMode": "dual-canvas-overlay",
+          "meshDepthOcclusion": false,
+          "sharedCanvasComposite": false,
+          "sharedCommandEncoder": false,
+          "cropAppliedByRenderer": true
+        },
+        "handleCapabilities": {
+          "canvasMode": "dual-canvas-overlay",
+          "meshDepthOcclusion": false,
+          "sharedCanvasComposite": false,
+          "sharedCommandEncoder": false,
+          "cropAppliedByRenderer": true
+        },
+        "sourceIdentity": {
+          "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+          "loadMethod": "ply-url",
+          "correctionApplied": true,
+          "correctionIdentity": {
+            "rotation": [
+              0,
+              0,
+              0
+            ],
+            "axisFlips": [
+              false,
+              true,
+              true
+            ],
+            "centroidOffset": [
+              0.7821271597845634,
+              -1.7356318273283757,
+              5.6760158645573835
+            ],
+            "crop": {
+              "enabled": true,
+              "min": [
+                -0.172,
+                -0.037,
+                -0.986
+              ],
+              "max": [
+                0.383,
+                0.459,
+                -0.618
+              ]
+            },
+            "cropCoordinateMatrix": [
+              0.27847125713024634,
+              0,
+              0,
+              0,
+              0,
+              0.27847125713024634,
+              0,
+              0,
+              0,
+              0,
+              0.27847125713024634,
+              0,
+              0.10488522955814582,
+              0.2191883662424349,
+              -0.7017041750133384,
+              1
+            ],
+            "cropCoordinateFrame": "kaminos-raw-asset-to-preview"
+          }
+        },
+        "correctionApplication": {
+          "cropApplied": true,
+          "cropFrame": "kaminos-raw-asset-to-preview",
+          "sourceCount": 1051601,
+          "keptCount": 587327,
+          "warning": null
+        },
+        "sceneContextAccepted": true,
+        "sceneContextTelemetry": {
+          "schema": "kaminos.hybrid-splat-overlay.scene-context-telemetry.v0",
+          "rendererSchema": "hybrid-render.scene-context.v0",
+          "contextSchema": "hybrid-render.scene-context.v0",
+          "contextFrame": 306,
+          "contextFrameId": null,
+          "contextTimestamp": "2026-06-27T21:30:26.255Z",
+          "rendererTimestamp": "2026-06-27T21:30:26.255Z",
+          "rendererFrameId": null,
+          "route": "hybrid-mesh-splat-route-stub",
+          "capability": {
+            "meshDepthOcclusion": false,
+            "sharedCanvasComposite": false,
+            "sharedCommandEncoder": false,
+            "realSplatRendering": true,
+            "canvasMode": "dual-canvas-overlay",
+            "sceneContextApi": true
+          },
+          "accepted": true,
+          "acceptedFields": [],
+          "honored": {
+            "environment": true,
+            "environmentIntensity": true,
+            "environmentRotation": true,
+            "exposure": true,
+            "toneMapping": false,
+            "lights": false,
+            "depthSource": false
+          },
+          "honoredFields": [
+            "lighting.environment",
+            "lighting.environment.intensity",
+            "lighting.environment.rotationY",
+            "lighting.exposure"
+          ],
+          "unsupportedFields": [
+            "toneMapping:ACESFilmicToneMapping"
+          ],
+          "rejectedFields": [],
+          "stale": false,
+          "missing": false,
+          "ignored": false,
+          "failurePhase": null,
+          "message": null
+        },
+        "lastSceneContext": {
+          "schema": "hybrid-render.scene-context.v0",
+          "producer": {
+            "app": "kaminos",
+            "route": "hybrid-mesh-splat-overlay",
+            "frame": 306,
+            "updatedAt": "2026-06-27T21:30:26.255Z"
+          },
+          "coordinateSystem": {
+            "worldUnits": "kaminos-scene-units",
+            "upAxis": "Y",
+            "handedness": "three-js-right-handed"
+          },
+          "camera": {
+            "projectionFrame": "three-webgpu-host",
+            "viewMatrix": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0.98058067569092,
+              0.19611613513818393,
+              0,
+              0,
+              -0.19611613513818393,
+              0.98058067569092,
+              0,
+              0,
+              0,
+              -3.05941170815567,
+              1
+            ],
+            "projectionMatrix": [
+              2.063133319572083,
+              0,
+              0,
+              0,
+              0,
+              2.7474774194546225,
+              0,
+              0,
+              0,
+              0,
+              -1.0001000100010002,
+              -1,
+              0,
+              0,
+              -0.010001000100010001,
+              0
+            ],
+            "positionWorld": [
+              0,
+              0.6000000238418579,
+              3
+            ],
+            "viewport": {
+              "width": 1088,
+              "height": 817,
+              "devicePixelRatio": 1
+            }
+          },
+          "lighting": {
+            "environment": {
+              "kind": "hdr-url",
+              "name": "studio",
+              "label": "Studio",
+              "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_09_1k.hdr",
+              "preset": "studio",
+              "intensity": 1,
+              "rotationY": 0
+            },
+            "exposure": 1.5,
+            "toneMapping": "ACESFilmicToneMapping"
+          },
+          "composition": {
+            "mode": "dual-canvas-overlay",
+            "background": "transparent",
+            "capabilities": {
+              "meshDepthOcclusion": false,
+              "sharedCanvasComposite": false,
+              "sharedCommandEncoder": false
+            },
+            "hostBackground": {
+              "visible": false,
+              "blur": 0.4
+            }
+          }
+        },
+        "lastFrame": {
+          "schema": "kaminos.hybrid-splat-overlay.frame.v0",
+          "objectId": "splat-f5e483ba-3198-4d1b-ba1c-2b40b3e855f0",
+          "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+          "canvasMode": "dual-canvas-overlay",
+          "correctionAppliedMode": "visual-root-world-matrix",
+          "assetFrameMode": "raw-ply-to-normalized-preview",
+          "modelMatrixFrameMode": "pbrnext-setModelMatrix-owned",
+          "cropAppliedByRenderer": true,
+          "viewport": {
+            "width": 1088,
+            "height": 817,
+            "devicePixelRatio": 1
+          },
+          "objectWorldMatrix": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            -1,
+            0,
+            0.7821271597845634,
+            -1.7356318273283757,
+            5.6760158645573835,
+            1
+          ],
+          "visualRootWorldMatrix": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "overlayAssetWorldMatrix": [
+            0.27847125713024634,
+            0,
+            0,
+            0,
+            0,
+            -0.27847125713024634,
+            0,
+            0,
+            0,
+            0,
+            -0.27847125713024634,
+            0,
+            0.10488522955814582,
+            -0.2191883662424349,
+            0.7017041750133384,
+            1
+          ],
+          "rawAssetToPreviewMatrix": [
+            0.27847125713024634,
+            0,
+            0,
+            0,
+            0,
+            0.27847125713024634,
+            0,
+            0,
+            0,
+            0,
+            0.27847125713024634,
+            0,
+            0.10488522955814582,
+            0.2191883662424349,
+            -0.7017041750133384,
+            1
+          ],
+          "rawAssetToPreviewScale": 0.27847125713024634,
+          "rawAssetBoundsCenter": [
+            -0.3766465187072754,
+            -0.7871130704879761,
+            2.519844174385071
+          ],
+          "rawAssetBoundsSize": [
+            7.182069778442383,
+            6.071138620376587,
+            6.031433820724487
+          ],
+          "overlayViewMatrix": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            0.98058067569092,
+            0.19611613513818393,
+            0,
+            0,
+            -0.19611613513818393,
+            0.98058067569092,
+            0,
+            0,
+            0,
+            -3.05941170815567,
+            1
+          ],
+          "effectiveViewMatrix": [
+            0.27847125713024634,
+            0,
+            0,
+            0,
+            0,
+            -0.27306353347727685,
+            -0.05461270669545536,
+            0,
+            0,
+            0.05461270669545536,
+            -0.27306353347727685,
+            0,
+            0.10488522955814582,
+            -0.3525473870875394,
+            -2.41432052934067,
+            1
+          ],
+          "projectionMatrix": [
+            2.063133319572083,
+            0,
+            0,
+            0,
+            0,
+            2.7474774194546225,
+            0,
+            0,
+            0,
+            0,
+            -1.0001000100010002,
+            -1,
+            0,
+            0,
+            -0.010001000100010001,
+            0
+          ],
+          "overlayProjectionMatrix": [
+            2.063133319572083,
+            0,
+            0,
+            0,
+            0,
+            -2.7474774194546225,
+            0,
+            0,
+            0,
+            0,
+            -1.0001000100010002,
+            -1,
+            0,
+            0,
+            -0.010001000100010001,
+            0
+          ],
+          "projectionFrameMode": "pbrnext-vertical-flip-precompensated",
+          "cameraPositionWorld": [
+            0,
+            0.6000000238418579,
+            3
+          ],
+          "cameraPositionInSplatLocal": [
+            -0.3766465187072754,
+            -2.9417340040206903,
+            -8.253260493278503
+          ],
+          "splatCorrection": {
+            "orientation": {
+              "rotation": [
+                0,
+                0,
+                0
+              ]
+            },
+            "axisFlips": [
+              1,
+              -1,
+              -1
+            ],
+            "centroidOffset": [
+              0.7821271597845634,
+              -1.7356318273283757,
+              5.6760158645573835
+            ],
+            "crop": {
+              "enabled": true,
+              "min": [
+                -0.172,
+                -0.037,
+                -0.986
+              ],
+              "max": [
+                0.383,
+                0.459,
+                -0.618
+              ]
+            }
+          },
+          "overlayCapabilities": {
+            "canvasMode": "dual-canvas-overlay",
+            "meshDepthOcclusion": false,
+            "sharedCanvasComposite": false,
+            "sharedCommandEncoder": false,
+            "cropAppliedByRenderer": true
+          },
+          "sourceIdentity": {
+            "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+            "loadMethod": "ply-url",
+            "correctionApplied": true,
+            "correctionIdentity": {
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "axisFlips": [
+                false,
+                true,
+                true
+              ],
+              "centroidOffset": [
+                0.7821271597845634,
+                -1.7356318273283757,
+                5.6760158645573835
+              ],
+              "crop": {
+                "enabled": true,
+                "min": [
+                  -0.172,
+                  -0.037,
+                  -0.986
+                ],
+                "max": [
+                  0.383,
+                  0.459,
+                  -0.618
+                ]
+              },
+              "cropCoordinateMatrix": [
+                0.27847125713024634,
+                0,
+                0,
+                0,
+                0,
+                0.27847125713024634,
+                0,
+                0,
+                0,
+                0,
+                0.27847125713024634,
+                0,
+                0.10488522955814582,
+                0.2191883662424349,
+                -0.7017041750133384,
+                1
+              ],
+              "cropCoordinateFrame": "kaminos-raw-asset-to-preview"
+            }
+          },
+          "correctionApplication": {
+            "cropApplied": true,
+            "cropFrame": "kaminos-raw-asset-to-preview",
+            "sourceCount": 1051601,
+            "keptCount": 587327,
+            "warning": null
+          },
+          "updatedAt": "2026-06-27T21:30:26.255Z",
+          "projectionProbe": {
+            "schema": "kaminos.hybrid-splat-overlay.projection-probe.v0",
+            "objectId": "splat-f5e483ba-3198-4d1b-ba1c-2b40b3e855f0",
+            "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+            "projectionFrameMode": "pbrnext-vertical-flip-precompensated",
+            "probePoint": [
+              -0.3766465187072754,
+              0.7306715846061707,
+              2.519844174385071
+            ],
+            "probePointRole": "raw-asset-upper-quarter",
+            "viewport": {
+              "width": 1088,
+              "height": 817,
+              "devicePixelRatio": 1
+            },
+            "kaminosPreviewScreen": {
+              "x": 544,
+              "y": 556.5308147016121,
+              "ndc": [
+                0,
+                -0.36237653537726344,
+                0.9969173114620581
+              ],
+              "clip": [
+                0,
+                -1.1386965250418637,
+                3.1326152978809776,
+                3.142302036351189
+              ],
+              "w": 3.142302036351189
+            },
+            "pbrnextOverlayScreen": {
+              "x": 544,
+              "y": 556.5308147016121,
+              "ndc": [
+                0,
+                -0.36237653537726344,
+                0.9969173114620581
+              ],
+              "clip": [
+                0,
+                -1.1386965250418637,
+                3.1326152978809776,
+                3.142302036351189
+              ],
+              "w": 3.142302036351189
+            },
+            "pbrnextUncompensatedScreen": {
+              "x": 544,
+              "y": 260.46918529838786,
+              "ndc": [
+                0,
+                0.36237653537726344,
+                0.9969173114620581
+              ],
+              "clip": [
+                0,
+                1.1386965250418637,
+                3.1326152978809776,
+                3.142302036351189
+              ],
+              "w": 3.142302036351189
+            }
+          },
+          "sceneContextTelemetry": {
+            "schema": "kaminos.hybrid-splat-overlay.scene-context-telemetry.v0",
+            "rendererSchema": "hybrid-render.scene-context.v0",
+            "contextSchema": "hybrid-render.scene-context.v0",
+            "contextFrame": 306,
+            "contextFrameId": null,
+            "contextTimestamp": "2026-06-27T21:30:26.255Z",
+            "rendererTimestamp": "2026-06-27T21:30:26.255Z",
+            "rendererFrameId": null,
+            "route": "hybrid-mesh-splat-route-stub",
+            "capability": {
+              "meshDepthOcclusion": false,
+              "sharedCanvasComposite": false,
+              "sharedCommandEncoder": false,
+              "realSplatRendering": true,
+              "canvasMode": "dual-canvas-overlay",
+              "sceneContextApi": true
+            },
+            "accepted": true,
+            "acceptedFields": [],
+            "honored": {
+              "environment": true,
+              "environmentIntensity": true,
+              "environmentRotation": true,
+              "exposure": true,
+              "toneMapping": false,
+              "lights": false,
+              "depthSource": false
+            },
+            "honoredFields": [
+              "lighting.environment",
+              "lighting.environment.intensity",
+              "lighting.environment.rotationY",
+              "lighting.exposure"
+            ],
+            "unsupportedFields": [
+              "toneMapping:ACESFilmicToneMapping"
+            ],
+            "rejectedFields": [],
+            "stale": false,
+            "missing": false,
+            "ignored": false,
+            "failurePhase": null,
+            "message": null
+          }
+        }
+      },
+      "handoffDebug": {
+        "schema": "kaminos.render-handoff.v0",
+        "route": {
+          "id": "hybrid-mesh-splat-route-stub",
+          "version": "p0-placeholder",
+          "capabilities": {
+            "meshDepthOcclusion": false,
+            "sharedCanvasComposite": false,
+            "sharedCommandEncoder": false,
+            "activeAO": false,
+            "realSplatRendering": true,
+            "canvasMode": "dual-canvas-overlay",
+            "correctionAppliedMode": "visual-root-world-matrix",
+            "cropAppliedByRenderer": true,
+            "sceneContextAccepted": true
+          },
+          "overlay": {
+            "status": "rendering",
+            "error": null,
+            "moduleUrl": "http://127.0.0.1:5173/src/splatOverlay.ts",
+            "objectId": "splat-f5e483ba-3198-4d1b-ba1c-2b40b3e855f0",
+            "loadedSource": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+            "loadedFileName": "evil_orb_final_composite.ply",
+            "loadedAt": "2026-06-27T21:30:24.060Z",
+            "frameCount": 306,
+            "canvasMode": "dual-canvas-overlay",
+            "correctionAppliedMode": "visual-root-world-matrix",
+            "cropAppliedByRenderer": true,
+            "canvasConnected": true,
+            "sceneLoaded": true,
+            "capabilities": {
+              "canvasMode": "dual-canvas-overlay",
+              "meshDepthOcclusion": false,
+              "sharedCanvasComposite": false,
+              "sharedCommandEncoder": false,
+              "cropAppliedByRenderer": true
+            },
+            "handleCapabilities": {
+              "canvasMode": "dual-canvas-overlay",
+              "meshDepthOcclusion": false,
+              "sharedCanvasComposite": false,
+              "sharedCommandEncoder": false,
+              "cropAppliedByRenderer": true
+            },
+            "sourceIdentity": {
+              "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+              "loadMethod": "ply-url",
+              "correctionApplied": true,
+              "correctionIdentity": {
+                "rotation": [
+                  0,
+                  0,
+                  0
+                ],
+                "axisFlips": [
+                  false,
+                  true,
+                  true
+                ],
+                "centroidOffset": [
+                  0.7821271597845634,
+                  -1.7356318273283757,
+                  5.6760158645573835
+                ],
+                "crop": {
+                  "enabled": true,
+                  "min": [
+                    -0.172,
+                    -0.037,
+                    -0.986
+                  ],
+                  "max": [
+                    0.383,
+                    0.459,
+                    -0.618
+                  ]
+                },
+                "cropCoordinateMatrix": [
+                  0.27847125713024634,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0.27847125713024634,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0.27847125713024634,
+                  0,
+                  0.10488522955814582,
+                  0.2191883662424349,
+                  -0.7017041750133384,
+                  1
+                ],
+                "cropCoordinateFrame": "kaminos-raw-asset-to-preview"
+              }
+            },
+            "correctionApplication": {
+              "cropApplied": true,
+              "cropFrame": "kaminos-raw-asset-to-preview",
+              "sourceCount": 1051601,
+              "keptCount": 587327,
+              "warning": null
+            },
+            "sceneContextAccepted": true,
+            "sceneContextTelemetry": {
+              "schema": "kaminos.hybrid-splat-overlay.scene-context-telemetry.v0",
+              "rendererSchema": "hybrid-render.scene-context.v0",
+              "contextSchema": "hybrid-render.scene-context.v0",
+              "contextFrame": 306,
+              "contextFrameId": null,
+              "contextTimestamp": "2026-06-27T21:30:26.255Z",
+              "rendererTimestamp": "2026-06-27T21:30:26.255Z",
+              "rendererFrameId": null,
+              "route": "hybrid-mesh-splat-route-stub",
+              "capability": {
+                "meshDepthOcclusion": false,
+                "sharedCanvasComposite": false,
+                "sharedCommandEncoder": false,
+                "realSplatRendering": true,
+                "canvasMode": "dual-canvas-overlay",
+                "sceneContextApi": true
+              },
+              "accepted": true,
+              "acceptedFields": [],
+              "honored": {
+                "environment": true,
+                "environmentIntensity": true,
+                "environmentRotation": true,
+                "exposure": true,
+                "toneMapping": false,
+                "lights": false,
+                "depthSource": false
+              },
+              "honoredFields": [
+                "lighting.environment",
+                "lighting.environment.intensity",
+                "lighting.environment.rotationY",
+                "lighting.exposure"
+              ],
+              "unsupportedFields": [
+                "toneMapping:ACESFilmicToneMapping"
+              ],
+              "rejectedFields": [],
+              "stale": false,
+              "missing": false,
+              "ignored": false,
+              "failurePhase": null,
+              "message": null
+            },
+            "lastSceneContext": {
+              "schema": "hybrid-render.scene-context.v0",
+              "producer": {
+                "app": "kaminos",
+                "route": "hybrid-mesh-splat-overlay",
+                "frame": 306,
+                "updatedAt": "2026-06-27T21:30:26.255Z"
+              },
+              "coordinateSystem": {
+                "worldUnits": "kaminos-scene-units",
+                "upAxis": "Y",
+                "handedness": "three-js-right-handed"
+              },
+              "camera": {
+                "projectionFrame": "three-webgpu-host",
+                "viewMatrix": [
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0.98058067569092,
+                  0.19611613513818393,
+                  0,
+                  0,
+                  -0.19611613513818393,
+                  0.98058067569092,
+                  0,
+                  0,
+                  0,
+                  -3.05941170815567,
+                  1
+                ],
+                "projectionMatrix": [
+                  2.063133319572083,
+                  0,
+                  0,
+                  0,
+                  0,
+                  2.7474774194546225,
+                  0,
+                  0,
+                  0,
+                  0,
+                  -1.0001000100010002,
+                  -1,
+                  0,
+                  0,
+                  -0.010001000100010001,
+                  0
+                ],
+                "positionWorld": [
+                  0,
+                  0.6000000238418579,
+                  3
+                ],
+                "viewport": {
+                  "width": 1088,
+                  "height": 817,
+                  "devicePixelRatio": 1
+                }
+              },
+              "lighting": {
+                "environment": {
+                  "kind": "hdr-url",
+                  "name": "studio",
+                  "label": "Studio",
+                  "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_09_1k.hdr",
+                  "preset": "studio",
+                  "intensity": 1,
+                  "rotationY": 0
+                },
+                "exposure": 1.5,
+                "toneMapping": "ACESFilmicToneMapping"
+              },
+              "composition": {
+                "mode": "dual-canvas-overlay",
+                "background": "transparent",
+                "capabilities": {
+                  "meshDepthOcclusion": false,
+                  "sharedCanvasComposite": false,
+                  "sharedCommandEncoder": false
+                },
+                "hostBackground": {
+                  "visible": false,
+                  "blur": 0.4
+                }
+              }
+            },
+            "lastFrame": {
+              "schema": "kaminos.hybrid-splat-overlay.frame.v0",
+              "objectId": "splat-f5e483ba-3198-4d1b-ba1c-2b40b3e855f0",
+              "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+              "canvasMode": "dual-canvas-overlay",
+              "correctionAppliedMode": "visual-root-world-matrix",
+              "assetFrameMode": "raw-ply-to-normalized-preview",
+              "modelMatrixFrameMode": "pbrnext-setModelMatrix-owned",
+              "cropAppliedByRenderer": true,
+              "viewport": {
+                "width": 1088,
+                "height": 817,
+                "devicePixelRatio": 1
+              },
+              "objectWorldMatrix": [
+                1,
+                0,
+                0,
+                0,
+                0,
+                -1,
+                0,
+                0,
+                0,
+                0,
+                -1,
+                0,
+                0.7821271597845634,
+                -1.7356318273283757,
+                5.6760158645573835,
+                1
+              ],
+              "visualRootWorldMatrix": [
+                1,
+                0,
+                0,
+                0,
+                0,
+                -1,
+                0,
+                0,
+                0,
+                0,
+                -1,
+                0,
+                0,
+                0,
+                0,
+                1
+              ],
+              "overlayAssetWorldMatrix": [
+                0.27847125713024634,
+                0,
+                0,
+                0,
+                0,
+                -0.27847125713024634,
+                0,
+                0,
+                0,
+                0,
+                -0.27847125713024634,
+                0,
+                0.10488522955814582,
+                -0.2191883662424349,
+                0.7017041750133384,
+                1
+              ],
+              "rawAssetToPreviewMatrix": [
+                0.27847125713024634,
+                0,
+                0,
+                0,
+                0,
+                0.27847125713024634,
+                0,
+                0,
+                0,
+                0,
+                0.27847125713024634,
+                0,
+                0.10488522955814582,
+                0.2191883662424349,
+                -0.7017041750133384,
+                1
+              ],
+              "rawAssetToPreviewScale": 0.27847125713024634,
+              "rawAssetBoundsCenter": [
+                -0.3766465187072754,
+                -0.7871130704879761,
+                2.519844174385071
+              ],
+              "rawAssetBoundsSize": [
+                7.182069778442383,
+                6.071138620376587,
+                6.031433820724487
+              ],
+              "overlayViewMatrix": [
+                1,
+                0,
+                0,
+                0,
+                0,
+                0.98058067569092,
+                0.19611613513818393,
+                0,
+                0,
+                -0.19611613513818393,
+                0.98058067569092,
+                0,
+                0,
+                0,
+                -3.05941170815567,
+                1
+              ],
+              "effectiveViewMatrix": [
+                0.27847125713024634,
+                0,
+                0,
+                0,
+                0,
+                -0.27306353347727685,
+                -0.05461270669545536,
+                0,
+                0,
+                0.05461270669545536,
+                -0.27306353347727685,
+                0,
+                0.10488522955814582,
+                -0.3525473870875394,
+                -2.41432052934067,
+                1
+              ],
+              "projectionMatrix": [
+                2.063133319572083,
+                0,
+                0,
+                0,
+                0,
+                2.7474774194546225,
+                0,
+                0,
+                0,
+                0,
+                -1.0001000100010002,
+                -1,
+                0,
+                0,
+                -0.010001000100010001,
+                0
+              ],
+              "overlayProjectionMatrix": [
+                2.063133319572083,
+                0,
+                0,
+                0,
+                0,
+                -2.7474774194546225,
+                0,
+                0,
+                0,
+                0,
+                -1.0001000100010002,
+                -1,
+                0,
+                0,
+                -0.010001000100010001,
+                0
+              ],
+              "projectionFrameMode": "pbrnext-vertical-flip-precompensated",
+              "cameraPositionWorld": [
+                0,
+                0.6000000238418579,
+                3
+              ],
+              "cameraPositionInSplatLocal": [
+                -0.3766465187072754,
+                -2.9417340040206903,
+                -8.253260493278503
+              ],
+              "splatCorrection": {
+                "orientation": {
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ]
+                },
+                "axisFlips": [
+                  1,
+                  -1,
+                  -1
+                ],
+                "centroidOffset": [
+                  0.7821271597845634,
+                  -1.7356318273283757,
+                  5.6760158645573835
+                ],
+                "crop": {
+                  "enabled": true,
+                  "min": [
+                    -0.172,
+                    -0.037,
+                    -0.986
+                  ],
+                  "max": [
+                    0.383,
+                    0.459,
+                    -0.618
+                  ]
+                }
+              },
+              "overlayCapabilities": {
+                "canvasMode": "dual-canvas-overlay",
+                "meshDepthOcclusion": false,
+                "sharedCanvasComposite": false,
+                "sharedCommandEncoder": false,
+                "cropAppliedByRenderer": true
+              },
+              "sourceIdentity": {
+                "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+                "loadMethod": "ply-url",
+                "correctionApplied": true,
+                "correctionIdentity": {
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "axisFlips": [
+                    false,
+                    true,
+                    true
+                  ],
+                  "centroidOffset": [
+                    0.7821271597845634,
+                    -1.7356318273283757,
+                    5.6760158645573835
+                  ],
+                  "crop": {
+                    "enabled": true,
+                    "min": [
+                      -0.172,
+                      -0.037,
+                      -0.986
+                    ],
+                    "max": [
+                      0.383,
+                      0.459,
+                      -0.618
+                    ]
+                  },
+                  "cropCoordinateMatrix": [
+                    0.27847125713024634,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0.27847125713024634,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0.27847125713024634,
+                    0,
+                    0.10488522955814582,
+                    0.2191883662424349,
+                    -0.7017041750133384,
+                    1
+                  ],
+                  "cropCoordinateFrame": "kaminos-raw-asset-to-preview"
+                }
+              },
+              "correctionApplication": {
+                "cropApplied": true,
+                "cropFrame": "kaminos-raw-asset-to-preview",
+                "sourceCount": 1051601,
+                "keptCount": 587327,
+                "warning": null
+              },
+              "updatedAt": "2026-06-27T21:30:26.255Z",
+              "projectionProbe": {
+                "schema": "kaminos.hybrid-splat-overlay.projection-probe.v0",
+                "objectId": "splat-f5e483ba-3198-4d1b-ba1c-2b40b3e855f0",
+                "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+                "projectionFrameMode": "pbrnext-vertical-flip-precompensated",
+                "probePoint": [
+                  -0.3766465187072754,
+                  0.7306715846061707,
+                  2.519844174385071
+                ],
+                "probePointRole": "raw-asset-upper-quarter",
+                "viewport": {
+                  "width": 1088,
+                  "height": 817,
+                  "devicePixelRatio": 1
+                },
+                "kaminosPreviewScreen": {
+                  "x": 544,
+                  "y": 556.5308147016121,
+                  "ndc": [
+                    0,
+                    -0.36237653537726344,
+                    0.9969173114620581
+                  ],
+                  "clip": [
+                    0,
+                    -1.1386965250418637,
+                    3.1326152978809776,
+                    3.142302036351189
+                  ],
+                  "w": 3.142302036351189
+                },
+                "pbrnextOverlayScreen": {
+                  "x": 544,
+                  "y": 556.5308147016121,
+                  "ndc": [
+                    0,
+                    -0.36237653537726344,
+                    0.9969173114620581
+                  ],
+                  "clip": [
+                    0,
+                    -1.1386965250418637,
+                    3.1326152978809776,
+                    3.142302036351189
+                  ],
+                  "w": 3.142302036351189
+                },
+                "pbrnextUncompensatedScreen": {
+                  "x": 544,
+                  "y": 260.46918529838786,
+                  "ndc": [
+                    0,
+                    0.36237653537726344,
+                    0.9969173114620581
+                  ],
+                  "clip": [
+                    0,
+                    1.1386965250418637,
+                    3.1326152978809776,
+                    3.142302036351189
+                  ],
+                  "w": 3.142302036351189
+                }
+              },
+              "sceneContextTelemetry": {
+                "schema": "kaminos.hybrid-splat-overlay.scene-context-telemetry.v0",
+                "rendererSchema": "hybrid-render.scene-context.v0",
+                "contextSchema": "hybrid-render.scene-context.v0",
+                "contextFrame": 306,
+                "contextFrameId": null,
+                "contextTimestamp": "2026-06-27T21:30:26.255Z",
+                "rendererTimestamp": "2026-06-27T21:30:26.255Z",
+                "rendererFrameId": null,
+                "route": "hybrid-mesh-splat-route-stub",
+                "capability": {
+                  "meshDepthOcclusion": false,
+                  "sharedCanvasComposite": false,
+                  "sharedCommandEncoder": false,
+                  "realSplatRendering": true,
+                  "canvasMode": "dual-canvas-overlay",
+                  "sceneContextApi": true
+                },
+                "accepted": true,
+                "acceptedFields": [],
+                "honored": {
+                  "environment": true,
+                  "environmentIntensity": true,
+                  "environmentRotation": true,
+                  "exposure": true,
+                  "toneMapping": false,
+                  "lights": false,
+                  "depthSource": false
+                },
+                "honoredFields": [
+                  "lighting.environment",
+                  "lighting.environment.intensity",
+                  "lighting.environment.rotationY",
+                  "lighting.exposure"
+                ],
+                "unsupportedFields": [
+                  "toneMapping:ACESFilmicToneMapping"
+                ],
+                "rejectedFields": [],
+                "stale": false,
+                "missing": false,
+                "ignored": false,
+                "failurePhase": null,
+                "message": null
+              }
+            }
+          },
+          "lastUpdatedAt": "2026-06-27T21:30:26.262Z",
+          "lastHandoff": {
+            "schema": "kaminos.render-handoff.v0",
+            "route": "hybrid-mesh-splat-route-stub",
+            "rendererRoute": "hybrid-mesh-splat-route-stub",
+            "objectId": "splat-f5e483ba-3198-4d1b-ba1c-2b40b3e855f0",
+            "objectType": "splat",
+            "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+            "assetSource": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+            "fileName": "evil_orb_final_composite.ply",
+            "viewport": {
+              "width": 1088,
+              "height": 817,
+              "devicePixelRatio": 1
+            },
+            "camera": {
+              "projectionMatrix": [
+                2.063133319572083,
+                0,
+                0,
+                0,
+                0,
+                2.7474774194546225,
+                0,
+                0,
+                0,
+                0,
+                -1.0001000100010002,
+                -1,
+                0,
+                0,
+                -0.010001000100010001,
+                0
+              ],
+              "viewMatrix": [
+                1,
+                0,
+                0,
+                0,
+                0,
+                0.98058067569092,
+                0.19611613513818393,
+                0,
+                0,
+                -0.19611613513818393,
+                0.98058067569092,
+                0,
+                0,
+                0,
+                -3.05941170815567,
+                1
+              ],
+              "worldPosition": [
+                0,
+                0.5999999999999999,
+                3
+              ]
+            },
+            "object": {
+              "worldMatrix": [
+                1,
+                0,
+                0,
+                0,
+                0,
+                -1,
+                0,
+                0,
+                0,
+                0,
+                -1,
+                0,
+                0.7821271597845634,
+                -1.7356318273283757,
+                5.6760158645573835,
+                1
+              ],
+              "visualRootWorldMatrix": [
+                1,
+                0,
+                0,
+                0,
+                0,
+                -1,
+                0,
+                0,
+                0,
+                0,
+                -1,
+                0,
+                0,
+                0,
+                0,
+                1
+              ],
+              "transform": {
+                "position": [
+                  0.7821271597845634,
+                  -1.7356318273283757,
+                  5.6760158645573835
+                ],
+                "rotation": [
+                  0,
+                  0,
+                  0
+                ],
+                "scale": [
+                  1,
+                  -1,
+                  -1
+                ]
+              },
+              "sceneTransform": {
+                "position": [
+                  0,
+                  0,
+                  0
+                ],
+                "rotation": [
+                  0,
+                  0,
+                  0
+                ],
+                "scale": [
+                  1,
+                  1,
+                  1
+                ]
+              },
+              "splatCorrection": {
+                "orientation": {
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ]
+                },
+                "axisFlips": [
+                  1,
+                  -1,
+                  -1
+                ],
+                "centroidOffset": [
+                  0.7821271597845634,
+                  -1.7356318273283757,
+                  5.6760158645573835
+                ],
+                "crop": {
+                  "enabled": true,
+                  "min": [
+                    -0.172,
+                    -0.037,
+                    -0.986
+                  ],
+                  "max": [
+                    0.383,
+                    0.459,
+                    -0.618
+                  ]
+                }
+              }
+            },
+            "capabilities": {
+              "meshDepthOcclusion": false,
+              "sharedCanvasComposite": false,
+              "sharedCommandEncoder": false,
+              "activeAO": false,
+              "realSplatRendering": true,
+              "canvasMode": "dual-canvas-overlay",
+              "correctionAppliedMode": "visual-root-world-matrix",
+              "cropAppliedByRenderer": true,
+              "sceneContextAccepted": true
+            },
+            "hybridOverlay": {
+              "status": "rendering",
+              "error": null,
+              "moduleUrl": "http://127.0.0.1:5173/src/splatOverlay.ts",
+              "objectId": "splat-f5e483ba-3198-4d1b-ba1c-2b40b3e855f0",
+              "loadedSource": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+              "loadedFileName": "evil_orb_final_composite.ply",
+              "loadedAt": "2026-06-27T21:30:24.060Z",
+              "frameCount": 306,
+              "canvasMode": "dual-canvas-overlay",
+              "correctionAppliedMode": "visual-root-world-matrix",
+              "cropAppliedByRenderer": true,
+              "canvasConnected": true,
+              "sceneLoaded": true,
+              "capabilities": {
+                "canvasMode": "dual-canvas-overlay",
+                "meshDepthOcclusion": false,
+                "sharedCanvasComposite": false,
+                "sharedCommandEncoder": false,
+                "cropAppliedByRenderer": true
+              },
+              "handleCapabilities": {
+                "canvasMode": "dual-canvas-overlay",
+                "meshDepthOcclusion": false,
+                "sharedCanvasComposite": false,
+                "sharedCommandEncoder": false,
+                "cropAppliedByRenderer": true
+              },
+              "sourceIdentity": {
+                "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+                "loadMethod": "ply-url",
+                "correctionApplied": true,
+                "correctionIdentity": {
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "axisFlips": [
+                    false,
+                    true,
+                    true
+                  ],
+                  "centroidOffset": [
+                    0.7821271597845634,
+                    -1.7356318273283757,
+                    5.6760158645573835
+                  ],
+                  "crop": {
+                    "enabled": true,
+                    "min": [
+                      -0.172,
+                      -0.037,
+                      -0.986
+                    ],
+                    "max": [
+                      0.383,
+                      0.459,
+                      -0.618
+                    ]
+                  },
+                  "cropCoordinateMatrix": [
+                    0.27847125713024634,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0.27847125713024634,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0.27847125713024634,
+                    0,
+                    0.10488522955814582,
+                    0.2191883662424349,
+                    -0.7017041750133384,
+                    1
+                  ],
+                  "cropCoordinateFrame": "kaminos-raw-asset-to-preview"
+                }
+              },
+              "correctionApplication": {
+                "cropApplied": true,
+                "cropFrame": "kaminos-raw-asset-to-preview",
+                "sourceCount": 1051601,
+                "keptCount": 587327,
+                "warning": null
+              },
+              "sceneContextAccepted": true,
+              "sceneContextTelemetry": {
+                "schema": "kaminos.hybrid-splat-overlay.scene-context-telemetry.v0",
+                "rendererSchema": "hybrid-render.scene-context.v0",
+                "contextSchema": "hybrid-render.scene-context.v0",
+                "contextFrame": 306,
+                "contextFrameId": null,
+                "contextTimestamp": "2026-06-27T21:30:26.255Z",
+                "rendererTimestamp": "2026-06-27T21:30:26.255Z",
+                "rendererFrameId": null,
+                "route": "hybrid-mesh-splat-route-stub",
+                "capability": {
+                  "meshDepthOcclusion": false,
+                  "sharedCanvasComposite": false,
+                  "sharedCommandEncoder": false,
+                  "realSplatRendering": true,
+                  "canvasMode": "dual-canvas-overlay",
+                  "sceneContextApi": true
+                },
+                "accepted": true,
+                "acceptedFields": [],
+                "honored": {
+                  "environment": true,
+                  "environmentIntensity": true,
+                  "environmentRotation": true,
+                  "exposure": true,
+                  "toneMapping": false,
+                  "lights": false,
+                  "depthSource": false
+                },
+                "honoredFields": [
+                  "lighting.environment",
+                  "lighting.environment.intensity",
+                  "lighting.environment.rotationY",
+                  "lighting.exposure"
+                ],
+                "unsupportedFields": [
+                  "toneMapping:ACESFilmicToneMapping"
+                ],
+                "rejectedFields": [],
+                "stale": false,
+                "missing": false,
+                "ignored": false,
+                "failurePhase": null,
+                "message": null
+              },
+              "lastSceneContext": {
+                "schema": "hybrid-render.scene-context.v0",
+                "producer": {
+                  "app": "kaminos",
+                  "route": "hybrid-mesh-splat-overlay",
+                  "frame": 306,
+                  "updatedAt": "2026-06-27T21:30:26.255Z"
+                },
+                "coordinateSystem": {
+                  "worldUnits": "kaminos-scene-units",
+                  "upAxis": "Y",
+                  "handedness": "three-js-right-handed"
+                },
+                "camera": {
+                  "projectionFrame": "three-webgpu-host",
+                  "viewMatrix": [
+                    1,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0.98058067569092,
+                    0.19611613513818393,
+                    0,
+                    0,
+                    -0.19611613513818393,
+                    0.98058067569092,
+                    0,
+                    0,
+                    0,
+                    -3.05941170815567,
+                    1
+                  ],
+                  "projectionMatrix": [
+                    2.063133319572083,
+                    0,
+                    0,
+                    0,
+                    0,
+                    2.7474774194546225,
+                    0,
+                    0,
+                    0,
+                    0,
+                    -1.0001000100010002,
+                    -1,
+                    0,
+                    0,
+                    -0.010001000100010001,
+                    0
+                  ],
+                  "positionWorld": [
+                    0,
+                    0.6000000238418579,
+                    3
+                  ],
+                  "viewport": {
+                    "width": 1088,
+                    "height": 817,
+                    "devicePixelRatio": 1
+                  }
+                },
+                "lighting": {
+                  "environment": {
+                    "kind": "hdr-url",
+                    "name": "studio",
+                    "label": "Studio",
+                    "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_09_1k.hdr",
+                    "preset": "studio",
+                    "intensity": 1,
+                    "rotationY": 0
+                  },
+                  "exposure": 1.5,
+                  "toneMapping": "ACESFilmicToneMapping"
+                },
+                "composition": {
+                  "mode": "dual-canvas-overlay",
+                  "background": "transparent",
+                  "capabilities": {
+                    "meshDepthOcclusion": false,
+                    "sharedCanvasComposite": false,
+                    "sharedCommandEncoder": false
+                  },
+                  "hostBackground": {
+                    "visible": false,
+                    "blur": 0.4
+                  }
+                }
+              },
+              "lastFrame": {
+                "schema": "kaminos.hybrid-splat-overlay.frame.v0",
+                "objectId": "splat-f5e483ba-3198-4d1b-ba1c-2b40b3e855f0",
+                "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+                "canvasMode": "dual-canvas-overlay",
+                "correctionAppliedMode": "visual-root-world-matrix",
+                "assetFrameMode": "raw-ply-to-normalized-preview",
+                "modelMatrixFrameMode": "pbrnext-setModelMatrix-owned",
+                "cropAppliedByRenderer": true,
+                "viewport": {
+                  "width": 1088,
+                  "height": 817,
+                  "devicePixelRatio": 1
+                },
+                "objectWorldMatrix": [
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  -1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  -1,
+                  0,
+                  0.7821271597845634,
+                  -1.7356318273283757,
+                  5.6760158645573835,
+                  1
+                ],
+                "visualRootWorldMatrix": [
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  -1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  -1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  1
+                ],
+                "overlayAssetWorldMatrix": [
+                  0.27847125713024634,
+                  0,
+                  0,
+                  0,
+                  0,
+                  -0.27847125713024634,
+                  0,
+                  0,
+                  0,
+                  0,
+                  -0.27847125713024634,
+                  0,
+                  0.10488522955814582,
+                  -0.2191883662424349,
+                  0.7017041750133384,
+                  1
+                ],
+                "rawAssetToPreviewMatrix": [
+                  0.27847125713024634,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0.27847125713024634,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0.27847125713024634,
+                  0,
+                  0.10488522955814582,
+                  0.2191883662424349,
+                  -0.7017041750133384,
+                  1
+                ],
+                "rawAssetToPreviewScale": 0.27847125713024634,
+                "rawAssetBoundsCenter": [
+                  -0.3766465187072754,
+                  -0.7871130704879761,
+                  2.519844174385071
+                ],
+                "rawAssetBoundsSize": [
+                  7.182069778442383,
+                  6.071138620376587,
+                  6.031433820724487
+                ],
+                "overlayViewMatrix": [
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0.98058067569092,
+                  0.19611613513818393,
+                  0,
+                  0,
+                  -0.19611613513818393,
+                  0.98058067569092,
+                  0,
+                  0,
+                  0,
+                  -3.05941170815567,
+                  1
+                ],
+                "effectiveViewMatrix": [
+                  0.27847125713024634,
+                  0,
+                  0,
+                  0,
+                  0,
+                  -0.27306353347727685,
+                  -0.05461270669545536,
+                  0,
+                  0,
+                  0.05461270669545536,
+                  -0.27306353347727685,
+                  0,
+                  0.10488522955814582,
+                  -0.3525473870875394,
+                  -2.41432052934067,
+                  1
+                ],
+                "projectionMatrix": [
+                  2.063133319572083,
+                  0,
+                  0,
+                  0,
+                  0,
+                  2.7474774194546225,
+                  0,
+                  0,
+                  0,
+                  0,
+                  -1.0001000100010002,
+                  -1,
+                  0,
+                  0,
+                  -0.010001000100010001,
+                  0
+                ],
+                "overlayProjectionMatrix": [
+                  2.063133319572083,
+                  0,
+                  0,
+                  0,
+                  0,
+                  -2.7474774194546225,
+                  0,
+                  0,
+                  0,
+                  0,
+                  -1.0001000100010002,
+                  -1,
+                  0,
+                  0,
+                  -0.010001000100010001,
+                  0
+                ],
+                "projectionFrameMode": "pbrnext-vertical-flip-precompensated",
+                "cameraPositionWorld": [
+                  0,
+                  0.6000000238418579,
+                  3
+                ],
+                "cameraPositionInSplatLocal": [
+                  -0.3766465187072754,
+                  -2.9417340040206903,
+                  -8.253260493278503
+                ],
+                "splatCorrection": {
+                  "orientation": {
+                    "rotation": [
+                      0,
+                      0,
+                      0
+                    ]
+                  },
+                  "axisFlips": [
+                    1,
+                    -1,
+                    -1
+                  ],
+                  "centroidOffset": [
+                    0.7821271597845634,
+                    -1.7356318273283757,
+                    5.6760158645573835
+                  ],
+                  "crop": {
+                    "enabled": true,
+                    "min": [
+                      -0.172,
+                      -0.037,
+                      -0.986
+                    ],
+                    "max": [
+                      0.383,
+                      0.459,
+                      -0.618
+                    ]
+                  }
+                },
+                "overlayCapabilities": {
+                  "canvasMode": "dual-canvas-overlay",
+                  "meshDepthOcclusion": false,
+                  "sharedCanvasComposite": false,
+                  "sharedCommandEncoder": false,
+                  "cropAppliedByRenderer": true
+                },
+                "sourceIdentity": {
+                  "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+                  "loadMethod": "ply-url",
+                  "correctionApplied": true,
+                  "correctionIdentity": {
+                    "rotation": [
+                      0,
+                      0,
+                      0
+                    ],
+                    "axisFlips": [
+                      false,
+                      true,
+                      true
+                    ],
+                    "centroidOffset": [
+                      0.7821271597845634,
+                      -1.7356318273283757,
+                      5.6760158645573835
+                    ],
+                    "crop": {
+                      "enabled": true,
+                      "min": [
+                        -0.172,
+                        -0.037,
+                        -0.986
+                      ],
+                      "max": [
+                        0.383,
+                        0.459,
+                        -0.618
+                      ]
+                    },
+                    "cropCoordinateMatrix": [
+                      0.27847125713024634,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0.27847125713024634,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0.27847125713024634,
+                      0,
+                      0.10488522955814582,
+                      0.2191883662424349,
+                      -0.7017041750133384,
+                      1
+                    ],
+                    "cropCoordinateFrame": "kaminos-raw-asset-to-preview"
+                  }
+                },
+                "correctionApplication": {
+                  "cropApplied": true,
+                  "cropFrame": "kaminos-raw-asset-to-preview",
+                  "sourceCount": 1051601,
+                  "keptCount": 587327,
+                  "warning": null
+                },
+                "updatedAt": "2026-06-27T21:30:26.255Z",
+                "projectionProbe": {
+                  "schema": "kaminos.hybrid-splat-overlay.projection-probe.v0",
+                  "objectId": "splat-f5e483ba-3198-4d1b-ba1c-2b40b3e855f0",
+                  "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+                  "projectionFrameMode": "pbrnext-vertical-flip-precompensated",
+                  "probePoint": [
+                    -0.3766465187072754,
+                    0.7306715846061707,
+                    2.519844174385071
+                  ],
+                  "probePointRole": "raw-asset-upper-quarter",
+                  "viewport": {
+                    "width": 1088,
+                    "height": 817,
+                    "devicePixelRatio": 1
+                  },
+                  "kaminosPreviewScreen": {
+                    "x": 544,
+                    "y": 556.5308147016121,
+                    "ndc": [
+                      0,
+                      -0.36237653537726344,
+                      0.9969173114620581
+                    ],
+                    "clip": [
+                      0,
+                      -1.1386965250418637,
+                      3.1326152978809776,
+                      3.142302036351189
+                    ],
+                    "w": 3.142302036351189
+                  },
+                  "pbrnextOverlayScreen": {
+                    "x": 544,
+                    "y": 556.5308147016121,
+                    "ndc": [
+                      0,
+                      -0.36237653537726344,
+                      0.9969173114620581
+                    ],
+                    "clip": [
+                      0,
+                      -1.1386965250418637,
+                      3.1326152978809776,
+                      3.142302036351189
+                    ],
+                    "w": 3.142302036351189
+                  },
+                  "pbrnextUncompensatedScreen": {
+                    "x": 544,
+                    "y": 260.46918529838786,
+                    "ndc": [
+                      0,
+                      0.36237653537726344,
+                      0.9969173114620581
+                    ],
+                    "clip": [
+                      0,
+                      1.1386965250418637,
+                      3.1326152978809776,
+                      3.142302036351189
+                    ],
+                    "w": 3.142302036351189
+                  }
+                },
+                "sceneContextTelemetry": {
+                  "schema": "kaminos.hybrid-splat-overlay.scene-context-telemetry.v0",
+                  "rendererSchema": "hybrid-render.scene-context.v0",
+                  "contextSchema": "hybrid-render.scene-context.v0",
+                  "contextFrame": 306,
+                  "contextFrameId": null,
+                  "contextTimestamp": "2026-06-27T21:30:26.255Z",
+                  "rendererTimestamp": "2026-06-27T21:30:26.255Z",
+                  "rendererFrameId": null,
+                  "route": "hybrid-mesh-splat-route-stub",
+                  "capability": {
+                    "meshDepthOcclusion": false,
+                    "sharedCanvasComposite": false,
+                    "sharedCommandEncoder": false,
+                    "realSplatRendering": true,
+                    "canvasMode": "dual-canvas-overlay",
+                    "sceneContextApi": true
+                  },
+                  "accepted": true,
+                  "acceptedFields": [],
+                  "honored": {
+                    "environment": true,
+                    "environmentIntensity": true,
+                    "environmentRotation": true,
+                    "exposure": true,
+                    "toneMapping": false,
+                    "lights": false,
+                    "depthSource": false
+                  },
+                  "honoredFields": [
+                    "lighting.environment",
+                    "lighting.environment.intensity",
+                    "lighting.environment.rotationY",
+                    "lighting.exposure"
+                  ],
+                  "unsupportedFields": [
+                    "toneMapping:ACESFilmicToneMapping"
+                  ],
+                  "rejectedFields": [],
+                  "stale": false,
+                  "missing": false,
+                  "ignored": false,
+                  "failurePhase": null,
+                  "message": null
+                }
+              }
+            },
+            "evidence": {
+              "schema": "kaminos.render-handoff.v0",
+              "routeId": "hybrid-mesh-splat-route-stub",
+              "rendererId": "kaminos-three-tsl-editor",
+              "sourcePreserved": true,
+              "hybridOverlayActive": true,
+              "cropAppliedByRenderer": true,
+              "generatedAt": "2026-06-27T21:30:26.262Z"
+            }
+          }
+        },
+        "targetObjectId": "splat-f5e483ba-3198-4d1b-ba1c-2b40b3e855f0",
+        "splatObjects": [
+          {
+            "id": "splat-f5e483ba-3198-4d1b-ba1c-2b40b3e855f0",
+            "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+            "fileName": "evil_orb_final_composite.ply",
+            "splat": {
+              "schema": "kaminos.splat-asset.v0",
+              "assetSource": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+              "fileName": "evil_orb_final_composite.ply",
+              "format": "ply",
+              "root_id": "splat-inbox",
+              "path": "evil_orb_final_composite.ply",
+              "correction": {
+                "orientation": {
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ]
+                },
+                "axisFlips": [
+                  1,
+                  -1,
+                  -1
+                ],
+                "centroidOffset": [
+                  0.7821271597845634,
+                  -1.7356318273283757,
+                  5.6760158645573835
+                ],
+                "crop": {
+                  "enabled": true,
+                  "min": [
+                    -0.172,
+                    -0.037,
+                    -0.986
+                  ],
+                  "max": [
+                    0.383,
+                    0.459,
+                    -0.618
+                  ]
+                }
+              },
+              "previewKind": "point-cloud",
+              "pointCount": 1051601,
+              "bounds": {
+                "min": [
+                  -3.967681407928467,
+                  -3.8226823806762695,
+                  -0.49587273597717285
+                ],
+                "max": [
+                  3.214388370513916,
+                  2.2484562397003174,
+                  5.5355610847473145
+                ],
+                "center": [
+                  -0.3766465187072754,
+                  -0.7871130704879761,
+                  2.519844174385071
+                ],
+                "size": [
+                  7.182069778442383,
+                  6.071138620376587,
+                  6.031433820724487
+                ]
+              },
+              "colorSource": "sh-dc",
+              "parser": "ply-point-cloud-v0",
+              "previewDepthTest": false
+            },
+            "renderRoute": "hybrid-mesh-splat-route-stub",
+            "renderCapabilities": {
+              "meshDepthOcclusion": false,
+              "sharedCanvasComposite": false,
+              "activeAO": false,
+              "realSplatRendering": false,
+              "canvasMode": "three-point-cloud-preview",
+              "sharedCommandEncoder": false,
+              "correctionAppliedMode": null,
+              "cropAppliedByRenderer": false,
+              "sceneContextAccepted": false
+            },
+            "renderHandoffSchema": "kaminos.render-handoff.v0"
+          },
+          {
+            "id": "splat-4573870e-da0b-413e-a844-3b354cc1c135",
+            "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+            "fileName": "evil_orb_final_composite.ply",
+            "splat": {
+              "schema": "kaminos.splat-asset.v0",
+              "assetSource": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+              "fileName": "evil_orb_final_composite.ply",
+              "format": "ply",
+              "bounds": {
+                "min": [
+                  -3.967681407928467,
+                  -3.8226823806762695,
+                  -0.49587273597717285
+                ],
+                "max": [
+                  3.214388370513916,
+                  2.2484562397003174,
+                  5.5355610847473145
+                ],
+                "center": [
+                  -0.3766465187072754,
+                  -0.7871130704879761,
+                  2.519844174385071
+                ],
+                "size": [
+                  7.182069778442383,
+                  6.071138620376587,
+                  6.031433820724487
+                ]
+              },
+              "splatCount": null,
+              "sidecars": [],
+              "correction": {
+                "orientation": {
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ]
+                },
+                "axisFlips": [
+                  1,
+                  -1,
+                  -1
+                ],
+                "centroidOffset": [
+                  0.7821271597845634,
+                  -1.7356318273283757,
+                  5.6760158645573835
+                ],
+                "crop": {
+                  "enabled": true,
+                  "min": [
+                    -0.172,
+                    -0.037,
+                    -0.986
+                  ],
+                  "max": [
+                    0.383,
+                    0.459,
+                    -0.618
+                  ]
+                }
+              },
+              "provenance": {
+                "source_group": "splat-inbox",
+                "source_url": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+                "root_id": "splat-inbox",
+                "root_label": "Experimental Splat Inbox",
+                "asset_stage": "experimental",
+                "asset_path": "evil_orb_final_composite.ply"
+              },
+              "previewKind": "point-cloud",
+              "pointCount": 1051601,
+              "colorSource": "sh-dc",
+              "parser": "ply-point-cloud-v0",
+              "previewDepthTest": false
+            },
+            "renderRoute": "hybrid-mesh-splat-route-stub",
+            "renderCapabilities": {
+              "meshDepthOcclusion": false,
+              "sharedCanvasComposite": false,
+              "activeAO": false,
+              "realSplatRendering": false,
+              "canvasMode": "three-point-cloud-preview",
+              "sharedCommandEncoder": false,
+              "correctionAppliedMode": null,
+              "cropAppliedByRenderer": false,
+              "sceneContextAccepted": false
+            },
+            "renderHandoffSchema": "kaminos.render-handoff.v0"
+          }
+        ],
+        "activeHandoff": {
+          "schema": "kaminos.render-handoff.v0",
+          "route": "hybrid-mesh-splat-route-stub",
+          "rendererRoute": "hybrid-mesh-splat-route-stub",
+          "objectId": "splat-f5e483ba-3198-4d1b-ba1c-2b40b3e855f0",
+          "objectType": "splat",
+          "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+          "assetSource": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+          "fileName": "evil_orb_final_composite.ply",
+          "viewport": {
+            "width": 1088,
+            "height": 817,
+            "devicePixelRatio": 1
+          },
+          "camera": {
+            "projectionMatrix": [
+              2.063133319572083,
+              0,
+              0,
+              0,
+              0,
+              2.7474774194546225,
+              0,
+              0,
+              0,
+              0,
+              -1.0001000100010002,
+              -1,
+              0,
+              0,
+              -0.010001000100010001,
+              0
+            ],
+            "viewMatrix": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              0.98058067569092,
+              0.19611613513818393,
+              0,
+              0,
+              -0.19611613513818393,
+              0.98058067569092,
+              0,
+              0,
+              0,
+              -3.05941170815567,
+              1
+            ],
+            "worldPosition": [
+              0,
+              0.5999999999999999,
+              3
+            ]
+          },
+          "object": {
+            "worldMatrix": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              -1,
+              0,
+              0,
+              0,
+              0,
+              -1,
+              0,
+              0.7821271597845634,
+              -1.7356318273283757,
+              5.6760158645573835,
+              1
+            ],
+            "visualRootWorldMatrix": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              -1,
+              0,
+              0,
+              0,
+              0,
+              -1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "transform": {
+              "position": [
+                0.7821271597845634,
+                -1.7356318273283757,
+                5.6760158645573835
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                -1,
+                -1
+              ]
+            },
+            "sceneTransform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "splatCorrection": {
+              "orientation": {
+                "rotation": [
+                  0,
+                  0,
+                  0
+                ]
+              },
+              "axisFlips": [
+                1,
+                -1,
+                -1
+              ],
+              "centroidOffset": [
+                0.7821271597845634,
+                -1.7356318273283757,
+                5.6760158645573835
+              ],
+              "crop": {
+                "enabled": true,
+                "min": [
+                  -0.172,
+                  -0.037,
+                  -0.986
+                ],
+                "max": [
+                  0.383,
+                  0.459,
+                  -0.618
+                ]
+              }
+            }
+          },
+          "capabilities": {
+            "meshDepthOcclusion": false,
+            "sharedCanvasComposite": false,
+            "sharedCommandEncoder": false,
+            "activeAO": false,
+            "realSplatRendering": true,
+            "canvasMode": "dual-canvas-overlay",
+            "correctionAppliedMode": "visual-root-world-matrix",
+            "cropAppliedByRenderer": true,
+            "sceneContextAccepted": true
+          },
+          "hybridOverlay": {
+            "status": "rendering",
+            "error": null,
+            "moduleUrl": "http://127.0.0.1:5173/src/splatOverlay.ts",
+            "objectId": "splat-f5e483ba-3198-4d1b-ba1c-2b40b3e855f0",
+            "loadedSource": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+            "loadedFileName": "evil_orb_final_composite.ply",
+            "loadedAt": "2026-06-27T21:30:24.060Z",
+            "frameCount": 306,
+            "canvasMode": "dual-canvas-overlay",
+            "correctionAppliedMode": "visual-root-world-matrix",
+            "cropAppliedByRenderer": true,
+            "canvasConnected": true,
+            "sceneLoaded": true,
+            "capabilities": {
+              "canvasMode": "dual-canvas-overlay",
+              "meshDepthOcclusion": false,
+              "sharedCanvasComposite": false,
+              "sharedCommandEncoder": false,
+              "cropAppliedByRenderer": true
+            },
+            "handleCapabilities": {
+              "canvasMode": "dual-canvas-overlay",
+              "meshDepthOcclusion": false,
+              "sharedCanvasComposite": false,
+              "sharedCommandEncoder": false,
+              "cropAppliedByRenderer": true
+            },
+            "sourceIdentity": {
+              "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+              "loadMethod": "ply-url",
+              "correctionApplied": true,
+              "correctionIdentity": {
+                "rotation": [
+                  0,
+                  0,
+                  0
+                ],
+                "axisFlips": [
+                  false,
+                  true,
+                  true
+                ],
+                "centroidOffset": [
+                  0.7821271597845634,
+                  -1.7356318273283757,
+                  5.6760158645573835
+                ],
+                "crop": {
+                  "enabled": true,
+                  "min": [
+                    -0.172,
+                    -0.037,
+                    -0.986
+                  ],
+                  "max": [
+                    0.383,
+                    0.459,
+                    -0.618
+                  ]
+                },
+                "cropCoordinateMatrix": [
+                  0.27847125713024634,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0.27847125713024634,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0.27847125713024634,
+                  0,
+                  0.10488522955814582,
+                  0.2191883662424349,
+                  -0.7017041750133384,
+                  1
+                ],
+                "cropCoordinateFrame": "kaminos-raw-asset-to-preview"
+              }
+            },
+            "correctionApplication": {
+              "cropApplied": true,
+              "cropFrame": "kaminos-raw-asset-to-preview",
+              "sourceCount": 1051601,
+              "keptCount": 587327,
+              "warning": null
+            },
+            "sceneContextAccepted": true,
+            "sceneContextTelemetry": {
+              "schema": "kaminos.hybrid-splat-overlay.scene-context-telemetry.v0",
+              "rendererSchema": "hybrid-render.scene-context.v0",
+              "contextSchema": "hybrid-render.scene-context.v0",
+              "contextFrame": 306,
+              "contextFrameId": null,
+              "contextTimestamp": "2026-06-27T21:30:26.255Z",
+              "rendererTimestamp": "2026-06-27T21:30:26.255Z",
+              "rendererFrameId": null,
+              "route": "hybrid-mesh-splat-route-stub",
+              "capability": {
+                "meshDepthOcclusion": false,
+                "sharedCanvasComposite": false,
+                "sharedCommandEncoder": false,
+                "realSplatRendering": true,
+                "canvasMode": "dual-canvas-overlay",
+                "sceneContextApi": true
+              },
+              "accepted": true,
+              "acceptedFields": [],
+              "honored": {
+                "environment": true,
+                "environmentIntensity": true,
+                "environmentRotation": true,
+                "exposure": true,
+                "toneMapping": false,
+                "lights": false,
+                "depthSource": false
+              },
+              "honoredFields": [
+                "lighting.environment",
+                "lighting.environment.intensity",
+                "lighting.environment.rotationY",
+                "lighting.exposure"
+              ],
+              "unsupportedFields": [
+                "toneMapping:ACESFilmicToneMapping"
+              ],
+              "rejectedFields": [],
+              "stale": false,
+              "missing": false,
+              "ignored": false,
+              "failurePhase": null,
+              "message": null
+            },
+            "lastSceneContext": {
+              "schema": "hybrid-render.scene-context.v0",
+              "producer": {
+                "app": "kaminos",
+                "route": "hybrid-mesh-splat-overlay",
+                "frame": 306,
+                "updatedAt": "2026-06-27T21:30:26.255Z"
+              },
+              "coordinateSystem": {
+                "worldUnits": "kaminos-scene-units",
+                "upAxis": "Y",
+                "handedness": "three-js-right-handed"
+              },
+              "camera": {
+                "projectionFrame": "three-webgpu-host",
+                "viewMatrix": [
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0.98058067569092,
+                  0.19611613513818393,
+                  0,
+                  0,
+                  -0.19611613513818393,
+                  0.98058067569092,
+                  0,
+                  0,
+                  0,
+                  -3.05941170815567,
+                  1
+                ],
+                "projectionMatrix": [
+                  2.063133319572083,
+                  0,
+                  0,
+                  0,
+                  0,
+                  2.7474774194546225,
+                  0,
+                  0,
+                  0,
+                  0,
+                  -1.0001000100010002,
+                  -1,
+                  0,
+                  0,
+                  -0.010001000100010001,
+                  0
+                ],
+                "positionWorld": [
+                  0,
+                  0.6000000238418579,
+                  3
+                ],
+                "viewport": {
+                  "width": 1088,
+                  "height": 817,
+                  "devicePixelRatio": 1
+                }
+              },
+              "lighting": {
+                "environment": {
+                  "kind": "hdr-url",
+                  "name": "studio",
+                  "label": "Studio",
+                  "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_09_1k.hdr",
+                  "preset": "studio",
+                  "intensity": 1,
+                  "rotationY": 0
+                },
+                "exposure": 1.5,
+                "toneMapping": "ACESFilmicToneMapping"
+              },
+              "composition": {
+                "mode": "dual-canvas-overlay",
+                "background": "transparent",
+                "capabilities": {
+                  "meshDepthOcclusion": false,
+                  "sharedCanvasComposite": false,
+                  "sharedCommandEncoder": false
+                },
+                "hostBackground": {
+                  "visible": false,
+                  "blur": 0.4
+                }
+              }
+            },
+            "lastFrame": {
+              "schema": "kaminos.hybrid-splat-overlay.frame.v0",
+              "objectId": "splat-f5e483ba-3198-4d1b-ba1c-2b40b3e855f0",
+              "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+              "canvasMode": "dual-canvas-overlay",
+              "correctionAppliedMode": "visual-root-world-matrix",
+              "assetFrameMode": "raw-ply-to-normalized-preview",
+              "modelMatrixFrameMode": "pbrnext-setModelMatrix-owned",
+              "cropAppliedByRenderer": true,
+              "viewport": {
+                "width": 1088,
+                "height": 817,
+                "devicePixelRatio": 1
+              },
+              "objectWorldMatrix": [
+                1,
+                0,
+                0,
+                0,
+                0,
+                -1,
+                0,
+                0,
+                0,
+                0,
+                -1,
+                0,
+                0.7821271597845634,
+                -1.7356318273283757,
+                5.6760158645573835,
+                1
+              ],
+              "visualRootWorldMatrix": [
+                1,
+                0,
+                0,
+                0,
+                0,
+                -1,
+                0,
+                0,
+                0,
+                0,
+                -1,
+                0,
+                0,
+                0,
+                0,
+                1
+              ],
+              "overlayAssetWorldMatrix": [
+                0.27847125713024634,
+                0,
+                0,
+                0,
+                0,
+                -0.27847125713024634,
+                0,
+                0,
+                0,
+                0,
+                -0.27847125713024634,
+                0,
+                0.10488522955814582,
+                -0.2191883662424349,
+                0.7017041750133384,
+                1
+              ],
+              "rawAssetToPreviewMatrix": [
+                0.27847125713024634,
+                0,
+                0,
+                0,
+                0,
+                0.27847125713024634,
+                0,
+                0,
+                0,
+                0,
+                0.27847125713024634,
+                0,
+                0.10488522955814582,
+                0.2191883662424349,
+                -0.7017041750133384,
+                1
+              ],
+              "rawAssetToPreviewScale": 0.27847125713024634,
+              "rawAssetBoundsCenter": [
+                -0.3766465187072754,
+                -0.7871130704879761,
+                2.519844174385071
+              ],
+              "rawAssetBoundsSize": [
+                7.182069778442383,
+                6.071138620376587,
+                6.031433820724487
+              ],
+              "overlayViewMatrix": [
+                1,
+                0,
+                0,
+                0,
+                0,
+                0.98058067569092,
+                0.19611613513818393,
+                0,
+                0,
+                -0.19611613513818393,
+                0.98058067569092,
+                0,
+                0,
+                0,
+                -3.05941170815567,
+                1
+              ],
+              "effectiveViewMatrix": [
+                0.27847125713024634,
+                0,
+                0,
+                0,
+                0,
+                -0.27306353347727685,
+                -0.05461270669545536,
+                0,
+                0,
+                0.05461270669545536,
+                -0.27306353347727685,
+                0,
+                0.10488522955814582,
+                -0.3525473870875394,
+                -2.41432052934067,
+                1
+              ],
+              "projectionMatrix": [
+                2.063133319572083,
+                0,
+                0,
+                0,
+                0,
+                2.7474774194546225,
+                0,
+                0,
+                0,
+                0,
+                -1.0001000100010002,
+                -1,
+                0,
+                0,
+                -0.010001000100010001,
+                0
+              ],
+              "overlayProjectionMatrix": [
+                2.063133319572083,
+                0,
+                0,
+                0,
+                0,
+                -2.7474774194546225,
+                0,
+                0,
+                0,
+                0,
+                -1.0001000100010002,
+                -1,
+                0,
+                0,
+                -0.010001000100010001,
+                0
+              ],
+              "projectionFrameMode": "pbrnext-vertical-flip-precompensated",
+              "cameraPositionWorld": [
+                0,
+                0.6000000238418579,
+                3
+              ],
+              "cameraPositionInSplatLocal": [
+                -0.3766465187072754,
+                -2.9417340040206903,
+                -8.253260493278503
+              ],
+              "splatCorrection": {
+                "orientation": {
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ]
+                },
+                "axisFlips": [
+                  1,
+                  -1,
+                  -1
+                ],
+                "centroidOffset": [
+                  0.7821271597845634,
+                  -1.7356318273283757,
+                  5.6760158645573835
+                ],
+                "crop": {
+                  "enabled": true,
+                  "min": [
+                    -0.172,
+                    -0.037,
+                    -0.986
+                  ],
+                  "max": [
+                    0.383,
+                    0.459,
+                    -0.618
+                  ]
+                }
+              },
+              "overlayCapabilities": {
+                "canvasMode": "dual-canvas-overlay",
+                "meshDepthOcclusion": false,
+                "sharedCanvasComposite": false,
+                "sharedCommandEncoder": false,
+                "cropAppliedByRenderer": true
+              },
+              "sourceIdentity": {
+                "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+                "loadMethod": "ply-url",
+                "correctionApplied": true,
+                "correctionIdentity": {
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "axisFlips": [
+                    false,
+                    true,
+                    true
+                  ],
+                  "centroidOffset": [
+                    0.7821271597845634,
+                    -1.7356318273283757,
+                    5.6760158645573835
+                  ],
+                  "crop": {
+                    "enabled": true,
+                    "min": [
+                      -0.172,
+                      -0.037,
+                      -0.986
+                    ],
+                    "max": [
+                      0.383,
+                      0.459,
+                      -0.618
+                    ]
+                  },
+                  "cropCoordinateMatrix": [
+                    0.27847125713024634,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0.27847125713024634,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0.27847125713024634,
+                    0,
+                    0.10488522955814582,
+                    0.2191883662424349,
+                    -0.7017041750133384,
+                    1
+                  ],
+                  "cropCoordinateFrame": "kaminos-raw-asset-to-preview"
+                }
+              },
+              "correctionApplication": {
+                "cropApplied": true,
+                "cropFrame": "kaminos-raw-asset-to-preview",
+                "sourceCount": 1051601,
+                "keptCount": 587327,
+                "warning": null
+              },
+              "updatedAt": "2026-06-27T21:30:26.255Z",
+              "projectionProbe": {
+                "schema": "kaminos.hybrid-splat-overlay.projection-probe.v0",
+                "objectId": "splat-f5e483ba-3198-4d1b-ba1c-2b40b3e855f0",
+                "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+                "projectionFrameMode": "pbrnext-vertical-flip-precompensated",
+                "probePoint": [
+                  -0.3766465187072754,
+                  0.7306715846061707,
+                  2.519844174385071
+                ],
+                "probePointRole": "raw-asset-upper-quarter",
+                "viewport": {
+                  "width": 1088,
+                  "height": 817,
+                  "devicePixelRatio": 1
+                },
+                "kaminosPreviewScreen": {
+                  "x": 544,
+                  "y": 556.5308147016121,
+                  "ndc": [
+                    0,
+                    -0.36237653537726344,
+                    0.9969173114620581
+                  ],
+                  "clip": [
+                    0,
+                    -1.1386965250418637,
+                    3.1326152978809776,
+                    3.142302036351189
+                  ],
+                  "w": 3.142302036351189
+                },
+                "pbrnextOverlayScreen": {
+                  "x": 544,
+                  "y": 556.5308147016121,
+                  "ndc": [
+                    0,
+                    -0.36237653537726344,
+                    0.9969173114620581
+                  ],
+                  "clip": [
+                    0,
+                    -1.1386965250418637,
+                    3.1326152978809776,
+                    3.142302036351189
+                  ],
+                  "w": 3.142302036351189
+                },
+                "pbrnextUncompensatedScreen": {
+                  "x": 544,
+                  "y": 260.46918529838786,
+                  "ndc": [
+                    0,
+                    0.36237653537726344,
+                    0.9969173114620581
+                  ],
+                  "clip": [
+                    0,
+                    1.1386965250418637,
+                    3.1326152978809776,
+                    3.142302036351189
+                  ],
+                  "w": 3.142302036351189
+                }
+              },
+              "sceneContextTelemetry": {
+                "schema": "kaminos.hybrid-splat-overlay.scene-context-telemetry.v0",
+                "rendererSchema": "hybrid-render.scene-context.v0",
+                "contextSchema": "hybrid-render.scene-context.v0",
+                "contextFrame": 306,
+                "contextFrameId": null,
+                "contextTimestamp": "2026-06-27T21:30:26.255Z",
+                "rendererTimestamp": "2026-06-27T21:30:26.255Z",
+                "rendererFrameId": null,
+                "route": "hybrid-mesh-splat-route-stub",
+                "capability": {
+                  "meshDepthOcclusion": false,
+                  "sharedCanvasComposite": false,
+                  "sharedCommandEncoder": false,
+                  "realSplatRendering": true,
+                  "canvasMode": "dual-canvas-overlay",
+                  "sceneContextApi": true
+                },
+                "accepted": true,
+                "acceptedFields": [],
+                "honored": {
+                  "environment": true,
+                  "environmentIntensity": true,
+                  "environmentRotation": true,
+                  "exposure": true,
+                  "toneMapping": false,
+                  "lights": false,
+                  "depthSource": false
+                },
+                "honoredFields": [
+                  "lighting.environment",
+                  "lighting.environment.intensity",
+                  "lighting.environment.rotationY",
+                  "lighting.exposure"
+                ],
+                "unsupportedFields": [
+                  "toneMapping:ACESFilmicToneMapping"
+                ],
+                "rejectedFields": [],
+                "stale": false,
+                "missing": false,
+                "ignored": false,
+                "failurePhase": null,
+                "message": null
+              }
+            }
+          },
+          "evidence": {
+            "schema": "kaminos.render-handoff.v0",
+            "routeId": "hybrid-mesh-splat-route-stub",
+            "rendererId": "kaminos-three-tsl-editor",
+            "sourcePreserved": true,
+            "hybridOverlayActive": true,
+            "cropAppliedByRenderer": true,
+            "generatedAt": "2026-06-27T21:30:26.262Z"
+          }
+        }
+      },
+      "previewDebugBefore": {
+        "objectId": "splat-f5e483ba-3198-4d1b-ba1c-2b40b3e855f0",
+        "previewKind": "point-cloud",
+        "cropEnabled": true,
+        "editModeActive": false,
+        "cropFrame": "raw-normalized",
+        "cropFrameCounts": {
+          "frame": "raw-normalized",
+          "includedPointCount": 587327,
+          "canonicalPointCount": 0,
+          "pivotLocalPointCount": 0,
+          "rawNormalizedPointCount": 587327
+        },
+        "totalPointCount": 1051601,
+        "includedPointCount": 587327,
+        "excludedPointCount": 464274,
+        "includedVisible": true,
+        "excludedVisible": false,
+        "includedOpacity": 0.92,
+        "excludedOpacity": 0.18
+      },
+      "previewDebugAfter": {
+        "objectId": "splat-f5e483ba-3198-4d1b-ba1c-2b40b3e855f0",
+        "previewKind": "point-cloud",
+        "cropEnabled": true,
+        "editModeActive": false,
+        "cropFrame": "raw-normalized",
+        "cropFrameCounts": {
+          "frame": "raw-normalized",
+          "includedPointCount": 587327,
+          "canonicalPointCount": 0,
+          "pivotLocalPointCount": 0,
+          "rawNormalizedPointCount": 587327
+        },
+        "totalPointCount": 1051601,
+        "includedPointCount": 587327,
+        "excludedPointCount": 464274,
+        "includedVisible": true,
+        "excludedVisible": false,
+        "includedOpacity": 0.92,
+        "excludedOpacity": 0.18
+      },
+      "statusText": "rendering · dual-canvas P0 · renderer crop=true · /api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+      "overlayCanvas": {
+        "width": 1088,
+        "height": 817,
+        "connected": true
+      },
+      "overlayHost": {
+        "width": 1088,
+        "height": 817
+      },
+      "sceneRows": [
+        {
+          "id": "splat-f5e483ba-3198-4d1b-ba1c-2b40b3e855f0",
+          "active": true,
+          "label": "evil_orb_final_composite.ply"
+        },
+        {
+          "id": "splat-4573870e-da0b-413e-a844-3b354cc1c135",
+          "active": false,
+          "label": "Evil Orb Final Composite"
+        }
+      ]
+    }
+  }
+}

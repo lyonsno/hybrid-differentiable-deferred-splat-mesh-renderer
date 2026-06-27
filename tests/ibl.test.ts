@@ -28,5 +28,14 @@ test("projection shader transforms normals into the lighting frame", async () =>
   const shader = await readFile(new URL("../src/shaders/gpu_project_splats.wgsl", import.meta.url), "utf8");
 
   assert.match(shader, /normalMatrix:\s*mat3x3f/);
-  assert.match(shader, /let normal = normalize\(frame\.normalMatrix \* normalAxis\);/);
+  assert.doesNotMatch(
+    shader,
+    /octEncode\(splatNormal\)/,
+    "asset-local normals must not be oct-encoded before the host/model normal matrix is applied",
+  );
+  assert.match(
+    shader,
+    /octEncode\(normalize\(frame\.normalMatrix \* splatNormal\)\)/,
+    "covariance, baked, and detail-perturbed normals must all be transformed at the final G-buffer write",
+  );
 });
