@@ -21,6 +21,7 @@ import {
   EMPTY_SPLAT_CORRECTION_STATUS,
   type SplatCorrectionStatus,
 } from "./splatCorrection.js";
+import type { MaterialCurveParams } from "./materialCurves.js";
 
 // Re-export the scene context type for consumers
 export type { HybridRenderSceneContextV0, SceneContextTelemetry };
@@ -58,6 +59,68 @@ export interface SplatSourceIdentity {
   };
 }
 
+export interface SplatRendererControlsV0 {
+  readonly schema: "hybrid-render.splat-renderer-controls.v0";
+  readonly material?: {
+    readonly roughness?: Partial<MaterialCurveParams>;
+    readonly metalness?: Partial<MaterialCurveParams>;
+    readonly albedo?: Partial<MaterialCurveParams>;
+  };
+  readonly emissive?: {
+    readonly intensity?: number;
+    readonly threshold?: number;
+  };
+  readonly ao?: {
+    readonly enabled?: boolean;
+    readonly radius?: number;
+    readonly intensity?: number;
+    readonly falloff?: number;
+    readonly thickness?: number;
+    readonly slices?: number;
+    readonly steps?: number;
+  };
+  readonly bloom?: {
+    readonly threshold?: number;
+    readonly softKnee?: number;
+    readonly intensity?: number;
+  };
+}
+
+export interface SplatRendererResolvedControlsV0 {
+  readonly material: {
+    readonly roughness: MaterialCurveParams;
+    readonly metalness: MaterialCurveParams;
+    readonly albedo: MaterialCurveParams;
+  };
+  readonly emissive: {
+    readonly intensity: number;
+    readonly threshold: number;
+  };
+  readonly ao: {
+    readonly enabled: boolean;
+    readonly radius: number;
+    readonly intensity: number;
+    readonly falloff: number;
+    readonly thickness: number;
+    readonly slices: number;
+    readonly steps: number;
+  };
+  readonly bloom: {
+    readonly threshold: number;
+    readonly softKnee: number;
+    readonly intensity: number;
+  };
+}
+
+export interface SplatRendererControlsTelemetry {
+  readonly schema: "hybrid-render.splat-renderer-controls-telemetry.v0";
+  readonly accepted: boolean;
+  readonly timestamp: string;
+  readonly honoredFields: readonly string[];
+  readonly unsupportedFields: readonly string[];
+  readonly controls: SplatRendererResolvedControlsV0;
+}
+
 export interface SplatOverlayHandle {
   /** Update camera matrices from host (call each frame before render). */
   setCameraMatrices(
@@ -75,6 +138,10 @@ export interface SplatOverlayHandle {
   setSceneContext(context: HybridRenderSceneContextV0): SceneContextTelemetry;
   /** Last scene-context telemetry, or null if setSceneContext has not been called. */
   readonly sceneContextTelemetry: SceneContextTelemetry | null;
+  /** Set renderer-owned material/AO/emissive controls. */
+  setRendererControls(controls: SplatRendererControlsV0): SplatRendererControlsTelemetry;
+  /** Last accepted renderer-owned controls telemetry. */
+  readonly rendererControlsTelemetry: SplatRendererControlsTelemetry;
   /** Effective environment map load state for diagnostics. */
   readonly environmentStatus: {
     readonly status: "none" | "loading" | "loaded" | "error";
@@ -131,6 +198,17 @@ function cameraFollowLightDir(pos: Float32Array): [number, number, number] {
 }
 
 const IDENTITY_MAT4 = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+const DEFAULT_CURVE_PARAMS: MaterialCurveParams = Object.freeze({ contrast: 1.0, brightness: 0.0, gamma: 1.0 });
+const DEFAULT_RENDERER_CONTROLS: SplatRendererResolvedControlsV0 = Object.freeze({
+  material: Object.freeze({
+    roughness: Object.freeze({ ...DEFAULT_CURVE_PARAMS }),
+    metalness: Object.freeze({ ...DEFAULT_CURVE_PARAMS }),
+    albedo: Object.freeze({ ...DEFAULT_CURVE_PARAMS }),
+  }),
+  emissive: Object.freeze({ intensity: 3.0, threshold: 0.05 }),
+  ao: Object.freeze({ enabled: true, radius: 0.15, intensity: 1.5, falloff: 1.0, thickness: 1.81, slices: 3, steps: 4 }),
+  bloom: Object.freeze({ threshold: 0.8, softKnee: 0.5, intensity: 0.5 }),
+});
 
 // ---------------------------------------------------------------------------
 // Implementation
@@ -210,6 +288,8 @@ export async function createSplatOverlay(
   let _envIntensity = 1.0;
   let _envRotation = 0.0;
   let _exposure = 1.0;
+  let _rendererControls = DEFAULT_RENDERER_CONTROLS;
+  let _rendererControlsTelemetry = makeRendererControlsTelemetry(_rendererControls);
   let _envFetchAbort: AbortController | null = null;
   let _envRequestedUrl: string | null = null;
   let _environmentStatus: SplatOverlayHandle["environmentStatus"] = {
@@ -357,6 +437,12 @@ export async function createSplatOverlay(
     return telemetry;
   }
 
+  function setRendererControls(controls: SplatRendererControlsV0): SplatRendererControlsTelemetry {
+    _rendererControls = normalizeRendererControls(controls, _rendererControls);
+    _rendererControlsTelemetry = makeRendererControlsTelemetry(_rendererControls);
+    return _rendererControlsTelemetry;
+  }
+
   function initScene(attributes: SplatAttributes) {
     if (scene) {
       renderer.destroyScene(scene);
@@ -456,6 +542,20 @@ export async function createSplatOverlay(
       exposure: _exposure,
       envIntensity: _envIntensity,
       envRotation: _envRotation,
+      emissiveIntensity: _rendererControls.emissive.intensity,
+      emissiveThreshold: _rendererControls.emissive.threshold,
+      aoRadius: _rendererControls.ao.radius,
+      aoIntensity: _rendererControls.ao.enabled ? _rendererControls.ao.intensity : 0,
+      aoFalloff: _rendererControls.ao.falloff,
+      aoThickness: _rendererControls.ao.thickness,
+      aoSlices: _rendererControls.ao.slices,
+      aoSteps: _rendererControls.ao.steps,
+      bloomThreshold: _rendererControls.bloom.threshold,
+      bloomSoftKnee: _rendererControls.bloom.softKnee,
+      bloomIntensity: _rendererControls.bloom.intensity,
+      roughnessCurve: _rendererControls.material.roughness,
+      metalnessCurve: _rendererControls.material.metalness,
+      albedoCurve: _rendererControls.material.albedo,
     }, encoder);
 
     // Present to overlay canvas with premultiplied alpha
@@ -508,6 +608,7 @@ export async function createSplatOverlay(
     setViewport,
     setCorrectionIdentity,
     setSceneContext,
+    setRendererControls,
     loadPly,
     loadManifest,
     loadAttributes,
@@ -519,6 +620,7 @@ export async function createSplatOverlay(
     capabilities: CAPABILITIES,
     get sourceIdentity() { return sourceIdentity; },
     get sceneContextTelemetry() { return _sceneContextTelemetry; },
+    get rendererControlsTelemetry() { return _rendererControlsTelemetry; },
     get environmentStatus() { return _environmentStatus; },
     get cropStatus() { return cropStatus; },
     get cropAppliedByRenderer() { return cropStatus.cropAppliedByRenderer; },
@@ -531,5 +633,82 @@ export async function createSplatOverlay(
         warning: cropStatus.warning,
       };
     },
+  };
+}
+
+function clampFinite(value: unknown, fallback: number, min: number, max: number): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.min(max, Math.max(min, value))
+    : fallback;
+}
+
+function normalizeCurve(
+  input: Partial<MaterialCurveParams> | undefined,
+  fallback: MaterialCurveParams,
+): MaterialCurveParams {
+  return {
+    contrast: clampFinite(input?.contrast, fallback.contrast, 0, 3),
+    brightness: clampFinite(input?.brightness, fallback.brightness, -1, 1),
+    gamma: clampFinite(input?.gamma, fallback.gamma, 0.1, 3),
+  };
+}
+
+function normalizeRendererControls(
+  input: SplatRendererControlsV0,
+  fallback: SplatRendererResolvedControlsV0 = DEFAULT_RENDERER_CONTROLS,
+): SplatRendererResolvedControlsV0 {
+  return {
+    material: {
+      roughness: normalizeCurve(input.material?.roughness, fallback.material.roughness),
+      metalness: normalizeCurve(input.material?.metalness, fallback.material.metalness),
+      albedo: normalizeCurve(input.material?.albedo, fallback.material.albedo),
+    },
+    emissive: {
+      intensity: clampFinite(input.emissive?.intensity, fallback.emissive.intensity, 0, 20),
+      threshold: clampFinite(input.emissive?.threshold, fallback.emissive.threshold, 0, 1),
+    },
+    ao: {
+      enabled: typeof input.ao?.enabled === "boolean" ? input.ao.enabled : fallback.ao.enabled,
+      radius: clampFinite(input.ao?.radius, fallback.ao.radius, 0, 5),
+      intensity: clampFinite(input.ao?.intensity, fallback.ao.intensity, 0, 5),
+      falloff: clampFinite(input.ao?.falloff, fallback.ao.falloff, 0.01, 5),
+      thickness: clampFinite(input.ao?.thickness, fallback.ao.thickness, 0, 5),
+      slices: Math.round(clampFinite(input.ao?.slices, fallback.ao.slices, 1, 8)),
+      steps: Math.round(clampFinite(input.ao?.steps, fallback.ao.steps, 1, 8)),
+    },
+    bloom: {
+      threshold: clampFinite(input.bloom?.threshold, fallback.bloom.threshold, 0, 5),
+      softKnee: clampFinite(input.bloom?.softKnee, fallback.bloom.softKnee, 0, 1),
+      intensity: clampFinite(input.bloom?.intensity, fallback.bloom.intensity, 0, 10),
+    },
+  };
+}
+
+function makeRendererControlsTelemetry(
+  controls: SplatRendererResolvedControlsV0,
+): SplatRendererControlsTelemetry {
+  return {
+    schema: "hybrid-render.splat-renderer-controls-telemetry.v0",
+    accepted: true,
+    timestamp: new Date().toISOString(),
+    honoredFields: [
+      "material.roughness",
+      "material.metalness",
+      "material.albedo",
+      "emissive.intensity",
+      "emissive.threshold",
+      "ao.enabled",
+      "ao.radius",
+      "ao.intensity",
+      "ao.falloff",
+      "ao.thickness",
+      "ao.slices",
+      "ao.steps",
+      "bloom.threshold",
+      "bloom.softKnee",
+      "bloom.intensity",
+    ],
+    unsupportedFields: [],
+    controls,
   };
 }
