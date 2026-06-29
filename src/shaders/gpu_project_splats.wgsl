@@ -87,6 +87,12 @@ fn octEncode(n: vec3f) -> vec2f {
   return p;
 }
 
+fn faceForwardNormal(normal: vec3f, viewDir: vec3f) -> vec3f {
+  let n = normalize(normal);
+  let v = normalize(viewDir);
+  return select(n, -n, dot(n, v) < 0.0);
+}
+
 fn viewProjectionLinearRow(row: u32) -> vec3f {
   return vec3f(frame.viewProj[0][row], frame.viewProj[1][row], frame.viewProj[2][row]);
 }
@@ -276,7 +282,10 @@ fn project_splats(@builtin(global_invocation_id) globalId: vec3u) {
       }
     }
   }
-  projCache[base + 8u] = pack2x16float(octEncode(normalize(frame.normalMatrix * splatNormal)));
+  let normalViewDir = normalize(frame.cameraPos - center);
+  let facedSplatNormal = faceForwardNormal(splatNormal, normalViewDir);
+  let worldNormal = normalize(frame.normalMatrix * facedSplatNormal);
+  projCache[base + 8u] = pack2x16float(octEncode(worldNormal));
 
   // SH-evaluated view-dependent color
   let shCoeffCount = (frame.shDegree + 1u) * (frame.shDegree + 1u) - 1u;

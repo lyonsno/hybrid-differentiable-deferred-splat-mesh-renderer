@@ -1,0 +1,34 @@
+{
+  "beforeSideText": "Kaminos\nspatial asset kiln\nAssets\nVolume\nGreenroom\nSearch\nGenerate\nDrop a receipt directory here\nor click to browse\nAppend\nSCENE OBJECTS\nCreate Group\n splat / /api/read?root=splat-inbox&path=evil_orb_final_composite.ply\nreloadable\n×\nTRANSFORM\nevil_orb_final_composite.ply\nsplat-9abcb572-5928-41e1-80a2-d637b51403ca\nPosition\nX\nY\nZ\nRotation\nX\nY\nZ\nScale\nX\nY\nZ\nSplat Correction\nAsset-local orientation, axis flip, centroid, and crop hints for preview and render handoff.\nPivot\nCrop\nCentroid\nX\nY\nZ\nAxis Flip\nX\nY\nZ\nCrop enabled\nCrop Min\nX\nY\nZ\nCrop Max\nX\nY\nZ\nEdit Correction\nSave Correction\nReset Correction\nRevert Draft\nDone\nHybrid Renderer\nDual-canvas P0 overlay. Mesh depth, shared AO, and renderer-applied crop are still explicit gaps.\nrendering · dual-canvas P0 · renderer crop=true · /api/read?root=splat-inbox&path=evil_orb_final_composite.ply\nStart Hybrid\nReload\nStop\nSplat Renderer Controls\nDEMO ASSETS\nSuperMat Ring\nENVIRONMENT\nStudio\nSunset\nWarehouse\nCourtyard\nNight\nNeutral\nExposure\n1.5\nEnv Intensity\n1.0\nRotation\n0.0\nShow Map\nPOST PROCESSING\nGTAO Compute\nRadius\n4.00\nIntensity\n1.0\nScale\n1.62\nThickness\n1.81\nFalloff\n0.74\nBACKDROP & DOF\nGrid Backdrop\nDepth of Field\nFlip X\nFlip Y\nFlip Z\nRot X\nRot Y\nRot Z\nWinding\nNormals\n2-Sided\nBackface\nOpaque\nCull Debris\nSnap Ground\nMove\nRotate\nScale\nNo Gizmo\nReset\nSave GLB\nSave\nSave As\nLoad\nHybrid renderer overlay started: evil_orb_final_composite.ply\n0 fps · 0.7ms",
+  "afterSideText": "Kaminos\nspatial asset kiln\nAssets\nVolume\nGreenroom\nSearch\nGenerate\nDrop a receipt directory here\nor click to browse\nAppend\nSCENE OBJECTS\nCreate Group\n splat / /api/read?root=splat-inbox&path=evil_orb_final_composite.ply\nreloadable\n×\nTRANSFORM\nevil_orb_final_composite.ply\nsplat-9abcb572-5928-41e1-80a2-d637b51403ca\nPosition\nX\nY\nZ\nRotation\nX\nY\nZ\nScale\nX\nY\nZ\nSplat Correction\nAsset-local orientation, axis flip, centroid, and crop hints for preview and render handoff.\nPivot\nCrop\nCentroid\nX\nY\nZ\nAxis Flip\nX\nY\nZ\nCrop enabled\nCrop Min\nX\nY\nZ\nCrop Max\nX\nY\nZ\nEdit Correction\nSave Correction\nReset Correction\nRevert Draft\nDone\nHybrid Renderer\nDual-canvas P0 overlay. Mesh depth, shared AO, and renderer-applied crop are still explicit gaps.\nrendering · dual-canvas P0 · renderer crop=true · /api/read?root=splat-inbox&path=evil_orb_final_composite.ply\nStart Hybrid\nReload\nStop\nSplat Renderer Controls\nDEMO ASSETS\nSuperMat Ring\nENVIRONMENT\nStudio\nSunset\nWarehouse\nCourtyard\nNight\nNeutral\nExposure\n1.5\nEnv Intensity\n1.0\nRotation\n0.0\nShow Map\nPOST PROCESSING\nGTAO Compute\nRadius\n4.00\nIntensity\n1.0\nScale\n1.62\nThickness\n1.81\nFalloff\n0.74\nBACKDROP & DOF\nGrid Backdrop\nDepth of Field\nFlip X\nFlip Y\nFlip Z\nRot X\nRot Y\nRot Z\nWinding\nNormals\n2-Sided\nBackface\nOpaque\nCull Debris\nSnap Ground\nMove\nRotate\nScale\nNo Gizmo\nReset\nSave GLB\nSave\nSave As\nLoad\nHybrid renderer overlay started: evil_orb_final_composite.ply\n121 fps · 0.3ms",
+  "telemetry": {
+    "url": "http://127.0.0.1:8094/?load=splat-inbox/evil_orb_final_composite.ply&hybrid_splat_overlay_module_url=http%3A%2F%2F127.0.0.1%3A5173%2Fsrc%2FsplatOverlay.ts",
+    "title": "Kaminos",
+    "bodyText": "Kaminos\nspatial asset kiln\nAssets\nVolume\nGreenroom\nSearch\nGenerate\nDrop a receipt directory here\nor click to browse\nAppend\nSCENE OBJECTS\nCreate Group\n splat / /api/read?root=splat-inbox&path=evil_orb_final_composite.ply\nreloadable\n×\nTRANSFORM\nevil_orb_final_composite.ply\nsplat-9abcb572-5928-41e1-80a2-d637b51403ca\nPosition\nX\nY\nZ\nRotation\nX\nY\nZ\nScale\nX\nY\nZ\nSplat Correction\nAsset-local orientation, axis flip, centroid, and crop hints for preview and render handoff.\nPivot\nCrop\nCentroid\nX\nY\nZ\nAxis Flip\nX\nY\nZ\nCrop enabled\nCrop Min\nX\nY\nZ\nCrop Max\nX\nY\nZ\nEdit Correction\nSave Correction\nReset Correction\nRevert Draft\nDone\nHybrid Renderer\nDual-canvas P0 overlay. Mesh depth, shared AO, and renderer-applied crop are still explicit gaps.\nrendering · dual-canvas P0 · renderer crop=true · /api/read?root=splat-inbox&path=evil_orb_final_composite.ply\nStart Hybrid\nReload\nStop\nSplat Renderer Controls\nDEMO ASSETS\nSuperMat Ring\nENVIRONMENT\nStudio\nSunset\nWarehouse\nCourtyard\nNight\nNeutral\nExposure\n1.5\nEnv Intensity\n1.0\nRotation\n0.0\nShow Map\nPOST PROCESSING\nGTAO Compute\nRadius\n4.00\nIntensity\n1.0\nScale\n1.62\nThickness\n1.81\nFalloff\n0.74\nBACKDROP & DOF\nGrid Backdrop\nDepth of Field\nFlip X\nFlip Y\nFlip Z\nRot X\nRot Y\nRot Z\nWinding\nNormals\n2-Sided\nBackface\nOpaque\nCull Debris\nSnap Ground\nMove\nRotate\nScale\nNo Gizmo\nReset\nSave GLB\nSave\nSave As\nLoad\nHybrid renderer overlay started: evil_orb_final_composite.ply\n121 fps · 0.3ms",
+    "canvasCount": 3,
+    "canvases": [
+      {
+        "i": 0,
+        "x": 380,
+        "y": 0,
+        "width": 1060,
+        "height": 1000
+      },
+      {
+        "i": 1,
+        "x": 380,
+        "y": 0,
+        "width": 1060,
+        "height": 1000
+      },
+      {
+        "i": 2,
+        "x": -9620,
+        "y": -10000,
+        "width": 1,
+        "height": 1
+      }
+    ],
+    "overlayTelemetry": null
+  }
+}

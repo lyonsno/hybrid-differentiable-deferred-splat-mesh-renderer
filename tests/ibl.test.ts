@@ -30,6 +30,7 @@ test("projection shader transforms normals into the lighting frame", async () =>
   const shader = await readFile(new URL("../src/shaders/gpu_project_splats.wgsl", import.meta.url), "utf8");
 
   assert.match(shader, /normalMatrix:\s*mat3x3f/);
+  assert.match(shader, /fn faceForwardNormal\(normal:\s*vec3f,\s*viewDir:\s*vec3f\)\s*->\s*vec3f/);
   assert.doesNotMatch(
     shader,
     /octEncode\(splatNormal\)/,
@@ -37,7 +38,22 @@ test("projection shader transforms normals into the lighting frame", async () =>
   );
   assert.match(
     shader,
-    /octEncode\(normalize\(frame\.normalMatrix \* splatNormal\)\)/,
+    /let normalViewDir = normalize\(frame\.cameraPos - center\);/,
+    "projection must compare normals with the asset-local camera vector before tile blending",
+  );
+  assert.match(
+    shader,
+    /let facedSplatNormal = faceForwardNormal\(splatNormal,\s*normalViewDir\);/,
+    "per-splat normal orientation must be stabilized before G-buffer averaging",
+  );
+  assert.match(
+    shader,
+    /let worldNormal = normalize\(frame\.normalMatrix \* facedSplatNormal\);/,
+    "faced asset-local normals must still be transformed into the host lighting frame",
+  );
+  assert.match(
+    shader,
+    /octEncode\(worldNormal\)/,
     "covariance, baked, and detail-perturbed normals must all be transformed at the final G-buffer write",
   );
 });
