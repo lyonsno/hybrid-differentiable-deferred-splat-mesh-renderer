@@ -1,0 +1,150 @@
+{
+  "ok": true,
+  "out": "/tmp/kaminos-normal-ao-viewmatrix-fix-close2.png",
+  "bytes": 437879,
+  "evidence": {
+    "status": "rendering",
+    "frameCount": 477,
+    "cameraPose": {
+      "position": [
+        0,
+        0.5500000000000004,
+        2.15
+      ],
+      "target": [
+        0,
+        -0.28,
+        0
+      ],
+      "projectionMatrix": [
+        2.805861314618033,
+        0,
+        0,
+        0,
+        0,
+        2.7474774194546225,
+        0,
+        0,
+        0,
+        0,
+        -1.0001000100010002,
+        -1,
+        0,
+        0,
+        -0.010001000100010001,
+        0
+      ],
+      "matrixWorldInverse": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0.9328975559555001,
+        0.3601418471828212,
+        0,
+        0,
+        -0.3601418471828212,
+        0.9328975559555001,
+        0,
+        0,
+        0.2612113156675402,
+        -2.2038077612548768,
+        1
+      ]
+    },
+    "cropApplied": true,
+    "sceneContextAccepted": true,
+    "correctionApplication": {
+      "cropApplied": true,
+      "cropFrame": "kaminos-raw-asset-to-preview",
+      "sourceCount": 1051601,
+      "keptCount": 587327,
+      "warning": null
+    },
+    "rendererControlsTelemetry": {
+      "schema": "kaminos.hybrid-splat-overlay.renderer-controls-telemetry.v0",
+      "rendererSchema": "hybrid-render.splat-renderer-controls-telemetry.v0",
+      "controlsSchema": "hybrid-render.splat-renderer-controls.v0",
+      "route": "hybrid-mesh-splat-route-stub",
+      "accepted": true,
+      "honoredFields": [
+        "material.roughness",
+        "material.metalness",
+        "material.albedo",
+        "emissive.intensity",
+        "emissive.threshold",
+        "ao.enabled",
+        "ao.radius",
+        "ao.intensity",
+        "ao.falloff",
+        "ao.thickness",
+        "ao.slices",
+        "ao.steps",
+        "bloom.threshold",
+        "bloom.softKnee",
+        "bloom.intensity"
+      ],
+      "unsupportedFields": [],
+      "missing": false,
+      "failurePhase": null,
+      "message": null,
+      "controls": {
+        "material": {
+          "roughness": {
+            "contrast": 1,
+            "brightness": 0,
+            "gamma": 1
+          },
+          "metalness": {
+            "contrast": 1,
+            "brightness": 0,
+            "gamma": 1
+          },
+          "albedo": {
+            "contrast": 1,
+            "brightness": 0,
+            "gamma": 1
+          }
+        },
+        "emissive": {
+          "intensity": 3,
+          "threshold": 0.05
+        },
+        "ao": {
+          "enabled": true,
+          "radius": 0.15,
+          "intensity": 1.5,
+          "falloff": 1,
+          "thickness": 1.81,
+          "slices": 3,
+          "steps": 4
+        },
+        "bloom": {
+          "threshold": 0.8,
+          "softKnee": 0.5,
+          "intensity": 0.5
+        }
+      },
+      "timestamp": "2026-06-29T04:30:53.097Z"
+    },
+    "lastFrame": {
+      "cameraPositionWorld": [
+        0,
+        0.550000011920929,
+        2.1500000953674316
+      ],
+      "cameraPositionInSplatLocal": [
+        -0.3766465187072754,
+        -2.7621822595596326,
+        -5.20088083744049
+      ],
+      "viewport": {
+        "width": 800,
+        "height": 817,
+        "devicePixelRatio": 1
+      }
+    }
+  },
+  "stderrTail": "\nDevTools listening on ws://127.0.0.1:9492/devtools/browser/1ad3027b-9350-40e8-91d4-50b8096d5bff\nTrying to load the allocator multiple times. This is *not* supported.\n[54072:20510933:0629/003048.803785:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT\n"
+}

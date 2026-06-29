@@ -1,6 +1,7 @@
 export interface OverlayFrameMatrices {
   readonly viewMatrix: Float32Array;
   readonly viewProj: Float32Array;
+  readonly lightingViewMatrix: Float32Array;
   readonly lightingViewProj: Float32Array;
   readonly cameraPosition: Float32Array;
   readonly lightingCameraPosition: Float32Array;
@@ -32,6 +33,7 @@ export function composeOverlayFrameMatrices(
   return {
     viewMatrix,
     viewProj,
+    lightingViewMatrix: new Float32Array(hostViewMatrix),
     lightingViewProj,
     cameraPosition,
     lightingCameraPosition: new Float32Array(cameraPositionWorld),

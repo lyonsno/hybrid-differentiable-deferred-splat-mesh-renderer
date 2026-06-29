@@ -76,6 +76,7 @@ export interface RenderFrameParams {
   viewMatrix: Float32Array;
   projMatrix: Float32Array;
   cameraPosition: Float32Array;
+  lightingViewMatrix?: Float32Array;
   lightingViewProj?: Float32Array;
   lightingCameraPosition?: Float32Array;
   normalMatrix?: Float32Array;
@@ -1028,6 +1029,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
       }
 
       // Screen-space normal reconstruction + GTAO + deferred lighting
+      const lightingViewMatrix = params.lightingViewMatrix ?? params.viewMatrix;
       const lightingViewProj = params.lightingViewProj ?? params.viewProj;
       const lightingCameraPosition = params.lightingCameraPosition ?? params.cameraPosition;
       const vpInv = mat4Inverse(lightingViewProj);
@@ -1061,7 +1063,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
           params.near ?? 0.01,
           params.far ?? 100,
           params.projMatrix,
-          params.viewMatrix,
+          lightingViewMatrix,
           {
             ...DEFAULT_GTAO_PARAMS,
             radiusWorld: params.aoRadius ?? DEFAULT_GTAO_PARAMS.radiusWorld,

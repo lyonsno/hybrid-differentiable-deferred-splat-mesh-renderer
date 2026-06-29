@@ -31,6 +31,7 @@ test("overlay composes host model matrix into renderer frame matrices", () => {
   const frame = composeOverlayFrameMatrices(view, projection, model, cameraWorld);
 
   assert.deepEqual(Array.from(frame.viewMatrix), Array.from(model));
+  assert.deepEqual(Array.from(frame.lightingViewMatrix), Array.from(view));
   assert.deepEqual(Array.from(frame.viewProj), Array.from(multiplyMat4(VERTICAL_FLIP, model)));
   assert.deepEqual(Array.from(frame.lightingViewProj), Array.from(VERTICAL_FLIP));
   assert.deepEqual(Array.from(frame.cameraPosition), [1, 2, 3]);

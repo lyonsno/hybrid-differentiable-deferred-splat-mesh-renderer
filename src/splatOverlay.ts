@@ -277,6 +277,7 @@ export async function createSplatOverlay(
   let currentProj = new Float32Array(16);
   let currentViewProj = new Float32Array(16);
   let currentCameraPos = new Float32Array(3);
+  let currentLightingView = new Float32Array(IDENTITY_MAT4);
   let currentLightingViewProj = new Float32Array(16);
   let currentLightingCameraPos = new Float32Array(3);
   let currentNormalMatrix = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
@@ -327,6 +328,7 @@ export async function createSplatOverlay(
     currentProj.set(proj);
     currentViewProj = new Float32Array(frameMatrices.viewProj);
     currentCameraPos = new Float32Array(frameMatrices.cameraPosition);
+    currentLightingView = new Float32Array(frameMatrices.lightingViewMatrix);
     currentLightingViewProj = new Float32Array(frameMatrices.lightingViewProj);
     currentLightingCameraPos = new Float32Array(frameMatrices.lightingCameraPosition);
     currentNormalMatrix = new Float32Array(frameMatrices.normalMatrix);
@@ -531,6 +533,7 @@ export async function createSplatOverlay(
       viewMatrix: currentView,
       projMatrix: currentProj,
       cameraPosition: currentCameraPos,
+      lightingViewMatrix: currentLightingView,
       lightingViewProj: currentLightingViewProj,
       lightingCameraPosition: currentLightingCameraPos,
       normalMatrix: currentNormalMatrix,

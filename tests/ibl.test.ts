@@ -39,3 +39,17 @@ test("projection shader transforms normals into the lighting frame", async () =>
     "covariance, baked, and detail-perturbed normals must all be transformed at the final G-buffer write",
   );
 });
+
+test("GTAO transforms world normals with the lighting view matrix, not model-composed projection view", async () => {
+  const renderer = await readFile(new URL("../src/splatRenderer.ts", import.meta.url), "utf8");
+  const overlay = await readFile(new URL("../src/splatOverlay.ts", import.meta.url), "utf8");
+
+  assert.match(renderer, /lightingViewMatrix\?:\s*Float32Array/);
+  assert.match(renderer, /const lightingViewMatrix = params\.lightingViewMatrix \?\? params\.viewMatrix;/);
+  assert.match(
+    renderer,
+    /params\.projMatrix,\s*\n\s*lightingViewMatrix,/,
+    "GTAO receives host lighting view for world-normal transformation instead of view*model",
+  );
+  assert.match(overlay, /lightingViewMatrix:\s*currentLightingView/);
+});
