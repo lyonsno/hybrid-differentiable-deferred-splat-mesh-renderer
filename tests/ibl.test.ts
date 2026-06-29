@@ -6,7 +6,9 @@ const SHADER_PATH = new URL("../src/shaders/gpu_deferred_lighting.wgsl", import.
 
 test("deferred equirect sampling maps +Y to HDR top and -Y to HDR bottom", async () => {
   const shader = await readFile(SHADER_PATH, "utf8");
-  const match = shader.match(/let v = ([^;]+);/);
+  const envSampler = shader.match(/fn sampleEnvEquirectLod[\s\S]+?return textureSampleLevel/);
+  assert.ok(envSampler, "deferred lighting shader must define equirect environment sampling");
+  const match = envSampler[0].match(/let v = ([^;]+);/);
 
   assert.ok(match, "deferred lighting shader must compute equirect v coordinate explicitly");
   assert.equal(
@@ -52,4 +54,18 @@ test("GTAO transforms world normals with the lighting view matrix, not model-com
     "GTAO receives host lighting view for world-normal transformation instead of view*model",
   );
   assert.match(overlay, /lightingViewMatrix:\s*currentLightingView/);
+});
+
+test("deferred lighting and GTAO face visible splat normals toward the camera", async () => {
+  const deferred = await readFile(new URL("../src/shaders/gpu_deferred_lighting.wgsl", import.meta.url), "utf8");
+  const gtao = await readFile(new URL("../src/shaders/gtao_main.wgsl", import.meta.url), "utf8");
+
+  assert.match(deferred, /fn faceForwardNormal\(normal:\s*vec3f,\s*viewDir:\s*vec3f\)\s*->\s*vec3f/);
+  assert.match(deferred, /let Nraw = octDecode\(unpack2x16float\(packedNormal\)\);/);
+  assert.match(deferred, /let N = faceForwardNormal\(Nraw,\s*V\);/);
+
+  assert.match(gtao, /fn faceForwardNormal\(normal:\s*vec3f,\s*viewDir:\s*vec3f\)\s*->\s*vec3f/);
+  assert.match(gtao, /let viewNormalRaw = normalize\(\(params\.viewMatrix \* vec4f\(worldNormal,\s*0\.0\)\)\.xyz\);/);
+  assert.match(gtao, /let viewDir = normalize\(-viewPos\);/);
+  assert.match(gtao, /let viewNormal = faceForwardNormal\(viewNormalRaw,\s*viewDir\);/);
 });

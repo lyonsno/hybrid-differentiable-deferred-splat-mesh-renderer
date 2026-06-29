@@ -15,6 +15,9 @@ test("overlay exposes renderer-owned material, AO, bloom, and emissive controls"
   assert.match(overlay, /metalnessCurve:\s*_rendererControls\.material\.metalness/);
   assert.match(overlay, /albedoCurve:\s*_rendererControls\.material\.albedo/);
   assert.match(overlay, /emissiveIntensity:\s*_rendererControls\.emissive\.intensity/);
+  assert.match(overlay, /readonly normal\?:\s*\{\s*forceScreenSpace\?:\s*boolean/s);
+  assert.match(overlay, /forceScreenSpaceNormals:\s*_rendererControls\.normal\.forceScreenSpace/);
+  assert.match(overlay, /"normal\.forceScreenSpace"/);
   assert.match(overlay, /aoRadius:\s*_rendererControls\.ao\.radius/);
   assert.match(overlay, /bloomIntensity:\s*_rendererControls\.bloom\.intensity/);
 });

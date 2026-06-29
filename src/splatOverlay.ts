@@ -70,6 +70,9 @@ export interface SplatRendererControlsV0 {
     readonly intensity?: number;
     readonly threshold?: number;
   };
+  readonly normal?: {
+    forceScreenSpace?: boolean;
+  };
   readonly ao?: {
     readonly enabled?: boolean;
     readonly radius?: number;
@@ -95,6 +98,9 @@ export interface SplatRendererResolvedControlsV0 {
   readonly emissive: {
     readonly intensity: number;
     readonly threshold: number;
+  };
+  readonly normal: {
+    readonly forceScreenSpace: boolean;
   };
   readonly ao: {
     readonly enabled: boolean;
@@ -206,6 +212,7 @@ const DEFAULT_RENDERER_CONTROLS: SplatRendererResolvedControlsV0 = Object.freeze
     albedo: Object.freeze({ ...DEFAULT_CURVE_PARAMS }),
   }),
   emissive: Object.freeze({ intensity: 3.0, threshold: 0.05 }),
+  normal: Object.freeze({ forceScreenSpace: false }),
   ao: Object.freeze({ enabled: true, radius: 0.15, intensity: 1.5, falloff: 1.0, thickness: 1.81, slices: 3, steps: 4 }),
   bloom: Object.freeze({ threshold: 0.8, softKnee: 0.5, intensity: 0.5 }),
 });
@@ -547,6 +554,7 @@ export async function createSplatOverlay(
       envRotation: _envRotation,
       emissiveIntensity: _rendererControls.emissive.intensity,
       emissiveThreshold: _rendererControls.emissive.threshold,
+      forceScreenSpaceNormals: _rendererControls.normal.forceScreenSpace,
       aoRadius: _rendererControls.ao.radius,
       aoIntensity: _rendererControls.ao.enabled ? _rendererControls.ao.intensity : 0,
       aoFalloff: _rendererControls.ao.falloff,
@@ -670,6 +678,11 @@ function normalizeRendererControls(
       intensity: clampFinite(input.emissive?.intensity, fallback.emissive.intensity, 0, 20),
       threshold: clampFinite(input.emissive?.threshold, fallback.emissive.threshold, 0, 1),
     },
+    normal: {
+      forceScreenSpace: typeof input.normal?.forceScreenSpace === "boolean"
+        ? input.normal.forceScreenSpace
+        : fallback.normal.forceScreenSpace,
+    },
     ao: {
       enabled: typeof input.ao?.enabled === "boolean" ? input.ao.enabled : fallback.ao.enabled,
       radius: clampFinite(input.ao?.radius, fallback.ao.radius, 0, 5),
@@ -700,6 +713,7 @@ function makeRendererControlsTelemetry(
       "material.albedo",
       "emissive.intensity",
       "emissive.threshold",
+      "normal.forceScreenSpace",
       "ao.enabled",
       "ao.radius",
       "ao.intensity",

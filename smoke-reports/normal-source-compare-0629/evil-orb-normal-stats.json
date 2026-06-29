@@ -1,0 +1,46 @@
+{
+  "source": "/Users/noahlyons/.local/state/kaminos/assets/splats/inbox/evil_orb_final_composite.ply",
+  "count": 1051601,
+  "bounds": {
+    "min": [
+      -1.224853277206421,
+      -1.3724552392959595,
+      -0.4065505266189575
+    ],
+    "max": [
+      1.3139443397521973,
+      1.206714391708374,
+      1.2893589735031128
+    ],
+    "center": [
+      0.044545531272888184,
+      -0.08287042379379272,
+      0.44140422344207764
+    ],
+    "radius": 1.9983567222829661
+  },
+  "hasNormals": true,
+  "hasDetailNormals": false,
+  "hasRoughness": true,
+  "hasMetalness": true,
+  "hasEmissive": true,
+  "normals": {
+    "count": 1051601,
+    "zero": 216957,
+    "minLen": 0,
+    "meanLen": 0.7936888610717839,
+    "maxLen": 1.0000000493368428,
+    "minY": -1,
+    "meanY": -0.225987299322365,
+    "maxY": 0.888650119304657,
+    "bins": {
+      "px": 254914,
+      "nx": 24443,
+      "py": 4895,
+      "ny": 186389,
+      "pz": 0,
+      "nz": 580960
+    }
+  },
+  "detailNormals": null
+}

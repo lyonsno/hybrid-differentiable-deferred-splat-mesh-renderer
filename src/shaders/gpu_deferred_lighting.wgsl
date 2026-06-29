@@ -59,6 +59,12 @@ fn octDecode(oct: vec2f) -> vec3f {
   return normalize(n);
 }
 
+fn faceForwardNormal(normal: vec3f, viewDir: vec3f) -> vec3f {
+  let n = normalize(normal);
+  let v = normalize(viewDir);
+  return select(n, -n, dot(n, v) < 0.0);
+}
+
 fn reconstructWorldPos(pixelCoord: vec2f, depth: f32) -> vec3f {
   let ndc = vec2f(
     pixelCoord.x / params.viewport.x * 2.0 - 1.0,
@@ -156,11 +162,12 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let albedo = srgbToLinear(albedoSrgb * albedoScale);
 
   let packedNormal = textureLoad(normalTexture, px, 0).r;
-  let N = octDecode(unpack2x16float(packedNormal));
+  let Nraw = octDecode(unpack2x16float(packedNormal));
 
   let center = vec2f(f32(px.x) + 0.5, f32(px.y) + 0.5);
   let worldPos = reconstructWorldPos(center, depth);
   let V = normalize(params.cameraPos - worldPos);
+  let N = faceForwardNormal(Nraw, V);
   let L = normalize(-params.lightDir);
   let H = normalize(V + L);
 

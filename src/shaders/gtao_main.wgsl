@@ -75,6 +75,12 @@ fn octDecode(e: vec2f) -> vec3f {
   return normalize(n);
 }
 
+fn faceForwardNormal(normal: vec3f, viewDir: vec3f) -> vec3f {
+  let n = normalize(normal);
+  let v = normalize(viewDir);
+  return select(n, -n, dot(n, v) < 0.0);
+}
+
 fn viewPosFromDepth(uv: vec2f, depth: f32) -> vec3f {
   return vec3f(
     (uv.x * params.projInfo.x + params.projInfo.z) * depth,
@@ -122,7 +128,9 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   // Read baked normal from G-buffer (world space, oct-encoded) and transform to view space
   let packedNormal = textureLoad(normalTexture, coord, 0).r;
   let worldNormal = octDecode(unpack2x16float(packedNormal));
-  let viewNormal = normalize((params.viewMatrix * vec4f(worldNormal, 0.0)).xyz);
+  let viewNormalRaw = normalize((params.viewMatrix * vec4f(worldNormal, 0.0)).xyz);
+  let viewDir = normalize(-viewPos);
+  let viewNormal = faceForwardNormal(viewNormalRaw, viewDir);
 
   // Convert world-space radius to pixel radius: radius * focalLengthPx / depth
   // focalLengthPx = proj[0][0] * viewport.x * 0.5 = viewport.x / projInfo.x
