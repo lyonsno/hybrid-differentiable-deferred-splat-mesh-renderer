@@ -1,5 +1,5 @@
 // Project all visible splats into a packed projection cache.
-// One thread per splat. Writes 13 u32 per splat:
+// One thread per splat. Writes 14 u32 per splat:
 //   [0] centerPx.x (f32)
 //   [1] centerPx.y (f32)
 //   [2] inverseCov2d.x (f32)
@@ -13,11 +13,12 @@
 //  [10] pack2x16float(color.b, 0.0)
 //  [11] pack2x16float(emissive.r, emissive.g) — per-splat emissive pass-through
 //  [12] pack2x16float(emissive.b, 0.0)
+//  [13] pack2x16float(normalFacingConfidence, 0.0)
 //
 // Invisible splats (behind camera, zero radius) get sentinel values so
 // downstream passes can skip them cheaply.
 
-const PROJ_STRIDE = 13u;
+const PROJ_STRIDE = 14u;
 const COMPACT_FOOTPRINT_SIGMA_RADIUS = 3.0;
 const COMPACT_FOOTPRINT_EPSILON = 0.000000001;
 const MIN_SPLAT_CLIP_W = 0.0001;
@@ -284,8 +285,10 @@ fn project_splats(@builtin(global_invocation_id) globalId: vec3u) {
   }
   let normalViewDir = normalize(frame.cameraPos - center);
   let facedSplatNormal = faceForwardNormal(splatNormal, normalViewDir);
+  let normalFacingConfidence = saturate(dot(facedSplatNormal, normalViewDir));
   let worldNormal = normalize(frame.normalMatrix * facedSplatNormal);
   projCache[base + 8u] = pack2x16float(octEncode(worldNormal));
+  projCache[base + 13u] = pack2x16float(vec2f(normalFacingConfidence, 0.0));
 
   // SH-evaluated view-dependent color
   let shCoeffCount = (frame.shDegree + 1u) * (frame.shDegree + 1u) - 1u;

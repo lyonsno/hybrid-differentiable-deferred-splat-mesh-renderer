@@ -16,7 +16,7 @@ import classifyLargeSplatsShader from "./shaders/gpu_classify_large_splats.wgsl?
 //   pad(8) + cameraPos(12) + pad(4) + viewMatrix(64) + focal(8) + pad(8) +
 //   normalMatrix mat3x3f with padded vec4 columns(48) = 256
 export const TILE_SPLAT_FRAME_UNIFORM_BYTES = 256;
-const PROJ_STRIDE_U32 = 13; // Must match PROJ_STRIDE in gpu_project_splats.wgsl
+const PROJ_STRIDE_U32 = 14; // Must match PROJ_STRIDE in gpu_project_splats.wgsl
 const TILE_ENTRY_BYTES = 4; // 1 u32 per tile entry (sortRank)
 
 // Morton (Z-order) encoding for 2D coordinates — matches WGSL mortonEncode2D.

@@ -325,6 +325,7 @@ function createScreenSpaceNormalsPass(device: GPUDevice) {
       { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
       { binding: 1, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "unfilterable-float" } },
       { binding: 2, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "r32uint" } },
+      { binding: 3, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "uint" } },
     ],
   });
   const pipeline = device.createComputePipeline({
@@ -334,30 +335,40 @@ function createScreenSpaceNormalsPass(device: GPUDevice) {
   });
   const paramsBuffer = device.createBuffer({
     label: "screen_space_normals_params",
-    size: 80,
+    size: 112,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
   return {
     encode(
       encoder: GPUCommandEncoder,
       depthView: GPUTextureView,
-      normalTexture: GPUTexture,
+      sourceNormalView: GPUTextureView,
+      outputNormalTexture: GPUTexture,
       viewport: [number, number],
       viewProjInverse: Float32Array,
+      cameraPosition: Float32Array,
+      normalRecoveryMode: 0 | 1,
     ) {
-      const params = new Float32Array(20);
+      const params = new Float32Array(28);
       params[0] = viewport[0];
       params[1] = viewport[1];
       params[2] = 0.1;
       params[3] = 100.0;
       params.set(viewProjInverse, 4);
+      params[20] = cameraPosition[0];
+      params[21] = cameraPosition[1];
+      params[22] = cameraPosition[2];
+      params[23] = normalRecoveryMode;
+      params[24] = 0.45;
+      params[25] = 0.80;
       device.queue.writeBuffer(paramsBuffer, 0, params);
       const bg = device.createBindGroup({
         layout: bgl,
         entries: [
           { binding: 0, resource: { buffer: paramsBuffer } },
           { binding: 1, resource: depthView },
-          { binding: 2, resource: normalTexture.createView() },
+          { binding: 2, resource: outputNormalTexture.createView() },
+          { binding: 3, resource: sourceNormalView },
         ],
       });
       const pass = encoder.beginComputePass({ label: "screen_space_normals" });
@@ -406,10 +417,10 @@ function createBilateralNormalFilter(device: GPUDevice) {
       const params = new Float32Array(8);
       params[0] = viewport[0];
       params[1] = viewport[1];
-      params[2] = 2.0;  // spatialSigma
+      params[2] = 3.0;  // spatialSigma
       params[3] = 0.05; // depthSigma
-      params[4] = 0.3;  // normalSigma
-      params[5] = 2.0;  // kernelRadius
+      params[4] = 1.5;  // normalSigma
+      params[5] = 3.0;  // kernelRadius
       device.queue.writeBuffer(paramsBuffer, 0, params);
       const bg = device.createBindGroup({
         layout: bgl,
@@ -1034,25 +1045,29 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
       const lightingCameraPosition = params.lightingCameraPosition ?? params.cameraPosition;
       const vpInv = mat4Inverse(lightingViewProj);
       if (vpInv) {
-        if (!scene.hasPerSplatNormals || params.forceScreenSpaceNormals) {
-          screenSpaceNormals.encode(
-            encoder,
-            scene.gbufferDepthView,
-            cc.gbufferNormalTexture,
-            [cc.resources.plan.viewportWidth, cc.resources.plan.viewportHeight],
-            vpInv,
-          );
-        }
-
-        // Bilateral normal filter: smooth normals using depth as edge guide
-        bilateralFilter.encode(
+        const normalRecoveryMode = (!scene.hasPerSplatNormals || params.forceScreenSpaceNormals) ? 0 : 1;
+        screenSpaceNormals.encode(
           encoder,
-          scene.gbufferNormalView,
           scene.gbufferDepthView,
+          scene.gbufferNormalView,
           cc.filteredNormalTexture,
           [cc.resources.plan.viewportWidth, cc.resources.plan.viewportHeight],
+          vpInv,
+          lightingCameraPosition,
+          normalRecoveryMode,
         );
-        const filteredNormalView = cc.filteredNormalTexture.createView();
+
+        // Bilateral normal filter: smooth recovered normals using depth as edge guide.
+        // The output returns to the G-buffer normal texture so deferred lighting and
+        // GTAO consume the same stabilized normal field.
+        bilateralFilter.encode(
+          encoder,
+          cc.filteredNormalTexture.createView(),
+          scene.gbufferDepthView,
+          cc.gbufferNormalTexture,
+          [cc.resources.plan.viewportWidth, cc.resources.plan.viewportHeight],
+        );
+        const filteredNormalView = scene.gbufferNormalView;
 
         // GTAO: compute ambient occlusion from G-buffer depth
         cc.gtao.encode(

@@ -19,7 +19,7 @@ struct FrameUniforms {
   _pad1: f32,
 };
 
-const PROJ_STRIDE = 13u;
+const PROJ_STRIDE = 14u;
 const LARGE_SPLAT_TILE_THRESHOLD = 16u;
 const MAX_LARGE_SPLATS = 65535u; // WebGPU maxComputeWorkgroupsPerDimension
 

@@ -1,0 +1,1127 @@
+{
+  "url": "http://127.0.0.1:8094/?load=splat-inbox/evil_orb_final_composite.ply&hybrid_splat_overlay_module_url=http%3A%2F%2F127.0.0.1%3A5173%2Fsrc%2FsplatOverlay.ts",
+  "cameraSet": {
+    "position": [
+      0.9199999999999999,
+      0.07999999999999996,
+      5.633375276077825e-17
+    ],
+    "target": [
+      0,
+      0,
+      0
+    ],
+    "projectionMatrix": [
+      2.591959829674172,
+      0,
+      0,
+      0,
+      0,
+      2.7474774194546225,
+      0,
+      0,
+      0,
+      0,
+      -1.0001000100010002,
+      -1,
+      0,
+      0,
+      -0.010001000100010001,
+      0
+    ],
+    "matrixWorldInverse": [
+      -4.436219230661659e-16,
+      -0.08662961636484195,
+      0.9962405881956827,
+      0,
+      -2.4645662392564764e-17,
+      0.9962405881956828,
+      0.08662961636484195,
+      0,
+      -0.9999999999999998,
+      2.4645662392564764e-17,
+      -4.436219230661659e-16,
+      0,
+      4.66437574973056e-16,
+      1.3877787807814443e-17,
+      -0.9234717104492154,
+      1
+    ]
+  },
+  "applied": [
+    {
+      "path": "normal.forceScreenSpace",
+      "value": false,
+      "returned": {
+        "schema": "hybrid-render.splat-renderer-controls.v0",
+        "material": {
+          "roughness": {
+            "contrast": 1,
+            "brightness": 0,
+            "gamma": 1
+          },
+          "metalness": {
+            "contrast": 1,
+            "brightness": 0,
+            "gamma": 1
+          },
+          "albedo": {
+            "contrast": 1,
+            "brightness": 0,
+            "gamma": 1
+          }
+        },
+        "emissive": {
+          "intensity": 3,
+          "threshold": 0.05
+        },
+        "normal": {
+          "forceScreenSpace": false
+        },
+        "ao": {
+          "enabled": true,
+          "radius": 0.15,
+          "intensity": 1.5,
+          "falloff": 1,
+          "thickness": 1.81,
+          "slices": 3,
+          "steps": 4
+        },
+        "bloom": {
+          "threshold": 0.8,
+          "softKnee": 0.5,
+          "intensity": 0.5
+        }
+      }
+    },
+    {
+      "path": "ao.enabled",
+      "value": true,
+      "returned": {
+        "schema": "hybrid-render.splat-renderer-controls.v0",
+        "material": {
+          "roughness": {
+            "contrast": 1,
+            "brightness": 0,
+            "gamma": 1
+          },
+          "metalness": {
+            "contrast": 1,
+            "brightness": 0,
+            "gamma": 1
+          },
+          "albedo": {
+            "contrast": 1,
+            "brightness": 0,
+            "gamma": 1
+          }
+        },
+        "emissive": {
+          "intensity": 3,
+          "threshold": 0.05
+        },
+        "normal": {
+          "forceScreenSpace": false
+        },
+        "ao": {
+          "enabled": true,
+          "radius": 0.15,
+          "intensity": 1.5,
+          "falloff": 1,
+          "thickness": 1.81,
+          "slices": 3,
+          "steps": 4
+        },
+        "bloom": {
+          "threshold": 0.8,
+          "softKnee": 0.5,
+          "intensity": 0.5
+        }
+      }
+    },
+    {
+      "path": "material.metalness.brightness",
+      "value": 0,
+      "returned": {
+        "schema": "hybrid-render.splat-renderer-controls.v0",
+        "material": {
+          "roughness": {
+            "contrast": 1,
+            "brightness": 0,
+            "gamma": 1
+          },
+          "metalness": {
+            "contrast": 1,
+            "brightness": 0,
+            "gamma": 1
+          },
+          "albedo": {
+            "contrast": 1,
+            "brightness": 0,
+            "gamma": 1
+          }
+        },
+        "emissive": {
+          "intensity": 3,
+          "threshold": 0.05
+        },
+        "normal": {
+          "forceScreenSpace": false
+        },
+        "ao": {
+          "enabled": true,
+          "radius": 0.15,
+          "intensity": 1.5,
+          "falloff": 1,
+          "thickness": 1.81,
+          "slices": 3,
+          "steps": 4
+        },
+        "bloom": {
+          "threshold": 0.8,
+          "softKnee": 0.5,
+          "intensity": 0.5
+        }
+      }
+    },
+    {
+      "path": "material.roughness.brightness",
+      "value": 0,
+      "returned": {
+        "schema": "hybrid-render.splat-renderer-controls.v0",
+        "material": {
+          "roughness": {
+            "contrast": 1,
+            "brightness": 0,
+            "gamma": 1
+          },
+          "metalness": {
+            "contrast": 1,
+            "brightness": 0,
+            "gamma": 1
+          },
+          "albedo": {
+            "contrast": 1,
+            "brightness": 0,
+            "gamma": 1
+          }
+        },
+        "emissive": {
+          "intensity": 3,
+          "threshold": 0.05
+        },
+        "normal": {
+          "forceScreenSpace": false
+        },
+        "ao": {
+          "enabled": true,
+          "radius": 0.15,
+          "intensity": 1.5,
+          "falloff": 1,
+          "thickness": 1.81,
+          "slices": 3,
+          "steps": 4
+        },
+        "bloom": {
+          "threshold": 0.8,
+          "softKnee": 0.5,
+          "intensity": 0.5
+        }
+      }
+    },
+    {
+      "path": "bloom.intensity",
+      "value": 0.5,
+      "returned": {
+        "schema": "hybrid-render.splat-renderer-controls.v0",
+        "material": {
+          "roughness": {
+            "contrast": 1,
+            "brightness": 0,
+            "gamma": 1
+          },
+          "metalness": {
+            "contrast": 1,
+            "brightness": 0,
+            "gamma": 1
+          },
+          "albedo": {
+            "contrast": 1,
+            "brightness": 0,
+            "gamma": 1
+          }
+        },
+        "emissive": {
+          "intensity": 3,
+          "threshold": 0.05
+        },
+        "normal": {
+          "forceScreenSpace": false
+        },
+        "ao": {
+          "enabled": true,
+          "radius": 0.15,
+          "intensity": 1.5,
+          "falloff": 1,
+          "thickness": 1.81,
+          "slices": 3,
+          "steps": 4
+        },
+        "bloom": {
+          "threshold": 0.8,
+          "softKnee": 0.5,
+          "intensity": 0.5
+        }
+      }
+    }
+  ],
+  "telemetry": {
+    "bodyText": "Kaminos\nspatial asset kiln\nAssets\nVolume\nGreenroom\nSearch\nGenerate\nDrop a receipt directory here\nor click to browse\nAppend\nSCENE OBJECTS\nCreate Group\n splat / /api/read?root=splat-inbox&path=evil_orb_final_composite.ply\nreloadable\n×\nTRANSFORM\nevil_orb_final_composite.ply\nsplat-13785240-de3f-4c4b-a2b0-858ed3c94a50\nPosition\nX\nY\nZ\nRotation\nX\nY\nZ\nScale\nX\nY\nZ\nSplat Correction\nAsset-local orientation, axis flip, centroid, and crop hints for preview and render handoff.\nPivot\nCrop\nCentroid\nX\nY\nZ\nAxis Flip\nX\nY\nZ\nCrop enabled\nCrop Min\nX\nY\nZ\nCrop Max\nX\nY\nZ\nEdit Correction\nSave Correction\nReset Correction\nRevert Draft\nDone\nHybrid Renderer\nDual-canvas P0 overlay. Mesh depth, shared AO, and renderer-applied crop are still explicit gaps.\nrendering · dual-canvas P0 · renderer crop=true · /api/read?root=splat-inbox&path=evil_orb_final_composite.ply\nStart Hybrid\nReload\nStop\nSplat Renderer Controls\nDEMO ASSETS\nSuperMat Ring\nENVIRONMENT\nStudio\nSunset\nWarehouse\nCourtyard\nNight\nNeutral\nExposure\n1.5\nEnv Intensity\n1.0\nRotation\n0.0\nShow Map\nPOST PROCESSING\nGTAO Compute\nRadius\n4.00\nIntensity\n1.0\nScale\n1.62\nThickness\n1.81\nFalloff\n0.74\nBACKDROP & DOF\nGrid Backdrop\nDepth of Field\nFlip X\nFlip Y\nFlip Z\nRot X\nRot Y\nRot Z\nWinding\nNormals\n2-Sided\nBackface\nOpaque\nCull Debris\nSnap Ground\nMove\nRotate\nScale\nNo Gizmo\nReset\nSave GLB\nSave\nSave As\nLoad\nHybrid renderer overlay started: evil_orb_final_composite.ply\n2 fps · 0.7ms",
+    "debugState": {
+      "status": "rendering",
+      "error": null,
+      "moduleUrl": "http://127.0.0.1:5173/src/splatOverlay.ts",
+      "objectId": "splat-13785240-de3f-4c4b-a2b0-858ed3c94a50",
+      "loadedSource": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+      "loadedFileName": "evil_orb_final_composite.ply",
+      "loadedAt": "2026-06-29T19:56:55.094Z",
+      "frameCount": 310,
+      "canvasMode": "dual-canvas-overlay",
+      "correctionAppliedMode": "visual-root-world-matrix",
+      "cropAppliedByRenderer": true,
+      "canvasConnected": true,
+      "sceneLoaded": true,
+      "capabilities": {
+        "canvasMode": "dual-canvas-overlay",
+        "meshDepthOcclusion": false,
+        "sharedCanvasComposite": false,
+        "sharedCommandEncoder": false,
+        "cropAppliedByRenderer": true
+      },
+      "handleCapabilities": {
+        "canvasMode": "dual-canvas-overlay",
+        "meshDepthOcclusion": false,
+        "sharedCanvasComposite": false,
+        "sharedCommandEncoder": false,
+        "cropAppliedByRenderer": true
+      },
+      "sourceIdentity": {
+        "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+        "loadMethod": "ply-url",
+        "correctionApplied": true,
+        "correctionIdentity": {
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "axisFlips": [
+            false,
+            true,
+            true
+          ],
+          "centroidOffset": [
+            0.7821271597845634,
+            -1.7356318273283757,
+            5.6760158645573835
+          ],
+          "crop": {
+            "enabled": true,
+            "min": [
+              -0.172,
+              -0.037,
+              -0.986
+            ],
+            "max": [
+              0.383,
+              0.459,
+              -0.618
+            ]
+          },
+          "cropCoordinateMatrix": [
+            0.27847125713024634,
+            0,
+            0,
+            0,
+            0,
+            0.27847125713024634,
+            0,
+            0,
+            0,
+            0,
+            0.27847125713024634,
+            0,
+            0.10488522955814582,
+            0.2191883662424349,
+            -0.7017041750133384,
+            1
+          ],
+          "cropCoordinateFrame": "kaminos-raw-asset-to-preview"
+        }
+      },
+      "correctionApplication": {
+        "cropApplied": true,
+        "cropFrame": "kaminos-raw-asset-to-preview",
+        "sourceCount": 1051601,
+        "keptCount": 587327,
+        "warning": null
+      },
+      "sceneContextAccepted": true,
+      "sceneContextTelemetry": {
+        "schema": "kaminos.hybrid-splat-overlay.scene-context-telemetry.v0",
+        "rendererSchema": "hybrid-render.scene-context.v0",
+        "contextSchema": "hybrid-render.scene-context.v0",
+        "contextFrame": 310,
+        "contextFrameId": null,
+        "contextTimestamp": "2026-06-29T19:56:58.194Z",
+        "rendererTimestamp": "2026-06-29T19:56:58.194Z",
+        "rendererFrameId": null,
+        "route": "hybrid-mesh-splat-route-stub",
+        "capability": {
+          "meshDepthOcclusion": false,
+          "sharedCanvasComposite": false,
+          "sharedCommandEncoder": false,
+          "realSplatRendering": true,
+          "canvasMode": "dual-canvas-overlay",
+          "sceneContextApi": true
+        },
+        "accepted": true,
+        "acceptedFields": [],
+        "honored": {
+          "environment": true,
+          "environmentIntensity": true,
+          "environmentRotation": true,
+          "exposure": true,
+          "toneMapping": false,
+          "lights": false,
+          "depthSource": false
+        },
+        "honoredFields": [
+          "lighting.environment",
+          "lighting.environment.intensity",
+          "lighting.environment.rotationY",
+          "lighting.exposure"
+        ],
+        "unsupportedFields": [
+          "toneMapping:ACESFilmicToneMapping"
+        ],
+        "rejectedFields": [],
+        "stale": false,
+        "missing": false,
+        "ignored": false,
+        "failurePhase": null,
+        "message": null
+      },
+      "rendererControlsTelemetry": {
+        "schema": "kaminos.hybrid-splat-overlay.renderer-controls-telemetry.v0",
+        "rendererSchema": "hybrid-render.splat-renderer-controls-telemetry.v0",
+        "controlsSchema": "hybrid-render.splat-renderer-controls.v0",
+        "route": "hybrid-mesh-splat-route-stub",
+        "accepted": true,
+        "honoredFields": [
+          "material.roughness",
+          "material.metalness",
+          "material.albedo",
+          "emissive.intensity",
+          "emissive.threshold",
+          "normal.forceScreenSpace",
+          "ao.enabled",
+          "ao.radius",
+          "ao.intensity",
+          "ao.falloff",
+          "ao.thickness",
+          "ao.slices",
+          "ao.steps",
+          "bloom.threshold",
+          "bloom.softKnee",
+          "bloom.intensity"
+        ],
+        "unsupportedFields": [],
+        "missing": false,
+        "failurePhase": null,
+        "message": null,
+        "controls": {
+          "material": {
+            "roughness": {
+              "contrast": 1,
+              "brightness": 0,
+              "gamma": 1
+            },
+            "metalness": {
+              "contrast": 1,
+              "brightness": 0,
+              "gamma": 1
+            },
+            "albedo": {
+              "contrast": 1,
+              "brightness": 0,
+              "gamma": 1
+            }
+          },
+          "emissive": {
+            "intensity": 3,
+            "threshold": 0.05
+          },
+          "normal": {
+            "forceScreenSpace": false
+          },
+          "ao": {
+            "enabled": true,
+            "radius": 0.15,
+            "intensity": 1.5,
+            "falloff": 1,
+            "thickness": 1.81,
+            "slices": 3,
+            "steps": 4
+          },
+          "bloom": {
+            "threshold": 0.8,
+            "softKnee": 0.5,
+            "intensity": 0.5
+          }
+        },
+        "timestamp": "2026-06-29T19:56:58.194Z"
+      },
+      "lastSceneContext": {
+        "schema": "hybrid-render.scene-context.v0",
+        "producer": {
+          "app": "kaminos",
+          "route": "hybrid-mesh-splat-overlay",
+          "frame": 310,
+          "updatedAt": "2026-06-29T19:56:58.194Z"
+        },
+        "coordinateSystem": {
+          "worldUnits": "kaminos-scene-units",
+          "upAxis": "Y",
+          "handedness": "three-js-right-handed"
+        },
+        "camera": {
+          "projectionFrame": "three-webgpu-host",
+          "viewMatrix": [
+            1.1240826505877108e-16,
+            -0.08662961636484195,
+            0.996240588195683,
+            0,
+            -1.1120603762498748e-17,
+            0.996240588195683,
+            0.08662961636484195,
+            0,
+            -1,
+            -1.6530627214525156e-17,
+            1.1000381019120379e-16,
+            0,
+            -4.619220279229125e-17,
+            -7.635860845771145e-34,
+            -0.9234717104492155,
+            1
+          ],
+          "projectionMatrix": [
+            2.591959829674172,
+            0,
+            0,
+            0,
+            0,
+            2.7474774194546225,
+            0,
+            0,
+            0,
+            0,
+            -1.0001000100010002,
+            -1,
+            0,
+            0,
+            -0.010001000100010001,
+            0
+          ],
+          "positionWorld": [
+            0.9200000166893005,
+            0.07999999821186066,
+            5.633375257193976e-17
+          ],
+          "viewport": {
+            "width": 1060,
+            "height": 1000,
+            "devicePixelRatio": 1
+          }
+        },
+        "lighting": {
+          "environment": {
+            "kind": "hdr-url",
+            "name": "studio",
+            "label": "Studio",
+            "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_09_1k.hdr",
+            "preset": "studio",
+            "intensity": 1,
+            "rotationY": 0
+          },
+          "exposure": 1.5,
+          "toneMapping": "ACESFilmicToneMapping"
+        },
+        "composition": {
+          "mode": "dual-canvas-overlay",
+          "background": "transparent",
+          "capabilities": {
+            "meshDepthOcclusion": false,
+            "sharedCanvasComposite": false,
+            "sharedCommandEncoder": false
+          },
+          "hostBackground": {
+            "visible": false,
+            "blur": 0.4
+          }
+        }
+      },
+      "lastRendererControls": {
+        "schema": "hybrid-render.splat-renderer-controls.v0",
+        "material": {
+          "roughness": {
+            "contrast": 1,
+            "brightness": 0,
+            "gamma": 1
+          },
+          "metalness": {
+            "contrast": 1,
+            "brightness": 0,
+            "gamma": 1
+          },
+          "albedo": {
+            "contrast": 1,
+            "brightness": 0,
+            "gamma": 1
+          }
+        },
+        "emissive": {
+          "intensity": 3,
+          "threshold": 0.05
+        },
+        "normal": {
+          "forceScreenSpace": false
+        },
+        "ao": {
+          "enabled": true,
+          "radius": 0.15,
+          "intensity": 1.5,
+          "falloff": 1,
+          "thickness": 1.81,
+          "slices": 3,
+          "steps": 4
+        },
+        "bloom": {
+          "threshold": 0.8,
+          "softKnee": 0.5,
+          "intensity": 0.5
+        }
+      },
+      "lastFrame": {
+        "schema": "kaminos.hybrid-splat-overlay.frame.v0",
+        "objectId": "splat-13785240-de3f-4c4b-a2b0-858ed3c94a50",
+        "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+        "canvasMode": "dual-canvas-overlay",
+        "correctionAppliedMode": "visual-root-world-matrix",
+        "assetFrameMode": "raw-ply-to-normalized-preview",
+        "modelMatrixFrameMode": "pbrnext-setModelMatrix-owned",
+        "cropAppliedByRenderer": true,
+        "viewport": {
+          "width": 1060,
+          "height": 1000,
+          "devicePixelRatio": 1
+        },
+        "objectWorldMatrix": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          -1,
+          0,
+          0,
+          0,
+          0,
+          -1,
+          0,
+          0.7821271597845634,
+          -1.7356318273283757,
+          5.6760158645573835,
+          1
+        ],
+        "visualRootWorldMatrix": [
+          1,
+          0,
+          0,
+          0,
+          0,
+          -1,
+          0,
+          0,
+          0,
+          0,
+          -1,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "overlayAssetWorldMatrix": [
+          0.27847125713024634,
+          0,
+          0,
+          0,
+          0,
+          -0.27847125713024634,
+          0,
+          0,
+          0,
+          0,
+          -0.27847125713024634,
+          0,
+          0.10488522955814582,
+          -0.2191883662424349,
+          0.7017041750133384,
+          1
+        ],
+        "rawAssetToPreviewMatrix": [
+          0.27847125713024634,
+          0,
+          0,
+          0,
+          0,
+          0.27847125713024634,
+          0,
+          0,
+          0,
+          0,
+          0.27847125713024634,
+          0,
+          0.10488522955814582,
+          0.2191883662424349,
+          -0.7017041750133384,
+          1
+        ],
+        "rawAssetToPreviewScale": 0.27847125713024634,
+        "rawAssetBoundsCenter": [
+          -0.3766465187072754,
+          -0.7871130704879761,
+          2.519844174385071
+        ],
+        "rawAssetBoundsSize": [
+          7.182069778442383,
+          6.071138620376587,
+          6.031433820724487
+        ],
+        "overlayViewMatrix": [
+          1.1240826505877108e-16,
+          -0.08662961636484195,
+          0.996240588195683,
+          0,
+          -1.1120603762498748e-17,
+          0.996240588195683,
+          0.08662961636484195,
+          0,
+          -1,
+          -1.6530627214525156e-17,
+          1.1000381019120379e-16,
+          0,
+          -4.619220279229125e-17,
+          -7.635860845771145e-34,
+          -0.9234717104492155,
+          1
+        ],
+        "effectiveViewMatrix": [
+          3.1302470882745926e-17,
+          -0.0241238581738285,
+          0.2774243689990279,
+          0,
+          3.0967685097903735e-18,
+          -0.2774243689990279,
+          -0.0241238581738285,
+          0,
+          0.27847125713024634,
+          4.603304541580283e-18,
+          -3.0632899313061526e-17,
+          0,
+          -0.7017041750133384,
+          -0.22745051410997466,
+          -0.8379689917403876,
+          1
+        ],
+        "projectionMatrix": [
+          2.591959829674172,
+          0,
+          0,
+          0,
+          0,
+          2.7474774194546225,
+          0,
+          0,
+          0,
+          0,
+          -1.0001000100010002,
+          -1,
+          0,
+          0,
+          -0.010001000100010001,
+          0
+        ],
+        "overlayProjectionMatrix": [
+          2.591959829674172,
+          0,
+          0,
+          0,
+          0,
+          -2.7474774194546225,
+          0,
+          0,
+          0,
+          0,
+          -1.0001000100010002,
+          -1,
+          0,
+          0,
+          -0.010001000100010001,
+          0
+        ],
+        "projectionFrameMode": "pbrnext-vertical-flip-precompensated",
+        "cameraPositionWorld": [
+          0.9200000166893005,
+          0.07999999821186066,
+          5.633375257193976e-17
+        ],
+        "cameraPositionInSplatLocal": [
+          2.92710557937622,
+          -1.0743958616256712,
+          2.5198441743850712
+        ],
+        "splatCorrection": {
+          "orientation": {
+            "rotation": [
+              0,
+              0,
+              0
+            ]
+          },
+          "axisFlips": [
+            1,
+            -1,
+            -1
+          ],
+          "centroidOffset": [
+            0.7821271597845634,
+            -1.7356318273283757,
+            5.6760158645573835
+          ],
+          "crop": {
+            "enabled": true,
+            "min": [
+              -0.172,
+              -0.037,
+              -0.986
+            ],
+            "max": [
+              0.383,
+              0.459,
+              -0.618
+            ]
+          }
+        },
+        "overlayCapabilities": {
+          "canvasMode": "dual-canvas-overlay",
+          "meshDepthOcclusion": false,
+          "sharedCanvasComposite": false,
+          "sharedCommandEncoder": false,
+          "cropAppliedByRenderer": true
+        },
+        "sourceIdentity": {
+          "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+          "loadMethod": "ply-url",
+          "correctionApplied": true,
+          "correctionIdentity": {
+            "rotation": [
+              0,
+              0,
+              0
+            ],
+            "axisFlips": [
+              false,
+              true,
+              true
+            ],
+            "centroidOffset": [
+              0.7821271597845634,
+              -1.7356318273283757,
+              5.6760158645573835
+            ],
+            "crop": {
+              "enabled": true,
+              "min": [
+                -0.172,
+                -0.037,
+                -0.986
+              ],
+              "max": [
+                0.383,
+                0.459,
+                -0.618
+              ]
+            },
+            "cropCoordinateMatrix": [
+              0.27847125713024634,
+              0,
+              0,
+              0,
+              0,
+              0.27847125713024634,
+              0,
+              0,
+              0,
+              0,
+              0.27847125713024634,
+              0,
+              0.10488522955814582,
+              0.2191883662424349,
+              -0.7017041750133384,
+              1
+            ],
+            "cropCoordinateFrame": "kaminos-raw-asset-to-preview"
+          }
+        },
+        "correctionApplication": {
+          "cropApplied": true,
+          "cropFrame": "kaminos-raw-asset-to-preview",
+          "sourceCount": 1051601,
+          "keptCount": 587327,
+          "warning": null
+        },
+        "updatedAt": "2026-06-29T19:56:58.194Z",
+        "projectionProbe": {
+          "schema": "kaminos.hybrid-splat-overlay.projection-probe.v0",
+          "objectId": "splat-13785240-de3f-4c4b-a2b0-858ed3c94a50",
+          "source": "/api/read?root=splat-inbox&path=evil_orb_final_composite.ply",
+          "projectionFrameMode": "pbrnext-vertical-flip-precompensated",
+          "probePoint": [
+            -0.3766465187072754,
+            0.7306715846061707,
+            2.519844174385071
+          ],
+          "probePointRole": "raw-asset-upper-quarter",
+          "viewport": {
+            "width": 1060,
+            "height": 1000,
+            "devicePixelRatio": 1
+          },
+          "kaminosPreviewScreen": {
+            "x": 530,
+            "y": 1102.4881691175542,
+            "ndc": [
+              0,
+              -1.2049763382351089,
+              0.9896832405072974
+            ],
+            "clip": [
+              0,
+              -1.1568815539677793,
+              0.9501815503621562,
+              0.9600865322071199
+            ],
+            "w": 0.9600865322071199
+          },
+          "pbrnextOverlayScreen": {
+            "x": 530,
+            "y": 1102.4881691175542,
+            "ndc": [
+              0,
+              -1.2049763382351089,
+              0.9896832405072974
+            ],
+            "clip": [
+              0,
+              -1.1568815539677793,
+              0.9501815503621562,
+              0.9600865322071199
+            ],
+            "w": 0.9600865322071199
+          },
+          "pbrnextUncompensatedScreen": {
+            "x": 530,
+            "y": -102.48816911755432,
+            "ndc": [
+              0,
+              1.2049763382351089,
+              0.9896832405072974
+            ],
+            "clip": [
+              0,
+              1.1568815539677793,
+              0.9501815503621562,
+              0.9600865322071199
+            ],
+            "w": 0.9600865322071199
+          }
+        },
+        "sceneContextTelemetry": {
+          "schema": "kaminos.hybrid-splat-overlay.scene-context-telemetry.v0",
+          "rendererSchema": "hybrid-render.scene-context.v0",
+          "contextSchema": "hybrid-render.scene-context.v0",
+          "contextFrame": 310,
+          "contextFrameId": null,
+          "contextTimestamp": "2026-06-29T19:56:58.194Z",
+          "rendererTimestamp": "2026-06-29T19:56:58.194Z",
+          "rendererFrameId": null,
+          "route": "hybrid-mesh-splat-route-stub",
+          "capability": {
+            "meshDepthOcclusion": false,
+            "sharedCanvasComposite": false,
+            "sharedCommandEncoder": false,
+            "realSplatRendering": true,
+            "canvasMode": "dual-canvas-overlay",
+            "sceneContextApi": true
+          },
+          "accepted": true,
+          "acceptedFields": [],
+          "honored": {
+            "environment": true,
+            "environmentIntensity": true,
+            "environmentRotation": true,
+            "exposure": true,
+            "toneMapping": false,
+            "lights": false,
+            "depthSource": false
+          },
+          "honoredFields": [
+            "lighting.environment",
+            "lighting.environment.intensity",
+            "lighting.environment.rotationY",
+            "lighting.exposure"
+          ],
+          "unsupportedFields": [
+            "toneMapping:ACESFilmicToneMapping"
+          ],
+          "rejectedFields": [],
+          "stale": false,
+          "missing": false,
+          "ignored": false,
+          "failurePhase": null,
+          "message": null
+        },
+        "rendererControlsTelemetry": {
+          "schema": "kaminos.hybrid-splat-overlay.renderer-controls-telemetry.v0",
+          "rendererSchema": "hybrid-render.splat-renderer-controls-telemetry.v0",
+          "controlsSchema": "hybrid-render.splat-renderer-controls.v0",
+          "route": "hybrid-mesh-splat-route-stub",
+          "accepted": true,
+          "honoredFields": [
+            "material.roughness",
+            "material.metalness",
+            "material.albedo",
+            "emissive.intensity",
+            "emissive.threshold",
+            "normal.forceScreenSpace",
+            "ao.enabled",
+            "ao.radius",
+            "ao.intensity",
+            "ao.falloff",
+            "ao.thickness",
+            "ao.slices",
+            "ao.steps",
+            "bloom.threshold",
+            "bloom.softKnee",
+            "bloom.intensity"
+          ],
+          "unsupportedFields": [],
+          "missing": false,
+          "failurePhase": null,
+          "message": null,
+          "controls": {
+            "material": {
+              "roughness": {
+                "contrast": 1,
+                "brightness": 0,
+                "gamma": 1
+              },
+              "metalness": {
+                "contrast": 1,
+                "brightness": 0,
+                "gamma": 1
+              },
+              "albedo": {
+                "contrast": 1,
+                "brightness": 0,
+                "gamma": 1
+              }
+            },
+            "emissive": {
+              "intensity": 3,
+              "threshold": 0.05
+            },
+            "normal": {
+              "forceScreenSpace": false
+            },
+            "ao": {
+              "enabled": true,
+              "radius": 0.15,
+              "intensity": 1.5,
+              "falloff": 1,
+              "thickness": 1.81,
+              "slices": 3,
+              "steps": 4
+            },
+            "bloom": {
+              "threshold": 0.8,
+              "softKnee": 0.5,
+              "intensity": 0.5
+            }
+          },
+          "timestamp": "2026-06-29T19:56:58.194Z"
+        }
+      }
+    },
+    "camera": {
+      "position": [
+        0.9199999999999998,
+        0.07999999999999995,
+        5.633375276077823e-17
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ],
+      "projectionMatrix": [
+        2.591959829674172,
+        0,
+        0,
+        0,
+        0,
+        2.7474774194546225,
+        0,
+        0,
+        0,
+        0,
+        -1.0001000100010002,
+        -1,
+        0,
+        0,
+        -0.010001000100010001,
+        0
+      ],
+      "matrixWorldInverse": [
+        1.1240826505877108e-16,
+        -0.08662961636484195,
+        0.996240588195683,
+        0,
+        -1.1120603762498748e-17,
+        0.996240588195683,
+        0.08662961636484195,
+        0,
+        -1,
+        -1.6530627214525156e-17,
+        1.1000381019120379e-16,
+        0,
+        -4.619220279229125e-17,
+        -7.635860845771145e-34,
+        -0.9234717104492155,
+        1
+      ]
+    }
+  }
+}

@@ -59,8 +59,8 @@ test("tile ref budget never exceeds WebGPU dispatch limit", () => {
   const projSource = readFileSync(new URL("../../src/shaders/gpu_project_splats.wgsl", import.meta.url), "utf8");
   assert.match(projSource, /clampedRadius = min\(radius, tileSize \* 8\.0\)/,
     "projection shader must cap splat tile footprint to prevent unbounded tile-ref growth");
-  assert.match(projSource, /PROJ_STRIDE = 13u/,
-    "projection cache stride must be 13 to include per-splat normal, color, and emissive slots");
+  assert.match(projSource, /PROJ_STRIDE = 14u/,
+    "projection cache stride must be 14 to include per-splat normal, color, emissive, and normal-confidence slots");
 });
 
 test("projection cache stride matches between project and composite shaders", () => {

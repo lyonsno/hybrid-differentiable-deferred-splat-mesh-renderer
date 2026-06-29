@@ -50,7 +50,7 @@ fn mortonEncode2D(x: u32, y: u32) -> u32 {
 @group(0) @binding(1) var<storage, read> projCache: array<u32>;
 @group(0) @binding(2) var<storage, read> sortedIndices: array<u32>;
 
-const PROJ_STRIDE = 13u;
+const PROJ_STRIDE = 14u;
 
 @group(1) @binding(0) var<storage, read_write> tileCounts: array<atomic<u32>>;
 @group(1) @binding(1) var<storage, read_write> tileOffsets: array<u32>;
@@ -154,6 +154,7 @@ var<workgroup> shCoeffs: array<vec3f, 64>;  // (covXX*-0.5, covYY*-0.5, -covXY)
 var<workgroup> shColor: array<vec4f, 64>;   // (r, g, b, opacity)
 var<workgroup> shMaterial: array<vec2f, 64>; // (roughness, metalness) per splat
 var<workgroup> shNormal: array<vec3f, 64>;   // decoded unit normal per splat
+var<workgroup> shNormalConfidence: array<f32, 64>;
 var<workgroup> shDepth: array<f32, 64>;       // depthNdc per splat
 var<workgroup> shEmissive: array<vec3f, 64>; // per-splat emissive RGB
 var<workgroup> shTileRefCount: atomic<u32>; // for workgroupUniformLoad
@@ -191,6 +192,7 @@ fn composite(
   var gbNrmWeighted1 = vec3f(0.0);  // pixel (1,0)
   var gbNrmWeighted2 = vec3f(0.0);  // pixel (0,1)
   var gbNrmWeighted3 = vec3f(0.0);  // pixel (1,1)
+  var gbNormalConfidenceWeighted = vec4f(0.0);
 
   // Emissive accumulation (alpha-weighted, 2x2 quad)
   var em00 = vec3f(0.0);
@@ -236,6 +238,7 @@ fn composite(
       shColor[localIdx] = vec4f(colorRG.x, colorRG.y, colorB, opacity);
       shMaterial[localIdx] = unpack2x16float(projCache[cacheBase + 5u]); // (roughness, metalness)
       shNormal[localIdx] = octDecode(unpack2x16float(projCache[cacheBase + 8u])); // per-splat normal
+      shNormalConfidence[localIdx] = unpack2x16float(projCache[cacheBase + 13u]).x;
       shDepth[localIdx] = bitcast<f32>(depthBuffer[sortRank]);
       let emRG = unpack2x16float(projCache[cacheBase + 11u]);
       let emB = unpack2x16float(projCache[cacheBase + 12u]).x;
@@ -244,6 +247,7 @@ fn composite(
       shColor[localIdx] = vec4f(0.0);
       shMaterial[localIdx] = vec2f(0.75, 0.0); // default: rough dielectric
       shNormal[localIdx] = vec3f(0.0, 1.0, 0.0); // default up
+      shNormalConfidence[localIdx] = 1.0;
       shDepth[localIdx] = 1.0;
       shEmissive[localIdx] = vec3f(0.0);
     }
@@ -299,6 +303,7 @@ fn composite(
         gbNrmWeighted1 += splatNrm * gbWeight.y;
         gbNrmWeighted2 += splatNrm * gbWeight.z;
         gbNrmWeighted3 += splatNrm * gbWeight.w;
+        gbNormalConfidenceWeighted += shNormalConfidence[i] * gbWeight;
 
         let splatEm = shEmissive[i];
         em00 += splatEm * weight.x;
@@ -323,6 +328,7 @@ fn composite(
   let gbMat10 = gbMatWeighted[1] / safeWeight.y;
   let gbMat01 = gbMatWeighted[2] / safeWeight.z;
   let gbMat11 = gbMatWeighted[3] / safeWeight.w;
+  let gbNormalConfidence = gbNormalConfidenceWeighted / safeWeight;
   // Normalize voted normals (re-normalize the weighted average)
   let gbNrm00 = octEncode(normalize(gbNrmWeighted0 + vec3f(0.0, 0.0001, 0.0)));
   let gbNrm10 = octEncode(normalize(gbNrmWeighted1 + vec3f(0.0, 0.0001, 0.0)));
@@ -338,27 +344,27 @@ fn composite(
     textureStore(outputColor, px, vec4f(c00 + T.x * bgColor, 1.0 - T.x));
     textureStore(outputDepth, px, vec4f(gbDepth.x, 0.0, 0.0, 0.0));
     textureStore(outputNormal, px, vec4u(pack2x16float(gbNrm00), 0u, 0u, 0u));
-    textureStore(outputMaterial, px, vec4u(pack2x16float(gbMat00), pack2x16float(em00.rg), pack2x16float(vec2f(em00.b, 0.0)), 0u));
+    textureStore(outputMaterial, px, vec4u(pack2x16float(gbMat00), pack2x16float(em00.rg), pack2x16float(vec2f(em00.b, 0.0)), pack2x16float(vec2f(gbNormalConfidence.x, 0.0))));
   }
   if (basePixel.x + 1u < outputSize.x && basePixel.y < outputSize.y) {
     let px = vec2i(vec2u(basePixel.x + 1u, basePixel.y));
     textureStore(outputColor, px, vec4f(c10 + T.y * bgColor, 1.0 - T.y));
     textureStore(outputDepth, px, vec4f(gbDepth.y, 0.0, 0.0, 0.0));
     textureStore(outputNormal, px, vec4u(pack2x16float(gbNrm10), 0u, 0u, 0u));
-    textureStore(outputMaterial, px, vec4u(pack2x16float(gbMat10), pack2x16float(em10.rg), pack2x16float(vec2f(em10.b, 0.0)), 0u));
+    textureStore(outputMaterial, px, vec4u(pack2x16float(gbMat10), pack2x16float(em10.rg), pack2x16float(vec2f(em10.b, 0.0)), pack2x16float(vec2f(gbNormalConfidence.y, 0.0))));
   }
   if (basePixel.x < outputSize.x && basePixel.y + 1u < outputSize.y) {
     let px = vec2i(vec2u(basePixel.x, basePixel.y + 1u));
     textureStore(outputColor, px, vec4f(c01 + T.z * bgColor, 1.0 - T.z));
     textureStore(outputDepth, px, vec4f(gbDepth.z, 0.0, 0.0, 0.0));
     textureStore(outputNormal, px, vec4u(pack2x16float(gbNrm01), 0u, 0u, 0u));
-    textureStore(outputMaterial, px, vec4u(pack2x16float(gbMat01), pack2x16float(em01.rg), pack2x16float(vec2f(em01.b, 0.0)), 0u));
+    textureStore(outputMaterial, px, vec4u(pack2x16float(gbMat01), pack2x16float(em01.rg), pack2x16float(vec2f(em01.b, 0.0)), pack2x16float(vec2f(gbNormalConfidence.z, 0.0))));
   }
   if (basePixel.x + 1u < outputSize.x && basePixel.y + 1u < outputSize.y) {
     let px = vec2i(vec2u(basePixel.x + 1u, basePixel.y + 1u));
     textureStore(outputColor, px, vec4f(c11 + T.w * bgColor, 1.0 - T.w));
     textureStore(outputDepth, px, vec4f(gbDepth.w, 0.0, 0.0, 0.0));
     textureStore(outputNormal, px, vec4u(pack2x16float(gbNrm11), 0u, 0u, 0u));
-    textureStore(outputMaterial, px, vec4u(pack2x16float(gbMat11), pack2x16float(em11.rg), pack2x16float(vec2f(em11.b, 0.0)), 0u));
+    textureStore(outputMaterial, px, vec4u(pack2x16float(gbMat11), pack2x16float(em11.rg), pack2x16float(vec2f(em11.b, 0.0)), pack2x16float(vec2f(gbNormalConfidence.w, 0.0))));
   }
 }
