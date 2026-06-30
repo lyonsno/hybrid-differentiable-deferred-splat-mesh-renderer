@@ -347,7 +347,7 @@ function createScreenSpaceNormalsPass(device: GPUDevice) {
       viewport: [number, number],
       viewProjInverse: Float32Array,
       cameraPosition: Float32Array,
-      normalRecoveryMode: 0 | 1,
+      normalRecoveryMode: 0 | 1 | 2,
     ) {
       const params = new Float32Array(28);
       params[0] = viewport[0];
@@ -1045,7 +1045,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
       const lightingCameraPosition = params.lightingCameraPosition ?? params.cameraPosition;
       const vpInv = mat4Inverse(lightingViewProj);
       if (vpInv) {
-        const normalRecoveryMode = (!scene.hasPerSplatNormals || params.forceScreenSpaceNormals) ? 0 : 1;
+        const normalRecoveryMode = (!scene.hasPerSplatNormals || params.forceScreenSpaceNormals) ? 0 : 2;
         screenSpaceNormals.encode(
           encoder,
           scene.gbufferDepthView,

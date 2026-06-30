@@ -145,8 +145,13 @@ def project_to_screen(positions, intrinsics, extrinsics, image_size):
     return np.stack([px, py], axis=1), valid
 
 
-def sample_normal_map(normal_map, uv, valid):
-    """Bilinear sample normals from map at projected positions."""
+def sample_normal_map(normal_map, uv, valid, cam_to_world_rot=None):
+    """Bilinear sample normals from map at projected positions.
+
+    MoGE normals are image/camera-space estimates. The renderer consumes PLY
+    `nx,ny,nz` as world/asset-space normals, so sampled normals must be
+    converted before they are written back into the PLY.
+    """
     H, W, _ = normal_map.shape
     N = uv.shape[0]
     normals = np.zeros((N, 3), dtype=np.float32)
@@ -165,8 +170,34 @@ def sample_normal_map(normal_map, uv, valid):
 
     norms = np.linalg.norm(n, axis=1, keepdims=True)
     n = n / np.maximum(norms, 1e-8)
+
+    if cam_to_world_rot is not None:
+        n = moge_camera_normals_to_world(n, cam_to_world_rot)
+
     normals[valid] = n
     return normals
+
+
+def moge_camera_normals_to_world(normals, cam_to_world_rot):
+    """Convert MoGE image/camera-space normals to renderer world space.
+
+    MoGE image convention is X=right, Y=down, Z=facing camera. The renderer's
+    baked normal field is world/asset-space; its image is mirrored relative to
+    scene X and uses Y-up. Match the multiview normal baker: negate X and Y,
+    then rotate by camera-to-world.
+    """
+    n = normals.copy()
+    n[:, 0] = -n[:, 0]
+    n[:, 1] = -n[:, 1]
+    n = (cam_to_world_rot @ n.T).T
+    norms = np.linalg.norm(n, axis=1, keepdims=True)
+    return n / np.maximum(norms, 1e-8)
+
+
+def camera_to_world_rotation_from_view_matrix(view_matrix_flat):
+    """Extract camera-to-world rotation from a renderer column-major view matrix."""
+    view_matrix = np.array(view_matrix_flat).reshape(4, 4).T
+    return view_matrix[:3, :3].T
 
 
 def run_moge_normals(image: np.ndarray, device: torch.device) -> np.ndarray:
@@ -268,6 +299,7 @@ def main():
         LOG.info(f"Using renderer camera from: {args.camera}")
         with open(args.camera) as f:
             cam = json.load(f)
+        cam_to_world_rot = camera_to_world_rotation_from_view_matrix(cam["viewMatrix"])
         # WebGPU/GL stores matrices column-major in flat arrays — transpose to row-major for numpy
         view_matrix = np.array(cam["viewMatrix"]).reshape(4, 4).T
         proj_matrix = np.array(cam["projectionMatrix"]).reshape(4, 4).T
@@ -302,6 +334,7 @@ def main():
             intrinsics = np.array([[f_px, 0, w/2], [0, f_px, h/2], [0, 0, 1]])
             extrinsics = np.eye(4)
             image_size = (w, h)
+        cam_to_world_rot = extrinsics[:3, :3].T
 
         ply_w, ply_h = image_size
         sx, sy = normal_w / ply_w, normal_h / ply_h
@@ -319,7 +352,7 @@ def main():
              f"({valid.sum()} in view, {crop_mask.sum()} inside crop)")
 
     # Sample normals
-    normals = sample_normal_map(normal_map, uv, bakeable)
+    normals = sample_normal_map(normal_map, uv, bakeable, cam_to_world_rot=cam_to_world_rot)
     normals[~bakeable] = [0.0, -1.0, 0.0]  # default for non-bakeable
 
     # Save — ALL splats kept, only bakeable ones get real normals

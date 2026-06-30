@@ -86,12 +86,17 @@ test("deferred lighting and GTAO face visible splat normals toward the camera", 
   assert.match(gtao, /let viewNormal = faceForwardNormal\(viewNormalRaw,\s*viewDir\);/);
 });
 
-test("screen-space normal recovery only replaces grazing baked normals", async () => {
+test("renderer preserves baked normals by default instead of falling back to screen-space normals", async () => {
   const shader = await readFile(new URL("../src/shaders/gpu_screen_space_normals.wgsl", import.meta.url), "utf8");
   const renderer = await readFile(new URL("../src/splatRenderer.ts", import.meta.url), "utf8");
 
   assert.match(shader, /sourceNormalTexture:\s*texture_2d<u32>/);
   assert.match(shader, /recoveryMode:\s*f32/);
+  assert.match(
+    shader,
+    /if \(params\.recoveryMode > 1\.5\)[\s\S]+?normal = sourceNormal;/,
+    "per-splat baked normals must have a pass-through mode that does not blend toward screen-space normals",
+  );
   assert.match(shader, /let sourceNdotV = max\(dot\(sourceNormal,\s*viewDir\),\s*0\.0\);/);
   assert.match(
     shader,
@@ -100,7 +105,11 @@ test("screen-space normal recovery only replaces grazing baked normals", async (
   );
   assert.match(shader, /normalize\(mix\(sourceNormal,\s*screenNormal,\s*screenBlend\)\)/);
 
-  assert.match(renderer, /const normalRecoveryMode = \(!scene\.hasPerSplatNormals \|\| params\.forceScreenSpaceNormals\) \? 0 : 1;/);
+  assert.match(
+    renderer,
+    /const normalRecoveryMode = \(!scene\.hasPerSplatNormals \|\| params\.forceScreenSpaceNormals\) \? 0 : 2;/,
+    "baked per-splat normals should pass through by default; screen normals are for missing normals or explicit force mode",
+  );
   assert.match(
     renderer,
     /screenSpaceNormals\.encode\(\s*\n\s*encoder,\s*\n\s*scene\.gbufferDepthView,\s*\n\s*scene\.gbufferNormalView,\s*\n\s*cc\.filteredNormalTexture,/,
@@ -113,7 +122,7 @@ test("screen-space normal recovery only replaces grazing baked normals", async (
   );
 });
 
-test("deferred lighting damps metallic IBL where source normals are low confidence", async () => {
+test("deferred lighting does not use view-angle normal confidence as a material fix", async () => {
   const projection = await readFile(new URL("../src/shaders/gpu_project_splats.wgsl", import.meta.url), "utf8");
   const compositor = await readFile(new URL("../src/shaders/gpu_tile_splat_composite.wgsl", import.meta.url), "utf8");
   const deferred = await readFile(new URL("../src/shaders/gpu_deferred_lighting.wgsl", import.meta.url), "utf8");
@@ -127,10 +136,10 @@ test("deferred lighting damps metallic IBL where source normals are low confiden
   assert.match(compositor, /let gbNormalConfidence = gbNormalConfidenceWeighted \/ safeWeight;/);
   assert.match(compositor, /textureStore\(outputMaterial,\s*px,\s*vec4u\([^;]+pack2x16float\(vec2f\(gbNormalConfidence\.x,\s*0\.0\)\)\)\);/s);
 
-  assert.match(deferred, /let normalConfidence = unpack2x16float\(matSample\.a\)\.x;/);
-  assert.match(deferred, /let normalUncertainty = 1\.0 - smoothstep\(0\.45,\s*0\.80,\s*normalConfidence\);/);
-  assert.match(deferred, /let roughness = max\(baseRoughness,\s*mix\(0\.04,\s*0\.72,\s*normalUncertainty \* baseMetallic\)\);/);
-  assert.match(deferred, /let metallic = baseMetallic \* mix\(1\.0,\s*0\.35,\s*normalUncertainty\);/);
+  assert.doesNotMatch(deferred, /normalUncertainty/);
+  assert.doesNotMatch(deferred, /normalConfidence = unpack2x16float\(matSample\.a\)\.x/);
+  assert.match(deferred, /let roughness = max\(textureLoad\(roughnessLUT,\s*clamp\(i32\(matVec\.x \* 255\.0\),\s*0,\s*255\),\s*0\)\.r,\s*0\.04\);/);
+  assert.match(deferred, /let metallic = textureLoad\(metalnessLUT,\s*clamp\(i32\(matVec\.y \* 255\.0\),\s*0,\s*255\),\s*0\)\.r;/);
 });
 
 test("bilateral normal filter smooths recovered side normals instead of preserving speckle", async () => {

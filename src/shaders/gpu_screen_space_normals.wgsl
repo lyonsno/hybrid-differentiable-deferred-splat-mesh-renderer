@@ -12,7 +12,7 @@ struct Params {
   nearFar: vec2f,      // near, far (for linearizing depth)
   viewProjInv: mat4x4f, // inverse viewProj for reconstructing view-space position
   cameraPos: vec3f,
-  recoveryMode: f32,   // 0 = full screen-space normal, 1 = only recover grazing source normals
+  recoveryMode: f32,   // 0 = screen-space, 1 = grazing recovery, 2 = source pass-through
   grazingStart: f32,
   grazingEnd: f32,
   _pad: vec2f,
@@ -104,10 +104,13 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let viewDir = normalize(params.cameraPos - posC);
   let screenNormal = faceForwardNormal(normalize(cross(ddy, ddx)), viewDir);
 
+  let sourcePacked = textureLoad(sourceNormalTexture, px, 0).r;
+  let sourceNormal = faceForwardNormal(octDecode(unpack2x16float(sourcePacked)), viewDir);
+
   var normal = screenNormal;
-  if (params.recoveryMode > 0.5) {
-    let sourcePacked = textureLoad(sourceNormalTexture, px, 0).r;
-    let sourceNormal = faceForwardNormal(octDecode(unpack2x16float(sourcePacked)), viewDir);
+  if (params.recoveryMode > 1.5) {
+    normal = sourceNormal;
+  } else if (params.recoveryMode > 0.5) {
     let sourceNdotV = max(dot(sourceNormal, viewDir), 0.0);
     let screenBlend = 1.0 - smoothstep(params.grazingStart, params.grazingEnd, sourceNdotV);
     normal = normalize(mix(sourceNormal, screenNormal, screenBlend));

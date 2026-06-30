@@ -179,12 +179,8 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   // Material properties from G-buffer (per-pixel voted roughness/metalness + emissive)
   let matSample = textureLoad(materialTexture, px, 0);
   let matVec = unpack2x16float(matSample.r);
-  let baseRoughness = max(textureLoad(roughnessLUT, clamp(i32(matVec.x * 255.0), 0, 255), 0).r, 0.04);
-  let baseMetallic = textureLoad(metalnessLUT, clamp(i32(matVec.y * 255.0), 0, 255), 0).r;
-  let normalConfidence = unpack2x16float(matSample.a).x;
-  let normalUncertainty = 1.0 - smoothstep(0.45, 0.80, normalConfidence);
-  let roughness = max(baseRoughness, mix(0.04, 0.72, normalUncertainty * baseMetallic));
-  let metallic = baseMetallic * mix(1.0, 0.35, normalUncertainty);
+  let roughness = max(textureLoad(roughnessLUT, clamp(i32(matVec.x * 255.0), 0, 255), 0).r, 0.04);
+  let metallic = textureLoad(metalnessLUT, clamp(i32(matVec.y * 255.0), 0, 255), 0).r;
   let F0 = mix(vec3f(0.04), albedo, metallic);
 
   // Cook-Torrance BRDF
