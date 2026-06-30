@@ -51,6 +51,18 @@ def apply_sidecar_correction(positions: np.ndarray, correction: dict
     N = positions.shape[0]
     pos = positions.copy()
 
+    crop = correction.get("crop", {})
+    crop_matrix = correction.get("cropCoordinateMatrix") or crop.get("sourceToCropMatrix")
+    if crop.get("enabled") and crop_matrix is not None:
+        matrix = np.asarray(crop_matrix, dtype=np.float64).reshape(4, 4).T
+        pts_h = np.concatenate([positions, np.ones((N, 1), dtype=positions.dtype)], axis=1)
+        crop_points = (matrix @ pts_h.T).T[:, :3]
+        cmin = np.array(crop["min"])
+        cmax = np.array(crop["max"])
+        crop_mask = np.all(crop_points >= cmin, axis=1) & np.all(crop_points <= cmax, axis=1)
+        LOG.info(f"  Applied explicit crop matrix: {crop_mask.sum()}/{N} inside bounds")
+        return pos, crop_mask
+
     offset = correction.get("centroidOffset")
     if offset:
         pos[:, 0] -= offset[0]
@@ -78,7 +90,6 @@ def apply_sidecar_correction(positions: np.ndarray, correction: dict
         pos = pos @ R.T
         LOG.info(f"  Applied rotation: {rot}")
 
-    crop = correction.get("crop", {})
     if crop.get("enabled"):
         cmin = np.array(crop["min"])
         cmax = np.array(crop["max"])
@@ -132,6 +143,26 @@ def project_to_screen(positions, intrinsics, extrinsics, image_size):
     py = intrinsics[1, 1] * pts_cam[:, 1] / z + intrinsics[1, 2]
     width, height = image_size
     valid &= (px >= 0) & (px < width) & (py >= 0) & (py < height)
+    return np.stack([px, py], axis=1), valid
+
+
+def project_with_renderer_camera(positions, camera, map_shape):
+    """Project positions through the renderer-provided camera-state matrix."""
+    map_h, map_w = map_shape
+    vp_w = camera["viewportWidth"]
+    vp_h = camera["viewportHeight"]
+    view_proj = np.array(camera["viewProjMatrix"]).reshape(4, 4).T
+
+    N = positions.shape[0]
+    pts_h = np.concatenate([positions, np.ones((N, 1), dtype=positions.dtype)], axis=1)
+    clip = (view_proj @ pts_h.T).T
+    w_clip = clip[:, 3]
+    valid = w_clip > 0.01
+    ndc_x = clip[:, 0] / np.where(valid, w_clip, 1.0)
+    ndc_y = clip[:, 1] / np.where(valid, w_clip, 1.0)
+    px = ((ndc_x + 1) * 0.5 * vp_w) * (map_w / vp_w)
+    py = ((1 - ndc_y) * 0.5 * vp_h) * (map_h / vp_h)
+    valid &= (px >= 0) & (px < map_w) & (py >= 0) & (py < map_h)
     return np.stack([px, py], axis=1), valid
 
 
@@ -224,20 +255,7 @@ def main():
         LOG.info(f"Using renderer camera from: {args.camera}")
         with open(args.camera) as f:
             cam = json.load(f)
-        viewProj = np.array(cam["viewProjMatrix"]).reshape(4, 4).T
-        vp_w = cam["viewportWidth"]
-        vp_h = cam["viewportHeight"]
-
-        pts_h = np.concatenate([positions, np.ones((N, 1))], axis=1)
-        clip = (viewProj @ pts_h.T).T
-        w_clip = clip[:, 3]
-        valid = w_clip > 0.01
-        ndc_x = clip[:, 0] / np.where(valid, w_clip, 1.0)
-        ndc_y = clip[:, 1] / np.where(valid, w_clip, 1.0)
-        px = ((ndc_x + 1) * 0.5 * vp_w) * (target_w / vp_w)
-        py = ((1 - ndc_y) * 0.5 * vp_h) * (target_h / vp_h)
-        valid &= (px >= 0) & (px < target_w) & (py >= 0) & (py < target_h)
-        uv = np.stack([px, py], axis=1)
+        uv, valid = project_with_renderer_camera(corrected_pos, cam, (target_h, target_w))
         LOG.info(f"Projecting {N} splats via renderer camera...")
     else:
         if intrinsics is None or extrinsics is None or image_size is None:

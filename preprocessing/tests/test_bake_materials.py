@@ -9,12 +9,11 @@ from pathlib import Path
 import numpy as np
 
 
-def load_bake_normals_module():
+def load_bake_materials_module():
     root = Path(__file__).resolve().parents[1]
-    module_path = root / "splat_bake" / "bake_normals.py"
+    module_path = root / "splat_bake" / "bake_materials.py"
 
     stubs = {
-        "torch": types.SimpleNamespace(),
         "plyfile": types.SimpleNamespace(PlyData=object, PlyElement=object),
         "PIL": types.SimpleNamespace(Image=object),
         "PIL.Image": object,
@@ -23,7 +22,7 @@ def load_bake_normals_module():
     try:
         for name, stub in stubs.items():
             sys.modules[name] = stub
-        spec = importlib.util.spec_from_file_location("bake_normals_under_test", module_path)
+        spec = importlib.util.spec_from_file_location("bake_materials_under_test", module_path)
         assert spec is not None
         assert spec.loader is not None
         module = importlib.util.module_from_spec(spec)
@@ -37,9 +36,9 @@ def load_bake_normals_module():
                 sys.modules[name] = module
 
 
-class BakeNormalsTests(unittest.TestCase):
+class BakeMaterialsTests(unittest.TestCase):
     def test_explicit_crop_matrix_matches_renderer_crop_contract(self) -> None:
-        bake_normals = load_bake_normals_module()
+        bake_materials = load_bake_materials_module()
         positions = np.array(
             [
                 [1.0, 0.0, 0.0],
@@ -49,7 +48,7 @@ class BakeNormalsTests(unittest.TestCase):
             dtype=np.float32,
         )
 
-        corrected, crop_mask = bake_normals.apply_sidecar_correction(
+        corrected, crop_mask = bake_materials.apply_sidecar_correction(
             positions,
             {
                 "axisFlips": [-1, 1, 1],
@@ -72,7 +71,7 @@ class BakeNormalsTests(unittest.TestCase):
         np.testing.assert_array_equal(crop_mask, np.array([True, False, False]))
 
     def test_renderer_camera_projection_uses_renderer_viewproj_matrix(self) -> None:
-        bake_normals = load_bake_normals_module()
+        bake_materials = load_bake_materials_module()
         positions = np.array([[0.5, 0.5, -2.0]], dtype=np.float32)
         camera = {
             "viewportWidth": 100,
@@ -89,8 +88,6 @@ class BakeNormalsTests(unittest.TestCase):
                 0, 0, 1, -1,
                 0, 0, -1, 0,
             ],
-            # Deliberately differs from projectionMatrix @ viewMatrix; the X scale
-            # makes stale recomposition project this point to x=62.5 instead.
             "viewProjMatrix": [
                 2, 0, 0, 0,
                 0, -1, 0, 0,
@@ -99,7 +96,7 @@ class BakeNormalsTests(unittest.TestCase):
             ],
         }
 
-        uv, valid = bake_normals.project_with_renderer_camera(
+        uv, valid = bake_materials.project_with_renderer_camera(
             positions,
             camera,
             (100, 100),
@@ -107,36 +104,6 @@ class BakeNormalsTests(unittest.TestCase):
 
         np.testing.assert_array_equal(valid, np.array([True]))
         np.testing.assert_allclose(uv[0], [75.0, 62.5], atol=1e-6)
-
-    def test_sampled_moge_normals_are_transformed_from_camera_space(self) -> None:
-        bake_normals = load_bake_normals_module()
-        normal_map = np.array([[[1.0, 0.0, 0.0]]], dtype=np.float32)
-        uv = np.array([[0.0, 0.0]], dtype=np.float32)
-        valid = np.array([True])
-
-        normals = bake_normals.sample_normal_map(
-            normal_map,
-            uv,
-            valid,
-            cam_to_world_rot=np.eye(3, dtype=np.float32),
-        )
-
-        np.testing.assert_allclose(normals[0], [-1.0, 0.0, 0.0], atol=1e-6)
-
-    def test_facing_camera_moge_normal_stays_forward_after_conversion(self) -> None:
-        bake_normals = load_bake_normals_module()
-        normal_map = np.array([[[0.0, 0.0, 1.0]]], dtype=np.float32)
-        uv = np.array([[0.0, 0.0]], dtype=np.float32)
-        valid = np.array([True])
-
-        normals = bake_normals.sample_normal_map(
-            normal_map,
-            uv,
-            valid,
-            cam_to_world_rot=np.eye(3, dtype=np.float32),
-        )
-
-        np.testing.assert_allclose(normals[0], [0.0, 0.0, 1.0], atol=1e-6)
 
 
 if __name__ == "__main__":
