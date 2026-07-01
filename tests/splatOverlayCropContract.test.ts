@@ -24,3 +24,12 @@ test("overlay exposes proxy-geometry depth composition without claiming shared c
   assert.match(source, /sharedCanvasComposite:\s*false/);
   assert.match(source, /sharedCommandEncoder:\s*false/);
 });
+
+test("proxy-depth presenter accepts the renderer's unfilterable G-buffer depth texture", async () => {
+  const source = await readFile(new URL("../src/tileLocalTexturePresenter.ts", import.meta.url), "utf8");
+
+  assert.match(
+    source,
+    /binding:\s*2,\s*visibility:\s*GPUShaderStage\.FRAGMENT,\s*texture:\s*\{\s*sampleType:\s*"unfilterable-float"\s*\}/,
+  );
+});
