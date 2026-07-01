@@ -108,6 +108,33 @@ class BakeNormalsTests(unittest.TestCase):
         np.testing.assert_array_equal(valid, np.array([True]))
         np.testing.assert_allclose(uv[0], [75.0, 62.5], atol=1e-6)
 
+    def test_legacy_sidecar_crop_uses_kaminos_preview_normalization(self) -> None:
+        bake_normals = load_bake_normals_module()
+        positions = np.array(
+            [
+                [-4.0, 0.0, 0.0],
+                [-1.0, 0.0, 0.0],
+                [4.0, 0.0, 0.0],
+            ],
+            dtype=np.float32,
+        )
+
+        corrected, crop_mask = bake_normals.apply_sidecar_correction(
+            positions,
+            {
+                "axisFlips": [1, -1, -1],
+                "centroidOffset": [100.0, 100.0, 100.0],
+                "crop": {
+                    "enabled": True,
+                    "min": [-0.3, -0.1, -0.1],
+                    "max": [0.3, 0.1, 0.1],
+                },
+            },
+        )
+
+        np.testing.assert_allclose(corrected, positions)
+        np.testing.assert_array_equal(crop_mask, np.array([False, True, False]))
+
     def test_sampled_moge_normals_are_transformed_from_camera_space(self) -> None:
         bake_normals = load_bake_normals_module()
         normal_map = np.array([[[1.0, 0.0, 0.0]]], dtype=np.float32)
@@ -137,6 +164,36 @@ class BakeNormalsTests(unittest.TestCase):
         )
 
         np.testing.assert_allclose(normals[0], [0.0, 0.0, 1.0], atol=1e-6)
+
+    def test_sidecar_corrected_normals_are_written_in_raw_asset_frame(self) -> None:
+        bake_normals = load_bake_normals_module()
+        normals = np.array(
+            [
+                [0.0, 0.0, 1.0],
+                [0.0, 1.0, 0.0],
+            ],
+            dtype=np.float32,
+        )
+
+        raw = bake_normals.sidecar_corrected_normals_to_raw_frame(
+            normals,
+            {
+                "axisFlips": [1, -1, -1],
+                "orientation": {"rotation": [0.0, 0.0, 0.0]},
+            },
+        )
+
+        np.testing.assert_allclose(
+            raw,
+            np.array(
+                [
+                    [0.0, 0.0, -1.0],
+                    [0.0, -1.0, 0.0],
+                ],
+                dtype=np.float32,
+            ),
+            atol=1e-6,
+        )
 
 
 if __name__ == "__main__":

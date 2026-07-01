@@ -66,6 +66,11 @@ def apply_sidecar_correction(positions: np.ndarray, correction: dict
         LOG.info(f"  Applied explicit crop matrix: {crop_mask.sum()}/{N} inside bounds")
         return pos, crop_mask
 
+    if crop.get("enabled"):
+        crop_mask = preview_normalized_crop_mask(positions, crop)
+        LOG.info(f"  Applied preview-normalized crop: {crop_mask.sum()}/{N} inside bounds")
+        return pos, crop_mask
+
     # Centroid offset
     offset = correction.get("centroidOffset")
     if offset:
@@ -107,6 +112,58 @@ def apply_sidecar_correction(positions: np.ndarray, correction: dict
         crop_mask = np.ones(N, dtype=bool)
 
     return pos, crop_mask
+
+
+def preview_normalized_crop_mask(positions: np.ndarray, crop: dict) -> np.ndarray:
+    """Match Kaminos point-cloud preview crop coordinates.
+
+    Kaminos stores crop min/max in preview-normalized coordinates:
+    `(raw - raw_bounds_center) * (2 / raw_bounds_max_extent)`. The persisted
+    sidecar may not include the runtime `cropCoordinateMatrix`, so bakers must
+    synthesize the same matrix instead of treating crop bounds as raw positions.
+    """
+    raw_min = positions.min(axis=0)
+    raw_max = positions.max(axis=0)
+    center = (raw_min + raw_max) * 0.5
+    size = raw_max - raw_min
+    scale = 2.0 / max(float(size[0]), float(size[1]), float(size[2]), 1e-6)
+    preview = (positions - center) * scale
+    cmin = np.array(crop["min"])
+    cmax = np.array(crop["max"])
+    return np.all(preview >= cmin, axis=1) & np.all(preview <= cmax, axis=1)
+
+
+def sidecar_corrected_normals_to_raw_frame(normals: np.ndarray, correction: dict) -> np.ndarray:
+    """Convert normals sampled in Kaminos-corrected frame back to raw PLY frame.
+
+    The renderer consumes PLY `nx,ny,nz` in the same asset-local frame as raw
+    positions/rotations, then applies the host/model normal matrix once. If the
+    bake samples a source image in the sidecar-corrected visual frame, writing
+    those vectors directly into the raw PLY makes the renderer apply axis flips
+    or orientation a second time.
+    """
+    raw = normals.copy()
+
+    flips = correction.get("axisFlips")
+    if flips:
+        raw[:, 0] *= flips[0]
+        raw[:, 1] *= flips[1]
+        raw[:, 2] *= flips[2]
+
+    rot = correction.get("orientation", {}).get("rotation")
+    if rot and any(r != 0 for r in rot):
+        rx, ry, rz = rot
+        cx, sx = np.cos(rx), np.sin(rx)
+        cy, sy = np.cos(ry), np.sin(ry)
+        cz, sz = np.cos(rz), np.sin(rz)
+        Rx = np.array([[1, 0, 0], [0, cx, -sx], [0, sx, cx]])
+        Ry = np.array([[cy, 0, sy], [0, 1, 0], [-sy, 0, cy]])
+        Rz = np.array([[cz, -sz, 0], [sz, cz, 0], [0, 0, 1]])
+        R = Rz @ Ry @ Rx
+        raw = raw @ R
+
+    norms = np.linalg.norm(raw, axis=1, keepdims=True)
+    return raw / np.maximum(norms, 1e-8)
 
 
 # ---------------------------------------------------------------------------
@@ -330,6 +387,7 @@ def main():
     # Project splats to screen space
     normal_h, normal_w = normal_map.shape[:2]
 
+    using_renderer_camera = args.camera is not None
     if args.camera:
         # Use renderer camera matrices
         LOG.info(f"Using renderer camera from: {args.camera}")
@@ -370,6 +428,8 @@ def main():
 
     # Sample normals
     normals = sample_normal_map(normal_map, uv, bakeable, cam_to_world_rot=cam_to_world_rot)
+    if correction and not using_renderer_camera:
+        normals[bakeable] = sidecar_corrected_normals_to_raw_frame(normals[bakeable], correction)
     normals[~bakeable] = [0.0, -1.0, 0.0]  # default for non-bakeable
 
     # Save — ALL splats kept, only bakeable ones get real normals

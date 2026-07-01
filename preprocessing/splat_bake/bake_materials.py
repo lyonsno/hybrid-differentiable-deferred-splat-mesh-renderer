@@ -63,6 +63,11 @@ def apply_sidecar_correction(positions: np.ndarray, correction: dict
         LOG.info(f"  Applied explicit crop matrix: {crop_mask.sum()}/{N} inside bounds")
         return pos, crop_mask
 
+    if crop.get("enabled"):
+        crop_mask = preview_normalized_crop_mask(positions, crop)
+        LOG.info(f"  Applied preview-normalized crop: {crop_mask.sum()}/{N} inside bounds")
+        return pos, crop_mask
+
     offset = correction.get("centroidOffset")
     if offset:
         pos[:, 0] -= offset[0]
@@ -99,6 +104,45 @@ def apply_sidecar_correction(positions: np.ndarray, correction: dict
         crop_mask = np.ones(N, dtype=bool)
 
     return pos, crop_mask
+
+
+def preview_normalized_crop_mask(positions: np.ndarray, crop: dict) -> np.ndarray:
+    """Match Kaminos point-cloud preview crop coordinates."""
+    raw_min = positions.min(axis=0)
+    raw_max = positions.max(axis=0)
+    center = (raw_min + raw_max) * 0.5
+    size = raw_max - raw_min
+    scale = 2.0 / max(float(size[0]), float(size[1]), float(size[2]), 1e-6)
+    preview = (positions - center) * scale
+    cmin = np.array(crop["min"])
+    cmax = np.array(crop["max"])
+    return np.all(preview >= cmin, axis=1) & np.all(preview <= cmax, axis=1)
+
+
+def sidecar_corrected_normals_to_raw_frame(normals: np.ndarray, correction: dict) -> np.ndarray:
+    """Convert normals sampled in Kaminos-corrected frame back to raw PLY frame."""
+    raw = normals.copy()
+
+    flips = correction.get("axisFlips")
+    if flips:
+        raw[:, 0] *= flips[0]
+        raw[:, 1] *= flips[1]
+        raw[:, 2] *= flips[2]
+
+    rot = correction.get("orientation", {}).get("rotation")
+    if rot and any(r != 0 for r in rot):
+        rx, ry, rz = rot
+        cx, sx = np.cos(rx), np.sin(rx)
+        cy, sy = np.cos(ry), np.sin(ry)
+        cz, sz = np.cos(rz), np.sin(rz)
+        Rx = np.array([[1, 0, 0], [0, cx, -sx], [0, sx, cx]])
+        Ry = np.array([[cy, 0, sy], [0, 1, 0], [-sy, 0, cy]])
+        Rz = np.array([[cz, -sz, 0], [sz, cz, 0], [0, 0, 1]])
+        R = Rz @ Ry @ Rx
+        raw = raw @ R
+
+    norms = np.linalg.norm(raw, axis=1, keepdims=True)
+    return raw / np.maximum(norms, 1e-8)
 
 
 # ---------------------------------------------------------------------------
@@ -251,6 +295,7 @@ def main():
         target_h, target_w = n.shape[:2]
         LOG.info(f"Normal map: {n.shape[1]}x{n.shape[0]}")
 
+    using_renderer_camera = args.camera is not None
     if args.camera:
         LOG.info(f"Using renderer camera from: {args.camera}")
         with open(args.camera) as f:
@@ -289,6 +334,8 @@ def main():
         normals = sample_map(maps["normal"], uv, bakeable)
         norms = np.linalg.norm(normals, axis=1, keepdims=True)
         normals = normals / np.maximum(norms, 1e-8)
+        if correction and not using_renderer_camera:
+            normals[bakeable] = sidecar_corrected_normals_to_raw_frame(normals[bakeable], correction)
         normals[~bakeable] = [0.0, -1.0, 0.0]
         sampled["nx"] = normals[:, 0]
         sampled["ny"] = normals[:, 1]
