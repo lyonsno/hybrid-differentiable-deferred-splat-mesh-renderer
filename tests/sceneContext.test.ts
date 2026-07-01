@@ -39,6 +39,44 @@ test("classifySceneContextHonored reports environment as honorable", async () =>
   assert.equal(result.honored.depthSource, false);
 });
 
+test("classifySceneContextHonored honors proxy-geometry depth only with concrete proxy planes", async () => {
+  const { classifySceneContextHonored } = await import("../src/sceneContext.ts");
+  const base = {
+    schema: "hybrid-render.scene-context.v0",
+    producer: { app: "kaminos" },
+    frame: { worldUnits: "meters", upAxis: "Y", handedness: "right", colorSpace: "linear-srgb" },
+    camera: {
+      viewMatrix: Array(16).fill(0),
+      projectionMatrix: Array(16).fill(0),
+      positionWorld: [0, 0, 0],
+      viewport: { width: 800, height: 600, devicePixelRatio: 1 },
+    },
+    composition: { mode: "depth-aware-overlay", background: "transparent", depthSource: "proxy-geometry" },
+    objects: [],
+  } as const;
+
+  const missingProxy = classifySceneContextHonored(base as any);
+  assert.equal(missingProxy.honored.depthSource, false);
+  assert.deepEqual(missingProxy.unsupported, ["depthSource:proxy-geometry-without-depthProxies"]);
+
+  const withProxy = classifySceneContextHonored({
+    ...base,
+    composition: {
+      ...base.composition,
+      depthProxies: [{
+        id: "floor",
+        kind: "plane",
+        centerWorld: [0, -0.85, 0],
+        normalWorld: [0, 1, 0],
+        radius: 5,
+        depthBias: 0.0005,
+      }],
+    },
+  } as any);
+  assert.equal(withProxy.honored.depthSource, true);
+  assert.equal(withProxy.unsupported.length, 0);
+});
+
 test("classifySceneContextHonored rejects unknown schema", async () => {
   const { classifySceneContextHonored } = await import("../src/sceneContext.ts");
   const result = classifySceneContextHonored({ schema: "unknown.v99" } as any);

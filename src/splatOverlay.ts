@@ -9,9 +9,14 @@
 import { initGPU, resizeCanvas } from "./gpu.js";
 import {
   createSplatRenderer,
+  mat4Inverse,
   type SplatScene,
 } from "./splatRenderer.js";
-import { createAlphaTexturePresenter } from "./tileLocalTexturePresenter.js";
+import {
+  createAlphaTexturePresenter,
+  createProxyDepthAlphaTexturePresenter,
+  type ProxyDepthPlane,
+} from "./tileLocalTexturePresenter.js";
 import { decodeLocalPlySplatPayload } from "./localPly.js";
 import { fetchFirstSmokeSplatPayload, type SplatAttributes } from "./splats.js";
 import { classifySceneContextHonored, ENV_PRESETS, type HybridRenderSceneContextV0, type SceneContextTelemetry } from "./sceneContext.js";
@@ -34,10 +39,21 @@ export { classifySceneContextHonored };
 /** Route capability facts for the overlay. All fields are explicit and immutable. */
 export interface SplatOverlayCapabilities {
   readonly canvasMode: "dual-canvas-overlay";
-  readonly meshDepthOcclusion: false;
+  readonly meshDepthOcclusion: "proxy-geometry";
   readonly sharedCanvasComposite: false;
   readonly sharedCommandEncoder: false;
   readonly cropAppliedByRenderer: true;
+}
+
+export interface DepthCompositionTelemetry {
+  readonly schema: "hybrid-render.depth-composition-telemetry.v0";
+  readonly accepted: boolean;
+  readonly source: "none" | "proxy-geometry";
+  readonly active: boolean;
+  readonly proxyCount: number;
+  readonly honoredFields: readonly string[];
+  readonly unsupportedFields: readonly string[];
+  readonly timestamp: string;
 }
 
 /** Source identity for the loaded splat asset. */
@@ -144,6 +160,8 @@ export interface SplatOverlayHandle {
   setSceneContext(context: HybridRenderSceneContextV0): SceneContextTelemetry;
   /** Last scene-context telemetry, or null if setSceneContext has not been called. */
   readonly sceneContextTelemetry: SceneContextTelemetry | null;
+  /** Effective depth-composition telemetry for the current scene context. */
+  readonly depthCompositionTelemetry: DepthCompositionTelemetry;
   /** Set renderer-owned material/AO/emissive controls. */
   setRendererControls(controls: SplatRendererControlsV0): SplatRendererControlsTelemetry;
   /** Last accepted renderer-owned controls telemetry. */
@@ -223,7 +241,7 @@ const DEFAULT_RENDERER_CONTROLS: SplatRendererResolvedControlsV0 = Object.freeze
 
 const CAPABILITIES: SplatOverlayCapabilities = Object.freeze({
   canvasMode: "dual-canvas-overlay" as const,
-  meshDepthOcclusion: false as const,
+  meshDepthOcclusion: "proxy-geometry" as const,
   sharedCanvasComposite: false as const,
   sharedCommandEncoder: false as const,
   cropAppliedByRenderer: true as const,
@@ -261,6 +279,7 @@ export async function createSplatOverlay(
   });
 
   const alphaPresenter = createAlphaTexturePresenter(gpu.device, gpu.format);
+  const depthProxyPresenter = createProxyDepthAlphaTexturePresenter(gpu.device, gpu.format);
 
   const lightIntensity = options.lightIntensity ?? 3.0;
   const ambientIntensity = options.ambientIntensity ?? 0.12;
@@ -293,6 +312,8 @@ export async function createSplatOverlay(
   let _viewportOverride: { width: number; height: number; dpr: number } | null = null;
   // Scene context
   let _sceneContextTelemetry: SceneContextTelemetry | null = null;
+  let _proxyDepthPlanes: ProxyDepthPlane[] = [];
+  let _depthCompositionTelemetry: DepthCompositionTelemetry = makeDepthCompositionTelemetry([]);
   let _envIntensity = 1.0;
   let _envRotation = 0.0;
   let _exposure = 1.0;
@@ -369,6 +390,14 @@ export async function createSplatOverlay(
   function setSceneContext(context: HybridRenderSceneContextV0): SceneContextTelemetry {
     const telemetry = classifySceneContextHonored(context);
     _sceneContextTelemetry = telemetry;
+    _proxyDepthPlanes = telemetry.accepted && telemetry.honored.depthSource
+      ? normalizeProxyDepthPlanes(context)
+      : [];
+    _depthCompositionTelemetry = makeDepthCompositionTelemetry(
+      _proxyDepthPlanes,
+      telemetry.accepted && telemetry.honored.depthSource,
+      telemetry.unsupported,
+    );
 
     if (!telemetry.accepted) return telemetry;
 
@@ -579,7 +608,19 @@ export async function createSplatOverlay(
         storeOp: "store",
       }],
     });
-    alphaPresenter.draw(renderPass, scene.litView);
+    const invLightingViewProj = mat4Inverse(currentLightingViewProj);
+    if (_proxyDepthPlanes.length > 0 && invLightingViewProj) {
+      depthProxyPresenter.draw(
+        renderPass,
+        scene.litView,
+        scene.gbufferDepthView,
+        _proxyDepthPlanes,
+        currentLightingViewProj,
+        invLightingViewProj,
+      );
+    } else {
+      alphaPresenter.draw(renderPass, scene.litView);
+    }
     renderPass.end();
 
     gpu.device.queue.submit([encoder.finish()]);
@@ -631,6 +672,7 @@ export async function createSplatOverlay(
     capabilities: CAPABILITIES,
     get sourceIdentity() { return sourceIdentity; },
     get sceneContextTelemetry() { return _sceneContextTelemetry; },
+    get depthCompositionTelemetry() { return _depthCompositionTelemetry; },
     get rendererControlsTelemetry() { return _rendererControlsTelemetry; },
     get environmentStatus() { return _environmentStatus; },
     get cropStatus() { return cropStatus; },
@@ -645,6 +687,51 @@ export async function createSplatOverlay(
       };
     },
   };
+}
+
+function makeDepthCompositionTelemetry(
+  planes: readonly ProxyDepthPlane[],
+  active = false,
+  unsupportedFields: readonly string[] = [],
+): DepthCompositionTelemetry {
+  return {
+    schema: "hybrid-render.depth-composition-telemetry.v0",
+    accepted: active,
+    source: active ? "proxy-geometry" : "none",
+    active,
+    proxyCount: planes.length,
+    honoredFields: active ? ["composition.depthSource", "composition.depthProxies"] : [],
+    unsupportedFields,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+function normalizeProxyDepthPlanes(context: HybridRenderSceneContextV0): ProxyDepthPlane[] {
+  const proxies = context.composition?.depthProxies;
+  if (!Array.isArray(proxies)) return [];
+  const planes: ProxyDepthPlane[] = [];
+  for (const proxy of proxies) {
+    if (planes.length >= 4 || proxy?.kind !== "plane") continue;
+    const center = proxy.centerWorld;
+    const normal = proxy.normalWorld;
+    const radius = proxy.radius;
+    if (!isFiniteVec3(center) || !isFiniteVec3(normal) || !Number.isFinite(radius) || radius <= 0) continue;
+    const normalLength = Math.hypot(normal[0], normal[1], normal[2]);
+    if (normalLength <= 1e-6) continue;
+    planes.push({
+      centerWorld: [center[0], center[1], center[2]],
+      normalWorld: [normal[0] / normalLength, normal[1] / normalLength, normal[2] / normalLength],
+      radius,
+      depthBias: Number.isFinite(proxy.depthBias) ? proxy.depthBias! : 0.0005,
+    });
+  }
+  return planes;
+}
+
+function isFiniteVec3(value: unknown): value is readonly [number, number, number] {
+  return Array.isArray(value)
+    && value.length === 3
+    && value.every((component) => typeof component === "number" && Number.isFinite(component));
 }
 
 function clampFinite(value: unknown, fallback: number, min: number, max: number): number {

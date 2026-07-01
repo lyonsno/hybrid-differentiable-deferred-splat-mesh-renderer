@@ -53,9 +53,17 @@ export type HybridRenderSceneContextV0 = {
   };
 
   composition?: {
-    mode: "overlay" | "depth-aware-overlay" | "unified";
+    mode: "overlay" | "dual-canvas-overlay" | "depth-aware-overlay" | "unified";
     background: "transparent" | "scene" | "environment";
     depthSource?: "none" | "host-depth-texture" | "proxy-geometry";
+    depthProxies?: Array<{
+      id: string;
+      kind: "plane";
+      centerWorld: [number, number, number];
+      normalWorld: [number, number, number];
+      radius: number;
+      depthBias?: number;
+    }>;
   };
 
   objects?: Array<{
@@ -131,8 +139,15 @@ export function classifySceneContextHonored(
     unsupported.push(`toneMapping:${ctx.lighting.toneMapping}`);
   }
   if (ctx.lighting?.lights?.length) unsupported.push("lights");
-  if (ctx.composition?.depthSource && ctx.composition.depthSource !== "none") {
-    unsupported.push(`depthSource:${ctx.composition.depthSource}`);
+  const depthSource = ctx.composition?.depthSource;
+  const proxyDepthRequested = depthSource === "proxy-geometry";
+  const proxyDepthAvailable = proxyDepthRequested
+    && Array.isArray(ctx.composition?.depthProxies)
+    && ctx.composition!.depthProxies!.some((proxy) => proxy?.kind === "plane");
+  if (proxyDepthRequested && !proxyDepthAvailable) {
+    unsupported.push("depthSource:proxy-geometry-without-depthProxies");
+  } else if (depthSource && depthSource !== "none" && !proxyDepthAvailable) {
+    unsupported.push(`depthSource:${depthSource}`);
   }
 
   return {
@@ -147,7 +162,7 @@ export function classifySceneContextHonored(
       exposure: typeof ctx.lighting?.exposure === "number",
       toneMapping: false, // P0: always Reinhard, don't claim we switch
       lights: false,
-      depthSource: false,
+      depthSource: proxyDepthAvailable,
     },
     unsupported,
   };
