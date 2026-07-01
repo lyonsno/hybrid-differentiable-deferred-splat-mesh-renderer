@@ -192,7 +192,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
 
     let nDotSlice = dot(viewNormal, vec3f(dir, 0.0));
     let cosHPos = max(maxHorizonPos, nDotSlice * 0.08);
-    let cosHNeg = max(maxHorizonNeg, nDotSlice * 0.08);
+    let cosHNeg = max(maxHorizonNeg, -nDotSlice * 0.08);
     totalAO += cosHPos + cosHNeg;
 
     // Bent normal: weight the slice direction by visibility (unoccluded fraction)

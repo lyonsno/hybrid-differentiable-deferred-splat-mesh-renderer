@@ -72,6 +72,21 @@ test("GTAO transforms world normals with the lighting view matrix, not model-com
   assert.match(overlay, /lightingViewMatrix:\s*currentLightingView/);
 });
 
+test("GTAO opposite ray uses the opposite projected normal floor", async () => {
+  const shader = await readFile(new URL("../src/shaders/gtao_main.wgsl", import.meta.url), "utf8");
+  assert.match(shader, /let nDotSlice = dot\(viewNormal,\s*vec3f\(dir,\s*0\.0\)\);/);
+  assert.match(
+    shader,
+    /let cosHPos = max\(maxHorizonPos,\s*nDotSlice \* 0\.08\);/,
+    "positive horizon floor should use the normal projected along +dir",
+  );
+  assert.match(
+    shader,
+    /let cosHNeg = max\(maxHorizonNeg,\s*-nDotSlice \* 0\.08\);/,
+    "negative horizon floor should use the normal projected along -dir, not reuse +dir",
+  );
+});
+
 test("deferred lighting and GTAO face visible splat normals toward the camera", async () => {
   const deferred = await readFile(new URL("../src/shaders/gpu_deferred_lighting.wgsl", import.meta.url), "utf8");
   const gtao = await readFile(new URL("../src/shaders/gtao_main.wgsl", import.meta.url), "utf8");
