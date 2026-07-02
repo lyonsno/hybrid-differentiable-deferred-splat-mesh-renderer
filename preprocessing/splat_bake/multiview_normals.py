@@ -155,8 +155,19 @@ def run_moge_normals(image: np.ndarray, device: torch.device, model=None):
     return normals, model
 
 
+LOTUS_NATIVE_RES = 1024  # Lotus-D v1.1 native processing resolution
+
+
 def run_lotus_normals(image: np.ndarray, device: torch.device, model=None):
     """Run Lotus-D normal estimation via subprocess (needs its own venv).
+
+    The input image is resized to the model's native resolution (1024x1024)
+    before inference. The output normal map is returned at that native size —
+    no upscale. This avoids bilinear interpolation of normal vectors, which
+    averages directions and produces sub-unit normals with blurred edges.
+
+    The bake pipeline's projection (project_splats_to_view) adapts to the
+    normal map's resolution, so mismatched render/normal sizes are handled.
 
     Returns normal map (H, W, 3) in [-1, 1] and None (no persistent model).
     """
@@ -164,9 +175,14 @@ def run_lotus_normals(image: np.ndarray, device: torch.device, model=None):
     lotus_dir = Path.home() / "dev" / "Lotus"
     lotus_python = lotus_dir / ".venv" / "bin" / "python"
 
+    # Resize to native processing resolution before saving — no upscale later
+    pil_img = Image.fromarray(image)
+    if max(pil_img.size) != LOTUS_NATIVE_RES:
+        pil_img = pil_img.resize((LOTUS_NATIVE_RES, LOTUS_NATIVE_RES), Image.LANCZOS)
+
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
         input_path = f.name
-        Image.fromarray(image).save(input_path)
+        pil_img.save(input_path)
 
     output_path = input_path.replace(".png", "_normals.npy")
 
@@ -186,7 +202,7 @@ task_emb = torch.cat([torch.sin(task_emb), torch.cos(task_emb)], dim=-1)
 with torch.no_grad(), nullcontext():
     pred = model(rgb_in=img_tensor, prompt="", num_inference_steps=1,
                  generator=None, output_type="np", timesteps=[999],
-                 task_emb=task_emb).images[0]
+                 task_emb=task_emb, processing_res=0).images[0]
 normals = pred * 2.0 - 1.0
 norms = np.linalg.norm(normals, axis=2, keepdims=True)
 normals = normals / np.maximum(norms, 1e-8)
