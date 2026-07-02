@@ -77,6 +77,38 @@ test("classifySceneContextHonored honors proxy-geometry depth only with concrete
   assert.equal(withProxy.unsupported.length, 0);
 });
 
+test("classifySceneContextHonored honors host-depth texture metadata without proxy planes", async () => {
+  const { classifySceneContextHonored } = await import("../src/sceneContext.ts");
+  const result = classifySceneContextHonored({
+    schema: "hybrid-render.scene-context.v0",
+    producer: { app: "kaminos" },
+    frame: { worldUnits: "meters", upAxis: "Y", handedness: "right", colorSpace: "linear-srgb" },
+    camera: {
+      viewMatrix: Array(16).fill(0),
+      projectionMatrix: Array(16).fill(0),
+      positionWorld: [0, 0, 0],
+      viewport: { width: 800, height: 600, devicePixelRatio: 1 },
+    },
+    composition: {
+      mode: "depth-aware-overlay",
+      background: "transparent",
+      depthSource: "host-depth-texture",
+      hostDepth: {
+        id: "kaminos-host-ndc-depth",
+        source: "kaminos.webgpu-render-target",
+        format: "ndc-depth",
+        depthConvention: "webgpu-0-to-1",
+        width: 800,
+        height: 600,
+        depthBias: 0.01,
+      },
+    },
+    objects: [],
+  } as any);
+  assert.equal(result.honored.depthSource, true);
+  assert.equal(result.unsupported.length, 0);
+});
+
 test("classifySceneContextHonored rejects unknown schema", async () => {
   const { classifySceneContextHonored } = await import("../src/sceneContext.ts");
   const result = classifySceneContextHonored({ schema: "unknown.v99" } as any);

@@ -5,11 +5,39 @@ export interface GPU {
   canvas: HTMLCanvasElement;
   timestampsSupported: boolean;
   f16Supported: boolean;
+  ownsDevice: boolean;
 }
 
-export async function initGPU(canvas: HTMLCanvasElement): Promise<GPU> {
+export interface InitGPUOptions {
+  externalDevice?: GPUDevice;
+  format?: GPUTextureFormat;
+  timestampsSupported?: boolean;
+  f16Supported?: boolean;
+}
+
+export async function initGPU(canvas: HTMLCanvasElement, options: InitGPUOptions = {}): Promise<GPU> {
   if (!navigator.gpu) {
     throw new Error("WebGPU not supported in this browser");
+  }
+
+  const context = canvas.getContext("webgpu");
+  if (!context) {
+    throw new Error("Failed to get WebGPU context");
+  }
+
+  const preferredFormat = options.format ?? navigator.gpu.getPreferredCanvasFormat();
+
+  if (options.externalDevice) {
+    context.configure({ device: options.externalDevice, format: preferredFormat, alphaMode: "opaque" });
+    return {
+      device: options.externalDevice,
+      context,
+      format: preferredFormat,
+      canvas,
+      timestampsSupported: options.timestampsSupported ?? false,
+      f16Supported: options.f16Supported ?? false,
+      ownsDevice: false,
+    };
   }
 
   const adapter = await navigator.gpu.requestAdapter({
@@ -48,15 +76,10 @@ export async function initGPU(canvas: HTMLCanvasElement): Promise<GPU> {
     }
   });
 
-  const context = canvas.getContext("webgpu");
-  if (!context) {
-    throw new Error("Failed to get WebGPU context");
-  }
-
-  const format = navigator.gpu.getPreferredCanvasFormat();
+  const format = preferredFormat;
   context.configure({ device, format, alphaMode: "opaque" });
 
-  return { device, context, format, canvas, timestampsSupported, f16Supported };
+  return { device, context, format, canvas, timestampsSupported, f16Supported, ownsDevice: true };
 }
 
 export function resizeCanvas(gpu: GPU): { width: number; height: number } {

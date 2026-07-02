@@ -56,6 +56,15 @@ export type HybridRenderSceneContextV0 = {
     mode: "overlay" | "dual-canvas-overlay" | "depth-aware-overlay" | "unified";
     background: "transparent" | "scene" | "environment";
     depthSource?: "none" | "host-depth-texture" | "proxy-geometry";
+    hostDepth?: {
+      id: string;
+      source: string;
+      format: "ndc-depth";
+      depthConvention: "webgpu-0-to-1" | "webgpu-reversed-0-to-1";
+      width: number;
+      height: number;
+      depthBias?: number;
+    };
     depthProxies?: Array<{
       id: string;
       kind: "plane";
@@ -141,12 +150,23 @@ export function classifySceneContextHonored(
   if (ctx.lighting?.lights?.length) unsupported.push("lights");
   const depthSource = ctx.composition?.depthSource;
   const proxyDepthRequested = depthSource === "proxy-geometry";
+  const hostDepthRequested = depthSource === "host-depth-texture";
   const proxyDepthAvailable = proxyDepthRequested
     && Array.isArray(ctx.composition?.depthProxies)
     && ctx.composition!.depthProxies!.some((proxy) => proxy?.kind === "plane");
+  const hostDepth = ctx.composition?.hostDepth;
+  const hostDepthAvailable = hostDepthRequested
+    && hostDepth?.format === "ndc-depth"
+    && (hostDepth?.depthConvention === "webgpu-0-to-1" || hostDepth?.depthConvention === "webgpu-reversed-0-to-1")
+    && typeof hostDepth?.width === "number"
+    && hostDepth.width > 0
+    && typeof hostDepth.height === "number"
+    && hostDepth.height > 0;
   if (proxyDepthRequested && !proxyDepthAvailable) {
     unsupported.push("depthSource:proxy-geometry-without-depthProxies");
-  } else if (depthSource && depthSource !== "none" && !proxyDepthAvailable) {
+  } else if (hostDepthRequested && !hostDepthAvailable) {
+    unsupported.push("depthSource:host-depth-texture-without-hostDepth");
+  } else if (depthSource && depthSource !== "none" && !proxyDepthAvailable && !hostDepthAvailable) {
     unsupported.push(`depthSource:${depthSource}`);
   }
 
@@ -162,7 +182,7 @@ export function classifySceneContextHonored(
       exposure: typeof ctx.lighting?.exposure === "number",
       toneMapping: false, // P0: always Reinhard, don't claim we switch
       lights: false,
-      depthSource: proxyDepthAvailable,
+      depthSource: proxyDepthAvailable || hostDepthAvailable,
     },
     unsupported,
   };

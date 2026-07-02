@@ -3,7 +3,7 @@
  *
  * Creates a transparent WebGPU canvas overlaid on a host container,
  * renders Gaussian splats synced to external camera matrices.
- * Owns its own WebGPU device/context — no shared command encoder.
+ * Can either own its WebGPU device or render on a host-owned device.
  */
 
 import { initGPU, resizeCanvas } from "./gpu.js";
@@ -14,7 +14,9 @@ import {
 } from "./splatRenderer.js";
 import {
   createAlphaTexturePresenter,
+  createHostDepthAlphaTexturePresenter,
   createProxyDepthAlphaTexturePresenter,
+  type HostDepthTextureMetadata,
   type ProxyDepthPlane,
 } from "./tileLocalTexturePresenter.js";
 import { decodeLocalPlySplatPayload } from "./localPly.js";
@@ -39,18 +41,21 @@ export { classifySceneContextHonored };
 /** Route capability facts for the overlay. All fields are explicit and immutable. */
 export interface SplatOverlayCapabilities {
   readonly canvasMode: "dual-canvas-overlay";
-  readonly meshDepthOcclusion: "proxy-geometry";
+  readonly meshDepthOcclusion: "proxy-geometry" | "host-depth-texture";
   readonly sharedCanvasComposite: false;
   readonly sharedCommandEncoder: false;
+  readonly sharedDevice: boolean;
+  readonly hostDepthTexture: boolean;
   readonly cropAppliedByRenderer: true;
 }
 
 export interface DepthCompositionTelemetry {
   readonly schema: "hybrid-render.depth-composition-telemetry.v0";
   readonly accepted: boolean;
-  readonly source: "none" | "proxy-geometry";
+  readonly source: "none" | "proxy-geometry" | "host-depth-texture";
   readonly active: boolean;
   readonly proxyCount: number;
+  readonly hostDepthTexture: boolean;
   readonly honoredFields: readonly string[];
   readonly unsupportedFields: readonly string[];
   readonly timestamp: string;
@@ -158,10 +163,14 @@ export interface SplatOverlayHandle {
   setCorrectionIdentity(correction: SplatSourceIdentity["correctionIdentity"]): void;
   /** Set renderer-neutral scene context (lighting, exposure, composition). */
   setSceneContext(context: HybridRenderSceneContextV0): SceneContextTelemetry;
+  /** Set a host-renderer NDC depth texture view for mesh/splat occlusion. */
+  setHostDepthTexture(textureView: GPUTextureView | null, metadata?: HostDepthTextureMetadata): void;
   /** Last scene-context telemetry, or null if setSceneContext has not been called. */
   readonly sceneContextTelemetry: SceneContextTelemetry | null;
   /** Effective depth-composition telemetry for the current scene context. */
   readonly depthCompositionTelemetry: DepthCompositionTelemetry;
+  /** Last render-loop validation/runtime error, if the frame path failed after state acceptance. */
+  readonly renderError: { readonly phase: string; readonly message: string; readonly name?: string } | null;
   /** Set renderer-owned material/AO/emissive controls. */
   setRendererControls(controls: SplatRendererControlsV0): SplatRendererControlsTelemetry;
   /** Last accepted renderer-owned controls telemetry. */
@@ -214,6 +223,10 @@ export interface SplatOverlayOptions {
   lightDirection?: [number, number, number];
   lightIntensity?: number;
   ambientIntensity?: number;
+  device?: GPUDevice;
+  format?: GPUTextureFormat;
+  timestampsSupported?: boolean;
+  f16Supported?: boolean;
 }
 
 function cameraFollowLightDir(pos: Float32Array): [number, number, number] {
@@ -239,14 +252,6 @@ const DEFAULT_RENDERER_CONTROLS: SplatRendererResolvedControlsV0 = Object.freeze
 // Implementation
 // ---------------------------------------------------------------------------
 
-const CAPABILITIES: SplatOverlayCapabilities = Object.freeze({
-  canvasMode: "dual-canvas-overlay" as const,
-  meshDepthOcclusion: "proxy-geometry" as const,
-  sharedCanvasComposite: false as const,
-  sharedCommandEncoder: false as const,
-  cropAppliedByRenderer: true as const,
-});
-
 export async function createSplatOverlay(
   container: HTMLElement,
   options: SplatOverlayOptions = {},
@@ -262,8 +267,12 @@ export async function createSplatOverlay(
   container.style.position = container.style.position || "relative";
   container.appendChild(canvas);
 
-  // Init our own WebGPU device + context (separate from host)
-  const gpu = await initGPU(canvas);
+  const gpu = await initGPU(canvas, {
+    externalDevice: options.device,
+    format: options.format,
+    timestampsSupported: options.timestampsSupported,
+    f16Supported: options.f16Supported,
+  });
   // Configure for transparency so Three.js canvas shows through
   gpu.context.configure({
     device: gpu.device,
@@ -280,6 +289,7 @@ export async function createSplatOverlay(
 
   const alphaPresenter = createAlphaTexturePresenter(gpu.device, gpu.format);
   const depthProxyPresenter = createProxyDepthAlphaTexturePresenter(gpu.device, gpu.format);
+  const hostDepthPresenter = createHostDepthAlphaTexturePresenter(gpu.device, gpu.format);
 
   const lightIntensity = options.lightIntensity ?? 3.0;
   const ambientIntensity = options.ambientIntensity ?? 0.12;
@@ -313,7 +323,11 @@ export async function createSplatOverlay(
   // Scene context
   let _sceneContextTelemetry: SceneContextTelemetry | null = null;
   let _proxyDepthPlanes: ProxyDepthPlane[] = [];
+  let _hostDepthTextureView: GPUTextureView | null = null;
+  let _hostDepthMetadata: HostDepthTextureMetadata = {};
+  let _hostDepthRequested = false;
   let _depthCompositionTelemetry: DepthCompositionTelemetry = makeDepthCompositionTelemetry([]);
+  let _renderError: SplatOverlayHandle["renderError"] = null;
   let _envIntensity = 1.0;
   let _envRotation = 0.0;
   let _exposure = 1.0;
@@ -390,12 +404,17 @@ export async function createSplatOverlay(
   function setSceneContext(context: HybridRenderSceneContextV0): SceneContextTelemetry {
     const telemetry = classifySceneContextHonored(context);
     _sceneContextTelemetry = telemetry;
+    _hostDepthRequested = telemetry.accepted
+      && telemetry.honored.depthSource
+      && context.composition?.depthSource === "host-depth-texture";
     _proxyDepthPlanes = telemetry.accepted && telemetry.honored.depthSource
+      && context.composition?.depthSource === "proxy-geometry"
       ? normalizeProxyDepthPlanes(context)
       : [];
     _depthCompositionTelemetry = makeDepthCompositionTelemetry(
       _proxyDepthPlanes,
-      telemetry.accepted && telemetry.honored.depthSource,
+      _hostDepthRequested,
+      activeHostDepthTexture(),
       telemetry.unsupported,
     );
 
@@ -473,6 +492,33 @@ export async function createSplatOverlay(
     }
 
     return telemetry;
+  }
+
+  function activeHostDepthTexture(): boolean {
+    return _hostDepthRequested && !!_hostDepthTextureView;
+  }
+
+  function setHostDepthTexture(textureView: GPUTextureView | null, metadata: HostDepthTextureMetadata = {}) {
+    _hostDepthTextureView = textureView;
+    _hostDepthMetadata = metadata;
+    _depthCompositionTelemetry = makeDepthCompositionTelemetry(
+      _proxyDepthPlanes,
+      _hostDepthRequested,
+      activeHostDepthTexture(),
+      _sceneContextTelemetry?.unsupported ?? [],
+    );
+  }
+
+  function currentCapabilities(): SplatOverlayCapabilities {
+    return Object.freeze({
+      canvasMode: "dual-canvas-overlay" as const,
+      meshDepthOcclusion: activeHostDepthTexture() ? "host-depth-texture" as const : "proxy-geometry" as const,
+      sharedCanvasComposite: false as const,
+      sharedCommandEncoder: false as const,
+      sharedDevice: !gpu.ownsDevice,
+      hostDepthTexture: activeHostDepthTexture(),
+      cropAppliedByRenderer: true as const,
+    });
   }
 
   function setRendererControls(controls: SplatRendererControlsV0): SplatRendererControlsTelemetry {
@@ -608,22 +654,60 @@ export async function createSplatOverlay(
         storeOp: "store",
       }],
     });
+    const invViewProj = mat4Inverse(currentViewProj);
     const invLightingViewProj = mat4Inverse(currentLightingViewProj);
-    if (_proxyDepthPlanes.length > 0 && invLightingViewProj) {
-      depthProxyPresenter.draw(
-        renderPass,
-        scene.litView,
-        scene.gbufferDepthView,
-        _proxyDepthPlanes,
-        currentLightingViewProj,
-        invLightingViewProj,
-      );
-    } else {
-      alphaPresenter.draw(renderPass, scene.litView);
-    }
-    renderPass.end();
+    gpu.device.pushErrorScope("validation");
+    try {
+      if (activeHostDepthTexture() && _hostDepthTextureView && invViewProj) {
+        hostDepthPresenter.draw(
+          renderPass,
+          scene.litView,
+          scene.gbufferDepthView,
+          _hostDepthTextureView,
+          currentViewProj,
+          invViewProj,
+          currentView,
+          _hostDepthMetadata,
+        );
+      } else if (_proxyDepthPlanes.length > 0 && invLightingViewProj) {
+        depthProxyPresenter.draw(
+          renderPass,
+          scene.litView,
+          scene.gbufferDepthView,
+          _proxyDepthPlanes,
+          currentLightingViewProj,
+          invLightingViewProj,
+        );
+      } else {
+        alphaPresenter.draw(renderPass, scene.litView);
+      }
+      renderPass.end();
 
-    gpu.device.queue.submit([encoder.finish()]);
+      gpu.device.queue.submit([encoder.finish()]);
+    } catch (error) {
+      _renderError = {
+        phase: "frame",
+        message: String(error instanceof Error ? error.message : error),
+        name: error instanceof Error ? error.name : undefined,
+      };
+      throw error;
+    } finally {
+      gpu.device.popErrorScope().then((error) => {
+        if (error) {
+          _renderError = {
+            phase: "frame-validation",
+            message: error.message,
+            name: error.constructor?.name,
+          };
+        }
+      }).catch((error) => {
+        _renderError = {
+          phase: "frame-validation-scope",
+          message: String(error instanceof Error ? error.message : error),
+          name: error instanceof Error ? error.name : undefined,
+        };
+      });
+    }
 
     animFrameId = requestAnimationFrame(frame);
   }
@@ -650,7 +734,7 @@ export async function createSplatOverlay(
       renderer.destroyScene(scene);
       scene = null;
     }
-    gpu.device.destroy();
+    if (gpu.ownsDevice) gpu.device.destroy();
     canvas.remove();
   }
 
@@ -660,6 +744,7 @@ export async function createSplatOverlay(
     setViewport,
     setCorrectionIdentity,
     setSceneContext,
+    setHostDepthTexture,
     setRendererControls,
     loadPly,
     loadManifest,
@@ -669,10 +754,11 @@ export async function createSplatOverlay(
     destroy,
     canvas,
     get scene() { return scene; },
-    capabilities: CAPABILITIES,
+    get capabilities() { return currentCapabilities(); },
     get sourceIdentity() { return sourceIdentity; },
     get sceneContextTelemetry() { return _sceneContextTelemetry; },
     get depthCompositionTelemetry() { return _depthCompositionTelemetry; },
+    get renderError() { return _renderError; },
     get rendererControlsTelemetry() { return _rendererControlsTelemetry; },
     get environmentStatus() { return _environmentStatus; },
     get cropStatus() { return cropStatus; },
@@ -691,16 +777,23 @@ export async function createSplatOverlay(
 
 function makeDepthCompositionTelemetry(
   planes: readonly ProxyDepthPlane[],
-  active = false,
+  hostDepthRequested = false,
+  hostDepthActive = false,
   unsupportedFields: readonly string[] = [],
 ): DepthCompositionTelemetry {
+  const proxyActive = planes.length > 0;
+  const active = hostDepthActive || proxyActive;
+  const source = hostDepthActive ? "host-depth-texture" : (proxyActive ? "proxy-geometry" : "none");
   return {
     schema: "hybrid-render.depth-composition-telemetry.v0",
-    accepted: active,
-    source: active ? "proxy-geometry" : "none",
+    accepted: hostDepthRequested || proxyActive,
+    source,
     active,
     proxyCount: planes.length,
-    honoredFields: active ? ["composition.depthSource", "composition.depthProxies"] : [],
+    hostDepthTexture: hostDepthActive,
+    honoredFields: hostDepthActive
+      ? ["composition.depthSource", "composition.hostDepth"]
+      : (proxyActive ? ["composition.depthSource", "composition.depthProxies"] : []),
     unsupportedFields,
     timestamp: new Date().toISOString(),
   };
