@@ -23,6 +23,7 @@ import { decodeLocalPlySplatPayload } from "./localPly.js";
 import { fetchFirstSmokeSplatPayload, type SplatAttributes } from "./splats.js";
 import { classifySceneContextHonored, ENV_PRESETS, type HybridRenderSceneContextV0, type SceneContextTelemetry } from "./sceneContext.js";
 import { composeOverlayFrameMatrices } from "./splatOverlayFrame.js";
+import { transformSceneSplatAttributes } from "./sceneSplatTransform.js";
 import {
   applySplatCorrectionToAttributes,
   EMPTY_SPLAT_CORRECTION_STATUS,
@@ -278,32 +279,6 @@ const DEFAULT_RENDERER_CONTROLS: SplatRendererResolvedControlsV0 = Object.freeze
   bloom: Object.freeze({ threshold: 0.8, softKnee: 0.5, intensity: 0.5 }),
 });
 
-function normalizeMat4(value: readonly number[] | undefined): Float32Array {
-  if (!value || value.length !== 16) return new Float32Array(IDENTITY_MAT4);
-  const out = new Float32Array(16);
-  for (let index = 0; index < 16; index += 1) {
-    const next = Number(value[index]);
-    out[index] = Number.isFinite(next) ? next : IDENTITY_MAT4[index];
-  }
-  return out;
-}
-
-function transformPoint(matrix: Float32Array, x: number, y: number, z: number): [number, number, number] {
-  return [
-    matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12],
-    matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13],
-    matrix[2] * x + matrix[6] * y + matrix[10] * z + matrix[14],
-  ];
-}
-
-function transformVector(matrix: Float32Array, x: number, y: number, z: number): [number, number, number] {
-  const nx = matrix[0] * x + matrix[4] * y + matrix[8] * z;
-  const ny = matrix[1] * x + matrix[5] * y + matrix[9] * z;
-  const nz = matrix[2] * x + matrix[6] * y + matrix[10] * z;
-  const length = Math.hypot(nx, ny, nz) || 1;
-  return [nx / length, ny / length, nz / length];
-}
-
 function recomputeSplatBounds(positions: Float32Array, count: number): SplatAttributes["bounds"] {
   const min: [number, number, number] = [Infinity, Infinity, Infinity];
   const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
@@ -331,39 +306,6 @@ function recomputeSplatBounds(positions: Float32Array, count: number): SplatAttr
   ];
   const radius = Math.max(...size) / 2;
   return { min, max, center, radius };
-}
-
-function cloneAndTransformAttributes(attributes: SplatAttributes, matrixLike?: readonly number[]): SplatAttributes {
-  const matrix = normalizeMat4(matrixLike);
-  const positions = new Float32Array(attributes.positions);
-  const normals = attributes.normals ? new Float32Array(attributes.normals) : undefined;
-  const detailNormals = attributes.detailNormals ? new Float32Array(attributes.detailNormals) : undefined;
-  for (let index = 0; index < attributes.count; index += 1) {
-    const base = index * 3;
-    const position = transformPoint(matrix, positions[base], positions[base + 1], positions[base + 2]);
-    positions[base] = position[0];
-    positions[base + 1] = position[1];
-    positions[base + 2] = position[2];
-    if (normals) {
-      const normal = transformVector(matrix, normals[base], normals[base + 1], normals[base + 2]);
-      normals[base] = normal[0];
-      normals[base + 1] = normal[1];
-      normals[base + 2] = normal[2];
-    }
-    if (detailNormals) {
-      const detail = transformVector(matrix, detailNormals[base], detailNormals[base + 1], detailNormals[base + 2]);
-      detailNormals[base] = detail[0];
-      detailNormals[base + 1] = detail[1];
-      detailNormals[base + 2] = detail[2];
-    }
-  }
-  return {
-    ...attributes,
-    positions,
-    normals,
-    detailNormals,
-    bounds: recomputeSplatBounds(positions, attributes.count),
-  };
 }
 
 function copyFloatComponents(source: Float32Array | undefined, target: Float32Array | undefined, srcIndex: number, dstIndex: number, components: number, fallback = 0) {
@@ -812,7 +754,7 @@ export async function createSplatOverlay(
 
       const decoded = decodeLocalPlySplatPayload(fileName, bytes);
       const corrected = applySplatCorrectionToAttributes(decoded, entry.correction);
-      const worldAttrs = cloneAndTransformAttributes(corrected.attributes, entry.modelMatrix);
+      const worldAttrs = transformSceneSplatAttributes(corrected.attributes, entry.modelMatrix);
       transformed.push(worldAttrs);
       totalSourceCount += corrected.sourceCount;
       totalKeptCount += corrected.keptCount;
