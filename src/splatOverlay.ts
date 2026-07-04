@@ -26,6 +26,7 @@ import { composeOverlayFrameMatrices } from "./splatOverlayFrame.js";
 import {
   applySplatCorrectionToAttributes,
   EMPTY_SPLAT_CORRECTION_STATUS,
+  type SplatCorrectionIdentity,
   type SplatCorrectionStatus,
 } from "./splatCorrection.js";
 import type { MaterialCurveParams } from "./materialCurves.js";
@@ -66,9 +67,11 @@ export interface SplatSourceIdentity {
   /** URL, path, or label for the loaded asset. */
   readonly source: string;
   /** Loading method used. */
-  readonly loadMethod: "ply-url" | "ply-arraybuffer" | "manifest" | "attributes";
+  readonly loadMethod: "ply-url" | "ply-arraybuffer" | "manifest" | "attributes" | "scene-splats";
   /** Whether Kaminos sidecar corrections have been applied upstream. */
   readonly correctionApplied: boolean;
+  /** Scene-level splat ids loaded into the same renderer scene. */
+  readonly sceneSplatIds?: readonly string[];
   /** Correction identity fields, if known (from Kaminos sidecar). */
   readonly correctionIdentity?: {
     readonly rotation?: readonly number[];
@@ -148,6 +151,27 @@ export interface SplatRendererControlsTelemetry {
   readonly controls: SplatRendererResolvedControlsV0;
 }
 
+export interface SplatSceneEntry {
+  readonly id: string;
+  readonly source: string | ArrayBuffer;
+  readonly fileName?: string;
+  readonly modelMatrix?: readonly number[];
+  readonly correction?: SplatCorrectionIdentity | null;
+}
+
+export interface SplatSceneIdentity {
+  readonly schema: "hybrid-render.scene-splats.v0";
+  readonly splats: readonly {
+    readonly id: string;
+    readonly source: string;
+    readonly sourceCount: number;
+    readonly keptCount: number;
+    readonly cropAppliedByRenderer: boolean;
+    readonly cropFrame: string;
+  }[];
+  readonly count: number;
+}
+
 export interface SplatOverlayHandle {
   /** Update camera matrices from host (call each frame before render). */
   setCameraMatrices(
@@ -202,6 +226,8 @@ export interface SplatOverlayHandle {
   loadManifest(url: string): Promise<void>;
   /** Load pre-decoded SplatAttributes directly. */
   loadAttributes(attributes: SplatAttributes): void;
+  /** Load all scene splats into one renderer-owned splat scene. */
+  loadSceneSplats(entries: readonly SplatSceneEntry[]): Promise<void>;
   /** Start the render loop (synced to host requestAnimationFrame). */
   start(): void;
   /** Stop rendering. */
@@ -216,6 +242,10 @@ export interface SplatOverlayHandle {
   readonly capabilities: SplatOverlayCapabilities;
   /** Source identity for the currently loaded splat asset. Null if nothing loaded. */
   readonly sourceIdentity: SplatSourceIdentity | null;
+  /** Scene-level ids currently owned by the renderer. Empty for single-splat compatibility mode. */
+  readonly sceneSplatIds: readonly string[];
+  /** Scene-level load identity and crop accounting. Null for single-splat compatibility mode. */
+  readonly sceneIdentity: SplatSceneIdentity | null;
 }
 
 export interface SplatOverlayOptions {
@@ -247,6 +277,173 @@ const DEFAULT_RENDERER_CONTROLS: SplatRendererResolvedControlsV0 = Object.freeze
   ao: Object.freeze({ enabled: true, radius: 0.15, intensity: 1.5, falloff: 1.0, thickness: 1.81, slices: 3, steps: 4 }),
   bloom: Object.freeze({ threshold: 0.8, softKnee: 0.5, intensity: 0.5 }),
 });
+
+function normalizeMat4(value: readonly number[] | undefined): Float32Array {
+  if (!value || value.length !== 16) return new Float32Array(IDENTITY_MAT4);
+  const out = new Float32Array(16);
+  for (let index = 0; index < 16; index += 1) {
+    const next = Number(value[index]);
+    out[index] = Number.isFinite(next) ? next : IDENTITY_MAT4[index];
+  }
+  return out;
+}
+
+function transformPoint(matrix: Float32Array, x: number, y: number, z: number): [number, number, number] {
+  return [
+    matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12],
+    matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13],
+    matrix[2] * x + matrix[6] * y + matrix[10] * z + matrix[14],
+  ];
+}
+
+function transformVector(matrix: Float32Array, x: number, y: number, z: number): [number, number, number] {
+  const nx = matrix[0] * x + matrix[4] * y + matrix[8] * z;
+  const ny = matrix[1] * x + matrix[5] * y + matrix[9] * z;
+  const nz = matrix[2] * x + matrix[6] * y + matrix[10] * z;
+  const length = Math.hypot(nx, ny, nz) || 1;
+  return [nx / length, ny / length, nz / length];
+}
+
+function recomputeSplatBounds(positions: Float32Array, count: number): SplatAttributes["bounds"] {
+  const min: [number, number, number] = [Infinity, Infinity, Infinity];
+  const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+  for (let index = 0; index < count; index += 1) {
+    const base = index * 3;
+    const x = positions[base];
+    const y = positions[base + 1];
+    const z = positions[base + 2];
+    min[0] = Math.min(min[0], x); min[1] = Math.min(min[1], y); min[2] = Math.min(min[2], z);
+    max[0] = Math.max(max[0], x); max[1] = Math.max(max[1], y); max[2] = Math.max(max[2], z);
+  }
+  if (count === 0) {
+    min[0] = min[1] = min[2] = 0;
+    max[0] = max[1] = max[2] = 0;
+  }
+  const center: [number, number, number] = [
+    (min[0] + max[0]) / 2,
+    (min[1] + max[1]) / 2,
+    (min[2] + max[2]) / 2,
+  ];
+  const size: [number, number, number] = [
+    max[0] - min[0],
+    max[1] - min[1],
+    max[2] - min[2],
+  ];
+  const radius = Math.max(...size) / 2;
+  return { min, max, center, radius };
+}
+
+function cloneAndTransformAttributes(attributes: SplatAttributes, matrixLike?: readonly number[]): SplatAttributes {
+  const matrix = normalizeMat4(matrixLike);
+  const positions = new Float32Array(attributes.positions);
+  const normals = attributes.normals ? new Float32Array(attributes.normals) : undefined;
+  const detailNormals = attributes.detailNormals ? new Float32Array(attributes.detailNormals) : undefined;
+  for (let index = 0; index < attributes.count; index += 1) {
+    const base = index * 3;
+    const position = transformPoint(matrix, positions[base], positions[base + 1], positions[base + 2]);
+    positions[base] = position[0];
+    positions[base + 1] = position[1];
+    positions[base + 2] = position[2];
+    if (normals) {
+      const normal = transformVector(matrix, normals[base], normals[base + 1], normals[base + 2]);
+      normals[base] = normal[0];
+      normals[base + 1] = normal[1];
+      normals[base + 2] = normal[2];
+    }
+    if (detailNormals) {
+      const detail = transformVector(matrix, detailNormals[base], detailNormals[base + 1], detailNormals[base + 2]);
+      detailNormals[base] = detail[0];
+      detailNormals[base + 1] = detail[1];
+      detailNormals[base + 2] = detail[2];
+    }
+  }
+  return {
+    ...attributes,
+    positions,
+    normals,
+    detailNormals,
+    bounds: recomputeSplatBounds(positions, attributes.count),
+  };
+}
+
+function copyFloatComponents(source: Float32Array | undefined, target: Float32Array | undefined, srcIndex: number, dstIndex: number, components: number, fallback = 0) {
+  if (!target) return;
+  const srcBase = srcIndex * components;
+  const dstBase = dstIndex * components;
+  for (let component = 0; component < components; component += 1) {
+    target[dstBase + component] = source ? source[srcBase + component] : fallback;
+  }
+}
+
+function concatenateSceneAttributes(entries: readonly SplatAttributes[]): SplatAttributes {
+  if (entries.length === 0) throw new Error("loadSceneSplats requires at least one splat");
+  const count = entries.reduce((sum, attrs) => sum + attrs.count, 0);
+  const first = entries[0];
+  const positions = new Float32Array(count * 3);
+  const colors = new Float32Array(count * 3);
+  const opacities = new Float32Array(count);
+  const radii = new Float32Array(count);
+  const scales = new Float32Array(count * 3);
+  const rotations = new Float32Array(count * 4);
+  const originalIds = new Uint32Array(count);
+  const allNormals = entries.every(attrs => !!attrs.normals);
+  const normals = allNormals ? new Float32Array(count * 3) : undefined;
+  const allDetailNormals = entries.every(attrs => !!attrs.detailNormals);
+  const detailNormals = allDetailNormals ? new Float32Array(count * 3) : undefined;
+  const roughness = new Float32Array(count);
+  const metalness = new Float32Array(count);
+  const emissive = new Float32Array(count * 3);
+  const shCompatible = entries.every(attrs => attrs.sh?.degree === first.sh?.degree
+    && attrs.sh?.coefficientCount === first.sh?.coefficientCount
+    && attrs.sh?.basis === first.sh?.basis
+    && attrs.sh?.layout === first.sh?.layout);
+  const shCoefficients = shCompatible && first.sh
+    ? new Float32Array(count * first.sh.coefficientCount * 3)
+    : undefined;
+
+  let dst = 0;
+  for (const attrs of entries) {
+    for (let src = 0; src < attrs.count; src += 1) {
+      copyFloatComponents(attrs.positions, positions, src, dst, 3);
+      copyFloatComponents(attrs.colors, colors, src, dst, 3);
+      opacities[dst] = attrs.opacities[src];
+      radii[dst] = attrs.radii[src];
+      copyFloatComponents(attrs.scales, scales, src, dst, 3);
+      copyFloatComponents(attrs.rotations, rotations, src, dst, 4);
+      copyFloatComponents(attrs.normals, normals, src, dst, 3);
+      copyFloatComponents(attrs.detailNormals, detailNormals, src, dst, 3);
+      roughness[dst] = attrs.roughness ? attrs.roughness[src] : 0.45;
+      metalness[dst] = attrs.metalness ? attrs.metalness[src] : 0.0;
+      copyFloatComponents(attrs.emissive, emissive, src, dst, 3);
+      if (shCoefficients && attrs.sh) {
+        copyFloatComponents(attrs.sh.coefficients, shCoefficients, src, dst, attrs.sh.coefficientCount * 3);
+      }
+      originalIds[dst] = dst;
+      dst += 1;
+    }
+  }
+
+  return {
+    count,
+    sourceKind: "scene_splats",
+    positions,
+    colors,
+    opacities,
+    radii,
+    scales,
+    rotations,
+    sh: shCoefficients && first.sh ? { ...first.sh, coefficients: shCoefficients } : undefined,
+    normals,
+    roughness,
+    metalness,
+    emissive,
+    detailNormals,
+    originalIds,
+    bounds: recomputeSplatBounds(positions, count),
+    layout: first.layout,
+    splatScale: first.splatScale,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Implementation
@@ -298,6 +495,8 @@ export async function createSplatOverlay(
   let lastAttributes: SplatAttributes | null = null;
   let preCropAttributes: SplatAttributes | null = null; // before crop, for re-crop on correction update
   let sourceIdentity: SplatSourceIdentity | null = null;
+  let sceneIdentity: SplatSceneIdentity | null = null;
+  let sceneSplatIds: string[] = [];
   let correctionIdentity: SplatSourceIdentity["correctionIdentity"] | null = null;
   let cropStatus: SplatCorrectionStatus = EMPTY_SPLAT_CORRECTION_STATUS;
   let running = false;
@@ -554,6 +753,8 @@ export async function createSplatOverlay(
       fileName = fileName ?? "scene.ply";
     }
     const attrs = decodeLocalPlySplatPayload(fileName, bytes);
+    sceneIdentity = null;
+    sceneSplatIds = [];
     preCropAttributes = attrs;
     sourceIdentity = {
       source: isUrl ? source : fileName,
@@ -565,6 +766,8 @@ export async function createSplatOverlay(
 
   async function loadManifest(url: string) {
     const attributes = await fetchFirstSmokeSplatPayload(url);
+    sceneIdentity = null;
+    sceneSplatIds = [];
     sourceIdentity = {
       source: url,
       loadMethod: "manifest",
@@ -575,6 +778,8 @@ export async function createSplatOverlay(
   }
 
   function loadAttributes(attributes: SplatAttributes) {
+    sceneIdentity = null;
+    sceneSplatIds = [];
     sourceIdentity = {
       source: attributes.sourceKind,
       loadMethod: "attributes",
@@ -582,6 +787,69 @@ export async function createSplatOverlay(
     };
     preCropAttributes = attributes;
     applyCorrectionToLoadedAttributes();
+  }
+
+  async function loadSceneSplats(entries: readonly SplatSceneEntry[]) {
+    if (entries.length === 0) throw new Error("loadSceneSplats requires at least one splat");
+    const transformed: SplatAttributes[] = [];
+    const splats: Array<SplatSceneIdentity["splats"][number]> = [];
+    let totalSourceCount = 0;
+    let totalKeptCount = 0;
+    const warnings: string[] = [];
+
+    for (const entry of entries) {
+      let bytes: ArrayBuffer;
+      let fileName = entry.fileName ?? `${entry.id}.ply`;
+      const isUrl = typeof entry.source === "string";
+      if (isUrl) {
+        const resp = await fetch(entry.source);
+        if (!resp.ok) throw new Error(`Failed to fetch scene splat ${entry.id}: ${resp.status}`);
+        bytes = await resp.arrayBuffer();
+        fileName = fileName || entry.source.split("/").pop() || `${entry.id}.ply`;
+      } else {
+        bytes = entry.source;
+      }
+
+      const decoded = decodeLocalPlySplatPayload(fileName, bytes);
+      const corrected = applySplatCorrectionToAttributes(decoded, entry.correction);
+      const worldAttrs = cloneAndTransformAttributes(corrected.attributes, entry.modelMatrix);
+      transformed.push(worldAttrs);
+      totalSourceCount += corrected.sourceCount;
+      totalKeptCount += corrected.keptCount;
+      if (corrected.warning) warnings.push(`${entry.id}:${corrected.warning}`);
+      splats.push({
+        id: entry.id,
+        source: isUrl ? entry.source : fileName,
+        sourceCount: corrected.sourceCount,
+        keptCount: corrected.keptCount,
+        cropAppliedByRenderer: corrected.cropAppliedByRenderer,
+        cropFrame: corrected.cropFrame,
+      });
+    }
+
+    const merged = concatenateSceneAttributes(transformed);
+    sceneSplatIds = entries.map(entry => entry.id);
+    sceneIdentity = {
+      schema: "hybrid-render.scene-splats.v0",
+      splats,
+      count: sceneSplatIds.length,
+    };
+    correctionIdentity = null;
+    preCropAttributes = null;
+    sourceIdentity = {
+      source: "scene-splats",
+      loadMethod: "scene-splats",
+      correctionApplied: splats.some(item => item.cropAppliedByRenderer),
+      sceneSplatIds,
+    };
+    cropStatus = {
+      cropAppliedByRenderer: splats.some(item => item.cropAppliedByRenderer),
+      cropFrame: sceneSplatIds.length === 1 ? splats[0]?.cropFrame ?? "disabled" : "scene-splats",
+      sourceCount: totalSourceCount,
+      keptCount: totalKeptCount,
+      warning: warnings.length > 0 ? warnings.join(";") : null,
+    };
+    initScene(merged);
   }
 
   function frame() {
@@ -749,6 +1017,7 @@ export async function createSplatOverlay(
     loadPly,
     loadManifest,
     loadAttributes,
+    loadSceneSplats,
     start,
     stop,
     destroy,
@@ -756,6 +1025,8 @@ export async function createSplatOverlay(
     get scene() { return scene; },
     get capabilities() { return currentCapabilities(); },
     get sourceIdentity() { return sourceIdentity; },
+    get sceneSplatIds() { return sceneSplatIds; },
+    get sceneIdentity() { return sceneIdentity; },
     get sceneContextTelemetry() { return _sceneContextTelemetry; },
     get depthCompositionTelemetry() { return _depthCompositionTelemetry; },
     get renderError() { return _renderError; },

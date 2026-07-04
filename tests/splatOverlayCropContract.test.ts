@@ -57,3 +57,11 @@ test("proxy-depth presenter accepts the renderer's unfilterable G-buffer depth t
     /binding:\s*2,\s*visibility:\s*GPUShaderStage\.FRAGMENT,\s*texture:\s*\{\s*sampleType:\s*"unfilterable-float"\s*\}/,
   );
 });
+
+test("overlay exposes a scene-level splat load path", async () => {
+  const source = await readFile(new URL("../src/splatOverlay.ts", import.meta.url), "utf8");
+
+  assert.match(source, /loadSceneSplats/);
+  assert.match(source, /loadMethod:\s*"scene-splats"/);
+  assert.match(source, /sceneSplatIds/);
+});
