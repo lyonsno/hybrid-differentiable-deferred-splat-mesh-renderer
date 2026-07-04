@@ -328,10 +328,10 @@ function concatenateSceneAttributes(entries: readonly SplatAttributes[]): SplatA
   const scales = new Float32Array(count * 3);
   const rotations = new Float32Array(count * 4);
   const originalIds = new Uint32Array(count);
-  const allNormals = entries.every(attrs => !!attrs.normals);
-  const normals = allNormals ? new Float32Array(count * 3) : undefined;
-  const allDetailNormals = entries.every(attrs => !!attrs.detailNormals);
-  const detailNormals = allDetailNormals ? new Float32Array(count * 3) : undefined;
+  const hasAnyNormals = entries.some(attrs => !!attrs.normals);
+  const normals = hasAnyNormals ? new Float32Array(count * 3) : undefined;
+  const hasAnyDetailNormals = entries.some(attrs => !!attrs.detailNormals);
+  const detailNormals = hasAnyDetailNormals ? new Float32Array(count * 3) : undefined;
   const roughness = new Float32Array(count);
   const metalness = new Float32Array(count);
   const emissive = new Float32Array(count * 3);
@@ -352,8 +352,8 @@ function concatenateSceneAttributes(entries: readonly SplatAttributes[]): SplatA
       radii[dst] = attrs.radii[src];
       copyFloatComponents(attrs.scales, scales, src, dst, 3);
       copyFloatComponents(attrs.rotations, rotations, src, dst, 4);
-      copyFloatComponents(attrs.normals, normals, src, dst, 3);
-      copyFloatComponents(attrs.detailNormals, detailNormals, src, dst, 3);
+      copyFloatComponents(attrs.normals, normals, src, dst, 3, 0);
+      copyFloatComponents(attrs.detailNormals, detailNormals, src, dst, 3, 0);
       roughness[dst] = attrs.roughness ? attrs.roughness[src] : 0.45;
       metalness[dst] = attrs.metalness ? attrs.metalness[src] : 0.0;
       copyFloatComponents(attrs.emissive, emissive, src, dst, 3);

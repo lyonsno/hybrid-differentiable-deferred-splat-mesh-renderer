@@ -65,3 +65,11 @@ test("overlay exposes a scene-level splat load path", async () => {
   assert.match(source, /loadMethod:\s*"scene-splats"/);
   assert.match(source, /sceneSplatIds/);
 });
+
+test("scene-level splat merge preserves baked normals when mixed with no-normal splats", async () => {
+  const source = await readFile(new URL("../src/splatOverlay.ts", import.meta.url), "utf8");
+
+  assert.match(source, /entries\.some\(attrs\s*=>\s*!!attrs\.normals\)/);
+  assert.doesNotMatch(source, /entries\.every\(attrs\s*=>\s*!!attrs\.normals\)/);
+  assert.match(source, /copyFloatComponents\(attrs\.normals,\s*normals,\s*src,\s*dst,\s*3,\s*0\)/);
+});
