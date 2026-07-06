@@ -9,6 +9,7 @@
     "test:unit": "node --experimental-strip-types --experimental-transform-types --test tests/*.test.ts",
     "test:renderer": "tsc --ignoreConfig --module NodeNext --moduleResolution NodeNext --target ES2022 --types @webgpu/types --skipLibCheck --outDir node_modules/.cache/renderer-tests --rootDir . src/camera.ts src/clickToPivot.ts src/realSmokeScene.ts && node --test tests/renderer/*.test.mjs",
     "build": "tsc && vite build",
+    "build:overlay-package": "node scripts/build-splat-overlay-package.mjs",
     "preview": "vite preview",
     "test:smoke": "node --test tests/smoke/*.test.mjs",
     "smoke:visual": "node scripts/run-visual-smoke.mjs",
