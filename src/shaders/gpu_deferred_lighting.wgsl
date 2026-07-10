@@ -157,12 +157,10 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
     return;
   }
 
-  // Preview raw/no-bake splats as their source color buffer instead of forcing
-  // default roughness/metalness/normals through the deferred PBR path.
+  // Source-color mode is a radiance display path, not a material/albedo preview:
+  // write the composited source splat color as final output and skip lighting.
   if (params.sourceColorPreview > 0.5) {
-    let exposed = srgbToLinear(albedoSrgb) * params.exposure;
-    let tonemapped = exposed / (exposed + vec3f(1.0));
-    textureStore(outputLit, px, vec4f(linearToSrgb(tonemapped), splatOpacity));
+    textureStore(outputLit, px, vec4f(albedoSrgb, splatOpacity));
     return;
   }
 
