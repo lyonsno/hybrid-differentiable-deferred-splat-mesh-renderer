@@ -106,6 +106,7 @@ export interface RenderFrameParams {
   roughnessCurve?: MaterialCurveParams;
   metalnessCurve?: MaterialCurveParams;
   albedoCurve?: MaterialCurveParams;
+  sourceColorPreview?: boolean;
 }
 
 export interface SplatRenderer {
@@ -502,6 +503,7 @@ function createDeferredLightingPass(device: GPUDevice) {
       envIntensity: number = 1.0,
       envRotation: number = 0.0,
       exposure: number = 1.0,
+      sourceColorPreview: boolean = false,
     ) {
       const params = new Float32Array(44);
       params[0] = viewport[0];
@@ -521,6 +523,7 @@ function createDeferredLightingPass(device: GPUDevice) {
       params[38] = envIntensity;
       params[39] = envRotation;
       params[40] = exposure;
+      params[41] = sourceColorPreview ? 1.0 : 0.0;
       device.queue.writeBuffer(paramsBuffer, 0, params);
       const bg = device.createBindGroup({
         layout: bgl,
@@ -1135,6 +1138,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
           params.envIntensity ?? 1.0,
           params.envRotation ?? 0.0,
           params.exposure ?? 1.0,
+          params.sourceColorPreview ?? false,
         );
       }
     },

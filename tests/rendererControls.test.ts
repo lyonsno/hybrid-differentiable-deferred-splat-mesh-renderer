@@ -18,6 +18,18 @@ test("overlay exposes renderer-owned material, AO, bloom, and emissive controls"
   assert.match(overlay, /readonly normal\?:\s*\{\s*forceScreenSpace\?:\s*boolean/s);
   assert.match(overlay, /forceScreenSpaceNormals:\s*_rendererControls\.normal\.forceScreenSpace/);
   assert.match(overlay, /"normal\.forceScreenSpace"/);
+  assert.match(overlay, /readonly preview\?:\s*\{\s*sourceColor\?:\s*boolean/s);
+  assert.match(overlay, /sourceColorPreview:\s*_rendererControls\.preview\.sourceColor/);
+  assert.match(overlay, /"preview\.sourceColor"/);
   assert.match(overlay, /aoRadius:\s*_rendererControls\.ao\.radius/);
   assert.match(overlay, /bloomIntensity:\s*_rendererControls\.bloom\.intensity/);
+});
+
+test("overlay exposes Kaminos scene-splat compatibility loading", async () => {
+  const overlay = await readFile(OVERLAY_PATH, "utf8");
+
+  assert.match(overlay, /loadSceneSplats\(entries:\s*readonly SplatOverlaySceneEntry\[\]\): Promise<void>/);
+  assert.match(overlay, /async function loadSceneSplats\(entries:\s*readonly SplatOverlaySceneEntry\[\]\)/);
+  assert.match(overlay, /sceneIdentity:\s*SplatSceneIdentity \| null/);
+  assert.match(overlay, /await loadPly\(entry\.source,\s*entry\.fileName\)/);
 });
