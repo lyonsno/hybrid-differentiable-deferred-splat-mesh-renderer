@@ -26,6 +26,24 @@ test("deferred lighting applies scene exposure before tonemapping", async () => 
   assert.match(shader, /let exposed = color \* params\.exposure;/);
 });
 
+test("deferred lighting can preview source splat colors before PBR material shading", async () => {
+  const shader = await readFile(SHADER_PATH, "utf8");
+
+  assert.match(shader, /sourceColorPreview:\s*f32/);
+  assert.match(
+    shader,
+    /if \(params\.sourceColorPreview > 0\.5\)[\s\S]+?let exposed = srgbToLinear\(albedoSrgb\) \* params\.exposure;[\s\S]+?textureStore\(outputLit,\s*px,\s*vec4f\(linearToSrgb\(tonemapped\),\s*splatOpacity\)\);[\s\S]+?return;/,
+    "source-color preview must return the splat color buffer after exposure/tonemap",
+  );
+
+  const previewIndex = shader.indexOf("params.sourceColorPreview > 0.5");
+  const normalIndex = shader.indexOf("textureLoad(normalTexture");
+  const materialIndex = shader.indexOf("textureLoad(materialTexture");
+  assert.ok(previewIndex >= 0, "source-color preview branch must be present");
+  assert.ok(normalIndex > previewIndex, "source-color preview must bypass deferred normal sampling");
+  assert.ok(materialIndex > previewIndex, "source-color preview must bypass deferred material sampling");
+});
+
 test("projection shader transforms normals into the lighting frame", async () => {
   const shader = await readFile(new URL("../src/shaders/gpu_project_splats.wgsl", import.meta.url), "utf8");
 

@@ -21,6 +21,8 @@ struct Params {
   envIntensity: f32,
   envRotation: f32,
   exposure: f32,
+  sourceColorPreview: f32,
+  _pad2: vec2f,
 };
 
 @group(0) @binding(0) var<uniform> params: Params;
@@ -152,6 +154,15 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
     } else {
       textureStore(outputLit, px, vec4f(albedoSrgb, 0.0));
     }
+    return;
+  }
+
+  // Preview raw/no-bake splats as their source color buffer instead of forcing
+  // default roughness/metalness/normals through the deferred PBR path.
+  if (params.sourceColorPreview > 0.5) {
+    let exposed = srgbToLinear(albedoSrgb) * params.exposure;
+    let tonemapped = exposed / (exposed + vec3f(1.0));
+    textureStore(outputLit, px, vec4f(linearToSrgb(tonemapped), splatOpacity));
     return;
   }
 
