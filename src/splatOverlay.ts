@@ -92,6 +92,9 @@ export interface SplatRendererControlsV0 {
   readonly preview?: {
     sourceColor?: boolean;
   };
+  readonly presentation?: {
+    readonly mode?: "source-radiance" | "deferred-pbr";
+  };
   readonly ao?: {
     readonly enabled?: boolean;
     readonly radius?: number;
@@ -124,6 +127,9 @@ export interface SplatRendererResolvedControlsV0 {
   readonly preview: {
     readonly sourceColor: boolean;
   };
+  readonly presentation: {
+    readonly mode: "source-radiance" | "deferred-pbr";
+  };
   readonly ao: {
     readonly enabled: boolean;
     readonly radius: number;
@@ -147,6 +153,11 @@ export interface SplatRendererControlsTelemetry {
   readonly honoredFields: readonly string[];
   readonly unsupportedFields: readonly string[];
   readonly controls: SplatRendererResolvedControlsV0;
+  readonly presentation: {
+    readonly requestedMode: "source-radiance" | "deferred-pbr";
+    readonly effectiveMode: "source-radiance" | "deferred-pbr";
+    readonly effectiveRoute: "source-radiance-copy" | "deferred-pbr-lighting";
+  };
 }
 
 export interface SplatOverlayHandle {
@@ -240,6 +251,7 @@ const DEFAULT_RENDERER_CONTROLS: SplatRendererResolvedControlsV0 = Object.freeze
   emissive: Object.freeze({ intensity: 3.0, threshold: 0.05 }),
   normal: Object.freeze({ forceScreenSpace: false }),
   preview: Object.freeze({ sourceColor: false }),
+  presentation: Object.freeze({ mode: "deferred-pbr" as const }),
   ao: Object.freeze({ enabled: true, radius: 0.15, intensity: 1.5, falloff: 1.0, thickness: 1.81, slices: 3, steps: 4 }),
   bloom: Object.freeze({ threshold: 0.8, softKnee: 0.5, intensity: 0.5 }),
 });
@@ -608,7 +620,7 @@ export async function createSplatOverlay(
       emissiveIntensity: _rendererControls.emissive.intensity,
       emissiveThreshold: _rendererControls.emissive.threshold,
       forceScreenSpaceNormals: _rendererControls.normal.forceScreenSpace,
-      sourceColorPreview: _rendererControls.preview.sourceColor,
+      presentationMode: _rendererControls.presentation.mode,
       aoRadius: _rendererControls.ao.radius,
       aoIntensity: _rendererControls.ao.enabled ? _rendererControls.ao.intensity : 0,
       aoFalloff: _rendererControls.ao.falloff,
@@ -724,6 +736,12 @@ function normalizeRendererControls(
   input: SplatRendererControlsV0,
   fallback: SplatRendererResolvedControlsV0 = DEFAULT_RENDERER_CONTROLS,
 ): SplatRendererResolvedControlsV0 {
+  const legacySourceColor = typeof input.preview?.sourceColor === "boolean"
+    ? input.preview.sourceColor
+    : fallback.preview.sourceColor;
+  const presentationMode = input.presentation?.mode === "source-radiance" || input.presentation?.mode === "deferred-pbr"
+    ? input.presentation.mode
+    : legacySourceColor ? "source-radiance" : fallback.presentation.mode;
   return {
     material: {
       roughness: normalizeCurve(input.material?.roughness, fallback.material.roughness),
@@ -740,10 +758,9 @@ function normalizeRendererControls(
         : fallback.normal.forceScreenSpace,
     },
     preview: {
-      sourceColor: typeof input.preview?.sourceColor === "boolean"
-        ? input.preview.sourceColor
-        : fallback.preview.sourceColor,
+      sourceColor: presentationMode === "source-radiance",
     },
+    presentation: { mode: presentationMode },
     ao: {
       enabled: typeof input.ao?.enabled === "boolean" ? input.ao.enabled : fallback.ao.enabled,
       radius: clampFinite(input.ao?.radius, fallback.ao.radius, 0, 5),
@@ -776,6 +793,7 @@ function makeRendererControlsTelemetry(
       "emissive.threshold",
       "normal.forceScreenSpace",
       "preview.sourceColor",
+      "presentation.mode",
       "ao.enabled",
       "ao.radius",
       "ao.intensity",
@@ -789,5 +807,12 @@ function makeRendererControlsTelemetry(
     ],
     unsupportedFields: [],
     controls,
+    presentation: {
+      requestedMode: controls.presentation.mode,
+      effectiveMode: controls.presentation.mode,
+      effectiveRoute: controls.presentation.mode === "source-radiance"
+        ? "source-radiance-copy"
+        : "deferred-pbr-lighting",
+    },
   };
 }

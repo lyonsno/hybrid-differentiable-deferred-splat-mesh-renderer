@@ -26,24 +26,11 @@ test("deferred lighting applies scene exposure before tonemapping", async () => 
   assert.match(shader, /let exposed = color \* params\.exposure;/);
 });
 
-test("deferred lighting can emit source splat colors as final radiance before PBR material shading", async () => {
+test("deferred lighting remains a PBR-only route", async () => {
   const shader = await readFile(SHADER_PATH, "utf8");
-
-  assert.match(shader, /sourceColorPreview:\s*f32/);
-  assert.match(
-    shader,
-    /if \(params\.sourceColorPreview > 0\.5\)[\s\S]+?textureStore\(outputLit,\s*px,\s*vec4f\(albedoSrgb,\s*splatOpacity\)\);[\s\S]+?return;/,
-    "source-color preview must return the splat color buffer as final radiance without exposure, AO, normals, or PBR shading",
-  );
-
-  const previewIndex = shader.indexOf("params.sourceColorPreview > 0.5");
-  const normalIndex = shader.indexOf("textureLoad(normalTexture");
-  const materialIndex = shader.indexOf("textureLoad(materialTexture");
-  const previewBlock = shader.slice(previewIndex, shader.indexOf("// Remap albedo through curve LUT", previewIndex));
-  assert.ok(previewIndex >= 0, "source-color preview branch must be present");
-  assert.ok(normalIndex > previewIndex, "source-color preview must bypass deferred normal sampling");
-  assert.ok(materialIndex > previewIndex, "source-color preview must bypass deferred material sampling");
-  assert.doesNotMatch(previewBlock, /params\.exposure|tonemapped|linearToSrgb|srgbToLinear/);
+  assert.doesNotMatch(shader, /sourceColorPreview|source-radiance/);
+  assert.match(shader, /textureLoad\(normalTexture/);
+  assert.match(shader, /textureLoad\(materialTexture/);
 });
 
 test("projection shader transforms normals into the lighting frame", async () => {
