@@ -20,3 +20,10 @@ test("source radiance copy shader preserves compositor RGB and alpha", async () 
   assert.match(shader, /textureStore\(outputRadiance, px, sourceRadiance\);/);
   assert.doesNotMatch(shader, /normal|roughness|metal|ao|exposure|tonemap/i);
 });
+
+test("deferred presentation keeps its 176-byte uniform contract after route separation", async () => {
+  const renderer = await readFile(new URL("../src/splatRenderer.ts", import.meta.url), "utf8");
+  const shader = await readFile(new URL("../src/shaders/gpu_deferred_lighting.wgsl", import.meta.url), "utf8");
+  assert.match(renderer, /label: "deferred_lighting_params",\s*size: 176,/s);
+  assert.doesNotMatch(shader, /_pad2:/);
+});

@@ -21,7 +21,6 @@ struct Params {
   envIntensity: f32,
   envRotation: f32,
   exposure: f32,
-  _pad2: vec3f,
 };
 
 @group(0) @binding(0) var<uniform> params: Params;
