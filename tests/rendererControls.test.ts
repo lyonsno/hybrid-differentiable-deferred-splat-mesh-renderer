@@ -19,7 +19,8 @@ test("overlay exposes renderer-owned material, AO, bloom, and emissive controls"
   assert.match(overlay, /forceScreenSpaceNormals:\s*_rendererControls\.normal\.forceScreenSpace/);
   assert.match(overlay, /"normal\.forceScreenSpace"/);
   assert.match(overlay, /readonly preview\?:\s*\{\s*sourceColor\?:\s*boolean/s);
-  assert.match(overlay, /sourceColorPreview:\s*_rendererControls\.preview\.sourceColor/);
+  assert.match(overlay, /presentationMode:\s*_rendererControls\.presentation\.mode/);
+  assert.match(overlay, /effectiveRoute:\s*controls\.presentation\.mode === "source-radiance"\s*\? "source-radiance-copy"\s*:\s*"deferred-pbr-lighting"/s);
   assert.match(overlay, /"preview\.sourceColor"/);
   assert.match(overlay, /aoRadius:\s*_rendererControls\.ao\.radius/);
   assert.match(overlay, /bloomIntensity:\s*_rendererControls\.bloom\.intensity/);

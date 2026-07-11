@@ -21,8 +21,7 @@ struct Params {
   envIntensity: f32,
   envRotation: f32,
   exposure: f32,
-  sourceColorPreview: f32,
-  _pad2: vec2f,
+  _pad2: vec3f,
 };
 
 @group(0) @binding(0) var<uniform> params: Params;
@@ -159,11 +158,6 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
 
   // Source-color mode is a radiance display path, not a material/albedo preview:
   // write the composited source splat color as final output and skip lighting.
-  if (params.sourceColorPreview > 0.5) {
-    textureStore(outputLit, px, vec4f(albedoSrgb, splatOpacity));
-    return;
-  }
-
   // Remap albedo through curve LUT, then linearize
   let albedoLum = dot(albedoSrgb, vec3f(0.2126, 0.7152, 0.0722));
   let albedoRemapped = textureLoad(albedoLUT, clamp(i32(albedoLum * 255.0), 0, 255), 0).r;

@@ -36,6 +36,7 @@ import {
 import gbufferDebugPresentShader from "./shaders/gbuffer_debug_present.wgsl?raw";
 import screenSpaceNormalsShader from "./shaders/gpu_screen_space_normals.wgsl?raw";
 import deferredLightingShader from "./shaders/gpu_deferred_lighting.wgsl?raw";
+import sourceRadianceShader from "./shaders/gpu_source_radiance.wgsl?raw";
 import { createGTAO, DEFAULT_GTAO_PARAMS, type GTAOResources, type GTAOParams } from "./gtao.js";
 import { createIBL, type IBLResources } from "./ibl.js";
 import bilateralNormalFilterShader from "./shaders/bilateral_normal_filter.wgsl?raw";
@@ -106,7 +107,7 @@ export interface RenderFrameParams {
   roughnessCurve?: MaterialCurveParams;
   metalnessCurve?: MaterialCurveParams;
   albedoCurve?: MaterialCurveParams;
-  sourceColorPreview?: boolean;
+  presentationMode?: "source-radiance" | "deferred-pbr";
 }
 
 export interface SplatRenderer {
@@ -445,6 +446,46 @@ function createBilateralNormalFilter(device: GPUDevice) {
 // Deferred lighting compute pass
 // ---------------------------------------------------------------------------
 
+function createSourceRadiancePass(device: GPUDevice) {
+  const module = device.createShaderModule({
+    label: "source_radiance_shader",
+    code: sourceRadianceShader,
+  });
+  const layout = device.createBindGroupLayout({
+    label: "source_radiance_bgl",
+    entries: [
+      { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "float" } },
+      { binding: 1, visibility: GPUShaderStage.COMPUTE, storageTexture: { access: "write-only", format: "rgba16float" } },
+    ],
+  });
+  const pipeline = device.createComputePipeline({
+    label: "source_radiance_pipeline",
+    layout: device.createPipelineLayout({ bindGroupLayouts: [layout] }),
+    compute: { module, entryPoint: "main" },
+  });
+  return {
+    encode(
+      encoder: GPUCommandEncoder,
+      sourceColorView: GPUTextureView,
+      outputTexture: GPUTexture,
+      viewport: [number, number],
+    ) {
+      const bindGroup = device.createBindGroup({
+        layout,
+        entries: [
+          { binding: 0, resource: sourceColorView },
+          { binding: 1, resource: outputTexture.createView() },
+        ],
+      });
+      const pass = encoder.beginComputePass({ label: "source_radiance" });
+      pass.setPipeline(pipeline);
+      pass.setBindGroup(0, bindGroup);
+      pass.dispatchWorkgroups(Math.ceil(viewport[0] / 8), Math.ceil(viewport[1] / 8));
+      pass.end();
+    },
+  };
+}
+
 function createDeferredLightingPass(device: GPUDevice) {
   const mod = device.createShaderModule({
     label: "deferred_lighting_shader",
@@ -503,7 +544,6 @@ function createDeferredLightingPass(device: GPUDevice) {
       envIntensity: number = 1.0,
       envRotation: number = 0.0,
       exposure: number = 1.0,
-      sourceColorPreview: boolean = false,
     ) {
       const params = new Float32Array(44);
       params[0] = viewport[0];
@@ -523,7 +563,6 @@ function createDeferredLightingPass(device: GPUDevice) {
       params[38] = envIntensity;
       params[39] = envRotation;
       params[40] = exposure;
-      params[41] = sourceColorPreview ? 1.0 : 0.0;
       device.queue.writeBuffer(paramsBuffer, 0, params);
       const bg = device.createBindGroup({
         layout: bgl,
@@ -811,6 +850,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
   const texturePresenter: TileLocalTexturePresenter = createTileLocalTexturePresenter(device, format);
   const gbufferDebug = createGBufferDebugPresenter(device, format);
   const screenSpaceNormals = createScreenSpaceNormalsPass(device);
+  const sourceRadiance = createSourceRadiancePass(device);
   const deferredLighting = createDeferredLightingPass(device);
   const bilateralFilter = createBilateralNormalFilter(device);
   const ibl = createIBL(device);
@@ -1042,6 +1082,16 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
         encodeCompositeOnly(encoder, cc.resources, cc.bindGroups);
       }
 
+      if (params.presentationMode === "source-radiance") {
+        sourceRadiance.encode(
+          encoder,
+          scene.outputView,
+          cc.litTexture,
+          [cc.resources.plan.viewportWidth, cc.resources.plan.viewportHeight],
+        );
+        return;
+      }
+
       // Screen-space normal reconstruction + GTAO + deferred lighting
       const lightingViewMatrix = params.lightingViewMatrix ?? params.viewMatrix;
       const lightingViewProj = params.lightingViewProj ?? params.viewProj;
@@ -1138,7 +1188,6 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
           params.envIntensity ?? 1.0,
           params.envRotation ?? 0.0,
           params.exposure ?? 1.0,
-          params.sourceColorPreview ?? false,
         );
       }
     },
