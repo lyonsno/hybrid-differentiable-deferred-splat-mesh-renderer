@@ -29,8 +29,8 @@ test("overlay exposes renderer-owned material, AO, bloom, and emissive controls"
 test("overlay exposes Kaminos scene-splat compatibility loading", async () => {
   const overlay = await readFile(OVERLAY_PATH, "utf8");
 
-  assert.match(overlay, /loadSceneSplats\(entries:\s*readonly SplatOverlaySceneEntry\[\]\): Promise<void>/);
-  assert.match(overlay, /async function loadSceneSplats\(entries:\s*readonly SplatOverlaySceneEntry\[\]\)/);
+  assert.match(overlay, /loadSceneSplats\(entries:\s*readonly SplatSceneEntry\[\]\): Promise<void>/);
+  assert.match(overlay, /async function loadSceneSplats\(entries:\s*readonly SplatSceneEntry\[\]\)/);
   assert.match(overlay, /sceneIdentity:\s*SplatSceneIdentity \| null/);
-  assert.match(overlay, /await loadPly\(entry\.source,\s*entry\.fileName\)/);
+  assert.match(overlay, /const worldAttrs = transformSceneSplatAttributes\(corrected\.attributes, entry\.modelMatrix\)/);
 });

@@ -84,22 +84,6 @@ export interface SplatSourceIdentity {
   };
 }
 
-export interface SplatOverlaySceneEntry {
-  readonly id: string;
-  readonly source: string;
-  readonly fileName?: string;
-  readonly modelMatrix?: readonly number[];
-  readonly correction?: SplatSourceIdentity["correctionIdentity"];
-}
-
-export interface SplatSceneIdentity {
-  readonly source: "kaminos-scene-splats";
-  readonly entryCount: number;
-  readonly activeEntryId: string | null;
-  readonly loadedEntryIds: readonly string[];
-  readonly compatibilityMode: "first-entry";
-}
-
 export interface SplatRendererControlsV0 {
   readonly schema: "hybrid-render.splat-renderer-controls.v0";
   readonly material?: {
@@ -256,8 +240,6 @@ export interface SplatOverlayHandle {
   };
   /** Load a PLY splat file from a URL or ArrayBuffer. */
   loadPly(source: string | ArrayBuffer, fileName?: string): Promise<void>;
-  /** Load Kaminos scene splat entries. Current compatibility path renders the first entry. */
-  loadSceneSplats(entries: readonly SplatOverlaySceneEntry[]): Promise<void>;
   /** Load from our JSON manifest format (sidecar binary). */
   loadManifest(url: string): Promise<void>;
   /** Load pre-decoded SplatAttributes directly. */
@@ -744,28 +726,6 @@ export async function createSplatOverlay(
     applyCorrectionToLoadedAttributes();
   }
 
-  async function loadSceneSplats(entries: readonly SplatOverlaySceneEntry[]) {
-    if (!entries.length) throw new Error("loadSceneSplats requires at least one splat entry");
-    const entry = entries[0];
-    const nextSceneIdentity: SplatSceneIdentity = {
-      source: "kaminos-scene-splats",
-      entryCount: entries.length,
-      activeEntryId: entry.id ?? null,
-      loadedEntryIds: entries.map((candidate) => candidate.id),
-      compatibilityMode: "first-entry",
-    };
-    if (entry.modelMatrix) {
-      if (entry.modelMatrix.length !== 16) throw new Error("loadSceneSplats entry modelMatrix must have 16 elements");
-      setModelMatrix(new Float32Array(entry.modelMatrix));
-    }
-    correctionIdentity = entry.correction ?? null;
-    await loadPly(entry.source, entry.fileName);
-    sceneIdentity = nextSceneIdentity;
-    if (entry.correction && sourceIdentity) {
-      sourceIdentity = { ...sourceIdentity, correctionApplied: true, correctionIdentity: entry.correction };
-    }
-  }
-
   async function loadManifest(url: string) {
     const attributes = await fetchFirstSmokeSplatPayload(url);
     sceneIdentity = null;
@@ -1018,7 +978,6 @@ export async function createSplatOverlay(
     setHostDepthTexture,
     setRendererControls,
     loadPly,
-    loadSceneSplats,
     loadManifest,
     loadAttributes,
     loadSceneSplats,
