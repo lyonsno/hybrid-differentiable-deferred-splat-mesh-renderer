@@ -11,6 +11,7 @@ import {
   createSplatRenderer,
   mat4Inverse,
   type SplatScene,
+  type SplatDepthFrame,
 } from "./splatRenderer.js";
 import {
   createAlphaTexturePresenter,
@@ -248,6 +249,8 @@ export interface SplatOverlayHandle {
   loadSceneSplats(entries: readonly SplatSceneEntry[]): Promise<void>;
   /** Start the render loop (synced to host requestAnimationFrame). */
   start(): void;
+  /** Read the renderer-owned NDC depth surface from the latest completed frame. */
+  captureDepthFrame(): Promise<SplatDepthFrame>;
   /** Stop rendering. */
   stop(): void;
   /** Clean up all GPU resources and remove the overlay canvas. */
@@ -949,6 +952,11 @@ export async function createSplatOverlay(
     animFrameId = requestAnimationFrame(frame);
   }
 
+  async function captureDepthFrame(): Promise<SplatDepthFrame> {
+    if (!scene) throw new Error("Cannot capture splat depth before a scene is loaded");
+    return renderer.readDepthFrame(scene);
+  }
+
   function stop() {
     running = false;
     if (animFrameId) {
@@ -981,6 +989,7 @@ export async function createSplatOverlay(
     loadManifest,
     loadAttributes,
     loadSceneSplats,
+    captureDepthFrame,
     start,
     stop,
     destroy,

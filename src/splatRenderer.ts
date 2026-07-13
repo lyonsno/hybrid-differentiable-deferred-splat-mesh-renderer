@@ -122,6 +122,7 @@ export interface SplatRenderer {
   sortRefreshPending(scene: SplatScene, viewMatrix: Float32Array): boolean;
   encodeSort(scene: SplatScene, encoder: GPUCommandEncoder, viewMatrix: Float32Array): void;
   renderFrame(scene: SplatScene, params: RenderFrameParams, encoder: GPUCommandEncoder): void;
+  readDepthFrame(scene: SplatScene): Promise<SplatDepthFrame>;
   presentTexture(renderPass: GPURenderPassEncoder, textureView: GPUTextureView): void;
   presentBloom(renderPass: GPURenderPassEncoder, bloomView: GPUTextureView, intensity: number): void;
   readonly gbufferDebugPresenter: GBufferDebugPresenter;
@@ -129,6 +130,14 @@ export interface SplatRenderer {
   destroyScene(scene: SplatScene): void;
   readonly alphaDensityState: (scene: SplatScene) => AlphaDensityState;
   readonly ibl: IBLResources;
+}
+
+export interface SplatDepthFrame {
+  readonly schema: "hybrid-render.splat-depth-frame.v0";
+  readonly width: number;
+  readonly height: number;
+  readonly format: "r32float-ndc";
+  readonly data: Float32Array;
 }
 
 export interface GBufferDebugPresenter {
@@ -958,7 +967,7 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
         label: "gbuffer_depth",
         size: [viewportWidth, viewportHeight],
         format: "r32float",
-        usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+        usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
       });
       const gbufferNormalTexture = device.createTexture({
         label: "gbuffer_normal",
@@ -1190,6 +1199,45 @@ export function createSplatRenderer(config: SplatRendererConfig): SplatRenderer 
           params.exposure ?? 1.0,
         );
       }
+    },
+
+    async readDepthFrame(scene: SplatScene): Promise<SplatDepthFrame> {
+      const cc = scene._internal.computeCompositor;
+      const width = cc.resources.plan.viewportWidth;
+      const height = cc.resources.plan.viewportHeight;
+      const unpaddedBytesPerRow = width * Float32Array.BYTES_PER_ELEMENT;
+      const bytesPerRow = Math.ceil(unpaddedBytesPerRow / 256) * 256;
+      const readback = device.createBuffer({
+        label: "gbuffer_depth_readback",
+        size: bytesPerRow * height,
+        usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+      });
+      const encoder = device.createCommandEncoder({ label: "gbuffer_depth_readback_encoder" });
+      encoder.copyTextureToBuffer(
+        { texture: cc.gbufferDepthTexture },
+        { buffer: readback, bytesPerRow, rowsPerImage: height },
+        { width, height, depthOrArrayLayers: 1 },
+      );
+      device.queue.submit([encoder.finish()]);
+      await readback.mapAsync(GPUMapMode.READ);
+      const mapped = new Float32Array(readback.getMappedRange());
+      const paddedFloatsPerRow = bytesPerRow / Float32Array.BYTES_PER_ELEMENT;
+      const data = new Float32Array(width * height);
+      for (let row = 0; row < height; row += 1) {
+        data.set(
+          mapped.subarray(row * paddedFloatsPerRow, row * paddedFloatsPerRow + width),
+          row * width,
+        );
+      }
+      readback.unmap();
+      readback.destroy();
+      return {
+        schema: "hybrid-render.splat-depth-frame.v0",
+        width,
+        height,
+        format: "r32float-ndc",
+        data,
+      };
     },
 
     presentTexture(renderPass: GPURenderPassEncoder, textureView: GPUTextureView): void {
